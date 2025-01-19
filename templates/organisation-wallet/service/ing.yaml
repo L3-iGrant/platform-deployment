@@ -1,0 +1,39 @@
+{{- if .Values.organisationWallet.service.ingress.enabled }}
+{{- $namespace := .Values.namespace -}}
+{{- $prefix := .Values.prefix -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  {{- with .Values.organisationWallet.service.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  name: {{ $namespace }}-{{ $prefix }}-service-ow-ing
+  namespace: {{ $namespace }}
+spec:
+  rules:
+  {{- range .Values.organisationWallet.service.ingress.hosts }}
+  - host: {{ .host | quote }}
+    http:
+      paths:
+      {{- range .paths }}
+      - backend:
+          service:
+            name: {{ $namespace }}-{{ $prefix }}-service-ow-svc
+            port:
+              number: 80
+        path: {{ .path }}
+        pathType: {{ .pathType }}
+      {{- end }}
+  {{- end }}
+  {{- if .Values.organisationWallet.service.ingress.tls }}
+  tls:
+  {{- range .Values.organisationWallet.service.ingress.tls }}
+  - hosts:
+    {{- range .hosts }}
+    - oid4vc.igrant.io
+    {{- end }}
+    secretName: {{ .secretName }}
+  {{- end }}
+  {{- end }}
+{{- end }}

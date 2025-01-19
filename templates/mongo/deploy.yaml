@@ -1,0 +1,49 @@
+{{- if .Values.mongo.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      run: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
+  template:
+    metadata:
+      labels:
+        run: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
+    spec:
+      containers:
+        - env:
+            - name: MONGODB_DATABASE
+              value: {{ .Values.mongo.database }}
+            - name: MONGODB_USERNAME
+              value: {{ .Values.mongo.username }}
+            - name: MONGODB_PASSWORD
+              value: {{ .Values.mongo.password }}
+            - name: MONGODB_ROOT_PASSWORD
+              value: {{ .Values.mongo.password }}
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "yes"
+          image: {{ .Values.mongo.image }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: Always
+          name: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
+          resources: {}
+          ports:
+            - containerPort: 27017
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /bitnami/mongodb
+              name: mongodb-data
+              subPath: mongodb
+      volumes:
+        - name: mongodb-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo-pvc
+{{- end }}

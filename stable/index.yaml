@@ -1,0 +1,17 @@
+apiVersion: v1
+entries:
+  organisationwallet:
+  - apiVersion: v2
+    created: "2025-01-20T05:04:24.102099137+05:30"
+    description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
+      holder, and verifier of verifiable credentials within the eIDAS 2.0 framework.
+      It incorporates the latest amendments, the EU Architectural Reference Framework
+      (ARF), and Implementing Acts (IA).
+    digest: ccaaafff16a826a4e3024a9367817e73947a7a644ac2a65b763a9b6f7f49bbd3
+    icon: https://igrant.io/assets/images/favicons/android-icon-192x192.png
+    name: organisationwallet
+    type: application
+    urls:
+    - organisationwallet-2025.1.1.tgz
+    version: 2025.1.1
+generated: "2025-01-20T05:04:24.1006666+05:30"

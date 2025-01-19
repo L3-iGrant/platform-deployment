@@ -1,0 +1,22 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-config
+  namespace: {{ .Values.namespace }}
+data:
+  init-multiple-dbs.sh: |
+    #!/bin/bash
+    set -e
+
+    export PGPASSWORD="${POSTGRESQL_PASSWORD}"
+
+    if [[ -n "$MULTIPLE_DATABASES" ]]; then
+      IFS=',' read -ra DBS <<< "$MULTIPLE_DATABASES"
+      for DB in "${DBS[@]}"; do
+        DB_NAME=$(echo "$DB" | xargs)  # trim whitespace
+        echo "Creating database '$DB_NAME'..."
+        psql -U "${POSTGRESQL_USERNAME}" -d "${POSTGRESQL_DATABASE}" -c "CREATE DATABASE \"$DB_NAME\";"
+      done
+    fi
+{{- end }}

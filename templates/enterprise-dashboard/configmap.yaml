@@ -1,0 +1,14 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+apiVersion: v1
+data:
+  config.json: |
+    {
+      "baseUrl": "{{ .Values.enterpriseDashboard.configuration.baseUrl }}",
+      "appVersion": "{{ .Values.enterpriseDashboard.configuration.appVersion }}",
+      "clientId": "{{ .Values.enterpriseDashboard.configuration.clientId }}"
+    }
+kind: ConfigMap
+metadata:
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard-config
+  namespace: {{ .Values.namespace }}
+{{- end }}

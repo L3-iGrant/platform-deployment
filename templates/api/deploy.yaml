@@ -1,0 +1,40 @@
+{{- if .Values.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.api.imagePullSecret }}
+      containers:
+        - image: {{ .Values.api.image }}
+          imagePullPolicy: Always
+          name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /opt/l3-igrant/api/config
+              name: config-volume
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - configMap:
+            defaultMode: 420
+            name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-config
+          name: config-volume
+{{- end }}

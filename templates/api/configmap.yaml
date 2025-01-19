@@ -1,0 +1,47 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+data:
+  config-production.json: |
+    {
+      "DataBase": {
+        "hosts": [
+          {{- if .Values.api.configuration.database.host }}
+          "{{ .Values.api.configuration.database.host }}"
+          {{- else }}
+          "{{ .Values.namespace }}-{{ .Values.prefix }}-mongo-svc"
+          {{- end }}
+        ],
+        "name": "{{ .Values.mongo.database }}",
+        "username": "{{ .Values.mongo.username }}",
+        "password": "{{ .Values.mongo.password }}"
+      },
+      "ApplicationMode": "multi-tenant",
+      "ApiSecretKey": "{{ .Values.api.configuration.ApiSecretKey }}",
+      "Iam": {
+        "url": "{{ .Values.api.configuration.Iam.url }}",
+        "realm": "{{ .Values.api.configuration.Iam.realm }}",
+        "ClientId": "{{ .Values.api.configuration.Iam.ClientId }}",
+        "AdminUser": "{{ .Values.keycloak.adminUsername }}",
+        "AdminPassword": "{{ .Values.keycloak.adminPassword }}",
+        "timeout": 5
+      },
+      "Smtp": {
+        "username": "{{ .Values.api.configuration.Smtp.username }}",
+        "password": "{{ .Values.api.configuration.Smtp.password }}",
+        "host": "{{ .Values.api.configuration.Smtp.host }}",
+        "port": {{ .Values.api.configuration.Smtp.port }},
+        "adminEmail": "{{ .Values.api.configuration.Smtp.adminEmail }}"
+      },
+      "Webhooks": {
+        "events": {{ .Values.api.configuration.Webhooks.events | toJson }}
+      },
+      "OpenIdDeployment": {
+        "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
+        "OpenIdServiceEndpoint": "https://{{.Values.organisationWallet.service.ingress.tls[0].host}}"
+      }
+    }
+kind: ConfigMap
+metadata:
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-config
+  namespace: {{ .Values.namespace }}
+{{- end }}

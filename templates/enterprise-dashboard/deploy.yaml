@@ -1,0 +1,40 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.enterpriseDashboard.imagePullSecret }}
+      containers:
+        - image: {{ .Values.enterpriseDashboard.image }}
+          imagePullPolicy: Always
+          name: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - mountPath: /usr/share/nginx/html/config
+              name: config-volume
+      volumes:
+        - configMap:
+            defaultMode: 420
+            name: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard-config
+          name: config-volume
+{{- end }}

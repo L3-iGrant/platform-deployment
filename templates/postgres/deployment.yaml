@@ -1,0 +1,58 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-deployment
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+    spec:
+      containers:
+        - name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+          image: {{ .Values.postgres.image }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRESQL_USERNAME
+              value: {{ .Values.postgres.username }}
+            - name: POSTGRESQL_PASSWORD
+              value: {{ .Values.postgres.password }}
+            - name: POSTGRESQL_DATABASE
+              value: {{ .Values.postgres.database }}
+            {{- if .Values.organisationWallet.enabled }}
+            - name: MULTIPLE_DATABASES
+              value:  {{ .Values.organisationWallet.dbName }}
+            {{- end}}
+          volumeMounts:
+            - mountPath: /bitnami/postgresql
+              name: postgredb
+              subPath: postgres
+            {{- if .Values.organisationWallet.enabled }}
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d/
+              subPath: init-multiple-dbs.sh
+            {{- end}}
+      volumes:
+        - name: postgredb
+          persistentVolumeClaim:
+            claimName: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-pvc
+        {{- if .Values.organisationWallet.enabled }}
+        - name: init-scripts
+          defaultMode: 0744
+          configMap:
+            name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-config
+        {{- end}}
+{{- end }}

@@ -1,0 +1,50 @@
+{{- if .Values.organisationWallet.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.organisationWallet.imagePullSecret }}
+      containers:
+      - env:
+        - name: ROUTE_PERMITTED
+          value: config
+        - name: DOMAIN
+          value: https://{{.Values.organisationWallet.service.ingress.tls[0].host}}
+        - name: DATABASE_USER
+          value: {{ .Values.keycloak.dbUsername }}
+        - name: DATABASE_PASSWORD
+          value: {{ .Values.keycloak.dbPassword }}
+        - name: DATABASE_HOST
+          value: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-svc
+        - name: DATABASE_PORT
+          value: "5432"
+        - name: DATABASE_DB
+          value: {{ .Values.organisationWallet.dbName }}
+        - name: EBSI_BASE_URL
+          value: https://api-pilot.ebsi.eu
+        - name: WALLET_UNIT_PRODUCTION_CHECKS_ENABLED
+          value: "False"
+        image: {{ .Values.organisationWallet.image }}
+        name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,29 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+apiVersion: v2
+description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
+  holder, and verifier of verifiable credentials within the eIDAS 2.0 framework. It
+  incorporates the latest amendments, the EU Architectural Reference Framework (ARF),
+  and Implementing Acts (IA).
+icon: https://igrant.io/assets/images/favicons/android-icon-192x192.png
+name: organisationwallet
+type: application
+version: 2025.1.1
+
+...
+files:
+  organisationwallet-2025.1.1.tgz: sha256:ccaaafff16a826a4e3024a9367817e73947a7a644ac2a65b763a9b6f7f49bbd3
+-----BEGIN PGP SIGNATURE-----
+
+wsDcBAEBCgAQBQJnjYu9CRB5kxolTMXTQgAADdcMAB4szRPQRc6S0rugKq6ZTrD6
+GJuU06jhkYrKTOSxQ0H001p6VYTOLdP+Nr5hv+ywfzVVglCoB/4R8aC8ULvtfw89
+hQr4BCUTR+nZfga17NM+c+766weybZLEsSAaIbs0EdU8HCHFnAi5J44Tn5VabaGs
+Qs+0w0fPYnQCLBULsljRC0CAgo+v0lIvJac4mc9UH91Q0kbIGPw5OMNe20fgx4Vy
+4PJoy/Ivr/IRkMyDuKyd/ps8HzQtEEAZpT0byczABsIvOxb5uqIb4ZPGENkaJarA
+OGYZGf4IFZ7obVoa+Ql4uH1YnltS8jD3wkJADt5aZ5vKLPSi0tc7JWWs0AjX6+19
+mbW5Si07uDxQc3Wy6HmZpgEiDo1Xtd4Z2XjwDDO9/cJXosiQncLgKHfpYi8TpWvl
+aRYsOLiq9zoIGFqomZbWLU68tmZNyh/KPPJhAOEva6hRImD1gOKa35WM+G/JGWiA
+3/145i/DB3syap6ycZwBq47P4JUyDCANEM3Cs4NdRw==
+=i3rV
+-----END PGP SIGNATURE-----

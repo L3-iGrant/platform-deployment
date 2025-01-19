@@ -1,0 +1,15 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
+{{- end }}

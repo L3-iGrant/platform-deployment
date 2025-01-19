@@ -1,0 +1,18 @@
+{{- if .Values.organisationWallet.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-service-ow
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-service-ow-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-service-ow
+  type: ClusterIP
+{{- end }}
