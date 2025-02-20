@@ -42,8 +42,7 @@ spec:
               subPath: postgres
             {{- if .Values.organisationWallet.enabled }}
             - name: init-scripts
-              mountPath: /docker-entrypoint-initdb.d/
-              subPath: init-multiple-dbs.sh
+              mountPath: /docker-entrypoint-initdb.d
             {{- end}}
       volumes:
         - name: postgredb
@@ -51,7 +50,6 @@ spec:
             claimName: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-pvc
         {{- if .Values.organisationWallet.enabled }}
         - name: init-scripts
-          defaultMode: 0744
           configMap:
             name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres-config
         {{- end}}

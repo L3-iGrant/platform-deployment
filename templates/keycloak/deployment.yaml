@@ -23,8 +23,6 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-          ports:
-            - containerPort: 8080
           env:
             - name: KEYCLOAK_ADMIN_USER
               value: {{ .Values.keycloak.adminUsername }}

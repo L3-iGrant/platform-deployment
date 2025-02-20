@@ -19,22 +19,22 @@ spec:
       imagePullSecrets:
         - name: {{ .Values.api.imagePullSecret }}
       containers:
-        - image: {{ .Values.api.image }}
-          imagePullPolicy: Always
-          name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-          ports:
-            - containerPort: 80
-              protocol: TCP
-          volumeMounts:
-            - mountPath: /opt/l3-igrant/api/config
-              name: config-volume
-          securityContext:
+      - image: {{ .Values.api.image }}
+        imagePullPolicy: Always
+        name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+        ports:
+        - containerPort: 80
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /opt/l3-igrant/api/config
+          name: config-volume
+        securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          resources:
+        resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
-        - configMap:
-            defaultMode: 420
-            name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-config
-          name: config-volume
+      - configMap:
+          defaultMode: 420
+          name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-config
+        name: config-volume
 {{- end }}

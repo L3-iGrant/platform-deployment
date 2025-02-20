@@ -35,9 +35,12 @@ data:
       "Webhooks": {
         "events": {{ .Values.api.configuration.Webhooks.events | toJson }}
       },
+      "SSIAriesCloudAgentDeployment": {
+        "BackendAPIBaseURL": "https://{{ (index .Values.api.ingress.hosts 0).host }}"
+      },
       "OpenIdDeployment": {
         "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
-        "OpenIdServiceEndpoint": "https://{{.Values.organisationWallet.service.ingress.tls[0].host}}"
+        "OpenIdServiceEndpoint": "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
       }
     }
 kind: ConfigMap

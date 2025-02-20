@@ -1,0 +1,17 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 80
+  selector:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler
+{{- end }}

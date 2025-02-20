@@ -20,10 +20,12 @@ spec:
         - name: {{ .Values.organisationWallet.imagePullSecret }}
       containers:
       - env:
+        - name: SECURE_VAULT_BASE_URL
+          value: {{ .Values.organisationWallet.secureVaultUrl }}
         - name: ROUTE_PERMITTED
           value: config
         - name: DOMAIN
-          value: https://{{.Values.organisationWallet.service.ingress.tls[0].host}}
+          value: "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
         - name: DATABASE_USER
           value: {{ .Values.keycloak.dbUsername }}
         - name: DATABASE_PASSWORD
@@ -37,12 +39,11 @@ spec:
         - name: EBSI_BASE_URL
           value: https://api-pilot.ebsi.eu
         - name: WALLET_UNIT_PRODUCTION_CHECKS_ENABLED
-          value: "False"
+          value: "True"
+        - name: WALLET_PROVIDER_BASE_URL
+          value: {{ .Values.organisationWallet.walletProviderUrl }}
         image: {{ .Values.organisationWallet.image }}
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
-        ports:
-        - containerPort: 8080
-          protocol: TCP
         securityContext:
           {{- toYaml .Values.securityContext | nindent 12 }}
         resources:
