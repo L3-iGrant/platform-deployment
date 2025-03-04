@@ -26,9 +26,13 @@ spec:
             - containerPort: 80
               protocol: TCP
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
           volumeMounts:
             - mountPath: /usr/share/nginx/html/config
               name: config-volume

@@ -34,9 +34,13 @@ spec:
             - mountPath: /opt/l3-igrant/api/config
               name: config-volume
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
       volumes:
         - configMap:
             defaultMode: 420

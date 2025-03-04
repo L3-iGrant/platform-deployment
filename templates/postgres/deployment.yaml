@@ -20,9 +20,13 @@ spec:
         - name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
           image: {{ .Values.postgres.image }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
           ports:
             - containerPort: 5432
           env:

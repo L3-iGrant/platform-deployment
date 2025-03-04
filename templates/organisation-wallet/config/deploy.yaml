@@ -45,7 +45,11 @@ spec:
         image: {{ .Values.organisationWallet.image }}
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
         securityContext:
-          {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.securityContext }}
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.resources }}
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
 {{- end }}

@@ -20,9 +20,13 @@ spec:
         - name: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak
           image: {{ .Values.keycloak.image }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
           env:
             - name: KEYCLOAK_ADMIN_USER
               value: {{ .Values.keycloak.adminUsername }}

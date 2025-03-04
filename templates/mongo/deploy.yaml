@@ -29,12 +29,15 @@ spec:
               value: "yes"
           image: {{ .Values.mongo.image }}
           securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
           imagePullPolicy: Always
           name: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
-          resources: {}
           ports:
             - containerPort: 27017
               protocol: TCP
