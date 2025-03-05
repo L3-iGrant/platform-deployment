@@ -318,6 +318,75 @@ organisationWallet:
           secretName: tls-secret
 ```
 
+## Install Using Docker Compose
+
+To run the Organisation Wallet locally using Docker Compose, follow these steps:
+
+1. Navigate to the docker-compose directory:
+```bash
+cd docker-compose
+```
+
+2. Make the environment script executable and source it:
+```bash
+chmod +x env.sh
+source env.sh
+```
+
+3. Update the variables in `env.sh` according to your requirements.
+
+4. Configure the JSON settings:
+```bash
+make configure-json
+```
+
+5. Bootstrap and configure Vault:
+```bash
+make vault-bootstrap
+```
+
+6. Start all required services in the following order:
+```bash
+make securevault-start
+make mongo-start
+make postgresql-start
+make keycloak-start
+make api-start
+make webhook-start
+make organisationwallet-config
+make organisationwallet-service
+```
+
+You can view all available make commands by running:
+```bash
+make
+```
+
+This will display the complete list of commands with their descriptions:
+
+```bash
+------------------------------------------------------------------------
+iGrant.io Platform
+------------------------------------------------------------------------
+api-start                      Start API server
+configure-json                 Update config-production.json with environment variables
+keycloak-start                 Start Keycloak server
+mongo-start                    Start MongoDB server
+organisationwallet-config      Start Organisation Wallet Config server
+organisationwallet-service     Start Organisation Wallet Service server
+postgresql-start               Start PostgreSQL server
+securevault-start              Start iGrant.io secure vault
+vault-bootstrap                Start Vault, initialize, unseal and configure it
+vault-clean                    Delete Vault cluster keys file
+vault-configure                Configure Vault with basic configuration
+vault-init                     Initialize Vault and generate root token
+vault-start                    Start Vault server in detached mode
+vault-status                   Check current Vault server status
+vault-token                    Print root token and copy to clipboard
+vault-unseal                   Unseal Vault using stored key
+webhook-start                  Start Webhook server
+```
+
 ## Contributing
 
 Feel free to improve the plugin and send us a pull request. If you find any problems, please create an issue in this repo.
