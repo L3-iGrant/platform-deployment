@@ -165,7 +165,7 @@ ifeq ($(UNAME_S),Linux)
 		--arg openidserverbaseurl "http://localhost:$$OWCONFIG_PORT" \
 		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
 		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
-		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:$$KEYCLOAK_PORT/auth" \
+		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:8080/auth" \
 		'.DataBase.name = $$db_name | .DataBase.username = $$db_user | .DataBase.password = $$db_pass | .Iam.url = $$kc_url | .Iam.AdminUser = $$kc_user | .Iam.AdminPassword = $$kc_pass | .SSIAriesCloudAgentDeployment.BackendAPIBaseURL = $$apipublicbaseurl | .OpenIdDeployment.OpenIdServiceEndpoint = $$owservicepublicbaseurl | .OpenIdDeployment.OpenIdServerBaseUrl = $$openidserverbaseurl' \
 		resources/config/config-production.json.bak > resources/config/config-production.json
 else
@@ -177,7 +177,7 @@ else
 		--arg openidserverbaseurl "http://localhost:$$OWCONFIG_PORT" \
 		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
 		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
-		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:$$KEYCLOAK_PORT/auth" \
+		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:8080/auth" \
 		'.DataBase.name = $$db_name | \
 		.DataBase.username = $$db_user | \
 		.DataBase.password = $$db_pass | \
