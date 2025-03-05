@@ -387,6 +387,22 @@ vault-unseal                   Unseal Vault using stored key
 webhook-start                  Start Webhook server
 ```
 
+## Container Images Access
+
+To access iGrant.io platform container images, please follow these steps:
+
+1. Contact support@igrant.io to get permission to access the container registry. You will receive a `key.json` file.
+
+2. Login to the container registry using the provided key:
+```bash
+cat key.json | docker login -u _json_key --password-stdin https://europe-docker.pkg.dev
+```
+
+Available container images:
+- API: `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1`
+- Organisation Wallet: `europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4`
+- Secure Vault: `europe-docker.pkg.dev/jenkins-189019/igrantio/securevault:2025.2.4`
+
 ## Contributing
 
 Feel free to improve the plugin and send us a pull request. If you find any problems, please create an issue in this repo.
