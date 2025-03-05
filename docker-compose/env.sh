@@ -16,12 +16,12 @@ export VAULT_USER="admin"
 export VAULT_PASSWORD="admin"
 
 # MongoDB Configuration
-export MONGO_CONTAINER_NAME="mongo"
+export MONGODB_CONTAINER_NAME="mongo"
 export MONGODB_DATABASE="igrant-consentdb"
 export MONGODB_USER="igrant-user"
 export MONGODB_PASSWORD="igrant-password"
 export MONGODB_PORT="27017"
-export MONGO_VOLUME_NAME="mongo-datadir"
+export MONGODB_VOLUME_NAME="mongo-datadir"
 
 # PostgreSQL Configuration
 export POSTGRESQL_CONTAINER_NAME="postgresql"
