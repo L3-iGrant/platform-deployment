@@ -14,7 +14,7 @@ services:
     cap_add:
       - IPC_LOCK
     command: vault server -config=/vault/config/vault.json
-  
+
   securevault:
     image: ${SECUREVAULT_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/securevault:2025.2.4}
     container_name: ${SECUREVAULT_CONTAINER_NAME:-securevault}
@@ -27,7 +27,7 @@ services:
       VAULT_ADDR: "http://${VAULT_CONTAINER_NAME:-vault}:${VAULT_PORT:-8200}"
       VAULT_USER: "${VAULT_USER:-admin}"
       VAULT_PASSWORD: "${VAULT_PASSWORD:-admin}"
-  
+
   mongo:
     build:
       context: ./resources/docker/development
@@ -70,15 +70,19 @@ services:
       - "${KEYCLOAK_PORT:-8082}:8080"
     depends_on:
       - postgresql
-  
+
   api:
     image: ${API_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4}
     container_name: ${API_CONTAINER_NAME:-api}
     restart: unless-stopped
     ports:
-      - "${API_PORT:-8080}:80"
+      - "${API_PORT:-8080}:8080"
     environment:
       RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
+      MONGODB_CONTAINER_NAME: ${MONGODB_CONTAINER_NAME:-mongo}
+      MONGODB_PORT: ${MONGODB_PORT:-27017}
+      KEYCLOAK_CONTAINER_NAME: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
+      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8082}
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
       - ./resources/config/:/resources/config/:ro
@@ -93,13 +97,13 @@ services:
     container_name: ${WEBHOOK_CONTAINER_NAME:-webhook}
     restart: unless-stopped
     ports:
-      - "${WEBHOOK_PORT:-8085}:80"
+      - "${WEBHOOK_PORT:-8085}:8085"
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
       - ./resources/assets/:/opt/l3-igrant/api/assets/:ro
     depends_on:
       - mongo
-  
+
   owconfig:
     image: ${OWCONFIG_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4}
     container_name: ${OWCONFIG_CONTAINER_NAME:-owconfig}
