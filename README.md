@@ -399,7 +399,7 @@ cat key.json | docker login -u _json_key --password-stdin https://europe-docker.
 ```
 
 Available container images:
-- API: `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1`
+- API: `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-2`
 - Organisation Wallet: `europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4`
 - Secure Vault: `europe-docker.pkg.dev/jenkins-189019/igrantio/securevault:2025.2.4`
 

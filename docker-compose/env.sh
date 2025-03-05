@@ -41,12 +41,12 @@ export KEYCLOAK_DATABASE_PASSWORD="bn_keycloak"
 export KEYCLOAK_PORT="8082"
 
 # API Configuration
-export API_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1"
+export API_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-2"
 export API_CONTAINER_NAME="api"
 export API_PORT="8080"
 
 # Webhook Configuration
-export WEBHOOK_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1"
+export WEBHOOK_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-2"
 export WEBHOOK_CONTAINER_NAME="webhook"
 export WEBHOOK_PORT="8085"
 
