@@ -77,9 +77,13 @@ services:
     restart: unless-stopped
     ports:
       - "${API_PORT:-8080}:80"
+    environment:
+      RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
+      - ./resources/config/:/resources/config/:ro
       - ./resources/assets/:/opt/l3-igrant/api/assets/:ro
+      - ./resources/assets/:/resources/assets/:ro
     depends_on:
       - mongo
       - keycloak
