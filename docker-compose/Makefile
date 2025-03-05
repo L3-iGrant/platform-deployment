@@ -3,6 +3,14 @@ VAULT_IMAGE ?= hashicorp/vault:latest
 SECUREVAULT_IMAGE ?= europe-docker.pkg.dev/jenkins-189019/igrantio/securevault:2025.2.4
 VAULT_CONTAINER_NAME := vault
 
+# Detect platform
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    DOCKER_EXEC_FLAGS := -it
+else
+    DOCKER_EXEC_FLAGS := -it
+endif
+
 .PHONY: help
 
 # Show help - automatically generated from comments
@@ -23,7 +31,7 @@ vault-init: ## Initialize Vault and generate root token
 	@echo "Checking if Vault is already initialized..."
 	@if [ ! -f resources/config/cluster-keys.json ]; then \
 		echo "Initializing Vault..."; \
-		docker exec -it $(VAULT_CONTAINER_NAME) vault operator init \
+		docker exec $(DOCKER_EXEC_FLAGS) $(VAULT_CONTAINER_NAME) vault operator init \
 			-key-shares=1 \
 			-key-threshold=1 \
 			-format=json > resources/config/cluster-keys.json; \
@@ -41,15 +49,14 @@ vault-clean: ## Delete Vault cluster keys file
 		echo "No cluster keys file found"; \
 	fi
 
-
 vault-status: ## Check current Vault server status
 	@echo "Checking Vault status..."
-	@docker exec -it $(VAULT_CONTAINER_NAME) vault status
+	@docker exec $(DOCKER_EXEC_FLAGS) $(VAULT_CONTAINER_NAME) vault status
 	@echo "Status check completed"
 
 vault-unseal: ## Unseal Vault using stored key
 	@echo "Unsealing Vault..."
-	@docker exec -it $(VAULT_CONTAINER_NAME) vault operator unseal $$(jq -r '.unseal_keys_b64[]' resources/config/cluster-keys.json)
+	@docker exec $(DOCKER_EXEC_FLAGS) $(VAULT_CONTAINER_NAME) vault operator unseal $$(jq -r '.unseal_keys_b64[]' resources/config/cluster-keys.json)
 	@echo "Vault unsealed successfully"
 
 vault-token: ## Print root token and copy to clipboard
@@ -112,7 +119,7 @@ keycloak-start: ## Start Keycloak server
 	@echo "Waiting for PostgreSQL to start..."
 	@max_attempts=30; \
 	attempt=1; \
-	until docker logs $(shell docker compose ps -q postgresql) 2>&1 | grep -q "database system is ready to accept connections" || [ $$attempt -gt $$max_attempts ]; do \
+	until docker logs $$(docker compose ps -q postgresql) 2>&1 | grep -q "database system is ready to accept connections" || [ $$attempt -gt $$max_attempts ]; do \
 		echo "Waiting for PostgreSQL to be ready... (Attempt $$attempt/$$max_attempts)"; \
 		sleep 2; \
 		attempt=$$((attempt + 1)); \
@@ -148,12 +155,26 @@ organisationwallet-service: ## Start Organisation Wallet Service server
 configure-json: ## Update config-production.json with environment variables
 	@echo "Updating config-production.json with environment variables..."
 	@cp resources/config/config-production.json resources/config/config-production.json.bak
+ifeq ($(UNAME_S),Linux)
+	@jq \
+		--arg db_name "$$MONGODB_DATABASE" \
+		--arg db_user "$$MONGODB_USER" \
+		--arg db_pass "$$MONGODB_PASSWORD" \
+		--arg kc_user "$$KEYCLOAK_USER" \
+		--arg kc_pass "$$KEYCLOAK_PASSWORD" \
+		--arg openidserverbaseurl "http://localhost:$$OWCONFIG_PORT" \
+		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
+		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
+		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:$$KEYCLOAK_PORT/auth" \
+		'.DataBase.name = $$db_name | .DataBase.username = $$db_user | .DataBase.password = $$db_pass | .Iam.url = $$kc_url | .Iam.AdminUser = $$kc_user | .Iam.AdminPassword = $$kc_pass | .SSIAriesCloudAgentDeployment.BackendAPIBaseURL = $$apipublicbaseurl | .OpenIdDeployment.OpenIdServiceEndpoint = $$owservicepublicbaseurl | .OpenIdDeployment.OpenIdServerBaseUrl = $$openidserverbaseurl' \
+		resources/config/config-production.json.bak > resources/config/config-production.json
+else
 	@jq --arg db_name "$$MONGODB_DATABASE" \
 		--arg db_user "$$MONGODB_USER" \
 		--arg db_pass "$$MONGODB_PASSWORD" \
 		--arg kc_user "$$KEYCLOAK_USER" \
 		--arg kc_pass "$$KEYCLOAK_PASSWORD" \
-		--arg openidserverbaseurl "http://localhost:$$OWSERVICE_PORT" \
+		--arg openidserverbaseurl "http://localhost:$$OWCONFIG_PORT" \
 		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
 		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
 		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:$$KEYCLOAK_PORT/auth" \
@@ -163,12 +184,10 @@ configure-json: ## Update config-production.json with environment variables
 		.Iam.url = $$kc_url | \
 		.Iam.AdminUser = $$kc_user | \
 		.Iam.AdminPassword = $$kc_pass | \
-		.Iam.AdminPassword = $$kc_pass | \
-		.Iam.AdminPassword = $$kc_pass | \
 		.SSIAriesCloudAgentDeployment.BackendAPIBaseURL = $$apipublicbaseurl | \
 		.OpenIdDeployment.OpenIdServiceEndpoint = $$owservicepublicbaseurl | \
-		.Iam.AdminPassword = $$kc_pass | \
 		.OpenIdDeployment.OpenIdServerBaseUrl = $$openidserverbaseurl' \
 		resources/config/config-production.json.bak > resources/config/config-production.json
+endif
 	@rm resources/config/config-production.json.bak
 	@echo "Configuration file updated successfully!"

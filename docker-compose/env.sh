@@ -44,7 +44,6 @@ export KEYCLOAK_PORT="8082"
 export API_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1"
 export API_CONTAINER_NAME="api"
 export API_PORT="8080"
-export API_PUBLIC_BASE_URL="http://localhost:8080"
 
 # Webhook Configuration
 export WEBHOOK_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-1"
@@ -57,7 +56,6 @@ export OWCONFIG_CONTAINER_NAME="owconfig"
 export OWCONFIG_PORT="8090"
 export SECURE_VAULT_BASE_URL="http://securevault:8080"
 export ROUTE_PERMITTED="config"
-export DOMAIN="https://ow.igrant.io"
 export DATABASE_USER="bn_keycloak"
 export DATABASE_PASSWORD="bn_keycloak"
 export DATABASE_HOST="postgresql"
@@ -67,8 +65,14 @@ export EBSI_BASE_URL="https://api-pilot.ebsi.eu"
 export WALLET_UNIT_PRODUCTION_CHECKS_ENABLED="true"
 export WALLET_PROVIDER_BASE_URL="https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service"
 
+
 # Organisation Wallet Service Configuration
 export OWSERVICE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4"
 export OWSERVICE_CONTAINER_NAME="owservice"
 export OWSERVICE_PORT="9090"
+
+
+# Change these variables if you have custom domains configured
+export API_PUBLIC_BASE_URL="http://localhost:8080"
+export DOMAIN="https://ow.igrant.io"
 export OWSERVICE_PUBLIC_BASE_URL="http://localhost:9090"
