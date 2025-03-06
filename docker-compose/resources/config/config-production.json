@@ -10,7 +10,7 @@
   "ApplicationMode": "multi-tenant",
   "ApiSecretKey": "E2q560S8B7Pb",
   "Iam": {
-    "url": "http://keycloak:8082/auth",
+    "url": "http://keycloak:8080/auth",
     "realm": "igrant-users",
     "ClientId": "igrant-ios-app",
     "AdminUser": "keycloak",
@@ -41,7 +41,7 @@
     "BackendAPIBaseURL": "http://localhost:8080"
   },
   "OpenIdDeployment": {
-    "OpenIdServerBaseUrl": "http://localhost:9090",
+    "OpenIdServerBaseUrl": "http://owconfig:8080",
     "OpenIdServiceEndpoint": "http://localhost:9090"
   }
 }

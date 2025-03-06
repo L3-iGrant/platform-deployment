@@ -162,7 +162,7 @@ ifeq ($(UNAME_S),Linux)
 		--arg db_pass "$$MONGODB_PASSWORD" \
 		--arg kc_user "$$KEYCLOAK_USER" \
 		--arg kc_pass "$$KEYCLOAK_PASSWORD" \
-		--arg openidserverbaseurl "http://owconfig:9000" \
+		--arg openidserverbaseurl "http://owconfig:8080" \
 		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
 		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
 		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:8080/auth" \
@@ -174,7 +174,7 @@ else
 		--arg db_pass "$$MONGODB_PASSWORD" \
 		--arg kc_user "$$KEYCLOAK_USER" \
 		--arg kc_pass "$$KEYCLOAK_PASSWORD" \
-		--arg openidserverbaseurl "http://owconfig:9000" \
+		--arg openidserverbaseurl "http://owconfig:8080" \
 		--arg apipublicbaseurl "$$API_PUBLIC_BASE_URL" \
 		--arg owservicepublicbaseurl "$$OWSERVICE_PUBLIC_BASE_URL" \
 		--arg kc_url "http://$$KEYCLOAK_CONTAINER_NAME:8080/auth" \

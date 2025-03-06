@@ -121,7 +121,7 @@ services:
       WALLET_PROVIDER_BASE_URL: ${WALLET_PROVIDER_BASE_URL:-https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service}
     restart: unless-stopped
     ports:
-      - "${OWCONFIG_PORT:-8090}:9000"
+      - "${OWCONFIG_PORT:-8090}:8080"
     depends_on:
       - postgresql
 
@@ -142,7 +142,7 @@ services:
       WALLET_PROVIDER_BASE_URL: ${WALLET_PROVIDER_BASE_URL:-https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service}
     restart: unless-stopped
     ports:
-      - "${OWSERVICE_PORT:-9090}:9000"
+      - "${OWSERVICE_PORT:-9090}:8080"
     depends_on:
       - postgresql
 
