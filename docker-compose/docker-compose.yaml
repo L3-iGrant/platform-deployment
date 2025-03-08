@@ -95,12 +95,21 @@ services:
 
   webhook:
     image: ${WEBHOOK_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4}
+    command:
+      - ./app/bin/igrant-api
+      - start-webhook-api
+      - --config
+      - config-production.json
     container_name: ${WEBHOOK_CONTAINER_NAME:-webhook}
     restart: unless-stopped
     ports:
       - "${WEBHOOK_PORT:-8085}:8085"
     environment:
       RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
+      MONGODB_CONTAINER_NAME: ${MONGODB_CONTAINER_NAME:-mongo}
+      MONGODB_PORT: ${MONGODB_PORT:-27017}
+      KEYCLOAK_CONTAINER_NAME: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
+      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8082}
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
       - ./resources/config/:/resources/config/:ro
@@ -114,7 +123,7 @@ services:
     container_name: ${OWCONFIG_CONTAINER_NAME:-owconfig}
     environment:
       SECURE_VAULT_BASE_URL: ${SECURE_VAULT_BASE_URL:-http://securevault:8080}
-      ROUTE_PERMITTED: ${ROUTE_PERMITTED:-config}
+      ROUTE_PERMITTED: config
       DOMAIN: ${DOMAIN:-https://ow.igrant.io}
       DATABASE_USER: ${DATABASE_USER:-bn_keycloak}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-bn_keycloak}
@@ -135,7 +144,7 @@ services:
     container_name: ${OWSERVICE_CONTAINER_NAME:-owservice}
     environment:
       SECURE_VAULT_BASE_URL: ${SECURE_VAULT_BASE_URL:-http://securevault:8080}
-      ROUTE_PERMITTED: ${ROUTE_PERMITTED:-service}
+      ROUTE_PERMITTED: service
       DOMAIN: ${DOMAIN:-https://ow.igrant.io}
       DATABASE_USER: ${DATABASE_USER:-bn_keycloak}
       DATABASE_PASSWORD: ${DATABASE_PASSWORD:-bn_keycloak}
