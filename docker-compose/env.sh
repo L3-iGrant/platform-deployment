@@ -44,6 +44,7 @@ export KEYCLOAK_PORT="8082"
 export API_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-2"
 export API_CONTAINER_NAME="api"
 export API_PORT="8080"
+export WEBHOOK_URL="http://webhook:8085/v2/"
 
 # Webhook Configuration
 export WEBHOOK_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4-2"
@@ -69,10 +70,10 @@ export WALLET_PROVIDER_BASE_URL="https://ow.igrant.io/organisation/2bd50451-ad41
 # Organisation Wallet Service Configuration
 export OWSERVICE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4"
 export OWSERVICE_CONTAINER_NAME="owservice"
-export OWSERVICE_PORT="9090"
+export OWSERVICE_PORT="10090"
 
 
 # Change these variables if you have custom domains configured
 export API_PUBLIC_BASE_URL="http://localhost:8080"
-export DOMAIN="https://ow.igrant.io"
-export OWSERVICE_PUBLIC_BASE_URL="http://localhost:9090"
+export DOMAIN="http://localhost:10090"
+export OWSERVICE_PUBLIC_BASE_URL="http://localhost:10090"

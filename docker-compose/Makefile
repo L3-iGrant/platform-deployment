@@ -142,12 +142,12 @@ webhook-start: ## Start Webhook server
 	@docker compose up -d webhook
 	@echo "Webhook server started successfully"
 
-organisationwallet-config: ## Start Organisation Wallet Config server
+owconfig-start: ## Start Organisation Wallet Config server
 	@echo "Starting Organisation Wallet Config server..."
 	@docker compose up -d owconfig
 	@echo "Organisation Wallet Config server started successfully"
 
-organisationwallet-service: ## Start Organisation Wallet Service server
+owservice-start: ## Start Organisation Wallet Service server
 	@echo "Starting Organisation Wallet Service server..."
 	@docker compose up -d owservice
 	@echo "Organisation Wallet Service server started successfully"
@@ -196,3 +196,120 @@ portainer-start: ## Start Portainer container management UI
 	@echo "Starting Portainer server..."
 	@docker compose -f docker-compose-portainer.yaml up -d portainer
 	@echo "Portainer server started successfully"
+
+# Stop routines for individual services
+vault-stop: ## Stop Vault server
+	@echo "Stopping Vault server..."
+	@docker compose stop vault
+	@echo "Vault server stopped successfully"
+
+securevault-stop: ## Stop SecureVault server
+	@echo "Stopping SecureVault server..."
+	@docker compose stop securevault
+	@echo "SecureVault server stopped successfully"
+
+mongo-stop: ## Stop MongoDB server
+	@echo "Stopping MongoDB server..."
+	@docker compose stop mongo
+	@echo "MongoDB server stopped successfully"
+
+postgresql-stop: ## Stop PostgreSQL server
+	@echo "Stopping PostgreSQL server..."
+	@docker compose stop postgresql
+	@echo "PostgreSQL server stopped successfully"
+
+keycloak-stop: ## Stop Keycloak server
+	@echo "Stopping Keycloak server..."
+	@docker compose stop keycloak
+	@echo "Keycloak server stopped successfully"
+
+api-stop: ## Stop API server
+	@echo "Stopping API server..."
+	@docker compose stop api
+	@echo "API server stopped successfully"
+
+webhook-stop: ## Stop Webhook server
+	@echo "Stopping Webhook server..."
+	@docker compose stop webhook
+	@echo "Webhook server stopped successfully"
+
+owconfig-stop: ## Stop Organisation Wallet Config server
+	@echo "Stopping Organisation Wallet Config server..."
+	@docker compose stop owconfig
+	@echo "Organisation Wallet Config server stopped successfully"
+
+owservice-stop: ## Stop Organisation Wallet Service server
+	@echo "Stopping Organisation Wallet Service server..."
+	@docker compose stop owservice
+	@echo "Organisation Wallet Service server stopped successfully"
+
+# Volume cleanup routines
+clean-volumes: ## Clean up Docker volumes (Usage: make clean-volumes VOLUMES=yes to confirm deletion)
+	@if [ "$(VOLUMES)" = "yes" ]; then \
+		echo "Cleaning up Docker volumes..."; \
+		docker compose down -v; \
+		echo "Volumes cleaned up successfully"; \
+	else \
+		echo "To clean up volumes, run: make clean-volumes VOLUMES=yes"; \
+		echo "WARNING: This will permanently delete all data in the volumes!"; \
+	fi
+
+stop-all: ## Stop all containers
+	@echo "Stopping all containers..."
+	@docker compose stop
+	@echo "All containers stopped successfully"
+
+down: ## Stop and remove all containers
+	@echo "Stopping and removing all containers..."
+	@docker compose down
+	@echo "All containers stopped and removed successfully"
+
+start-all: ## Start all services in the correct order with proper initialization and safety delays
+	@echo "Starting all services..."
+	@if [ ! -f env.sh ]; then \
+		echo "Error: env.sh file not found!"; \
+		echo "Please ensure env.sh exists with required environment variables."; \
+		exit 1; \
+	fi
+	@/bin/bash -c '\
+		echo "Loading environment variables..." && \
+		source ./env.sh && \
+		echo "Configuring JSON..." && \
+		$(MAKE) configure-json && \
+		echo "Waiting 5s..." && sleep 5 && \
+		echo "Bootstrapping Vault..." && \
+		if ! $(MAKE) vault-bootstrap 2>&1 | tee /dev/stderr | grep -q "Vault is not initialized"; then \
+			echo "Vault bootstrap successful."; \
+		else \
+			echo "Detected Vault initialization error. Cleaning up..." && \
+			docker volume rm vault-data 2>/dev/null || true && \
+			$(MAKE) vault-clean && \
+			echo "Retrying Vault bootstrap..." && \
+			$(MAKE) vault-bootstrap; \
+		fi && \
+		echo "Waiting 10s..." && sleep 10 && \
+		echo "Starting SecureVault..." && \
+		$(MAKE) securevault-start && \
+		echo "Waiting 10s..." && sleep 10 && \
+		echo "Starting MongoDB..." && \
+		$(MAKE) mongo-start && \
+		echo "Waiting 15s..." && sleep 15 && \
+		echo "Starting PostgreSQL..." && \
+		$(MAKE) postgresql-start && \
+		echo "Waiting 15s..." && sleep 15 && \
+		echo "Starting Keycloak..." && \
+		$(MAKE) keycloak-start && \
+		echo "Waiting 20s..." && sleep 20 && \
+		echo "Starting API..." && \
+		$(MAKE) api-start && \
+		echo "Waiting 10s..." && sleep 10 && \
+		echo "Starting Webhook..." && \
+		$(MAKE) webhook-start && \
+		echo "Waiting 10s..." && sleep 10 && \
+		echo "Starting Organisation Wallet Config..." && \
+		$(MAKE) owconfig-start && \
+		echo "Waiting 10s..." && sleep 10 && \
+		echo "Starting Organisation Wallet Service..." && \
+		$(MAKE) owservice-start && \
+		echo "Waiting 5s..." && sleep 5 && \
+		echo "All services started successfully!"'

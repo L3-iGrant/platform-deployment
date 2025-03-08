@@ -83,6 +83,7 @@ services:
       MONGODB_PORT: ${MONGODB_PORT:-27017}
       KEYCLOAK_CONTAINER_NAME: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
       KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8082}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://webhook:8085/v2/}
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
       - ./resources/config/:/resources/config/:ro
@@ -98,9 +99,13 @@ services:
     restart: unless-stopped
     ports:
       - "${WEBHOOK_PORT:-8085}:8085"
+    environment:
+      RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
     volumes:
       - ./resources/config/:/opt/l3-igrant/api/config/:ro
+      - ./resources/config/:/resources/config/:ro
       - ./resources/assets/:/opt/l3-igrant/api/assets/:ro
+      - ./resources/assets/:/resources/assets/:ro
     depends_on:
       - mongo
 
@@ -142,7 +147,7 @@ services:
       WALLET_PROVIDER_BASE_URL: ${WALLET_PROVIDER_BASE_URL:-https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service}
     restart: unless-stopped
     ports:
-      - "${OWSERVICE_PORT:-9090}:8080"
+      - "${OWSERVICE_PORT:-10090}:8080"
     depends_on:
       - postgresql
 

@@ -42,6 +42,6 @@
   },
   "OpenIdDeployment": {
     "OpenIdServerBaseUrl": "http://owconfig:8080",
-    "OpenIdServiceEndpoint": "http://localhost:9090"
+    "OpenIdServiceEndpoint": "http://localhost:10090"
   }
 }
