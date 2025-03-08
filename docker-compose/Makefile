@@ -191,3 +191,8 @@ else
 endif
 	@rm resources/config/config-production.json.bak
 	@echo "Configuration file updated successfully!"
+
+portainer-start: ## Start Portainer container management UI
+	@echo "Starting Portainer server..."
+	@docker compose -f docker-compose-portainer.yaml up -d portainer
+	@echo "Portainer server started successfully"

@@ -1,0 +1,15 @@
+services:
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: ${PORTAINER_CONTAINER_NAME:-portainer}
+    ports:
+      - "${PORTAINER_PORT:-9443}:9443"
+    volumes:
+      - portainer-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+volumes:
+  portainer-data:
+    name: ${PORTAINER_VOLUME_NAME:-portainer-data}
