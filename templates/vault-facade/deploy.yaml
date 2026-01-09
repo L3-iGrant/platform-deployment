@@ -1,0 +1,54 @@
+{{- if .Values.vaultFacade.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+    spec:
+      {{- if .Values.vaultFacade.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.vaultFacade.imagePullSecret }}
+      {{- end }}
+      containers:
+      - env:
+        - name: VAULT_ADDR
+          valueFrom:
+            secretKeyRef:
+              key: VAULT_ADDR
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        - name: VAULT_USER
+          valueFrom:
+            secretKeyRef:
+              key: VAULT_USER
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        - name: VAULT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: VAULT_PASSWORD
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        image: {{ .Values.vaultFacade.image }}
+        imagePullPolicy: IfNotPresent
+        name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources:
+          {{- if .Values.resources }}
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+      securityContext:
+        {{- if .Values.securityContext }}
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+{{- end }}

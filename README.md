@@ -12,6 +12,8 @@
 <p align="center">
   <a href="#about">About</a> •
   <a href="#release-status">Release Status</a> •
+  <a href="#external-dependencies">External Dependencies</a> •
+  <a href="#configuration">Configuration</a> •
   <a href="#contributing">Contributing</a> •
   <a href="#licensing">Licensing</a>
 </p>
@@ -27,6 +29,94 @@ In-progress
 ## Requirements
 
 Kubernetes: `>=1.20.0-0`
+
+## External Dependencies
+
+The following external services are required and should be installed separately before deploying the Organisation Wallet.
+
+### NATS (with JetStream)
+
+NATS is used for event streaming and messaging. Install using the official NATS Helm chart:
+
+```bash
+# Add NATS Helm repository
+helm repo add nats https://nats-io.github.io/k8s/helm/charts/
+helm repo update
+
+# Install NATS with JetStream and clustering enabled
+helm upgrade --install nats nats/nats \
+  --set config.jetstream.enabled=true \
+  --set config.cluster.enabled=true \
+  --namespace nats \
+  --create-namespace
+
+# Install NACK (NATS Controllers for Kubernetes) for JetStream management
+helm upgrade --install nack nats/nack \
+  --set jetstream.nats.url=nats://nats.nats.svc.cluster.local:4222 \
+  --namespace nats
+```
+
+For more information, see the [NACK documentation](https://github.com/nats-io/k8s/tree/main/helm/charts/nack).
+
+### HashiCorp Vault
+
+Vault is used for secrets management. Install using the official HashiCorp Helm chart:
+
+```bash
+# Add HashiCorp Helm repository
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
+# Install Vault with HA and Raft storage
+helm upgrade --install vault hashicorp/vault \
+  --namespace vault \
+  --create-namespace \
+  -f vault-values.yaml
+```
+
+Create a `vault-values.yaml` file with the following configuration:
+
+```yaml
+server:
+  affinity: ""
+  ha:
+    enabled: true
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        cluster_name = "vault-integrated-storage"
+        storage "raft" {
+          path = "/vault/data/"
+        }
+        listener "tcp" {
+          address = "[::]:8200"
+          cluster_address = "[::]:8201"
+          tls_disable = "true"
+        }
+        service_registration "kubernetes" {}
+  postStart:
+    - "/bin/sh"
+    - "-c"
+    - |
+      sleep 10
+      vault operator unseal "$VAULT_UNSEAL_KEY"
+  extraEnvironmentVars:
+    VAULT_UNSEAL_KEY: <your-unseal-key>
+```
+
+After installation, initialize and unseal Vault:
+
+```bash
+# Initialize Vault (only needed once)
+kubectl exec -n vault vault-0 -- vault operator init
+
+# Store the unseal keys and root token securely
+# Update VAULT_UNSEAL_KEY in vault-values.yaml with one of the unseal keys
+```
+
+For more information, see the [Vault Helm documentation](https://developer.hashicorp.com/vault/docs/platform/k8s/helm).
 
 ## Get Repo Info
 
@@ -222,15 +312,31 @@ api:
     Webhooks:
       # Webhooks events enabled for subscription
       events:
-        - openid.credential.offer_sent
-        - openid.credential.offer_received
-        - openid.credential.credential_issued
-        - openid.credential.credential_acked
-        - openid.credential.credential_pending
-        - openid.presentation.request_sent
-        - openid.presentation.request_received
-        - openid.presentation.presentation_acked
-        - openid.presentation.presentation_pending
+        - consent.allowed
+        - consent.disallowed
+        - data.delete.initiated
+        - data.download.initiated
+        - data.update.initiated
+        - data.delete.cancelled
+        - data.download.cancelled
+        - data.update.cancelled
+    # Extensions
+    Extensions:
+      oidc:
+        # OIDC facade config URL
+        configUrl:
+        # OIDC facade public URL
+        publicUrl:
+        # OIDC path base
+        oidcPathBase: /v1/tenant/{organisationId}
+        # API path base
+        apiPathBase: /v3/service/extension/oidc/{organisationId}
+    # NATS configuration
+    Nats:
+      # NATS server URL
+      url: nats://nats.nats.svc.cluster.local:4222
+      # Connection timeout in seconds
+      timeout: 5
 ```
 
 #### Enterprise Dashboard
@@ -288,6 +394,16 @@ organisationWallet:
   image: igrantio/organisation-wallet:2025.1.1
   # Database name
   dbName: walletdb
+  # Wallet provider base URL
+  walletProviderUrl:
+  # Secure vault base URL
+  secureVaultUrl:
+  # EBSI base URL
+  ebsiBaseUrl: https://api-pilot.ebsi.eu
+  # Enable wallet unit production checks
+  walletUnitProductionChecksEnabled: "True"
+  # NATS server URL
+  natsServerUrl: nats://nats.nats.svc.cluster.local:4222
   service:
     # Ingress
     ingress:
@@ -318,73 +434,22 @@ organisationWallet:
           secretName: tls-secret
 ```
 
-## Install Using Docker Compose
+#### Vault Facade
 
-To run the Organisation Wallet locally using Docker Compose, follow these steps:
+The Vault Facade provides a simplified interface to HashiCorp Vault for secrets management.
 
-1. Navigate to the docker-compose directory:
-```bash
-cd docker-compose
-```
-
-2. Make the environment script executable and source it:
-```bash
-chmod +x env.sh
-source env.sh
-```
-
-3. Update the variables in `env.sh` according to your requirements.
-
-4. Configure the JSON settings:
-```bash
-make configure-json
-```
-
-5. Bootstrap and configure Vault:
-```bash
-make vault-bootstrap
-```
-
-6. Start all required services in the following order:
-```bash
-make securevault-start
-make mongo-start
-make postgresql-start
-make keycloak-start
-make api-start
-make webhook-start
-make organisationwallet-config
-make organisationwallet-service
-```
-
-You can view all available make commands by running:
-```bash
-make
-```
-
-This will display the complete list of commands with their descriptions:
-
-```bash
-------------------------------------------------------------------------
-iGrant.io Platform
-------------------------------------------------------------------------
-api-start                      Start API server
-configure-json                 Update config-production.json with environment variables
-keycloak-start                 Start Keycloak server
-mongo-start                    Start MongoDB server
-organisationwallet-config      Start Organisation Wallet Config server
-organisationwallet-service     Start Organisation Wallet Service server
-postgresql-start               Start PostgreSQL server
-securevault-start              Start iGrant.io secure vault
-vault-bootstrap                Start Vault, initialize, unseal and configure it
-vault-clean                    Delete Vault cluster keys file
-vault-configure                Configure Vault with basic configuration
-vault-init                     Initialize Vault and generate root token
-vault-start                    Start Vault server in detached mode
-vault-status                   Check current Vault server status
-vault-token                    Print root token and copy to clipboard
-vault-unseal                   Unseal Vault using stored key
-webhook-start                  Start Webhook server
+```yaml
+vaultFacade:
+  enabled: false
+  # Container image
+  imagePullSecret:
+  image: igrantio/vault-facade:2025.1.1
+  # Vault server address
+  vaultAddr:
+  # Vault username
+  vaultUser:
+  # Vault password
+  vaultPassword:
 ```
 
 ## Container Images Access

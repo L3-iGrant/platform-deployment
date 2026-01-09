@@ -16,10 +16,14 @@ spec:
       labels:
         app: {{ .Values.namespace }}-{{ .Values.prefix }}-service-ow
     spec:
+      {{- if .Values.organisationWallet.imagePullSecret }}
       imagePullSecrets:
         - name: {{ .Values.organisationWallet.imagePullSecret }}
+      {{- end }}
       containers:
       - env:
+        - name: WALLET_PROVIDER_BASE_URL
+          value: {{ .Values.organisationWallet.walletProviderUrl }}
         - name: SECURE_VAULT_BASE_URL
           value: {{ .Values.organisationWallet.secureVaultUrl }}
         - name: ROUTE_PERMITTED
@@ -37,19 +41,23 @@ spec:
         - name: DATABASE_DB
           value: {{ .Values.organisationWallet.dbName }}
         - name: EBSI_BASE_URL
-          value: https://api-pilot.ebsi.eu
+          value: {{ .Values.organisationWallet.ebsiBaseUrl }}
         - name: WALLET_UNIT_PRODUCTION_CHECKS_ENABLED
-          value: "True"
-        - name: WALLET_PROVIDER_BASE_URL
-          value: {{ .Values.organisationWallet.walletProviderUrl }}
+          value: "{{ .Values.organisationWallet.walletUnitProductionChecksEnabled }}"
+        - name: NATS_SERVER_URL
+          value: {{ .Values.organisationWallet.natsServerUrl }}
         image: {{ .Values.organisationWallet.image }}
+        imagePullPolicy: IfNotPresent
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-service-ow
-        securityContext:
-          {{- if .Values.securityContext }}
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          {{- end }}
+        ports:
+        - containerPort: 8080
+          protocol: TCP
         resources:
           {{- if .Values.resources }}
             {{- toYaml .Values.resources | nindent 12 }}
           {{- end }}
+      securityContext:
+        {{- if .Values.securityContext }}
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
 {{- end }}

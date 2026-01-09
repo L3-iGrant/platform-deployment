@@ -41,6 +41,18 @@ data:
       "OpenIdDeployment": {
         "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
         "OpenIdServiceEndpoint": "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
+      },
+      "Extensions": {
+        "oidc": {
+          "configUrl": "{{ .Values.api.configuration.Extensions.oidc.configUrl }}",
+          "publicUrl": "{{ .Values.api.configuration.Extensions.oidc.publicUrl }}",
+          "oidcPathBase": "{{ .Values.api.configuration.Extensions.oidc.oidcPathBase }}",
+          "apiPathBase": "{{ .Values.api.configuration.Extensions.oidc.apiPathBase }}"
+        }
+      },
+      "Nats": {
+        "url": "{{ .Values.api.configuration.Nats.url }}",
+        "timeout": {{ .Values.api.configuration.Nats.timeout }}
       }
     }
 kind: ConfigMap

@@ -1,0 +1,17 @@
+{{- if .Values.vaultFacade.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
+{{- end }}

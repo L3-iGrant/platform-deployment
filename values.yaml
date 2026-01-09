@@ -107,6 +107,10 @@ api:
         secretName: tls-secret
   # Configuration
   configuration:
+    # Environment variables (optional)
+    # env:
+    #   - name: ENV_VAR_NAME
+    #     value: env-var-value
     # Database
     database:
       # Host name
@@ -137,15 +141,31 @@ api:
     Webhooks:
       # Webhooks events enabled for subscription
       events:
-        - openid.credential.offer_sent
-        - openid.credential.offer_received
-        - openid.credential.credential_issued
-        - openid.credential.credential_acked
-        - openid.credential.credential_pending
-        - openid.presentation.request_sent
-        - openid.presentation.request_received
-        - openid.presentation.presentation_acked
-        - openid.presentation.presentation_pending
+        - consent.allowed
+        - consent.disallowed
+        - data.delete.initiated
+        - data.download.initiated
+        - data.update.initiated
+        - data.delete.cancelled
+        - data.download.cancelled
+        - data.update.cancelled
+    # Extensions
+    Extensions:
+      oidc:
+        # OIDC facade config URL
+        configUrl:
+        # OIDC facade public URL
+        publicUrl:
+        # OIDC path base
+        oidcPathBase: /v1/tenant/{organisationId}
+        # API path base
+        apiPathBase: /v3/service/extension/oidc/{organisationId}
+    # NATS configuration
+    Nats:
+      # NATS server URL
+      url:
+      # Connection timeout in seconds
+      timeout: 5
 
 # Enterprise dashboard
 enterpriseDashboard:
@@ -197,6 +217,16 @@ organisationWallet:
   image: igrantio/organisation-wallet:2025.1.1
   # Database name
   dbName: walletdb
+  # Wallet provider base URL
+  walletProviderUrl:
+  # Secure vault base URL
+  secureVaultUrl:
+  # EBSI base URL
+  ebsiBaseUrl: https://api-pilot.ebsi.eu
+  # Enable wallet unit production checks
+  walletUnitProductionChecksEnabled: "True"
+  # NATS server URL
+  natsServerUrl:
   service:
     # Ingress
     ingress:
@@ -225,3 +255,16 @@ organisationWallet:
         - hosts:
             - wallet.example.com
           secretName: tls-secret
+
+# Vault Facade
+vaultFacade:
+  enabled: false
+  # Container image
+  imagePullSecret:
+  image: igrantio/vault-facade:2025.1.1
+  # Vault server address
+  vaultAddr:
+  # Vault username
+  vaultUser:
+  # Vault password
+  vaultPassword:
