@@ -16,8 +16,10 @@ spec:
       labels:
         app: {{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler
     spec:
+      {{- if .Values.api.imagePullSecret }}
       imagePullSecrets:
         - name: {{ .Values.api.imagePullSecret }}
+      {{- end }}
       containers:
         - command:
             - ./app/bin/igrant-api

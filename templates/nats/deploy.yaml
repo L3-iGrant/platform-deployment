@@ -1,0 +1,47 @@
+{{- if .Values.nats.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+  template:
+    metadata:
+      labels:
+        run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+    spec:
+      containers:
+        - name: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+          image: {{ .Values.nats.image }}
+          args:
+            - "--jetstream"
+            - "--store_dir=/data"
+          securityContext:
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4222
+              protocol: TCP
+              name: client
+            - containerPort: 8222
+              protocol: TCP
+              name: monitoring
+          volumeMounts:
+            - mountPath: /data
+              name: nats-data
+      volumes:
+        - name: nats-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.namespace }}-{{ .Values.prefix }}-nats-pvc
+{{- end }}

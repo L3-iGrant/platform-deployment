@@ -1,0 +1,21 @@
+{{- if .Values.nats.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - port: 4222
+      protocol: TCP
+      targetPort: 4222
+      name: client
+    - port: 8222
+      protocol: TCP
+      targetPort: 8222
+      name: monitoring
+  selector:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+{{- end }}

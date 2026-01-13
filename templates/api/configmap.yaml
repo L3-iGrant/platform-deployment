@@ -25,6 +25,7 @@ data:
         "AdminPassword": "{{ .Values.keycloak.adminPassword }}",
         "timeout": 5
       },
+      {{- if .Values.api.configuration.Smtp }}
       "Smtp": {
         "username": "{{ .Values.api.configuration.Smtp.username }}",
         "password": "{{ .Values.api.configuration.Smtp.password }}",
@@ -32,6 +33,7 @@ data:
         "port": {{ .Values.api.configuration.Smtp.port }},
         "adminEmail": "{{ .Values.api.configuration.Smtp.adminEmail }}"
       },
+      {{- end }}
       "Webhooks": {
         "events": {{ .Values.api.configuration.Webhooks.events | toJson }}
       },
@@ -42,6 +44,7 @@ data:
         "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
         "OpenIdServiceEndpoint": "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
       },
+      {{- if .Values.api.configuration.Extensions }}
       "Extensions": {
         "oidc": {
           "configUrl": "{{ .Values.api.configuration.Extensions.oidc.configUrl }}",
@@ -50,6 +53,7 @@ data:
           "apiPathBase": "{{ .Values.api.configuration.Extensions.oidc.apiPathBase }}"
         }
       },
+      {{- end }}
       "Nats": {
         "url": "{{ .Values.api.configuration.Nats.url }}",
         "timeout": {{ .Values.api.configuration.Nats.timeout }}
