@@ -3,9 +3,15 @@ apiVersion: v1
 data:
   config.json: |
     {
+      {{- if .Values.enterpriseDashboard.configuration.baseUrl }}
       "baseUrl": "{{ .Values.enterpriseDashboard.configuration.baseUrl }}",
-      "appVersion": "{{ .Values.enterpriseDashboard.configuration.appVersion }}",
-      "clientId": "{{ .Values.enterpriseDashboard.configuration.clientId }}"
+      {{- else if .Values.api.ingress.tls }}
+      "baseUrl": "https://{{ (index (index .Values.api.ingress.tls 0).hosts 0) }}",
+      {{- else if .Values.api.ingress.hosts }}
+      "baseUrl": "https://{{ (index .Values.api.ingress.hosts 0).host }}",
+      {{- end }}
+      "appVersion": "{{ .Values.enterpriseDashboard.configuration.appVersion | default (splitList ":" .Values.enterpriseDashboard.image | last) }}",
+      "clientId": "{{ .Values.enterpriseDashboard.configuration.clientId | default "igrant-ios-app" }}"
     }
 kind: ConfigMap
 metadata:
