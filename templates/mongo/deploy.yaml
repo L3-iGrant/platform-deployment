@@ -15,6 +15,10 @@ spec:
       labels:
         run: {{ .Values.namespace }}-{{ .Values.prefix }}-mongo
     spec:
+      {{- if .Values.mongo.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.mongo.imagePullSecret }}
+      {{- end }}
       containers:
         - env:
             - name: MONGODB_DATABASE

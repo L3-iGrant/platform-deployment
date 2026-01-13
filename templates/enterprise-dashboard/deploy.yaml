@@ -16,8 +16,10 @@ spec:
       labels:
         app: {{ .Values.namespace }}-{{ .Values.prefix }}-enterprise-dashboard
     spec:
+      {{- if .Values.enterpriseDashboard.imagePullSecret }}
       imagePullSecrets:
         - name: {{ .Values.enterpriseDashboard.imagePullSecret }}
+      {{- end }}
       containers:
         - image: {{ .Values.enterpriseDashboard.image }}
           imagePullPolicy: Always

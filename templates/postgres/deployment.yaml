@@ -16,6 +16,10 @@ spec:
       labels:
         app: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
     spec:
+      {{- if .Values.postgres.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.postgres.imagePullSecret }}
+      {{- end }}
       containers:
         - name: {{ .Values.namespace }}-{{ .Values.prefix }}-postgres
           image: {{ .Values.postgres.image }}

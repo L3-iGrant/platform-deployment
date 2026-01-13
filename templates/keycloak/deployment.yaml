@@ -16,6 +16,10 @@ spec:
       labels:
         app: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
     spec:
+      {{- if .Values.keycloak.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.keycloak.imagePullSecret }}
+      {{- end }}
       containers:
         - name: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
           image: {{ .Values.keycloak.image }}

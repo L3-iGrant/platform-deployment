@@ -15,6 +15,10 @@ spec:
       labels:
         run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
     spec:
+      {{- if .Values.nats.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.nats.imagePullSecret }}
+      {{- end }}
       containers:
         - name: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
           image: {{ .Values.nats.image }}

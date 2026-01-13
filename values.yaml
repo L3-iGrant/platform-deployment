@@ -14,6 +14,7 @@ storageClassName: standard
 postgres:
   enabled: true
   # Container image
+  imagePullSecret:
   image: bitnami/postgresql:14.10.0
   # Username
   username: bn_keycloak
@@ -26,6 +27,7 @@ postgres:
 keycloak:
   enabled: true
   # Container image
+  imagePullSecret:
   image: docker.io/bitnami/keycloak:22.0.2-debian-11-r0
   # Username
   adminUsername: admin
@@ -67,6 +69,7 @@ keycloak:
 mongo:
   enabled: true
   # Container image
+  imagePullSecret:
   image: bitnami/mongodb:7.0
   username: ed-user
   password: ed-password
@@ -76,6 +79,7 @@ mongo:
 nats:
   enabled: true
   # Container image
+  imagePullSecret:
   image: nats:2.10-alpine
 
 # API
