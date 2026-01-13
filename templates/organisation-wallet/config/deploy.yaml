@@ -22,10 +22,12 @@ spec:
       {{- end }}
       containers:
       - env:
-        - name: WALLET_PROVIDER_BASE_URL
-          value: {{ .Values.organisationWallet.walletProviderUrl }}
         - name: SECURE_VAULT_BASE_URL
+          {{- if .Values.organisationWallet.secureVaultUrl }}
           value: {{ .Values.organisationWallet.secureVaultUrl }}
+          {{- else if .Values.vaultFacade.enabled }}
+          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-svc:8080"
+          {{- end }}
         - name: ROUTE_PERMITTED
           value: config
         - name: DOMAIN
@@ -40,12 +42,20 @@ spec:
           value: "5432"
         - name: DATABASE_DB
           value: {{ .Values.organisationWallet.dbName }}
+        {{- if .Values.organisationWallet.ebsiBaseUrl }}
         - name: EBSI_BASE_URL
           value: {{ .Values.organisationWallet.ebsiBaseUrl }}
+        {{- end }}
+        {{- if .Values.organisationWallet.walletUnitProductionChecksEnabled }}
         - name: WALLET_UNIT_PRODUCTION_CHECKS_ENABLED
           value: "{{ .Values.organisationWallet.walletUnitProductionChecksEnabled }}"
+        {{- end }}
         - name: NATS_SERVER_URL
+          {{- if .Values.organisationWallet.natsServerUrl }}
           value: {{ .Values.organisationWallet.natsServerUrl }}
+          {{- else if .Values.nats.enabled }}
+          value: "nats://{{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc:4222"
+          {{- end }}
         image: {{ .Values.organisationWallet.image }}
         imagePullPolicy: IfNotPresent
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
