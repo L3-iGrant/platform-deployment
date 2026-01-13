@@ -273,6 +273,7 @@ vaultFacade:
   imagePullSecret:
   image: igrantio/vault-facade:2025.1.1
   # Application mode: "vault" or "mongo"
+  # When appMode=mongo, uses the global mongo configuration above
   appMode: vault
   # Vault configuration (used when appMode=vault)
   vault:
@@ -281,14 +282,4 @@ vaultFacade:
     # Vault username
     user:
     # Vault password
-    password:
-  # MongoDB configuration (used when appMode=mongo)
-  mongo:
-    # MongoDB hosts (defaults to internal mongo service if not set)
-    hosts:
-    # MongoDB database name
-    database:
-    # MongoDB username
-    username:
-    # MongoDB password
     password:
