@@ -56,6 +56,12 @@ spec:
           {{- else if .Values.nats.enabled }}
           value: "nats://{{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc:4222"
           {{- end }}
+        {{- if .Values.api.enabled }}
+        - name: ONBOARDING_BASE_URL
+          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-api-svc"
+        - name: INTERNAL_MICROSERVICE_BASE_URL
+          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler-svc"
+        {{- end }}
         image: {{ .Values.organisationWallet.image }}
         imagePullPolicy: IfNotPresent
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-config-ow
