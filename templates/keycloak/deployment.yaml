@@ -3,21 +3,21 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak
-  name: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak-deployment
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-kc-deploy
   namespace: {{ .Values.namespace }}
 spec:
   selector:
     matchLabels:
-      app: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
   replicas: 1
   template:
     metadata:
       labels:
-        app: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
     spec:
       containers:
-        - name: {{ .Values.namespace }}-{{ .Values.prefix }}-keycloak
+        - name: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
           image: {{ .Values.keycloak.image }}
           securityContext:
             {{- if .Values.securityContext }}
