@@ -31,7 +31,7 @@ spec:
   {{- range .Values.organisationWallet.service.ingress.tls }}
   - hosts:
     {{- range .hosts }}
-    - oid4vc.igrant.io
+    - {{ . | quote }}
     {{- end }}
     secretName: {{ .secretName }}
   {{- end }}
