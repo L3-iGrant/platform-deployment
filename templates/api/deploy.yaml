@@ -24,9 +24,11 @@ spec:
       - image: {{ .Values.api.image }}
         imagePullPolicy: IfNotPresent
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-        {{- if .Values.api.configuration.env }}
         env:
-          {{- toYaml .Values.api.configuration.env | nindent 10 }}
+        - name: WEBHOOK_URL
+          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler-svc.{{ .Values.namespace }}.svc.cluster.local/v2/"
+        {{- if .Values.api.configuration.env }}
+          {{- toYaml .Values.api.configuration.env | nindent 8 }}
         {{- end }}
         ports:
         - containerPort: 80
