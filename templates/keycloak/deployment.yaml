@@ -4,7 +4,7 @@ kind: Deployment
 metadata:
   labels:
     app: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
-  name: {{ .Values.namespace }}-{{ .Values.prefix }}-kc-deploy
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-kc
   namespace: {{ .Values.namespace }}
 spec:
   selector:
@@ -54,4 +54,8 @@ spec:
               value: "false"
             - name: KEYCLOAK_PROXY
               value: edge
+            - name: KEYCLOAK_FRONTEND_URL
+              value: {{ .Values.keycloak.frontendUrl }}
+            - name: PROXY_ADDRESS_FORWARDING
+              value: "true"
 {{- end }}
