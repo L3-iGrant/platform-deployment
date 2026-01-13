@@ -7,8 +7,10 @@ data:
         "hosts": [
           {{- if .Values.api.configuration.database.host }}
           "{{ .Values.api.configuration.database.host }}"
-          {{- else }}
+          {{- else if .Values.prefix }}
           "{{ .Values.namespace }}-{{ .Values.prefix }}-mongo-svc"
+          {{- else }}
+          "{{ .Values.namespace }}-mongo-svc"
           {{- end }}
         ],
         "name": "{{ .Values.mongo.database }}",
@@ -41,7 +43,11 @@ data:
         "BackendAPIBaseURL": "https://{{ (index .Values.api.ingress.hosts 0).host }}"
       },
       "OpenIdDeployment": {
+        {{- if .Values.prefix }}
         "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
+        {{- else }}
+        "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
+        {{- end }}
         "OpenIdServiceEndpoint": "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
       },
       {{- if .Values.api.configuration.Extensions }}
@@ -58,7 +64,11 @@ data:
         {{- if .Values.api.configuration.Nats.url }}
         "url": "{{ .Values.api.configuration.Nats.url }}",
         {{- else if .Values.nats.enabled }}
+        {{- if .Values.prefix }}
         "url": "nats://{{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc:4222",
+        {{- else }}
+        "url": "nats://{{ .Values.namespace }}-nats-svc:4222",
+        {{- end }}
         {{- else }}
         "url": "",
         {{- end }}
