@@ -22,6 +22,11 @@ spec:
       {{- end }}
       containers:
       - env:
+        - name: APP_MODE
+          value: {{ .Values.vaultFacade.appMode | default "vault" | quote }}
+        - name: SERVER_PORT
+          value: "8080"
+        {{- if eq (default "vault" .Values.vaultFacade.appMode) "vault" }}
         - name: VAULT_ADDR
           valueFrom:
             secretKeyRef:
@@ -37,6 +42,28 @@ spec:
             secretKeyRef:
               key: VAULT_PASSWORD
               name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        {{- else if eq .Values.vaultFacade.appMode "mongo" }}
+        - name: MONGO_HOSTS
+          valueFrom:
+            secretKeyRef:
+              key: MONGO_HOSTS
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        - name: MONGO_DATABASE
+          valueFrom:
+            secretKeyRef:
+              key: MONGO_DATABASE
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        - name: MONGO_USERNAME
+          valueFrom:
+            secretKeyRef:
+              key: MONGO_USERNAME
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        - name: MONGO_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: MONGO_PASSWORD
+              name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade-secret
+        {{- end }}
         image: {{ .Values.vaultFacade.image }}
         imagePullPolicy: IfNotPresent
         name: {{ .Values.namespace }}-{{ .Values.prefix }}-vault-facade
