@@ -2,7 +2,20 @@ apiVersion: v1
 entries:
   organisationwallet:
   - apiVersion: v2
-    created: "2026-01-09T16:15:46.511395+05:30"
+    created: "2026-01-13T15:40:39.104282+05:30"
+    description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
+      holder, and verifier of verifiable credentials within the eIDAS 2.0 framework.
+      It incorporates the latest amendments, the EU Architectural Reference Framework
+      (ARF), and Implementing Acts (IA).
+    digest: e4b82b6c59ac3ccbf06efa1a14cc69fd5cfb08962414d99d928714dcb8b1ff4d
+    icon: https://igrant.io/assets/images/favicons/android-icon-192x192.png
+    name: organisationwallet
+    type: application
+    urls:
+    - organisationwallet-2026.1.2.tgz
+    version: 2026.1.2
+  - apiVersion: v2
+    created: "2026-01-13T15:40:39.099414+05:30"
     description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
       holder, and verifier of verifiable credentials within the eIDAS 2.0 framework.
       It incorporates the latest amendments, the EU Architectural Reference Framework
@@ -15,7 +28,7 @@ entries:
     - organisationwallet-2026.1.1.tgz
     version: 2026.1.1
   - apiVersion: v2
-    created: "2026-01-09T16:15:46.508231+05:30"
+    created: "2026-01-13T15:40:39.095966+05:30"
     description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
       holder, and verifier of verifiable credentials within the eIDAS 2.0 framework.
       It incorporates the latest amendments, the EU Architectural Reference Framework
@@ -28,7 +41,7 @@ entries:
     - organisationwallet-2025.2.1.tgz
     version: 2025.2.1
   - apiVersion: v2
-    created: "2026-01-09T16:15:46.504716+05:30"
+    created: "2026-01-13T15:40:39.091554+05:30"
     description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer,
       holder, and verifier of verifiable credentials within the eIDAS 2.0 framework.
       It incorporates the latest amendments, the EU Architectural Reference Framework
@@ -40,4 +53,4 @@ entries:
     urls:
     - organisationwallet-2025.1.1.tgz
     version: 2025.1.1
-generated: "2026-01-09T16:15:46.503415+05:30"
+generated: "2026-01-13T15:40:39.089986+05:30"
