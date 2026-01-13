@@ -21,3 +21,6 @@
 .idea/
 *.tmproj
 .vscode/
+# Custom ignores
+stable/
+docker-compose/
