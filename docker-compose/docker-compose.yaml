@@ -1,169 +1,172 @@
 services:
-  vault:
-    image: ${VAULT_IMAGE:-hashicorp/vault:latest}
-    container_name: ${VAULT_CONTAINER_NAME:-vault}
-    restart: unless-stopped
-    ports:
-      - "${VAULT_PORT:-8200}:8200"
+  postgres:
+    image: ${POSTGRES_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/postgres:2025.1.1}
+    container_name: ${POSTGRES_CONTAINER_NAME:-postgres}
     environment:
-      VAULT_ADDR: "${VAULT_ADDR:-http://0.0.0.0:8200}"
-      VAULT_API_ADDR: "${VAULT_API_ADDR:-http://0.0.0.0:8200}"
+      POSTGRES_USER: ${POSTGRES_USERNAME:-dbadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
+      POSTGRES_DB: ${POSTGRES_DATABASE:-kcdb}
     volumes:
-      - vault-data:/vault/file
-      - ./resources/config/vault.json:/vault/config/vault.json
-    cap_add:
-      - IPC_LOCK
-    command: vault server -config=/vault/config/vault.json
-
-  securevault:
-    image: ${SECUREVAULT_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/securevault:2025.2.4}
-    container_name: ${SECUREVAULT_CONTAINER_NAME:-securevault}
-    restart: unless-stopped
-    depends_on:
-      - vault
+      - postgres-data:/var/lib/postgresql/data
     ports:
-      - "${SECUREVAULT_PORT:-8081}:8080"
-    environment:
-      VAULT_ADDR: "http://${VAULT_CONTAINER_NAME:-vault}:${VAULT_PORT:-8200}"
-      VAULT_USER: "${VAULT_USER:-admin}"
-      VAULT_PASSWORD: "${VAULT_PASSWORD:-admin}"
-
-  mongo:
-    build:
-      context: ./resources/docker/development
-      dockerfile: Dockerfile
-    container_name: ${MONGODB_CONTAINER_NAME:-mongo}
-    environment:
-      MONGODB_APPLICATION_DATABASE: ${MONGODB_DATABASE:-igrant-consentdb}
-      MONGODB_APPLICATION_USER: ${MONGODB_USER:-igrant-user}
-      MONGODB_APPLICATION_PASSWORD: ${MONGODB_PASSWORD:-igrant-password}
-    volumes:
-      - mongo-datadir:/data/db
-    ports:
-      - "${MONGODB_PORT:-27017}:27017"
+      - "${POSTGRES_PORT:-5432}:5432"
     restart: unless-stopped
-
-  postgresql:
-    build:
-      context: ./resources/docker/postgres
-      dockerfile: Dockerfile
-    container_name: ${POSTGRESQL_CONTAINER_NAME:-postgresql}
-    environment:
-      POSTGRESQL_USERNAME: ${POSTGRESQL_USERNAME:-bn_keycloak}
-      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:-bn_keycloak}
-      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE:-bitnami_keycloak}
-      MULTIPLE_DATABASES: ${MULTIPLE_DATABASES:-eudiwalletdb}
-    volumes:
-      - postgresql-datadir:/bitnami/postgresql
-    ports:
-      - "${POSTGRESQL_PORT:-5442}:5432"
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME:-dbadmin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   keycloak:
-    image: ${KEYCLOAK_IMAGE:-bitnami/keycloak:12.0.4-debian-10-r1}
+    image: ${KEYCLOAK_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/keycloak:12.0.4-debian-10-r1}
     container_name: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
     environment:
-      KEYCLOAK_USER: ${KEYCLOAK_USER:-keycloak}
-      KEYCLOAK_PASSWORD: ${KEYCLOAK_PASSWORD:-j3ckN4914IOK}
-      KEYCLOAK_DATABASE_PASSWORD: ${KEYCLOAK_DATABASE_PASSWORD:-bn_keycloak}
+      KEYCLOAK_USER: ${KEYCLOAK_ADMIN_USERNAME:-kcadmin}
+      KEYCLOAK_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-kcadmin}
+      KEYCLOAK_DATABASE_HOST: ${POSTGRES_CONTAINER_NAME:-postgres}
+      KEYCLOAK_DATABASE_PORT: 5432
+      KEYCLOAK_DATABASE_NAME: ${POSTGRES_DATABASE:-kcdb}
+      KEYCLOAK_DATABASE_USER: ${POSTGRES_USERNAME:-dbadmin}
+      KEYCLOAK_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
     ports:
       - "${KEYCLOAK_PORT:-8082}:8080"
     depends_on:
-      - postgresql
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongo:
+    image: ${MONGO_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/mongodb:7.0-debian-12}
+    container_name: ${MONGO_CONTAINER_NAME:-mongo}
+    environment:
+      MONGODB_ROOT_USER: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_ROOT_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+    volumes:
+      - mongo-data:/bitnami/mongodb
+    ports:
+      - "${MONGO_PORT:-27017}:27017"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    image: ${NATS_IMAGE:-nats:2.10.14-alpine}
+    container_name: ${NATS_CONTAINER_NAME:-nats}
+    command: ["-js", "-sd", "/data"]
+    volumes:
+      - nats-data:/data
+    ports:
+      - "${NATS_PORT:-4222}:4222"
+      - "${NATS_MONITOR_PORT:-8222}:8222"
+    restart: unless-stopped
+
+  vault-facade:
+    image: ${VAULT_FACADE_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1}
+    container_name: ${VAULT_FACADE_CONTAINER_NAME:-vault-facade}
+    environment:
+      APP_MODE: ${VAULT_FACADE_APP_MODE:-mongo}
+      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
+      MONGODB_PORT: 27017
+      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+    ports:
+      - "${VAULT_FACADE_PORT:-8081}:8080"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: unless-stopped
 
   api:
-    image: ${API_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4}
+    image: ${API_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1}
     container_name: ${API_CONTAINER_NAME:-api}
-    restart: unless-stopped
+    environment:
+      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+      IAM_URL: http://${KEYCLOAK_CONTAINER_NAME:-keycloak}:8080/auth
+      IAM_REALM: ${IAM_REALM:-igrant-users}
+      IAM_CLIENT_ID: ${IAM_CLIENT_ID:-igrant-ios-app}
+      API_SECRET_KEY: ${API_SECRET_KEY:-your-api-secret-key}
+      NATS_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
+      NATS_TIMEOUT: ${NATS_TIMEOUT:-5}
+      WEBHOOK_URL: http://${WEBHOOK_CONTAINER_NAME:-webhook}:8085/v2/
     ports:
       - "${API_PORT:-8080}:8080"
-    environment:
-      RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
-      MONGODB_CONTAINER_NAME: ${MONGODB_CONTAINER_NAME:-mongo}
-      MONGODB_PORT: ${MONGODB_PORT:-27017}
-      KEYCLOAK_CONTAINER_NAME: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
-      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8082}
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://webhook:8085/v2/}
-    volumes:
-      - ./resources/config/:/opt/l3-igrant/api/config/:ro
-      - ./resources/config/:/resources/config/:ro
-      - ./resources/assets/:/opt/l3-igrant/api/assets/:ro
-      - ./resources/assets/:/resources/assets/:ro
     depends_on:
-      - mongo
-      - keycloak
+      mongo:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
 
   webhook:
-    image: ${WEBHOOK_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/api:2025.2.4}
+    image: ${API_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1}
     command:
       - ./app/bin/igrant-api
       - start-webhook-api
       - --config
       - config-production.json
     container_name: ${WEBHOOK_CONTAINER_NAME:-webhook}
-    restart: unless-stopped
+    environment:
+      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
     ports:
       - "${WEBHOOK_PORT:-8085}:8085"
-    environment:
-      RUN_LOCALLY_WITHOUT_CONTAINERS: ${RUN_LOCALLY_WITHOUT_CONTAINERS:-true}
-      MONGODB_CONTAINER_NAME: ${MONGODB_CONTAINER_NAME:-mongo}
-      MONGODB_PORT: ${MONGODB_PORT:-27017}
-      KEYCLOAK_CONTAINER_NAME: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
-      KEYCLOAK_PORT: ${KEYCLOAK_PORT:-8082}
-    volumes:
-      - ./resources/config/:/opt/l3-igrant/api/config/:ro
-      - ./resources/config/:/resources/config/:ro
-      - ./resources/assets/:/opt/l3-igrant/api/assets/:ro
-      - ./resources/assets/:/resources/assets/:ro
     depends_on:
-      - mongo
-
-  owconfig:
-    image: ${OWCONFIG_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4}
-    container_name: ${OWCONFIG_CONTAINER_NAME:-owconfig}
-    environment:
-      SECURE_VAULT_BASE_URL: ${SECURE_VAULT_BASE_URL:-http://securevault:8080}
-      ROUTE_PERMITTED: config
-      DOMAIN: ${DOMAIN:-https://ow.igrant.io}
-      DATABASE_USER: ${DATABASE_USER:-bn_keycloak}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-bn_keycloak}
-      DATABASE_HOST: ${DATABASE_HOST:-postgresql}
-      DATABASE_PORT: ${DATABASE_PORT:-5432}
-      DATABASE_DB: ${DATABASE_DB:-eudiwalletdb}
-      EBSI_BASE_URL: ${EBSI_BASE_URL:-https://api-pilot.ebsi.eu}
-      WALLET_UNIT_PRODUCTION_CHECKS_ENABLED: ${WALLET_UNIT_PRODUCTION_CHECKS_ENABLED:-"true"}
-      WALLET_PROVIDER_BASE_URL: ${WALLET_PROVIDER_BASE_URL:-https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service}
+      mongo:
+        condition: service_healthy
     restart: unless-stopped
-    ports:
-      - "${OWCONFIG_PORT:-8090}:8080"
-    depends_on:
-      - postgresql
 
-  owservice:
-    image: ${OWSERVICE_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrantio/organisationwallet:2025.2.4}
-    container_name: ${OWSERVICE_CONTAINER_NAME:-owservice}
+  organisation-wallet:
+    image: ${OWS_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5}
+    container_name: ${OWS_CONTAINER_NAME:-organisation-wallet}
     environment:
-      SECURE_VAULT_BASE_URL: ${SECURE_VAULT_BASE_URL:-http://securevault:8080}
-      ROUTE_PERMITTED: service
-      DOMAIN: ${DOMAIN:-https://ow.igrant.io}
-      DATABASE_USER: ${DATABASE_USER:-bn_keycloak}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-bn_keycloak}
-      DATABASE_HOST: ${DATABASE_HOST:-postgresql}
-      DATABASE_PORT: ${DATABASE_PORT:-5432}
-      DATABASE_DB: ${DATABASE_DB:-eudiwalletdb}
-      EBSI_BASE_URL: ${EBSI_BASE_URL:-https://api-pilot.ebsi.eu}
-      WALLET_UNIT_PRODUCTION_CHECKS_ENABLED: ${WALLET_UNIT_PRODUCTION_CHECKS_ENABLED:-"true"}
-      WALLET_PROVIDER_BASE_URL: ${WALLET_PROVIDER_BASE_URL:-https://ow.igrant.io/organisation/2bd50451-ad41-4836-ad24-4f12194af215/service}
-    restart: unless-stopped
+      DATABASE_HOST: ${MONGO_CONTAINER_NAME:-mongo}
+      DATABASE_PORT: 27017
+      DATABASE_DB: ${OWS_DATABASE:-walletdb}
+      DATABASE_USER: ${MONGO_USERNAME:-dbadmin}
+      DATABASE_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+      SECURE_VAULT_BASE_URL: http://${VAULT_FACADE_CONTAINER_NAME:-vault-facade}:8080
+      NATS_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
+      API_BASE_URL: http://${API_CONTAINER_NAME:-api}:8080
     ports:
-      - "${OWSERVICE_PORT:-10090}:8080"
+      - "${OWS_PORT:-8090}:8080"
     depends_on:
-      - postgresql
+      mongo:
+        condition: service_healthy
+      vault-facade:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  enterprise-dashboard:
+    image: ${DASHBOARD_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/dashboard:2026.1.1}
+    container_name: ${DASHBOARD_CONTAINER_NAME:-enterprise-dashboard}
+    environment:
+      API_BASE_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+    ports:
+      - "${DASHBOARD_PORT:-3000}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
 
 volumes:
-  mongo-datadir:
-    name: ${MONGODB_VOLUME_NAME:-mongo-datadir}
-  postgresql-datadir:
-    name: ${POSTGRESQL_VOLUME_NAME:-postgresql-datadir}
-  vault-data:
-    name: ${VAULT_VOLUME_NAME:-vault-data}
+  postgres-data:
+    name: ${POSTGRES_VOLUME_NAME:-postgres-data}
+  mongo-data:
+    name: ${MONGO_VOLUME_NAME:-mongo-data}
+  nats-data:
+    name: ${NATS_VOLUME_NAME:-nats-data}
