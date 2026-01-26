@@ -156,13 +156,13 @@ helm repo update
 ### Install Chart
 
 ```bash
-helm install [RELEASE_NAME] organisationwallet/organisationwallet --version 2026.1.3
+helm install [RELEASE_NAME] organisationwallet/organisationwallet --version 2026.1.4
 ```
 
 To install with a custom values file:
 
 ```bash
-helm install [RELEASE_NAME] organisationwallet/organisationwallet --version 2026.1.3 --values values.yaml
+helm install [RELEASE_NAME] organisationwallet/organisationwallet --version 2026.1.4 --values values.yaml
 ```
 
 ### Uninstall Chart
