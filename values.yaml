@@ -1,5 +1,5 @@
 # Namespace for kubernetes cluster
-namespace: organisationwallet
+namespace: ig
 # Prefix for kubernetes object names
 prefix:
 # Resource constraints for a pod
@@ -8,40 +8,42 @@ resources: {}
 securityContext:
   runAsUser: 0
 # Storage class name
-storageClassName: standard
+storageClassName: local-path
 
 # Postgres
 postgres:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: bitnami/postgresql:14.10.0
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/postgres:2025.1.1
   # Username
-  username: bn_keycloak
+  username: dbadmin
   # Password
-  password: bn_keycloak
+  password: ZuNQCnmjWiRRsRLpwCPJQY
   # Database name
-  database: bitnami_keycloak
+  database: kcdb
 
 # Keycloak
 keycloak:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: docker.io/bitnami/keycloak:22.0.2-debian-11-r0
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:12.0.4-debian-10-r1
   # Username
-  adminUsername: admin
+  adminUsername: kcadmin
   # Password
-  adminPassword: admin
-  # Database user password
-  dbPassword: bn_keycloak
+  adminPassword: uepqcRJBWbxWOciByffPiv
   # Database username
-  dbUsername: bn_keycloak
+  dbUsername: dbadmin
+  # Database user password
+  dbPassword: ZuNQCnmjWiRRsRLpwCPJQY
   # Database name
-  dbName: bitnami_keycloak
+  dbName: kcdb
+  # Frontend URL
+  frontendUrl: https://keycloak.eubw.dev
   # Ingress
   ingress:
-    enabled: false
+    enabled: true
     # Annotations for the ingress
     annotations:
       # Default annotations if ingress is nginx ingress
@@ -53,44 +55,50 @@ keycloak:
       nginx.ingress.kubernetes.io/enable-cors: "true"
       # Proxy buffer size
       nginx.ingress.kubernetes.io/proxy-buffer-size: 128k
+      # TLS
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      kubernetes.io/tls-acme: "true"
+      # Proxy
+      nginx.ingress.kubernetes.io/proxy-set-headers: |
+        X-Forwarded-Proto https
+        X-Forwarded-Port 443
     # Hosts
     hosts:
-      - host: test-keycloak.example.com
+      - host: keycloak.eubw.dev
         paths:
           - path: /
             pathType: Prefix
     # TLS
     tls:
       - hosts:
-          - test-keycloak.example.com
-        secretName: tls-secret
+          - keycloak.eubw.dev
+        secretName: keycloak.eubw.dev-tls
 
 # Mongodb
 mongo:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: bitnami/mongodb:7.0
-  username: ed-user
-  password: ed-password
-  database: ed-db
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/mongodb:7.0-debian-12
+  username: dbadmin
+  password: gQMvVsZDfCmvQcvGQlpNwY
+  database: owsdb
 
 # NATS
 nats:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: nats:2.10-alpine
+  image: nats:2.10.14-alpine
 
 # API
 api:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: igrantio/api:2025.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/api:2026.1.1
   # Ingress
   ingress:
-    enabled: false
+    enabled: true
     # Annotations for the ingress
     annotations:
       # Default annotations if ingress is nginx ingress
@@ -102,74 +110,36 @@ api:
       nginx.ingress.kubernetes.io/enable-cors: "true"
       # Proxy buffer size
       nginx.ingress.kubernetes.io/proxy-buffer-size: 128k
+      # TLS
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      kubernetes.io/tls-acme: "true"
     # Hosts
     hosts:
-      - host: api.example.com
+      - host: api.eubw.dev
         paths:
           - path: /
-            pathType: Prefix
-          - path: /*
             pathType: Prefix
     # TLS
     tls:
       - hosts:
-          - api.example.com
-        secretName: tls-secret
+          - api.eubw.dev
+        secretName: api.eubw.dev-tls
   # Configuration
   configuration:
-    # Environment variables (optional)
-    # env:
-    #   - name: ENV_VAR_NAME
-    #     value: env-var-value
     # Database
     database:
       # Host name
       host:
     # API key secret to generate and verify API keys
-    ApiSecretKey:
+    ApiSecretKey: jZSkjkYXjJwoOcqSWQQGLv
     # Keycloak
     Iam:
       # Keycloak URL accessible from the internet
-      url:
+      url: https://keycloak.eubw.dev/auth
       # Keycloak realm name
-      realm:
+      realm: igrant-users
       # Keycloak client id
-      ClientId:
-    # SMTP server
-    Smtp:
-      # SMTP username
-      username:
-      # SMTP password
-      password:
-      # SMTP host
-      host:
-      # SMTP port
-      port: 587
-      # From email
-      adminEmail:
-    # Webhook
-    Webhooks:
-      # Webhooks events enabled for subscription
-      events:
-        - consent.allowed
-        - consent.disallowed
-        - data.delete.initiated
-        - data.download.initiated
-        - data.update.initiated
-        - data.delete.cancelled
-        - data.download.cancelled
-        - data.update.cancelled
-    # Extensions
-    Extensions:
-      oidc:
-        # OIDC facade config URL
-        configUrl:
-        # OIDC facade public URL
-        publicUrl:
-        # OIDC path base
-        oidcPathBase: /v1/tenant/{organisationId}
-        # API path base
-        apiPathBase: /v3/service/extension/oidc/{organisationId}
+      ClientId: igrant-ios-app
     # NATS configuration
     Nats:
       # NATS server URL
@@ -177,70 +147,35 @@ api:
       # Connection timeout in seconds
       timeout: 5
 
-# Enterprise dashboard
-enterpriseDashboard:
+# Vault Facade
+vaultFacade:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: igrantio/enterprise-dashboard:2025.1.1
-  # Ingress
-  ingress:
-    enabled: false
-    # Annotations for the ingress
-    annotations:
-      # Default annotations if ingress is nginx ingress
-      # Allow HTTP false
-      kubernetes.io/ingress.allow-http: "false"
-      # Ingress class as NGINX
-      kubernetes.io/ingress.class: nginx
-      # Enable CORS
-      nginx.ingress.kubernetes.io/enable-cors: "true"
-      # Proxy buffer size
-      nginx.ingress.kubernetes.io/proxy-buffer-size: 128k
-    # Hosts
-    hosts:
-      - host: dashboard.example.com
-        paths:
-          - path: /
-            pathType: Prefix
-          - path: /*
-            pathType: Prefix
-    # TLS
-    tls:
-      - hosts:
-          - dashboard.example.com
-        secretName: tls-secret
-  # Configuration
-  configuration:
-    # API server base URL
-    baseUrl:
-    # Enterprise dashboard version
-    appVersion: 2025.1.1
-    # Client id as mentioned in API server IAM configuration
-    clientId:
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1
+  # Application mode: "vault" or "mongo"
+  appMode: mongo
+  # Vault configuration (used when appMode=vault)
+  vault:
+    # Vault server address
+    addr:
+    # Vault username
+    user:
+    # Vault password
+    password:
 
 # Organisation Wallet
 organisationWallet:
   enabled: true
   # Container image
-  imagePullSecret:
-  image: igrantio/organisation-wallet:2025.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/ows:2026.1.5
   # Database name
   dbName: walletdb
-  # Wallet provider base URL
-  walletProviderUrl:
-  # Secure vault base URL
-  secureVaultUrl:
-  # EBSI base URL
-  ebsiBaseUrl: https://api-pilot.ebsi.eu
-  # Enable wallet unit production checks
-  walletUnitProductionChecksEnabled: "True"
-  # NATS server URL
-  natsServerUrl:
   service:
     # Ingress
     ingress:
-      enabled: false
+      enabled: true
       # Annotations for the ingress
       annotations:
         # Default annotations if ingress is nginx ingress
@@ -252,34 +187,52 @@ organisationWallet:
         nginx.ingress.kubernetes.io/enable-cors: "true"
         # Proxy buffer size
         nginx.ingress.kubernetes.io/proxy-buffer-size: 128k
+        # TLS
+        cert-manager.io/cluster-issuer: "letsencrypt-prod"
+        kubernetes.io/tls-acme: "true"
       # Hosts
       hosts:
-        - host: wallet.example.com
+        - host: wallet.eubw.dev
           paths:
             - path: /
-              pathType: Prefix
-            - path: /*
               pathType: Prefix
       # TLS
       tls:
         - hosts:
-            - wallet.example.com
-          secretName: tls-secret
+            - wallet.eubw.dev
+          secretName: wallet.eubw.dev-tls
 
-# Vault Facade
-vaultFacade:
-  enabled: false
+# Enterprise dashboard
+enterpriseDashboard:
+  enabled: true
   # Container image
-  imagePullSecret:
-  image: igrantio/vault-facade:2025.1.1
-  # Application mode: "vault" or "mongo"
-  # When appMode=mongo, uses the global mongo configuration above
-  appMode: vault
-  # Vault configuration (used when appMode=vault)
-  vault:
-    # Vault server address
-    addr:
-    # Vault username
-    user:
-    # Vault password
-    password:
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/dashboard:2026.1.1
+  # Ingress
+  ingress:
+    enabled: true
+    # Annotations for the ingress
+    annotations:
+      # Default annotations if ingress is nginx ingress
+      # Allow HTTP false
+      kubernetes.io/ingress.allow-http: "false"
+      # Ingress class as NGINX
+      kubernetes.io/ingress.class: nginx
+      # Enable CORS
+      nginx.ingress.kubernetes.io/enable-cors: "true"
+      # Proxy buffer size
+      nginx.ingress.kubernetes.io/proxy-buffer-size: 128k
+      # TLS
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      kubernetes.io/tls-acme: "true"
+    # Hosts
+    hosts:
+      - host: dashboard.eubw.dev
+        paths:
+          - path: /
+            pathType: Prefix
+    # TLS
+    tls:
+      - hosts:
+          - dashboard.eubw.dev
+        secretName: dashboard.eubw.dev-tls

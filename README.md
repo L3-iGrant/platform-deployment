@@ -20,6 +20,9 @@ The Helm chart for Organisation Wallet Suite by iGrant.io enables the issuer, ho
 - [Table of Contents](#table-of-contents)
 - [About](#about)
 - [Requirements](#requirements)
+- [Images](#images)
+  - [Available Container Images](#available-container-images)
+  - [Image Registry Access](#image-registry-access)
 - [Quick Start](#quick-start)
   - [Add Helm Repository](#add-helm-repository)
   - [Install Chart](#install-chart)
@@ -59,6 +62,87 @@ This repository hosts Helm charts for deploying the Organisation Wallet Suite by
 | ----------- | ------------ |
 | Kubernetes  | `>=1.20.0-0` |
 | Helm        | `>=3.0.0`    |
+
+## Images
+
+### Available Container Images
+
+The following container images are used by this Helm chart:
+
+| Component            | Image                                                               | Description                          |
+| -------------------- | ------------------------------------------------------------------- | ------------------------------------ |
+| PostgreSQL           | `europe-docker.pkg.dev/jenkins-189019/igrantio/postgres:2025.1.1`   | PostgreSQL database for Keycloak     |
+| Keycloak             | `europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:12.0.4-debian-10-r1` | Identity and access management |
+| MongoDB              | `europe-docker.pkg.dev/jenkins-189019/igrantio/mongodb:7.0-debian-12` | Primary database                   |
+| NATS                 | `nats:2.10.14-alpine`                                               | Messaging and event streaming        |
+| API                  | `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2026.1.1`        | Backend API service                  |
+| Vault Facade         | `europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1` | Secrets management interface       |
+| Organisation Wallet  | `europe-docker.pkg.dev/jenkins-189019/igrantio/ows:2026.1.5`        | Core wallet service                  |
+| Enterprise Dashboard | `europe-docker.pkg.dev/jenkins-189019/igrantio/dashboard:2026.1.1`  | Web administration dashboard         |
+
+### Image Registry Access
+
+The container images are hosted on Google Artifact Registry and require authentication to pull. To request access:
+
+1. Contact **support@igrant.io** to request a service account key for accessing the container registry.
+
+2. Once you receive the service account key JSON file, authenticate with Docker:
+
+```bash
+cat <service-account-key>.json | docker login \
+  -u _json_key \
+  --password-stdin https://europe-docker.pkg.dev
+```
+
+3. For Kubernetes deployments, create an image pull secret:
+
+```bash
+kubectl create secret docker-registry igrant-registry-creds \
+  --docker-server=europe-docker.pkg.dev \
+  --docker-username=_json_key \
+  --docker-password="$(cat service-account-key.json)" \
+  --docker-email=unused@example.com \
+  -n <namespace>
+```
+
+Alternatively, you can generate a YAML manifest for the secret:
+
+```bash
+kubectl create secret docker-registry igrant-registry-creds \
+  --docker-server=europe-docker.pkg.dev \
+  --docker-username=_json_key \
+  --docker-password="$(cat service-account-key.json)" \
+  --docker-email=unused@example.com \
+  -n <namespace> \
+  -o yaml > igrant-registry-secret.yaml
+```
+
+4. Reference the image pull secret in your `values.yaml`:
+
+```yaml
+postgres:
+  imagePullSecret: igrant-registry-creds
+
+keycloak:
+  imagePullSecret: igrant-registry-creds
+
+mongo:
+  imagePullSecret: igrant-registry-creds
+
+api:
+  imagePullSecret: igrant-registry-creds
+
+vaultFacade:
+  imagePullSecret: igrant-registry-creds
+
+organisationWallet:
+  imagePullSecret: igrant-registry-creds
+
+enterpriseDashboard:
+  imagePullSecret: igrant-registry-creds
+```
+
+---
 
 ## Quick Start
 
@@ -122,18 +206,20 @@ storageClassName: local-path
 
 PostgreSQL is used as the database backend for Keycloak.
 
-| Parameter           | Description                  | Default                                                                              |
-| ------------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
-| `postgres.enabled`  | Enable PostgreSQL deployment | `true`                                                                               |
-| `postgres.image`    | Container image              | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/postgres:2025.1.1` |
-| `postgres.username` | Database username            | `dbadmin`                                                                            |
-| `postgres.password` | Database password            | `<your-password>`                                                                    |
-| `postgres.database` | Database name                | `kcdb`                                                                               |
+| Parameter                 | Description                  | Default                                                           |
+| ------------------------- | ---------------------------- | ----------------------------------------------------------------- |
+| `postgres.enabled`        | Enable PostgreSQL deployment | `true`                                                            |
+| `postgres.imagePullSecret`| Image pull secret name       | `igrant-registry-creds`                                           |
+| `postgres.image`          | Container image              | `europe-docker.pkg.dev/jenkins-189019/igrantio/postgres:2025.1.1` |
+| `postgres.username`       | Database username            | `dbadmin`                                                         |
+| `postgres.password`       | Database password            | `<your-password>`                                                 |
+| `postgres.database`       | Database name                | `kcdb`                                                            |
 
 ```yaml
 postgres:
   enabled: true
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/postgres:2025.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/postgres:2025.1.1
   username: dbadmin
   password: <your-password>
   database: kcdb
@@ -143,22 +229,24 @@ postgres:
 
 Keycloak provides identity and access management.
 
-| Parameter                  | Description                | Default                                                                                         |
-| -------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------- |
-| `keycloak.enabled`         | Enable Keycloak deployment | `true`                                                                                          |
-| `keycloak.image`           | Container image            | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/keycloak:12.0.4-debian-10-r1` |
-| `keycloak.adminUsername`   | Admin username             | `kcadmin`                                                                                       |
-| `keycloak.adminPassword`   | Admin password             | `<your-password>`                                                                               |
-| `keycloak.dbUsername`      | Database username          | `dbadmin`                                                                                       |
-| `keycloak.dbPassword`      | Database password          | `<your-password>`                                                                               |
-| `keycloak.dbName`          | Database name              | `kcdb`                                                                                          |
-| `keycloak.frontendUrl`     | Frontend URL               | `https://keycloak.example.com`                                                                  |
-| `keycloak.ingress.enabled` | Enable ingress             | `true`                                                                                          |
+| Parameter                   | Description                | Default                                                                      |
+| --------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `keycloak.enabled`          | Enable Keycloak deployment | `true`                                                                       |
+| `keycloak.imagePullSecret`  | Image pull secret name     | `igrant-registry-creds`                                                      |
+| `keycloak.image`            | Container image            | `europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:12.0.4-debian-10-r1` |
+| `keycloak.adminUsername`    | Admin username             | `kcadmin`                                                                    |
+| `keycloak.adminPassword`    | Admin password             | `<your-password>`                                                            |
+| `keycloak.dbUsername`       | Database username          | `dbadmin`                                                                    |
+| `keycloak.dbPassword`       | Database password          | `<your-password>`                                                            |
+| `keycloak.dbName`           | Database name              | `kcdb`                                                                       |
+| `keycloak.frontendUrl`      | Frontend URL               | `https://keycloak.example.com`                                               |
+| `keycloak.ingress.enabled`  | Enable ingress             | `true`                                                                       |
 
 ```yaml
 keycloak:
   enabled: true
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/keycloak:12.0.4-debian-10-r1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:12.0.4-debian-10-r1
   adminUsername: kcadmin
   adminPassword: <your-password>
   dbUsername: dbadmin
@@ -192,18 +280,20 @@ keycloak:
 
 MongoDB is used as the primary database for the Organisation Wallet Suite.
 
-| Parameter        | Description               | Default                                                                                  |
-| ---------------- | ------------------------- | ---------------------------------------------------------------------------------------- |
-| `mongo.enabled`  | Enable MongoDB deployment | `true`                                                                                   |
-| `mongo.image`    | Container image           | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/mongodb:7.0-debian-12` |
-| `mongo.username` | Database username         | `dbadmin`                                                                                |
-| `mongo.password` | Database password         | `<your-password>`                                                                        |
-| `mongo.database` | Database name             | `owsdb`                                                                                  |
+| Parameter              | Description               | Default                                                             |
+| ---------------------- | ------------------------- | ------------------------------------------------------------------- |
+| `mongo.enabled`        | Enable MongoDB deployment | `true`                                                              |
+| `mongo.imagePullSecret`| Image pull secret name    | `igrant-registry-creds`                                             |
+| `mongo.image`          | Container image           | `europe-docker.pkg.dev/jenkins-189019/igrantio/mongodb:7.0-debian-12` |
+| `mongo.username`       | Database username         | `dbadmin`                                                           |
+| `mongo.password`       | Database password         | `<your-password>`                                                   |
+| `mongo.database`       | Database name             | `owsdb`                                                             |
 
 ```yaml
 mongo:
   enabled: true
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/mongodb:7.0-debian-12
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/mongodb:7.0-debian-12
   username: dbadmin
   password: <your-password>
   database: owsdb
@@ -228,24 +318,24 @@ nats:
 
 The API service provides the backend for the Organisation Wallet Suite.
 
-| Parameter                        | Description             | Default                                                                         |
-| -------------------------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| `api.enabled`                    | Enable API deployment   | `true`                                                                          |
-| `api.imagePullSecret`            | Image pull secret name  | `""`                                                                            |
-| `api.image`                      | Container image         | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1` |
-| `api.ingress.enabled`            | Enable ingress          | `true`                                                                          |
-| `api.configuration.ApiSecretKey` | API secret key for JWT  | `<your-secret>`                                                                 |
-| `api.configuration.Iam.url`      | Keycloak URL            | `""`                                                                            |
-| `api.configuration.Iam.realm`    | Keycloak realm          | `igrant-users`                                                                  |
-| `api.configuration.Iam.ClientId` | Keycloak client ID      | `igrant-ios-app`                                                                |
-| `api.configuration.Nats.url`     | NATS server URL         | `""`                                                                            |
-| `api.configuration.Nats.timeout` | NATS connection timeout | `5`                                                                             |
+| Parameter                        | Description             | Default                                                      |
+| -------------------------------- | ----------------------- | ------------------------------------------------------------ |
+| `api.enabled`                    | Enable API deployment   | `true`                                                       |
+| `api.imagePullSecret`            | Image pull secret name  | `igrant-registry-creds`                                      |
+| `api.image`                      | Container image         | `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2026.1.1` |
+| `api.ingress.enabled`            | Enable ingress          | `true`                                                       |
+| `api.configuration.ApiSecretKey` | API secret key for JWT  | `<your-secret>`                                              |
+| `api.configuration.Iam.url`      | Keycloak URL            | `""`                                                         |
+| `api.configuration.Iam.realm`    | Keycloak realm          | `igrant-users`                                               |
+| `api.configuration.Iam.ClientId` | Keycloak client ID      | `igrant-ios-app`                                             |
+| `api.configuration.Nats.url`     | NATS server URL         | `""`                                                         |
+| `api.configuration.Nats.timeout` | NATS connection timeout | `5`                                                          |
 
 ```yaml
 api:
   enabled: true
-  imagePullSecret:
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/api:2026.1.1
   ingress:
     enabled: true
     annotations:
@@ -283,21 +373,21 @@ The Vault Facade provides a unified interface for secrets management. It support
 - **mongo** (Recommended for development): Uses MongoDB for storing secrets
 - **vault**: Uses HashiCorp Vault for production-grade secrets management
 
-| Parameter                     | Description                               | Default                                                                                  |
-| ----------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `vaultFacade.enabled`         | Enable Vault Facade deployment            | `true`                                                                                   |
-| `vaultFacade.imagePullSecret` | Image pull secret name                    | `""`                                                                                     |
-| `vaultFacade.image`           | Container image                           | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1` |
-| `vaultFacade.appMode`         | Application mode (`mongo` or `vault`)     | `mongo`                                                                                  |
-| `vaultFacade.vault.addr`      | Vault server address (when appMode=vault) | `""`                                                                                     |
-| `vaultFacade.vault.user`      | Vault username (when appMode=vault)       | `""`                                                                                     |
-| `vaultFacade.vault.password`  | Vault password (when appMode=vault)       | `""`                                                                                     |
+| Parameter                     | Description                               | Default                                                               |
+| ----------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
+| `vaultFacade.enabled`         | Enable Vault Facade deployment            | `true`                                                                |
+| `vaultFacade.imagePullSecret` | Image pull secret name                    | `igrant-registry-creds`                                               |
+| `vaultFacade.image`           | Container image                           | `europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1` |
+| `vaultFacade.appMode`         | Application mode (`mongo` or `vault`)     | `mongo`                                                               |
+| `vaultFacade.vault.addr`      | Vault server address (when appMode=vault) | `""`                                                                  |
+| `vaultFacade.vault.user`      | Vault username (when appMode=vault)       | `""`                                                                  |
+| `vaultFacade.vault.password`  | Vault password (when appMode=vault)       | `""`                                                                  |
 
 ```yaml
 vaultFacade:
   enabled: true
-  imagePullSecret:
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1
   appMode: mongo
   vault:
     addr:
@@ -309,19 +399,19 @@ vaultFacade:
 
 The core Organisation Wallet service.
 
-| Parameter                                    | Description                           | Default                                                                         |
-| -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------- |
-| `organisationWallet.enabled`                 | Enable Organisation Wallet deployment | `true`                                                                          |
-| `organisationWallet.imagePullSecret`         | Image pull secret name                | `""`                                                                            |
-| `organisationWallet.image`                   | Container image                       | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5` |
-| `organisationWallet.dbName`                  | Database name                         | `walletdb`                                                                      |
-| `organisationWallet.service.ingress.enabled` | Enable ingress                        | `true`                                                                          |
+| Parameter                                    | Description                           | Default                                                      |
+| -------------------------------------------- | ------------------------------------- | ------------------------------------------------------------ |
+| `organisationWallet.enabled`                 | Enable Organisation Wallet deployment | `true`                                                       |
+| `organisationWallet.imagePullSecret`         | Image pull secret name                | `igrant-registry-creds`                                      |
+| `organisationWallet.image`                   | Container image                       | `europe-docker.pkg.dev/jenkins-189019/igrantio/ows:2026.1.5` |
+| `organisationWallet.dbName`                  | Database name                         | `walletdb`                                                   |
+| `organisationWallet.service.ingress.enabled` | Enable ingress                        | `true`                                                       |
 
 ```yaml
 organisationWallet:
   enabled: true
-  imagePullSecret:
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/ows:2026.1.5
   dbName: walletdb
   service:
     ingress:
@@ -348,18 +438,18 @@ organisationWallet:
 
 The web-based administration dashboard.
 
-| Parameter                             | Description                            | Default                                                                               |
-| ------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------- |
-| `enterpriseDashboard.enabled`         | Enable Enterprise Dashboard deployment | `true`                                                                                |
-| `enterpriseDashboard.imagePullSecret` | Image pull secret name                 | `""`                                                                                  |
-| `enterpriseDashboard.image`           | Container image                        | `europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/dashboard:2026.1.1` |
-| `enterpriseDashboard.ingress.enabled` | Enable ingress                         | `true`                                                                                |
+| Parameter                             | Description                            | Default                                                            |
+| ------------------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
+| `enterpriseDashboard.enabled`         | Enable Enterprise Dashboard deployment | `true`                                                             |
+| `enterpriseDashboard.imagePullSecret` | Image pull secret name                 | `igrant-registry-creds`                                            |
+| `enterpriseDashboard.image`           | Container image                        | `europe-docker.pkg.dev/jenkins-189019/igrantio/dashboard:2026.1.1` |
+| `enterpriseDashboard.ingress.enabled` | Enable ingress                         | `true`                                                             |
 
 ```yaml
 enterpriseDashboard:
   enabled: true
-  imagePullSecret:
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/dashboard:2026.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/dashboard:2026.1.1
   ingress:
     enabled: true
     annotations:
@@ -395,7 +485,8 @@ To enable MongoDB-based vault:
 ```yaml
 vaultFacade:
   enabled: true
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1
   appMode: mongo
 ```
 
@@ -466,7 +557,8 @@ kubectl exec -n vault vault-0 -- vault operator unseal <unseal-key-3>
 ```yaml
 vaultFacade:
   enabled: true
-  image: europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1
   appMode: vault
   vault:
     addr: http://vault.vault.svc.cluster.local:8200
