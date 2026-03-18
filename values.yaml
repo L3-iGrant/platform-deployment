@@ -204,6 +204,27 @@ organisationWallet:
             - wallet.eubw.dev
           secretName: wallet.eubw.dev-tls
 
+# OIDC Facade
+oidcFacade:
+  enabled: true
+  # Container image
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/oidc-facade:2026.1.1
+  # Database name
+  dbName: oidcfacadedb
+  # Configuration
+  configuration:
+    # Database
+    database:
+      # Host name (leave empty to use the shared mongo service)
+      host:
+    # NATS configuration
+    Nats:
+      # NATS server URL (leave empty to use the shared NATS service)
+      url:
+      # Connection timeout in seconds
+      timeout: 5
+
 # Enterprise dashboard
 enterpriseDashboard:
   enabled: true

@@ -36,6 +36,7 @@ The Helm chart for Organisation Wallet Suite by iGrant.io enables the issuer, ho
   - [API](#api)
   - [Vault Facade](#vault-facade)
   - [Organisation Wallet Service](#organisation-wallet-service)
+  - [OIDC Facade](#oidc-facade)
   - [Enterprise Dashboard](#enterprise-dashboard)
 - [Secrets Management](#secrets-management)
   - [MongoDB-based Vault (Recommended for Development)](#mongodb-based-vault-recommended-for-development)
@@ -78,6 +79,7 @@ The following container images are used by this Helm chart:
 | API                  | `europe-docker.pkg.dev/jenkins-189019/igrantio/api:2026.1.1`        | Backend API service                  |
 | Vault Facade         | `europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1` | Secrets management interface       |
 | Organisation Wallet  | `europe-docker.pkg.dev/jenkins-189019/igrantio/ows:2026.1.5`        | Core wallet service                  |
+| OIDC Facade          | `europe-docker.pkg.dev/jenkins-189019/igrantio/oidc-facade:2026.1.1` | OIDC extension service              |
 | Enterprise Dashboard | `europe-docker.pkg.dev/jenkins-189019/igrantio/dashboard:2026.1.1`  | Web administration dashboard         |
 
 ### Image Registry Access
@@ -136,6 +138,9 @@ vaultFacade:
   imagePullSecret: igrant-registry-creds
 
 organisationWallet:
+  imagePullSecret: igrant-registry-creds
+
+oidcFacade:
   imagePullSecret: igrant-registry-creds
 
 enterpriseDashboard:
@@ -328,6 +333,7 @@ The API service provides the backend for the Organisation Wallet Suite.
 | `api.configuration.Iam.url`      | Keycloak URL            | `""`                                                         |
 | `api.configuration.Iam.realm`    | Keycloak realm          | `igrant-users`                                               |
 | `api.configuration.Iam.ClientId` | Keycloak client ID      | `igrant-ios-app`                                             |
+| `api.configuration.Iam.IdPAlias` | Identity Provider alias | `login-with-eudi-wallet`                                     |
 | `api.configuration.Nats.url`     | NATS server URL         | `""`                                                         |
 | `api.configuration.Nats.timeout` | NATS connection timeout | `5`                                                          |
 
@@ -362,6 +368,7 @@ api:
       url: https://keycloak.example.com/auth
       realm: igrant-users
       ClientId: igrant-ios-app
+      IdPAlias: login-with-eudi-wallet
     Nats:
       url:
       timeout: 5
@@ -433,6 +440,36 @@ organisationWallet:
             - wallet.example.com
           secretName: wallet-tls
 ```
+
+### OIDC Facade
+
+The OIDC Facade provides OpenID Connect extension capabilities for the Organisation Wallet Suite.
+
+| Parameter                                   | Description                                      | Default                                                                  |
+| ------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------ |
+| `oidcFacade.enabled`                        | Enable OIDC Facade deployment                    | `true`                                                                   |
+| `oidcFacade.imagePullSecret`                | Image pull secret name                           | `igrant-registry-creds`                                                  |
+| `oidcFacade.image`                          | Container image                                  | `europe-docker.pkg.dev/jenkins-189019/igrantio/oidc-facade:2026.1.1`     |
+| `oidcFacade.dbName`                         | MongoDB database name                            | `oidcfacadedb`                                                           |
+| `oidcFacade.configuration.database.host`    | MongoDB host (empty uses shared mongo service)   | `""`                                                                     |
+| `oidcFacade.configuration.Nats.url`         | NATS server URL (empty uses shared NATS service) | `""`                                                                     |
+| `oidcFacade.configuration.Nats.timeout`     | NATS connection timeout                          | `5`                                                                      |
+
+```yaml
+oidcFacade:
+  enabled: true
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/oidc-facade:2026.1.1
+  dbName: oidcfacadedb
+  configuration:
+    database:
+      host:
+    Nats:
+      url:
+      timeout: 5
+```
+
+> **Note:** When enabled, the OIDC Facade database is automatically created via the `MONGODB_EXTRA_DATABASES` environment variable on the MongoDB deployment. The API configmap `Extensions.oidc` section is also automatically configured to point to the OIDC Facade services.
 
 ### Enterprise Dashboard
 

@@ -63,6 +63,7 @@ make logs
 | API | Backend API service | 8080 |
 | Webhook | Webhook handler service | 8085 |
 | Organisation Wallet Service | Core wallet service | 8090 |
+| OIDC Facade | OIDC extension service | 6000, 7000 |
 | Enterprise Dashboard | Web administration interface | 3000 |
 
 ## Configuration
@@ -94,6 +95,7 @@ All configuration is managed through environment variables. You can either:
 | `MONGO_PASSWORD` | MongoDB password | `dbadmin` |
 | `API_SECRET_KEY` | API secret key for JWT | `your-api-secret-key` |
 | `VAULT_FACADE_APP_MODE` | Vault mode (`mongo` or `vault`) | `mongo` |
+| `OIDC_FACADE_DATABASE` | OIDC Facade database name | `oidcfacadedb` |
 
 > **Note:** Change default passwords before using in any non-local environment.
 
@@ -173,6 +175,8 @@ Once the services are running, you can access them at:
 | API | http://localhost:8080 |
 | Keycloak Admin Console | http://localhost:8082 |
 | Organisation Wallet Service | http://localhost:8090 |
+| OIDC Facade Service | http://localhost:6000 |
+| OIDC Facade Config | http://localhost:7000 |
 | Enterprise Dashboard | http://localhost:3000 |
 | Vault Facade | http://localhost:8081 |
 | NATS Monitoring | http://localhost:8222 |

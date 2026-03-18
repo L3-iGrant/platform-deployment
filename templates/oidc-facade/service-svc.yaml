@@ -1,0 +1,16 @@
+{{- if .Values.oidcFacade.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade-service-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - name: http
+      port: 6000
+      targetPort: 6000
+  selector:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+{{- end }}

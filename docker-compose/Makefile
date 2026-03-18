@@ -135,6 +135,15 @@ webhook-stop: ## Stop Webhook
 webhook-logs: ## View Webhook logs
 	@docker compose logs -f webhook
 
+oidc-facade-start: ## Start OIDC Facade
+	@docker compose up -d oidc-facade
+
+oidc-facade-stop: ## Stop OIDC Facade
+	@docker compose stop oidc-facade
+
+oidc-facade-logs: ## View OIDC Facade logs
+	@docker compose logs -f oidc-facade
+
 ows-start: ## Start Organisation Wallet
 	@docker compose up -d organisation-wallet
 

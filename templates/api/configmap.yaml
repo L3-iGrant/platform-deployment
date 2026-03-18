@@ -49,13 +49,13 @@ data:
         "OpenIdServerBaseUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-config-ow-svc.{{ .Values.namespace }}.svc.cluster.local",
         "OpenIdServiceEndpoint": "https://{{ (index .Values.organisationWallet.service.ingress.hosts 0).host }}"
       },
-      {{- if .Values.api.configuration.Extensions }}
+      {{- if .Values.oidcFacade.enabled }}
       "Extensions": {
         "oidc": {
-          "configUrl": "{{ .Values.api.configuration.Extensions.oidc.configUrl }}",
-          "publicUrl": "{{ .Values.api.configuration.Extensions.oidc.publicUrl }}",
-          "oidcPathBase": "{{ .Values.api.configuration.Extensions.oidc.oidcPathBase }}",
-          "apiPathBase": "{{ .Values.api.configuration.Extensions.oidc.apiPathBase }}"
+          "configUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade-config-svc.{{ .Values.namespace }}.svc.cluster.local:7000",
+          "publicUrl": "http://{{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade-service-svc.{{ .Values.namespace }}.svc.cluster.local:6000",
+          "oidcPathBase": "/v1/tenant/{organisationId}",
+          "apiPathBase": "/v3/service/extension/oidc/{organisationId}/{subwalletId}"
         }
       },
       {{- end }}

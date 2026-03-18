@@ -31,6 +31,22 @@ spec:
               value: {{ .Values.mongo.password }}
             - name: ALLOW_EMPTY_PASSWORD
               value: "yes"
+            {{- $extraDbs := list }}
+            {{- $extraUsers := list }}
+            {{- $extraPasswords := list }}
+            {{- if and .Values.oidcFacade .Values.oidcFacade.enabled .Values.oidcFacade.dbName }}
+            {{- $extraDbs = append $extraDbs .Values.oidcFacade.dbName }}
+            {{- $extraUsers = append $extraUsers .Values.mongo.username }}
+            {{- $extraPasswords = append $extraPasswords .Values.mongo.password }}
+            {{- end }}
+            {{- if $extraDbs }}
+            - name: MONGODB_EXTRA_DATABASES
+              value: "{{ join "," $extraDbs }}"
+            - name: MONGODB_EXTRA_USERNAMES
+              value: "{{ join "," $extraUsers }}"
+            - name: MONGODB_EXTRA_PASSWORDS
+              value: "{{ join "," $extraPasswords }}"
+            {{- end }}
           image: {{ .Values.mongo.image }}
           securityContext:
             {{- if .Values.securityContext }}

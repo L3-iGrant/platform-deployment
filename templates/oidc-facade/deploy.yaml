@@ -1,0 +1,68 @@
+{{- if .Values.oidcFacade.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+    spec:
+      {{- if .Values.oidcFacade.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.oidcFacade.imagePullSecret }}
+      {{- end }}
+      containers:
+      - image: {{ .Values.oidcFacade.image }}
+        imagePullPolicy: IfNotPresent
+        name: {{ .Values.namespace }}-{{ .Values.prefix }}-oidc-facade
+        env:
+        - name: MONGODB_USER
+          value: "{{ .Values.mongo.username }}"
+        - name: MONGODB_PASSWORD
+          value: "{{ .Values.mongo.password }}"
+        - name: MONGODB_HOST
+          {{- if .Values.oidcFacade.configuration.database.host }}
+          value: "{{ .Values.oidcFacade.configuration.database.host }}"
+          {{- else }}
+          value: "{{ .Values.namespace }}-{{ .Values.prefix }}-mongo-svc"
+          {{- end }}
+        - name: MONGODB_DATABASE
+          value: "{{ .Values.oidcFacade.dbName }}"
+        - name: BASE_SERVICE_URL
+          value: "https://{{ (index .Values.api.ingress.hosts 0).host }}"
+        - name: PROXY_PREFIX
+          value: "https://{{ (index .Values.api.ingress.hosts 0).host }}/v3/service/extension/oidc"
+        - name: CREDENTIAL_BASE_URL
+          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler-svc.{{ .Values.namespace }}.svc.cluster.local/v3"
+        {{- if .Values.oidcFacade.configuration.Nats.url }}
+        - name: NATS_URL
+          value: "{{ .Values.oidcFacade.configuration.Nats.url }}"
+        {{- else if .Values.nats.enabled }}
+        - name: NATS_URL
+          value: "nats://{{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc:4222"
+        {{- end }}
+        - name: NATS_TIMEOUT
+          value: "{{ .Values.oidcFacade.configuration.Nats.timeout }}"
+        ports:
+        - containerPort: 6000
+          protocol: TCP
+        - containerPort: 7000
+          protocol: TCP
+        resources:
+          {{- if .Values.resources }}
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- end }}
+      securityContext:
+        {{- if .Values.securityContext }}
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        {{- end }}
+{{- end }}

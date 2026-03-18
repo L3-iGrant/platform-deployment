@@ -42,6 +42,9 @@ services:
       MONGODB_ROOT_USER: ${MONGO_USERNAME:-dbadmin}
       MONGODB_ROOT_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
       MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+      MONGODB_EXTRA_DATABASES: ${OIDC_FACADE_DATABASE:-oidcfacadedb}
+      MONGODB_EXTRA_USERNAMES: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_EXTRA_PASSWORDS: ${MONGO_PASSWORD:-dbadmin}
     volumes:
       - mongo-data:/bitnami/mongodb
     ports:
@@ -148,6 +151,29 @@ services:
         condition: service_healthy
       vault-facade:
         condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  oidc-facade:
+    image: ${OIDC_FACADE_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/oidc-facade:2026.1.1}
+    container_name: ${OIDC_FACADE_CONTAINER_NAME:-oidc-facade}
+    environment:
+      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
+      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
+      MONGODB_DATABASE: ${OIDC_FACADE_DATABASE:-oidcfacadedb}
+      BASE_SERVICE_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+      PROXY_PREFIX: ${API_PUBLIC_URL:-http://localhost:8080}/v3/service/extension/oidc
+      CREDENTIAL_BASE_URL: http://${WEBHOOK_CONTAINER_NAME:-webhook}:8085/v3
+      NATS_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
+      NATS_TIMEOUT: ${NATS_TIMEOUT:-5}
+    ports:
+      - "${OIDC_FACADE_SERVICE_PORT:-6000}:6000"
+      - "${OIDC_FACADE_CONFIG_PORT:-7000}:7000"
+    depends_on:
+      mongo:
+        condition: service_healthy
       nats:
         condition: service_started
     restart: unless-stopped

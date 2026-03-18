@@ -78,6 +78,15 @@ export WEBHOOK_CONTAINER_NAME="webhook"
 export WEBHOOK_PORT="8085"
 
 # -----------------------------------------------------------------------------
+# OIDC Facade Configuration
+# -----------------------------------------------------------------------------
+export OIDC_FACADE_CONTAINER_NAME="oidc-facade"
+export OIDC_FACADE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/oidc-facade:2026.1.1"
+export OIDC_FACADE_DATABASE="oidcfacadedb"
+export OIDC_FACADE_SERVICE_PORT="6000"
+export OIDC_FACADE_CONFIG_PORT="7000"
+
+# -----------------------------------------------------------------------------
 # Organisation Wallet Configuration
 # -----------------------------------------------------------------------------
 export OWS_CONTAINER_NAME="organisation-wallet"
