@@ -15,6 +15,9 @@ data:
         "username": "{{ .Values.mongo.username }}",
         "password": "{{ .Values.mongo.password }}"
       },
+      "Dashboard": {
+        "url": "https://{{ (index .Values.enterpriseDashboard.ingress.hosts 0).host }}"
+      },
       "ApplicationMode": "multi-tenant",
       "ApiSecretKey": "{{ .Values.api.configuration.ApiSecretKey }}",
       "Iam": {
@@ -23,7 +26,9 @@ data:
         "ClientId": "{{ .Values.api.configuration.Iam.ClientId }}",
         "AdminUser": "{{ .Values.keycloak.adminUsername }}",
         "AdminPassword": "{{ .Values.keycloak.adminPassword }}",
-        "timeout": 5
+        "timeout": 5,
+        "IdPAlias": "{{ .Values.api.configuration.Iam.IdPAlias }}",
+        "APIBaseUrl": "https://{{ (index .Values.api.ingress.hosts 0).host }}"
       },
       {{- if .Values.api.configuration.Smtp }}
       "Smtp": {

@@ -140,6 +140,8 @@ api:
       realm: igrant-users
       # Keycloak client id
       ClientId: igrant-ios-app
+      # Identity Provider alias
+      IdPAlias: login-with-eudi-wallet
     # NATS configuration
     Nats:
       # NATS server URL
