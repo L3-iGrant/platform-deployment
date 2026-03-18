@@ -21,13 +21,22 @@ services:
     image: ${KEYCLOAK_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/keycloak:12.0.4-debian-10-r1}
     container_name: ${KEYCLOAK_CONTAINER_NAME:-keycloak}
     environment:
-      KEYCLOAK_USER: ${KEYCLOAK_ADMIN_USERNAME:-kcadmin}
-      KEYCLOAK_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-kcadmin}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USERNAME:-kcadmin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-kcadmin}
       KEYCLOAK_DATABASE_HOST: ${POSTGRES_CONTAINER_NAME:-postgres}
       KEYCLOAK_DATABASE_PORT: 5432
       KEYCLOAK_DATABASE_NAME: ${POSTGRES_DATABASE:-kcdb}
       KEYCLOAK_DATABASE_USER: ${POSTGRES_USERNAME:-dbadmin}
       KEYCLOAK_DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
+      KEYCLOAK_HTTP_RELATIVE_PATH: /
+      KEYCLOAK_ENABLE_HTTPS: "false"
+      KEYCLOAK_ENABLE_STATISTICS: "false"
+      KEYCLOAK_HTTP_PORT: "8080"
+      KEYCLOAK_LOG_OUTPUT: default
+      KEYCLOAK_PRODUCTION: "false"
+      KEYCLOAK_PROXY: edge
+      KEYCLOAK_FRONTEND_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8082}
+      PROXY_ADDRESS_FORWARDING: "true"
     ports:
       - "${KEYCLOAK_PORT:-8082}:8080"
     depends_on:
@@ -72,11 +81,11 @@ services:
     container_name: ${VAULT_FACADE_CONTAINER_NAME:-vault-facade}
     environment:
       APP_MODE: ${VAULT_FACADE_APP_MODE:-mongo}
-      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
-      MONGODB_PORT: 27017
-      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
-      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
-      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
+      SERVER_PORT: "8080"
+      MONGO_HOSTS: ${MONGO_CONTAINER_NAME:-mongo}
+      MONGO_DATABASE: ${MONGO_DATABASE:-owsdb}
+      MONGO_USERNAME: ${MONGO_USERNAME:-dbadmin}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
     ports:
       - "${VAULT_FACADE_PORT:-8081}:8080"
     depends_on:
@@ -88,18 +97,9 @@ services:
     image: ${API_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1}
     container_name: ${API_CONTAINER_NAME:-api}
     environment:
-      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
-      MONGODB_PORT: 27017
-      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
-      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
-      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
-      IAM_URL: http://${KEYCLOAK_CONTAINER_NAME:-keycloak}:8080/auth
-      IAM_REALM: ${IAM_REALM:-igrant-users}
-      IAM_CLIENT_ID: ${IAM_CLIENT_ID:-igrant-ios-app}
-      API_SECRET_KEY: ${API_SECRET_KEY:-your-api-secret-key}
-      NATS_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
-      NATS_TIMEOUT: ${NATS_TIMEOUT:-5}
       WEBHOOK_URL: http://${WEBHOOK_CONTAINER_NAME:-webhook}:8085/v2/
+    volumes:
+      - ./config/api:/opt/l3-igrant/api/config
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:
@@ -119,12 +119,8 @@ services:
       - --config
       - config-production.json
     container_name: ${WEBHOOK_CONTAINER_NAME:-webhook}
-    environment:
-      MONGODB_HOST: ${MONGO_CONTAINER_NAME:-mongo}
-      MONGODB_PORT: 27017
-      MONGODB_DATABASE: ${MONGO_DATABASE:-owsdb}
-      MONGODB_USER: ${MONGO_USERNAME:-dbadmin}
-      MONGODB_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
+    volumes:
+      - ./config/api:/opt/l3-igrant/api/config
     ports:
       - "${WEBHOOK_PORT:-8085}:8085"
     depends_on:
@@ -136,17 +132,50 @@ services:
     image: ${OWS_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5}
     container_name: ${OWS_CONTAINER_NAME:-organisation-wallet}
     environment:
-      DATABASE_HOST: ${MONGO_CONTAINER_NAME:-mongo}
-      DATABASE_PORT: 27017
-      DATABASE_DB: ${OWS_DATABASE:-walletdb}
-      DATABASE_USER: ${MONGO_USERNAME:-dbadmin}
-      DATABASE_PASSWORD: ${MONGO_PASSWORD:-dbadmin}
       SECURE_VAULT_BASE_URL: http://${VAULT_FACADE_CONTAINER_NAME:-vault-facade}:8080
-      NATS_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
-      API_BASE_URL: http://${API_CONTAINER_NAME:-api}:8080
+      ROUTE_PERMITTED: service
+      DOMAIN: ${OWS_PUBLIC_URL:-http://localhost:8090}
+      DATABASE_USER: ${POSTGRES_USERNAME:-dbadmin}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
+      DATABASE_HOST: ${POSTGRES_CONTAINER_NAME:-postgres}
+      DATABASE_PORT: "5432"
+      DATABASE_DB: ${OWS_DATABASE:-walletdb}
+      NATS_SERVER_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
+      ONBOARDING_BASE_URL: http://${API_CONTAINER_NAME:-api}:8080
+      INTERNAL_MICROSERVICE_BASE_URL: http://${WEBHOOK_CONTAINER_NAME:-webhook}:8085
     ports:
       - "${OWS_PORT:-8090}:8080"
     depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      vault-facade:
+        condition: service_started
+      nats:
+        condition: service_started
+    restart: unless-stopped
+
+  organisation-wallet-config:
+    image: ${OWS_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5}
+    container_name: ${OWS_CONFIG_CONTAINER_NAME:-organisation-wallet-config}
+    environment:
+      SECURE_VAULT_BASE_URL: http://${VAULT_FACADE_CONTAINER_NAME:-vault-facade}:8080
+      ROUTE_PERMITTED: config
+      DOMAIN: ${OWS_PUBLIC_URL:-http://localhost:8090}
+      DATABASE_USER: ${POSTGRES_USERNAME:-dbadmin}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-dbadmin}
+      DATABASE_HOST: ${POSTGRES_CONTAINER_NAME:-postgres}
+      DATABASE_PORT: "5432"
+      DATABASE_DB: ${OWS_DATABASE:-walletdb}
+      NATS_SERVER_URL: nats://${NATS_CONTAINER_NAME:-nats}:4222
+      ONBOARDING_BASE_URL: http://${API_CONTAINER_NAME:-api}:8080
+      INTERNAL_MICROSERVICE_BASE_URL: http://${WEBHOOK_CONTAINER_NAME:-webhook}:8085
+    ports:
+      - "${OWS_CONFIG_PORT:-8091}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
       mongo:
         condition: service_healthy
       vault-facade:
@@ -181,8 +210,8 @@ services:
   enterprise-dashboard:
     image: ${DASHBOARD_IMAGE:-europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/dashboard:2026.1.1}
     container_name: ${DASHBOARD_CONTAINER_NAME:-enterprise-dashboard}
-    environment:
-      API_BASE_URL: ${API_PUBLIC_URL:-http://localhost:8080}
+    volumes:
+      - ./config/enterprise-dashboard:/usr/share/nginx/html/config
     ports:
       - "${DASHBOARD_PORT:-3000}:80"
     depends_on:

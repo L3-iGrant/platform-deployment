@@ -1,0 +1,56 @@
+{
+  "DataBase": {
+    "hosts": [
+      "mongo"
+    ],
+    "name": "owsdb",
+    "username": "dbadmin",
+    "password": "dbadmin"
+  },
+  "Dashboard": {
+    "url": "http://localhost:3000"
+  },
+  "ApplicationMode": "multi-tenant",
+  "ApiSecretKey": "your-api-secret-key",
+  "Iam": {
+    "url": "http://keycloak:8080/auth",
+    "realm": "igrant-users",
+    "ClientId": "igrant-ios-app",
+    "AdminUser": "kcadmin",
+    "AdminPassword": "kcadmin",
+    "timeout": 5,
+    "IdPAlias": "login-with-eudi-wallet",
+    "APIBaseUrl": "http://localhost:8080"
+  },
+  "Webhooks": {
+    "events": [
+      "consent.allowed",
+      "consent.disallowed",
+      "data.delete.initiated",
+      "data.download.initiated",
+      "data.update.initiated",
+      "data.delete.cancelled",
+      "data.download.cancelled",
+      "data.update.cancelled"
+    ]
+  },
+  "SSIAriesCloudAgentDeployment": {
+    "BackendAPIBaseURL": "http://localhost:8080"
+  },
+  "OpenIdDeployment": {
+    "OpenIdServerBaseUrl": "http://organisation-wallet-config:8080",
+    "OpenIdServiceEndpoint": "http://localhost:8090"
+  },
+  "Extensions": {
+    "oidc": {
+      "configUrl": "http://oidc-facade:7000",
+      "publicUrl": "http://oidc-facade:6000",
+      "oidcPathBase": "/v1/tenant/{organisationId}",
+      "apiPathBase": "/v3/service/extension/oidc/{organisationId}/{subwalletId}"
+    }
+  },
+  "Nats": {
+    "url": "nats://nats:4222",
+    "timeout": 5
+  }
+}

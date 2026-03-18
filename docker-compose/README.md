@@ -12,6 +12,7 @@ This directory contains Docker Compose configuration for running the Organisatio
 - [Accessing Services](#accessing-services)
 - [Onboarding Organisations](#onboarding-organisations)
 - [Common Commands](#common-commands)
+- [Exposing Services Externally](#exposing-services-externally)
 - [Troubleshooting](#troubleshooting)
 
 ## Prerequisites
@@ -62,7 +63,8 @@ make logs
 | Vault Facade | Secrets management (MongoDB mode) | 8081 |
 | API | Backend API service | 8080 |
 | Webhook | Webhook handler service | 8085 |
-| Organisation Wallet Service | Core wallet service | 8090 |
+| Organisation Wallet Service | Core wallet service (routes) | 8090 |
+| Organisation Wallet Config | Core wallet service (config/setup) | 8091 |
 | OIDC Facade | OIDC extension service | 6000, 7000 |
 | Enterprise Dashboard | Web administration interface | 3000 |
 
@@ -93,11 +95,21 @@ All configuration is managed through environment variables. You can either:
 | `KEYCLOAK_ADMIN_PASSWORD` | Keycloak admin password | `kcadmin` |
 | `MONGO_USERNAME` | MongoDB username | `dbadmin` |
 | `MONGO_PASSWORD` | MongoDB password | `dbadmin` |
-| `API_SECRET_KEY` | API secret key for JWT | `your-api-secret-key` |
 | `VAULT_FACADE_APP_MODE` | Vault mode (`mongo` or `vault`) | `mongo` |
 | `OIDC_FACADE_DATABASE` | OIDC Facade database name | `oidcfacadedb` |
 
 > **Note:** Change default passwords before using in any non-local environment.
+
+### Configuration Files
+
+The API and Enterprise Dashboard services use JSON configuration files mounted as volumes, matching the same format used in Kubernetes ConfigMaps:
+
+| File | Mount Path | Description |
+|------|-----------|-------------|
+| `config/api/config-production.json` | `/opt/l3-igrant/api/config` | API and Webhook configuration |
+| `config/enterprise-dashboard/config.json` | `/usr/share/nginx/html/config` | Dashboard configuration |
+
+Edit these files directly to customise service configuration (database, IAM, NATS, OIDC, etc.).
 
 ## Usage
 
@@ -175,6 +187,7 @@ Once the services are running, you can access them at:
 | API | http://localhost:8080 |
 | Keycloak Admin Console | http://localhost:8082 |
 | Organisation Wallet Service | http://localhost:8090 |
+| Organisation Wallet Config | http://localhost:8091 |
 | OIDC Facade Service | http://localhost:6000 |
 | OIDC Facade Config | http://localhost:7000 |
 | Enterprise Dashboard | http://localhost:3000 |
@@ -307,6 +320,114 @@ docker compose exec api sh
 
 # Scale a service (if needed)
 docker compose up -d --scale api=2
+```
+
+## Exposing Services Externally
+
+For features like mobile wallet testing, OIDC flows, or webhook callbacks, some services need to be reachable from outside your local machine. You can use a tunneling tool to expose them.
+
+### Which services need external URLs?
+
+| Service | Port | Used by |
+|---------|------|---------|
+| **API** | 8080 | Dashboard `baseUrl`, API config `Iam.APIBaseUrl`, `SSIAriesCloudAgentDeployment.BackendAPIBaseURL`, OIDC Facade `BASE_SERVICE_URL`/`PROXY_PREFIX` |
+| **Keycloak** | 8082 | API config `Iam.url`, Keycloak `KEYCLOAK_FRONTEND_URL` |
+| **Organisation Wallet** | 8090 | API config `OpenIdDeployment.OpenIdServiceEndpoint`, wallet `DOMAIN` |
+| **Dashboard** | 3000 | API config `Dashboard.url` |
+
+### Using ngrok
+
+```bash
+# Expose API
+ngrok http 8080
+
+# Expose Keycloak
+ngrok http 8082
+
+# Expose Organisation Wallet
+ngrok http 8090
+
+# Expose Dashboard
+ngrok http 3000
+```
+
+### Using Cloudflare Tunnel
+
+```bash
+# Expose API
+cloudflared tunnel --url http://localhost:8080
+
+# Expose Keycloak
+cloudflared tunnel --url http://localhost:8082
+
+# Expose Organisation Wallet
+cloudflared tunnel --url http://localhost:8090
+
+# Expose Dashboard
+cloudflared tunnel --url http://localhost:3000
+```
+
+### Using Tailscale Funnel
+
+```bash
+# Expose API
+tailscale funnel 8080
+
+# Expose Keycloak
+tailscale funnel 8082
+
+# Expose Organisation Wallet
+tailscale funnel 8090
+
+# Expose Dashboard
+tailscale funnel 3000
+```
+
+### Updating configuration with tunnel URLs
+
+After obtaining your tunnel URLs, update these locations:
+
+1. **`env.sh`** (or `.env`) - update the public URLs:
+
+```bash
+export API_PUBLIC_URL="https://your-api-tunnel.ngrok.io"
+export KEYCLOAK_PUBLIC_URL="https://your-keycloak-tunnel.ngrok.io"
+export OWS_PUBLIC_URL="https://your-wallet-tunnel.ngrok.io"
+export DASHBOARD_PUBLIC_URL="https://your-dashboard-tunnel.ngrok.io"
+```
+
+2. **`config/api/config-production.json`** - update the external-facing URLs:
+
+```json
+{
+  "Dashboard": {
+    "url": "https://your-dashboard-tunnel.ngrok.io"
+  },
+  "Iam": {
+    "url": "https://your-keycloak-tunnel.ngrok.io/auth",
+    "APIBaseUrl": "https://your-api-tunnel.ngrok.io"
+  },
+  "SSIAriesCloudAgentDeployment": {
+    "BackendAPIBaseURL": "https://your-api-tunnel.ngrok.io"
+  },
+  "OpenIdDeployment": {
+    "OpenIdServiceEndpoint": "https://your-wallet-tunnel.ngrok.io"
+  }
+}
+```
+
+3. **`config/enterprise-dashboard/config.json`** - update the API base URL:
+
+```json
+{
+  "baseUrl": "https://your-api-tunnel.ngrok.io"
+}
+```
+
+4. Restart services to pick up the changes:
+
+```bash
+make restart
 ```
 
 ## Troubleshooting

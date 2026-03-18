@@ -16,6 +16,7 @@ export NATS_IMAGE="nats:2.10.14-alpine"
 export API_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/api:2026.1.1"
 export VAULT_FACADE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/vault-facade:2026.1.1"
 export OWS_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/ows:2026.1.5"
+export OIDC_FACADE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/oidc-facade:2026.1.1"
 export DASHBOARD_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/dashboard:2026.1.1"
 
 # -----------------------------------------------------------------------------
@@ -53,6 +54,7 @@ export NATS_CONTAINER_NAME="nats"
 export NATS_PORT="4222"
 export NATS_MONITOR_PORT="8222"
 export NATS_VOLUME_NAME="nats-data"
+export NATS_TIMEOUT="5"
 
 # -----------------------------------------------------------------------------
 # Vault Facade Configuration
@@ -66,10 +68,6 @@ export VAULT_FACADE_APP_MODE="mongo"
 # -----------------------------------------------------------------------------
 export API_CONTAINER_NAME="api"
 export API_PORT="8080"
-export API_SECRET_KEY="your-api-secret-key"
-export IAM_REALM="igrant-users"
-export IAM_CLIENT_ID="igrant-ios-app"
-export NATS_TIMEOUT="5"
 
 # -----------------------------------------------------------------------------
 # Webhook Configuration
@@ -81,7 +79,6 @@ export WEBHOOK_PORT="8085"
 # OIDC Facade Configuration
 # -----------------------------------------------------------------------------
 export OIDC_FACADE_CONTAINER_NAME="oidc-facade"
-export OIDC_FACADE_IMAGE="europe-docker.pkg.dev/jenkins-189019/igrant-customers/igrant-api/oidc-facade:2026.1.1"
 export OIDC_FACADE_DATABASE="oidcfacadedb"
 export OIDC_FACADE_SERVICE_PORT="6000"
 export OIDC_FACADE_CONFIG_PORT="7000"
@@ -90,7 +87,9 @@ export OIDC_FACADE_CONFIG_PORT="7000"
 # Organisation Wallet Configuration
 # -----------------------------------------------------------------------------
 export OWS_CONTAINER_NAME="organisation-wallet"
+export OWS_CONFIG_CONTAINER_NAME="organisation-wallet-config"
 export OWS_PORT="8090"
+export OWS_CONFIG_PORT="8091"
 export OWS_DATABASE="walletdb"
 
 # -----------------------------------------------------------------------------
@@ -100,7 +99,15 @@ export DASHBOARD_CONTAINER_NAME="enterprise-dashboard"
 export DASHBOARD_PORT="3000"
 
 # -----------------------------------------------------------------------------
-# Public URLs (Update these for your deployment)
+# Public URLs
+# -----------------------------------------------------------------------------
+# These URLs are used by services that need to be reachable from outside
+# the Docker network (e.g. browser redirects, mobile app callbacks).
+#
+# For local development, the defaults (http://localhost:PORT) work fine.
+#
+# To expose services externally (e.g. for mobile testing or webhooks),
+# use a tunnel tool and update the URLs below. See README.md for details.
 # -----------------------------------------------------------------------------
 export API_PUBLIC_URL="http://localhost:8080"
 export KEYCLOAK_PUBLIC_URL="http://localhost:8082"

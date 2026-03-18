@@ -144,14 +144,14 @@ oidc-facade-stop: ## Stop OIDC Facade
 oidc-facade-logs: ## View OIDC Facade logs
 	@docker compose logs -f oidc-facade
 
-ows-start: ## Start Organisation Wallet
-	@docker compose up -d organisation-wallet
+ows-start: ## Start Organisation Wallet (service + config)
+	@docker compose up -d organisation-wallet organisation-wallet-config
 
-ows-stop: ## Stop Organisation Wallet
-	@docker compose stop organisation-wallet
+ows-stop: ## Stop Organisation Wallet (service + config)
+	@docker compose stop organisation-wallet organisation-wallet-config
 
 ows-logs: ## View Organisation Wallet logs
-	@docker compose logs -f organisation-wallet
+	@docker compose logs -f organisation-wallet organisation-wallet-config
 
 dashboard-start: ## Start Enterprise Dashboard
 	@docker compose up -d enterprise-dashboard
