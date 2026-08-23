@@ -477,6 +477,6 @@ make start
 
 ## License
 
-Copyright (c) 2025-2035 iGrant Technologies AB (iGrant.io), Sweden
+Copyright (c) 2026 iGrant Technologies AB (iGrant.io), Sweden
 
 Licensed under the Apache 2.0 License.
