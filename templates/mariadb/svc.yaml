@@ -1,0 +1,16 @@
+{{- if .Values.mariadb.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-mariadb
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-mariadb-svc
+  namespace: {{ .Values.namespace }}
+spec:
+  ports:
+    - port: 3306
+      protocol: TCP
+      targetPort: 3306
+  selector:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-mariadb
+{{- end }}

@@ -5,8 +5,15 @@ prefix:
 # Resource constraints for a pod
 resources: {}
 # Security context for a pod
+# OpenShift restricted-v2 SCC compatible: run as non-root, no privilege escalation.
 securityContext:
-  runAsUser: 0
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  allowPrivilegeEscalation: false
+  seccompProfile:
+    type: RuntimeDefault
 # Storage class name
 storageClassName: local-path
 
@@ -28,7 +35,9 @@ keycloak:
   enabled: true
   # Container image
   imagePullSecret: igrant-registry-creds
-  image: europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:12.0.4-debian-10-r1
+  # Updated to a current supported Keycloak release (was 12.0.4-debian-10-r1, EOL).
+  # Confirm this exact tag is mirrored in the registry before deployment.
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/keycloak:26.0.7-debian-12-r0
   # Username
   adminUsername: kcadmin
   # Password
@@ -84,11 +93,39 @@ mongo:
   password: gQMvVsZDfCmvQcvGQlpNwY
   database: owsdb
 
+# MariaDB / MySQL relational database
+# On-premise relational store for LPID data, per PRH Annex 2.1 requirement 15
+# (MySQL or MariaDB). MySQL-compatible; set credentials via a Kubernetes secret.
+mariadb:
+  enabled: true
+  # Container image
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/mariadb:11.4-debian-12
+  username: dbadmin
+  # Set through a Kubernetes secret in the PRH deployment
+  password: ""
+  database: owsreldb
+
 # NATS
 nats:
   enabled: true
   # Container image
   image: nats:2.10.14-alpine
+
+# RabbitMQ message-queue adapter
+# External message-queue intake for inbound revocation instructions,
+# per PRH Annex 2 requirement 2.14. Transport is configurable; queue and
+# protocol are set to whatever PRH nominates.
+rabbitmq:
+  enabled: true
+  # Container image
+  imagePullSecret: igrant-registry-creds
+  image: europe-docker.pkg.dev/jenkins-189019/igrantio/rabbitmq:3.13-debian-12
+  username: rabbit
+  # Set through a Kubernetes secret in the PRH deployment
+  password: ""
+  # Queue the solution consumes revocation instructions from (requirement 2.14)
+  revocationQueue: prh.lpid.revocation
 
 # API
 api:
@@ -155,8 +192,10 @@ vaultFacade:
   # Container image
   imagePullSecret: igrant-registry-creds
   image: europe-docker.pkg.dev/jenkins-189019/igrantio/vault-facade:2026.1.1
-  # Application mode: "vault" or "mongo"
-  appMode: mongo
+  # Application mode: "vault" or "mongo".
+  # PRH deployments use "vault" in every environment (dev, test, acceptance, production);
+  # the "mongo" mode is for local development only and is not used for PRH.
+  appMode: vault
   # Vault configuration (used when appMode=vault)
   vault:
     # Vault server address

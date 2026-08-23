@@ -1,0 +1,52 @@
+{{- if .Values.rabbitmq.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    run: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq
+  name: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    matchLabels:
+      run: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq
+  template:
+    metadata:
+      labels:
+        run: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq
+    spec:
+      {{- if .Values.rabbitmq.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.rabbitmq.imagePullSecret }}
+      {{- end }}
+      containers:
+        - env:
+            - name: RABBITMQ_USERNAME
+              value: {{ .Values.rabbitmq.username }}
+            - name: RABBITMQ_PASSWORD
+              value: {{ .Values.rabbitmq.password }}
+          image: {{ .Values.rabbitmq.image }}
+          securityContext:
+            {{- if .Values.securityContext }}
+              {{- toYaml .Values.securityContext | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- if .Values.resources }}
+              {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
+          imagePullPolicy: Always
+          name: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq
+          ports:
+            - containerPort: 5672
+              protocol: TCP
+            - containerPort: 15672
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /bitnami/rabbitmq/mnesia
+              name: rabbitmq-data
+              subPath: rabbitmq
+      volumes:
+        - name: rabbitmq-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.namespace }}-{{ .Values.prefix }}-rabbitmq-pvc
+{{- end }}
