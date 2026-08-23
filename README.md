@@ -740,7 +740,7 @@ Feel free to improve the chart and send us a pull request. If you find any probl
 
 ## License
 
-Copyright (c) 2025-2035 LCubed AB (iGrant.io), Sweden
+Copyright (c) 2025-2035 iGrant Technologies AB (iGrant.io), Sweden
 
 Licensed under the Apache 2.0 License. You may not use this file except in compliance with the License.
 
