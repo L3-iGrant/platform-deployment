@@ -1,0 +1,194 @@
+{{- if include "ow.openbao.bundled" . }}
+{{- include "ow.openbao.check" . }}
+{{- $ob := .Values.openbao }}
+{{- $name := include "ow.openbao.name" . }}
+{{- $headless := include "ow.openbao.headlessName" . }}
+{{- $paths := include "ow.openbao.paths" . | fromJson }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "openbao") | nindent 4 }}
+spec:
+  serviceName: {{ $headless }}
+  replicas: {{ $ob.replicas }}
+  # All pods start at the same time (a full restart needs the majority of
+  # the raft nodes).
+  podManagementPolicy: Parallel
+  # OnDelete: a new pod template waits until the operator deletes each pod
+  # and unseals it (docs/upgrade.md).
+  {{- $updateStrategy := include "ow.openbao.updateStrategy" . }}
+  updateStrategy:
+    type: {{ $updateStrategy }}
+    {{- if eq $updateStrategy "OnDelete" }}
+    # Removes the rollingUpdate default (partition 0) that the API server
+    # wrote under RollingUpdate: with OnDelete it refuses the field.
+    rollingUpdate: null
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "openbao") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "openbao") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "openbao" (list)) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (list (include "ow.openbao.config" .) (.Files.Glob "files/openbao/*.sh").AsConfig)) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $ob) | nindent 6 }}
+      # OpenBao does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: openbao
+          image: {{ include "ow.image" (list . $ob.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $ob.image) }}
+          command: ["/bin/bash", "{{ $paths.scripts }}/entrypoint.sh"]
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # The values of this raft node.
+            - name: BAO_RAFT_NODE_ID
+              value: "$(POD_NAME)"
+            - name: BAO_API_ADDR
+              value: "https://$(POD_NAME).{{ $headless }}.{{ .Release.Namespace }}.svc:8200"
+            - name: BAO_CLUSTER_ADDR
+              value: "https://$(POD_NAME).{{ $headless }}.{{ .Release.Namespace }}.svc:8201"
+            # The bao commands of the operator (kubectl exec).
+            - name: BAO_ADDR
+              value: https://127.0.0.1:8200
+            - name: BAO_CACERT
+              value: {{ $paths.tls }}/ca.crt
+            - name: HOME
+              value: /tmp
+            - name: BAO_CONFIG_FILE
+              value: {{ $paths.config }}
+            - name: OPENBAO_DATA_DIR
+              value: {{ $paths.data }}
+            # The bootstrap script (bootstrap.sh).
+            - name: OPENBAO_KMS_TRANSIT_MOUNT
+              value: {{ include "ow.openbao.transitMount" . | quote }}
+            - name: OPENBAO_WALLET_USER
+              value: {{ include "ow.openbao.walletUser" . | quote }}
+            - name: OPENBAO_KMS_POLICY
+              value: wallet-kms
+            - name: OPENBAO_BOOTSTRAP_DIR
+              value: {{ $paths.bootstrap }}
+            {{- with $ob.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: https
+              containerPort: 8200
+            - name: cluster
+              containerPort: 8201
+          {{- include "ow.containerSecurityContext" (list . $ob) | nindent 10 }}
+          {{- with $ob.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # Startup and liveness: the server answers (also sealed or not
+          # initialised). Readiness: initialised and unsealed (active or
+          # standby): a pod is ready only after the manual unseal.
+          startupProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true
+              port: https
+              scheme: HTTPS
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+              port: https
+              scheme: HTTPS
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          lifecycle:
+            # The Service removes the pod before OpenBao stops.
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
+          volumeMounts:
+            - name: config
+              mountPath: {{ $paths.config | dir }}
+              readOnly: true
+            - name: scripts
+              mountPath: {{ $paths.scripts }}
+              readOnly: true
+            - name: tls
+              mountPath: {{ $paths.tls }}
+              readOnly: true
+            - name: bootstrap
+              mountPath: {{ $paths.bootstrap }}
+              readOnly: true
+            - name: data
+              mountPath: {{ $paths.data }}
+            # The temporary files of OpenBao (read-only root file system).
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}
+            items:
+              - key: openbao.hcl
+                path: {{ $paths.config | base }}
+        - name: scripts
+          configMap:
+            name: {{ $name }}
+            defaultMode: 0555
+            items:
+              - key: entrypoint.sh
+                path: entrypoint.sh
+              - key: bootstrap.sh
+                path: bootstrap.sh
+        - name: tls
+          secret:
+            secretName: {{ include "ow.openbao.tlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+        # The password of the wallet user: only bootstrap.sh reads it.
+        # OpenBao keeps a hash of this password anyway.
+        {{- $walletSecret := include "ow.openbao.walletSecret" . | fromJson }}
+        - name: bootstrap
+          secret:
+            secretName: {{ $walletSecret.secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $walletSecret.key }}
+                path: wallet-password
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "ow.storageClass" (list . $ob.persistence.storageClass) | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $ob.persistence.size }}
+{{- end }}

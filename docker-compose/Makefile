@@ -1,194 +1,115 @@
 # =============================================================================
-# Organisation Wallet Suite - Docker Compose Makefile
+# The Organisation Wallet Suite by iGrant.io for Docker Compose. README.md has the procedure.
 # =============================================================================
 
-.PHONY: help start stop restart logs status clean pull
+COMPOSE ?= docker compose
+# openbao-init runs as your user, so that secrets/openbao/init.json belongs
+# to you.
+export HOST_UID := $(shell id -u)
+export HOST_GID := $(shell id -g)
+# The Helm chart of this repository (make nats-config).
+CHART_DIR ?= ..
 
-# Show help - automatically generated from comments
 .DEFAULT_GOAL := help
+.PHONY: help env secrets check up status logs down reset admin organisation db-shell \
+	openbao-status nats-config
 
-help: ## Show this help message
-	@echo "========================================================================"
-	@echo "Organisation Wallet Suite by iGrant.io - Docker Compose"
-	@echo "========================================================================"
+help: ## Show the targets
+	@echo "iGrant.io platform - Docker Compose (README.md has the procedure)"
 	@echo ""
-	@echo "Usage: make [target]"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-# =============================================================================
-# Main Commands
-# =============================================================================
+# --- Installation ----------------------------------------------------------------
 
-start: ## Start all services
-	@echo "Starting all services..."
-	@if [ -f env.sh ]; then \
-		source ./env.sh && docker compose up -d; \
-	else \
-		docker compose up -d; \
-	fi
-	@echo "All services started successfully!"
-	@echo ""
-	@echo "Services available at:"
-	@echo "  - API:                  http://localhost:8080"
-	@echo "  - Keycloak:             http://localhost:8082"
-	@echo "  - Organisation Wallet:  http://localhost:8090"
-	@echo "  - Enterprise Dashboard: http://localhost:3000"
-	@echo "  - Vault Facade:         http://localhost:8081"
-	@echo "  - NATS:                 localhost:4222"
-	@echo "  - NATS Monitor:         http://localhost:8222"
+env: ## Step 2: make .env from .env.example (keeps a .env that exists)
+	@if [ -f .env ]; then echo "env: .env exists (kept)"; \
+	else cp .env.example .env && echo "env: wrote .env: set your values, then run make secrets"; fi
 
-stop: ## Stop all services
-	@echo "Stopping all services..."
-	@docker compose stop
-	@echo "All services stopped successfully!"
+secrets: ## Step 3: make all secrets and keys in secrets/ (keeps the files that exist; prints no value)
+	@./secrets.sh
 
-restart: ## Restart all services
-	@echo "Restarting all services..."
-	@docker compose restart
-	@echo "All services restarted successfully!"
+check: ## Step 4: check .env, secrets/ and the Compose files (no container starts)
+	@./check.sh
 
-down: ## Stop and remove all containers
-	@echo "Stopping and removing all containers..."
-	@docker compose down
-	@echo "All containers removed successfully!"
+up: check ## Step 5: start the platform (after make check)
+	$(COMPOSE) up -d
+	@echo "up: started. make status shows the state of the services."
 
-logs: ## View logs from all services (use CTRL+C to exit)
-	@docker compose logs -f
+status: ## Show the state of the services (also the one-shot services that stopped)
+	$(COMPOSE) ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 
-status: ## Show status of all services
-	@docker compose ps
+logs: ## Follow the logs of all services (CTRL+C stops)
+	$(COMPOSE) logs -f
 
-pull: ## Pull latest images
-	@echo "Pulling latest images..."
-	@if [ -f env.sh ]; then \
-		source ./env.sh && docker compose pull; \
-	else \
-		docker compose pull; \
-	fi
-	@echo "Images pulled successfully!"
+down: ## Stop and remove the containers (the data in the volumes stays)
+	$(COMPOSE) down
 
-# =============================================================================
-# Individual Service Commands
-# =============================================================================
+# reset deletes the data: the volumes (databases, NATS, OpenBao, files) and
+# secrets/openbao/init.json (the next start initialises a new OpenBao). The
+# other files of secrets/ stay.
+reset: ## Remove the containers AND all data (asks first)
+	@read -r -p "This deletes all data of the platform. Type yes to continue: " answer; \
+	if [ "$$answer" = yes ]; then \
+	  $(COMPOSE) down -v && rm -f secrets/openbao/init.json && echo "reset: done"; \
+	else echo "reset: cancelled"; fi
 
-postgres-start: ## Start PostgreSQL
-	@docker compose up -d postgres
+# --- Operation -------------------------------------------------------------------
 
-postgres-stop: ## Stop PostgreSQL
-	@docker compose stop postgres
+# The first admin (no organisation) of a new installation, then its
+# organisation (the dashboard login refuses an admin without an
+# organisation). The commands are idempotent.
+ORGANISATION_TYPE ?= Technology
+admin: ## Step 8: make the first admin: make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=... (asks for the password)
+	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ADMIN_PHONE)" || \
+		{ echo "admin: set ADMIN_EMAIL, ADMIN_NAME and ADMIN_PHONE" >&2; exit 1; }
+	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation-type \
+		--type "$(ORGANISATION_TYPE)" --config /etc/igrant-api/config.yaml </dev/null
+	@stty -echo 2>/dev/null; printf 'Password of %s (the input is hidden): ' "$(ADMIN_EMAIL)"; \
+	IFS= read -r password; stty echo 2>/dev/null; echo; \
+	printf '%s' "$$password" | $(COMPOSE) exec -T api /app/bin/igrant-api onboard register-admin \
+		--email "$(ADMIN_EMAIL)" --name "$(ADMIN_NAME)" --phone "$(ADMIN_PHONE)" \
+		--password-file - --config /etc/igrant-api/config.yaml
 
-postgres-logs: ## View PostgreSQL logs
-	@docker compose logs -f postgres
+organisation: ## Step 9: make the organisation of the admin: make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]
+	@test -n "$(ADMIN_EMAIL)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
+		{ echo "organisation: set ADMIN_EMAIL, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
+	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation \
+		--admin-email "$(ADMIN_EMAIL)" --name "$(ORG_NAME)" --type "$(ORGANISATION_TYPE)" \
+		--location "$(ORG_LOCATION)" --policy-url "$(ORG_POLICY_URL)" --description "$(ORG_DESCRIPTION)" \
+		--config /etc/igrant-api/config.yaml
 
-keycloak-start: ## Start Keycloak
-	@docker compose up -d keycloak
+db-shell: ## Open the SQL shell of the database server as the admin user
+	@service="$$($(COMPOSE) ps --services --status running | grep -Ex 'postgres|mariadb' || true)"; \
+	case "$$service" in \
+	  postgres) $(COMPOSE) exec postgres psql -U postgres -d postgres ;; \
+	  mariadb) $(COMPOSE) exec mariadb sh -c 'MYSQL_PWD="$$(cat /run/secrets/database/admin-password)" exec mariadb -uroot' ;; \
+	  *) echo "db-shell: no database server runs (make up)" >&2; exit 1 ;; \
+	esac
 
-keycloak-stop: ## Stop Keycloak
-	@docker compose stop keycloak
+openbao-status: ## Show the seal status of OpenBao
+	$(COMPOSE) exec openbao bao status
 
-keycloak-logs: ## View Keycloak logs
-	@docker compose logs -f keycloak
+# --- Maintainers -----------------------------------------------------------------
 
-mongo-start: ## Start MongoDB
-	@docker compose up -d mongo
-
-mongo-stop: ## Stop MongoDB
-	@docker compose stop mongo
-
-mongo-logs: ## View MongoDB logs
-	@docker compose logs -f mongo
-
-nats-start: ## Start NATS
-	@docker compose up -d nats
-
-nats-stop: ## Stop NATS
-	@docker compose stop nats
-
-nats-logs: ## View NATS logs
-	@docker compose logs -f nats
-
-vault-facade-start: ## Start Vault Facade
-	@docker compose up -d vault-facade
-
-vault-facade-stop: ## Stop Vault Facade
-	@docker compose stop vault-facade
-
-vault-facade-logs: ## View Vault Facade logs
-	@docker compose logs -f vault-facade
-
-api-start: ## Start API
-	@docker compose up -d api
-
-api-stop: ## Stop API
-	@docker compose stop api
-
-api-logs: ## View API logs
-	@docker compose logs -f api
-
-webhook-start: ## Start Webhook
-	@docker compose up -d webhook
-
-webhook-stop: ## Stop Webhook
-	@docker compose stop webhook
-
-webhook-logs: ## View Webhook logs
-	@docker compose logs -f webhook
-
-oidc-facade-start: ## Start OIDC Facade
-	@docker compose up -d oidc-facade
-
-oidc-facade-stop: ## Stop OIDC Facade
-	@docker compose stop oidc-facade
-
-oidc-facade-logs: ## View OIDC Facade logs
-	@docker compose logs -f oidc-facade
-
-ows-start: ## Start Organisation Wallet (service + config)
-	@docker compose up -d organisation-wallet organisation-wallet-config
-
-ows-stop: ## Stop Organisation Wallet (service + config)
-	@docker compose stop organisation-wallet organisation-wallet-config
-
-ows-logs: ## View Organisation Wallet logs
-	@docker compose logs -f organisation-wallet organisation-wallet-config
-
-dashboard-start: ## Start Enterprise Dashboard
-	@docker compose up -d enterprise-dashboard
-
-dashboard-stop: ## Stop Enterprise Dashboard
-	@docker compose stop enterprise-dashboard
-
-dashboard-logs: ## View Enterprise Dashboard logs
-	@docker compose logs -f enterprise-dashboard
-
-# =============================================================================
-# Database Commands
-# =============================================================================
-
-postgres-shell: ## Connect to PostgreSQL shell
-	@docker compose exec postgres psql -U $${POSTGRES_USERNAME:-dbadmin} -d $${POSTGRES_DATABASE:-kcdb}
-
-mongo-shell: ## Connect to MongoDB shell
-	@docker compose exec mongo mongosh -u $${MONGO_USERNAME:-dbadmin} -p $${MONGO_PASSWORD:-dbadmin} --authenticationDatabase admin
-
-# =============================================================================
-# Cleanup Commands
-# =============================================================================
-
-clean: ## Remove all containers and volumes (WARNING: destroys data)
-	@echo "WARNING: This will remove all containers and volumes!"
-	@read -p "Are you sure? [y/N] " confirm && [ "$$confirm" = "y" ] && \
-		docker compose down -v && \
-		echo "Cleanup completed!" || \
-		echo "Cleanup cancelled."
-
-clean-images: ## Remove all project images
-	@echo "Removing project images..."
-	@docker compose down --rmi all
-	@echo "Images removed successfully!"
-
-prune: ## Remove unused Docker resources
-	@echo "Pruning unused Docker resources..."
-	@docker system prune -f
-	@echo "Prune completed!"
+# The NATS users and their subjects come from the Helm chart (helper
+# ow.nats.users), so that the chart and Docker Compose have the same users.
+# Run this target after a change of the NATS users of the chart (needs helm).
+NATS_USERS := api:API apiWebhook:API_WEBHOOK consent:CONSENT walletConfig:WALLET_CONFIG \
+	walletService:WALLET_SERVICE walletScheduler:WALLET_SCHEDULER
+nats-config: ## Maintainers: write config/nats/users.conf from the NATS users of the Helm chart
+	@{ \
+	  echo "# Generated by \"make nats-config\" from the Helm chart (templates/nats/configmap.yaml,"; \
+	  echo "# helper ow.nats.users). Do not change it by hand: change the chart, then run"; \
+	  echo "# the target again. The nkeys are the variables of nkeys.conf (make secrets)."; \
+	  echo "include ./nkeys.conf"; \
+	  echo ""; \
+	  helm template igrant $(CHART_DIR) --show-only templates/nats/configmap.yaml \
+	    --set nats.enabled=false,api.enabled=false \
+	    --set consent.enabled=false,organisationWallet.enabled=false,enterpriseDashboard.enabled=false \
+	    $(foreach user,$(NATS_USERS),--set nats.auth.users.$(firstword $(subst :, ,$(user))).nkey=UNATS_NKEY_$(lastword $(subst :, ,$(user)))) \
+	  | awk '/^    authorization \{/ {on = 1} on {print} on && /^    \}$$/ {exit}' \
+	  | sed -e 's/^    //' -e 's/"U\(NATS_NKEY_[A-Z_]*\)"/$$\1/g'; \
+	} > config/nats/users.conf.tmp
+	@grep -q 'nkey: $$NATS_NKEY_WALLET_SCHEDULER' config/nats/users.conf.tmp || { rm -f config/nats/users.conf.tmp; echo "nats-config: helm template gave no users" >&2; exit 1; }
+	@mv config/nats/users.conf.tmp config/nats/users.conf
+	@echo "nats-config: wrote config/nats/users.conf"

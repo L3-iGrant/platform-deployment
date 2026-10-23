@@ -1,0 +1,18 @@
+# Database: your PostgreSQL server. The init Job makes the databases and the
+# users with the admin user; the components verify the server with its CA.
+# Make the two Secrets first:
+#   kubectl -n ows create secret generic db-admin --from-file=password=./db-admin-password.txt
+#   kubectl -n ows create secret generic db-ca --from-file=ca.crt=./db-ca.crt
+database:
+  engine: postgresql
+  mode: external
+  external:
+    host: db.example.org
+    port: ""                 # empty: 5432
+    admin:
+      user: igrant_admin     # CREATEROLE and CREATEDB (see docs/database.md)
+      passwordSecret: db-admin
+      passwordKey: password
+  tls:
+    caSecret: db-ca
+    caKey: ca.crt

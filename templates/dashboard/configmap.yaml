@@ -1,0 +1,26 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+{{- $d := .Values.enterpriseDashboard }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.name" (list . "dashboard") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "dashboard") | nindent 4 }}
+{{- /*
+baseUrl: the api (the CSP connect-src of the dashboard also comes from it).
+walletUrl: the organisation wallet (vct metadata of the credential types).
+Empty: the public URLs of api.host and organisationWallet.host.
+*/}}
+{{- $baseUrl := $d.configuration.baseUrl }}
+{{- if not $baseUrl }}{{- $baseUrl = include "ow.publicUrlOf" (list . "api") }}{{- end }}
+{{- $walletUrl := $d.configuration.walletUrl }}
+{{- if not $walletUrl }}{{- $walletUrl = include "ow.publicUrlOf" (list . "organisationWallet") }}{{- end }}
+data:
+  config.json: |
+    {{- dict
+      "baseUrl" $baseUrl
+      "walletUrl" $walletUrl
+      "appVersion" ($d.configuration.appVersion | default ($d.image.tag | toString | default (.Values.global.imageTag | toString)))
+      | toPrettyJson | nindent 4 }}
+{{- end }}

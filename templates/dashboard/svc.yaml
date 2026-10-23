@@ -1,0 +1,16 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.name" (list . "dashboard") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "dashboard") | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    {{- include "ow.selectorLabels" (list . "dashboard") | nindent 4 }}
+{{- end }}

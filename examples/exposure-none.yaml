@@ -1,0 +1,7 @@
+# No Ingress and no HTTPRoute: the chart makes only the Services, and you
+# make the routes to them: <fullname>-gateway (the api host),
+# <fullname>-wallet-service (the wallet host), <fullname>-dashboard (the
+# dashboard host), each on port 80. <fullname>: the release name, or
+# fullnameOverride.
+exposure:
+  type: none

@@ -1,0 +1,3 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+{{- include "ow.exposure" (dict "root" . "key" "enterpriseDashboard" "component" "dashboard" "service" (include "ow.name" (list . "dashboard")) "port" 80) }}
+{{- end }}

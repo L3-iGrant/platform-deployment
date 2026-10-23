@@ -1,0 +1,20 @@
+{{- if .Values.organisationWallet.enabled }}
+{{- range $role := list "service" "config" }}
+{{- $component := printf "wallet-%s" $role }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.name" (list $ $component) }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    {{- include "ow.selectorLabels" (list $ $component) | nindent 4 }}
+{{- end }}
+{{- end }}

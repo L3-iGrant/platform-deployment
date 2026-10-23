@@ -1,0 +1,49 @@
+{{- if .Values.enterpriseDashboard.enabled }}
+{{- $d := .Values.enterpriseDashboard }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list . "dashboard") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "dashboard") | nindent 4 }}
+spec:
+  replicas: {{ $d.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "dashboard") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "dashboard") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "dashboard" list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" $d.configuration) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $d) | nindent 6 }}
+      containers:
+        - name: dashboard
+          image: {{ include "ow.image" (list . $d.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $d.image) }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          {{- include "ow.containerSecurityContext" (list . $d) | nindent 10 }}
+          {{- with $d.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /usr/share/nginx/html/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ow.name" (list . "dashboard") }}
+{{- end }}

@@ -1,0 +1,125 @@
+{{- /*
+Auth gateway (its own image igrant-gateway: a static
+binary on a distroless base, non-root, read-only root file system, port
+8070): authenticates every request of the api host and forwards it to the
+owner service (api core, consent, wallet-config) with a signed internal
+token. It is part of every installation with the api. It runs no migration, no NATS, no
+cron and no OIDC provider; it writes no file, so it runs as a non-root user
+with a read-only root file system.
+*/}}
+{{- if .Values.api.enabled }}
+{{- $g := .Values.gateway }}
+{{- /* The own gateway image: an empty registry,
+tag or pull policy takes the value of api.image (one release train). */}}
+{{- $image := deepCopy .Values.api.image }}
+{{- range $key, $value := ($g.image | default dict) }}
+{{- if $value }}{{- $_ := set $image $key $value }}{{- end }}
+{{- end }}
+{{- $_ := set $image "digest" ($g.image.digest | default "") }}
+{{- $keys := $g.publicKeys }}
+{{- if and (not $keys.existingTokenVerificationConfigMap) (not $keys.tokenVerificationJwks) }}
+{{- fail "gateway.publicKeys.tokenVerificationJwks (or gateway.publicKeys.existingTokenVerificationConfigMap) is required: the public keys of the api tokens (igrant-api keys export-token-jwks)" }}
+{{- end }}
+{{- if lt ($g.listenPort | int) 1024 }}
+{{- fail "gateway.listenPort must be 1024 or more (a non-root container)" }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list . "gateway") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "gateway") | nindent 4 }}
+spec:
+  replicas: {{ $g.replicas }}
+  {{- with $g.revisionHistoryLimit }}
+  revisionHistoryLimit: {{ . }}
+  {{- end }}
+  {{- with $g.strategy }}
+  strategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "gateway") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "gateway") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "gateway" list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (list (include "ow.gateway.config" .) $keys)) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (include "ow.gateway.secretFiles" .)) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $g) | nindent 6 }}
+      # The gateway does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.checkStopBudget" (list "gateway" $g 5 20) }}
+      # The stop budget: drain + graceful shutdown + margin; no
+      # preStop (the process drains itself; the distroless image has no
+      # /bin/sleep).
+      terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds | int }}
+      containers:
+        - name: gateway
+          image: {{ include "ow.image" (list . $image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $image) }}
+          # The image entrypoint is the gateway binary (igrant-gateway).
+          args: ["--config", {{ include "ow.gateway.configPath" . | quote }}]
+          {{- with $g.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $g.listenPort }}
+          {{- with $g.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $g.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $g.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "ow.containerSecurityContext" (list . $g) | nindent 10 }}
+          {{- with $g.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: {{ include "ow.gateway.configPath" . | dir }}
+              readOnly: true
+            - name: secrets
+              mountPath: {{ include "ow.gateway.secretDir" . }}
+              readOnly: true
+      volumes:
+        # The configuration and the public keys of the api tokens.
+        - name: config
+          projected:
+            sources:
+              - configMap:
+                  name: {{ include "ow.name" (list . "gateway") }}
+                  items:
+                    - key: config.yaml
+                      path: {{ include "ow.gateway.configPath" . | base }}
+              - configMap:
+                  name: {{ include "ow.gateway.tokenVerificationConfigMap" . }}
+                  items:
+                    - key: {{ $keys.tokenVerificationJwksKey }}
+                      path: token-verification-jwks.json
+        - name: secrets
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- range $path, $file := include "ow.gateway.secretFiles" . | fromJson }}
+              - secret:
+                  name: {{ $file.secret }}
+                  items:
+                    - key: {{ $file.key }}
+                      path: {{ $path }}
+              {{- end }}
+{{- end }}

@@ -1,0 +1,58 @@
+{{- if .Values.nats.enabled }}
+{{- $nats := .Values.nats }}
+{{- $name := include "ow.name" (list . "nats") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "nats") | nindent 4 }}
+data:
+  nats.conf: |
+    port: 4222
+    http_port: 8222
+    server_name: $SERVER_NAME
+    pid_file: "/var/run/nats/nats.pid"
+    lame_duck_duration: "30s"
+    lame_duck_grace_period: "10s"
+    max_payload: {{ .Values.nats.maxPayload }}
+    jetstream {
+      store_dir: "/data"
+      max_file_store: {{ $nats.jetstream.maxFileStore }}
+      max_memory_store: {{ $nats.jetstream.maxMemoryStore }}
+    }
+    {{- if gt (int $nats.replicas) 1 }}
+    cluster {
+      name: {{ $name }}
+      port: 6222
+      no_advertise: true
+      routes: [
+        {{- range $i := until (int $nats.replicas) }}
+        nats://{{ $name }}-{{ $i }}.{{ $name }}-headless:6222
+        {{- end }}
+      ]
+    }
+    {{- end }}
+    {{- include "ow.nats.authorization" . | nindent 4 }}
+{{- end }}
+{{- if not .Values.nats.enabled }}
+{{- /*
+External NATS (nats.external.url): the chart does not run the server, so it
+renders the authorization block for the operator, who adds it to the server
+configuration (nats.conf) of the customer NATS.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.name" (list . "nats-authorization") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "nats") | nindent 4 }}
+data:
+  authorization.conf: |
+    # Add these lines to the server configuration of your NATS (global
+    # account). See docs/nats-users.md.
+    max_payload: {{ .Values.nats.maxPayload }}
+    {{- include "ow.nats.authorization" . | nindent 4 }}
+{{- end }}

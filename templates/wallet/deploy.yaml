@@ -1,0 +1,123 @@
+{{- if .Values.organisationWallet.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- $roles := list "service" "config" "scheduler" }}
+{{- range $role := $roles }}
+{{- $settings := index $w $role }}
+{{- $component := printf "wallet-%s" $role }}
+{{- /* The config pods verify the internal token of the gateway and the
+signed NATS commands of the api; they mount the public keys of both. */}}
+{{- $gatewayKeys := eq $role "config" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list $ $component) }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
+spec:
+  replicas: {{ $settings.replicas }}
+  {{- if eq $role "scheduler" }}
+  # The scheduler has no leader lock: never run two at the same time.
+  strategy:
+    type: Recreate
+  {{- else }}
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list $ $component) | nindent 8 }}
+        {{- include "ow.netpol.labels" (list $ $component list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" $ "role" $role))) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list $ $role)) $.Values.openbao.wallet $.Values.openbao.external $.Values.database.databases.wallet)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $w.serviceEnvelope (index $.Values.nats.auth.users (include "ow.wallet.natsUser" $role)) $.Values.nats.tlsCa (ternary $.Values.readAccess.wallet dict (eq $role "config")))) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
+      {{- /* The service and config pods: the stop budget of
+      organisationWallet.server (ow.wallet.checkServer). */}}
+      terminationGracePeriodSeconds: {{ ternary 30 ($w.server.terminationGracePeriodSeconds | int) (eq $role "scheduler") }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "ow.image" (list $ $w.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
+          {{- if eq $role "scheduler" }}
+          # The scheduler does not use the image entrypoint, which applies
+          # the migrations: the service and config pods do that. The command
+          # starts the program directly, so Python is process 1 and gets
+          # SIGTERM.
+          command: ["/app/.venv/bin/start-scheduler"]
+          {{- end }}
+          env:
+            # The only environment variable of the wallet configuration: the
+            # path of the file (the image has the same default).
+            - name: EUDI_WALLET_CONFIG
+              value: {{ include "ow.wallet.configPath" $ | quote }}
+            {{- with $w.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if ne $role "scheduler" }}
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          # Startup and liveness: /healthz (the process runs; it never waits
+          # for a dependency). Readiness: /readyz (the config role waits for
+          # the api and consent views).
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 4
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", {{ $w.server.preStopSeconds | int | toString | quote }}]
+          {{- end }}
+          {{- include "ow.containerSecurityContext" (list $ $w) | nindent 10 }}
+          {{- with $settings.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.wallet.volumeMounts" $ | nindent 12 }}
+            {{- if $gatewayKeys }}
+            - name: gateway-keys
+              mountPath: {{ include "ow.gateway.keysDir" $ }}
+              readOnly: true
+            - name: service-keys
+              mountPath: {{ include "ow.serviceKeys.dir" $ }}
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- include "ow.wallet.volumes" (list $ $role) | nindent 8 }}
+        {{- if $gatewayKeys }}
+        {{- include "ow.gateway.keysVolume" $ | nindent 8 }}
+        {{- include "ow.serviceKeys.volume" (list $ "igrant-api") | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

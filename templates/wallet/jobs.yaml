@@ -1,0 +1,113 @@
+{{- /*
+Read access Jobs of the wallet (readAccess.jobs):
+"read-access apply" for the readers api and consent. The command connects
+with the database section of the wallet and an admin user; it reads only the
+database file (migrate.yaml, EUDI_WALLET_CONFIG) and the database password.
+The image entrypoint applies the wallet migrations first (the views). The
+name has the release revision, so the Jobs run at each install and upgrade.
+The Jobs are idempotent: they try again while the database starts (a new
+installation).
+*/}}
+{{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- $admin := include "ow.readAccess.admin" (list . "wallet") | fromJson }}
+{{- $jobPod := deepCopy $w }}
+{{- $_ := set $jobPod "podSecurityContext" ($w.jobs.podSecurityContext | default $w.podSecurityContext) }}
+{{- $_ := set $jobPod "containerSecurityContext" ($w.jobs.containerSecurityContext | default $w.containerSecurityContext) }}
+{{- range $reader := list "api" "consent" }}
+{{- $user := include "ow.readAccess.reader" (list $ $reader "wallet") | fromJson }}
+{{- $name := printf "wallet-read-access-%s" $reader }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ow.name" (list $ $name) }}-{{ $.Release.Revision }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $name) | nindent 4 }}
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: {{ $.Values.readAccess.jobs.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list $ $name) | nindent 8 }}
+        {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      # The Job does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.podSpecCommon" (list $ $jobPod) | nindent 6 }}
+      containers:
+        - name: command
+          image: {{ include "ow.image" (list $ $w.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
+          # args, not command: the image entrypoint runs the migrations
+          # first, then execs the program of the image (no uv: Python is
+          # process 1).
+          args:
+            {{- toYaml (list "/app/.venv/bin/read-access" "apply" "--reader" $reader "--user" $user.username "--password-file" "/run/secrets/read-access/password" "--admin-user" $admin.user "--admin-password-file" "/run/secrets/read-access-admin/password") | nindent 12 }}
+          env:
+            - name: EUDI_WALLET_CONFIG
+              value: /etc/eudi-wallet-migrate/config.yaml
+          {{- include "ow.containerSecurityContext" (list $ $jobPod) | nindent 10 }}
+          {{- with $w.jobs.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/eudi-wallet-migrate
+              readOnly: true
+            - name: secrets
+              mountPath: {{ include "ow.wallet.secretDir" $ }}
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+            # The password of the new read-only user (--password-file) and
+            # of the admin user (--admin-password-file): files of their own
+            # Secrets, never arguments or variables.
+            - name: read-access
+              mountPath: /run/secrets/read-access
+              readOnly: true
+            - name: read-access-admin
+              mountPath: /run/secrets/read-access-admin
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ow.name" (list $ "wallet") }}
+            items:
+              - key: migrate.yaml
+                path: config.yaml
+        - name: secrets
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- range $path, $file := include "ow.db.secretFiles" (list $ "wallet" "database-password") | fromJson }}
+              - secret:
+                  name: {{ $file.secret }}
+                  items:
+                    - key: {{ $file.key }}
+                      path: {{ $path }}
+              {{- end }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        - name: read-access
+          secret:
+            secretName: {{ $user.secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $user.key }}
+                path: password
+        - name: read-access-admin
+          secret:
+            secretName: {{ $admin.secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $admin.key }}
+                path: password
+{{- end }}
+{{- end }}

@@ -1,0 +1,21 @@
+# Database: your MySQL 8.0 or MariaDB server. The init Job makes the
+# databases and the users with the admin user; the components verify the
+# server with its CA (required for MySQL with TLS). Make the two Secrets
+# first:
+#   kubectl -n ows create secret generic db-admin --from-file=password=./db-admin-password.txt
+#   kubectl -n ows create secret generic db-ca --from-file=ca.crt=./db-ca.crt
+# The server needs default_time_zone='+00:00' and max_allowed_packet of
+# 64M or more (see docs/database.md).
+database:
+  engine: mysql
+  mode: external
+  external:
+    host: db.example.org
+    port: ""                 # empty: 3306
+    admin:
+      user: root             # CREATE USER and ALL PRIVILEGES WITH GRANT OPTION
+      passwordSecret: db-admin
+      passwordKey: password
+  tls:
+    caSecret: db-ca
+    caKey: ca.crt

@@ -1,0 +1,5 @@
+# Database: the chart runs one MariaDB server (the MySQL protocol) for all
+# components.
+database:
+  engine: mysql
+  mode: bundled

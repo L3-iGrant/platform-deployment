@@ -1,0 +1,22 @@
+{{- /*
+Default deny for the pods of the suite (networkPolicy.enabled): no ingress
+and no egress except what the allow policies of policies.yaml give. Helm
+applies the NetworkPolicies in template file order: this file is the last,
+so the allow policies exist first.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ow.name" (list . "netpol-default-deny") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "networkpolicy") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - {key: netpol.igrant.io/role, operator: Exists}
+  policyTypes: [Ingress, Egress]
+{{- end }}

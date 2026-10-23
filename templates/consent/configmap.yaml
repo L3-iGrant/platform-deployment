@@ -1,0 +1,16 @@
+{{- if .Values.consent.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.name" (list . "consent") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "consent") | nindent 4 }}
+data:
+  config.yaml: |
+    {{- include "ow.consent.config" . | nindent 4 }}
+  # Only the database: the file of the consent Jobs (the migrate and
+  # read-access commands read only DataBase and Log; config.LoadDatabase).
+  migrate.yaml: |
+    {{- include "ow.consent.migrateConfig" . | nindent 4 }}
+{{- end }}

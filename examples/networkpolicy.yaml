@@ -1,0 +1,20 @@
+# NetworkPolicy (only when your cluster enforces it). Give the addresses of
+# the services outside the cluster. kubeApi: only with the privacy
+# dashboards.
+networkPolicy:
+  enabled: true
+  clusterCidrs: [10.0.0.0/8]                # the pod and Service CIDRs of your cluster
+  externalDatabases:                       # only with database.mode external
+    - hosts: [db.example.org]
+      cidrs: [192.0.2.10/32]
+  egress:
+    profiles:
+      smtp:
+        cidrs: [192.0.2.25/32]
+        ports: [587]
+      kms:                                 # only with openbao.mode external
+        cidrs: [192.0.2.30/32]
+        ports: [8200]
+      kubeApi:                             # the Kubernetes API server
+        cidrs: [192.0.2.40/32]
+        ports: [443, 6443]

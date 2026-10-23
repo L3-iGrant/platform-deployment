@@ -1,0 +1,26 @@
+# Exposure with kgateway (Gateway API): one HTTPRoute per public host,
+# attached to your Gateway. The TLS ends at the Gateway (its listener has
+# the certificate). The api route gets a request timeout above the longest
+# server-sent event stream (3900 s).
+exposure:
+  type: gatewayAPI
+  gatewayAPI:
+    parentRefs:
+      - name: platform                     # your Gateway
+        namespace: kgateway-system
+        sectionName: https                 # its HTTPS listener
+    # A request may take up to 60 s, as the gateway of the api allows (the
+    # default of the proxy is 15 s; ingress-nginx waits 60 s). The api route
+    # waits longer (below).
+    timeouts:
+      request: 60s
+api:
+  exposure:
+    timeouts:
+      request: 3900s
+networkPolicy:
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kgateway-system
+    podSelector: {}

@@ -1,0 +1,159 @@
+{{- /*
+Jobs of the api: the one-off operator Jobs (api.jobs) and the read access
+Jobs of the api database (readAccess.jobs). Each Job applies the schema
+migrations first (init container, advisory lock), then runs one igrant-api
+command with the configuration (api.yaml) and the secret files of the api.
+The name has the release revision, so an enabled Job runs at each install
+and upgrade: turn an operator Job off after the run.
+*/}}
+{{- if .Values.api.enabled }}
+{{- $api := .Values.api }}
+{{- $config := printf "--config=%s" (include "ow.api.configPath" .) }}
+{{- $jobs := list }}
+{{- if $api.jobs.registerAdmin.enabled }}
+{{- $register := $api.jobs.registerAdmin }}
+{{- $args := list "onboard" "register-admin" (printf "--email=%s" (required "api.jobs.registerAdmin.email is required" $register.email)) "--password-file=/run/secrets/onboard/password" $config }}
+{{- /* The api requires the name and the phone number of an admin. */}}
+{{- $args = append $args (printf "--name=%s" (required "api.jobs.registerAdmin.name is required" $register.name)) }}
+{{- $args = append $args (printf "--phone=%s" (required "api.jobs.registerAdmin.phone is required (the phone number of the admin, for example +4612345678)" $register.phone)) }}
+{{- $password := dict "secret" (required "api.jobs.registerAdmin.passwordSecret is required" $register.passwordSecret) "key" $register.passwordKey }}
+{{- $jobs = append $jobs (dict "name" "api-register-admin" "args" $args "password" $password) }}
+{{- end }}
+{{- /* The read-only users of the readers of the api database: "read-access apply" connects with the DataBase section of the api
+and an admin user. */}}
+{{- if .Values.readAccess.jobs.enabled }}
+{{- $admin := include "ow.readAccess.admin" (list . "api") | fromJson }}
+{{- range $reader := list "wallet" "consent" }}
+{{- $user := include "ow.readAccess.reader" (list $ $reader "api") | fromJson }}
+{{- $args := list "read-access" "apply" $config (printf "--reader=%s" $reader) (printf "--user=%s" $user.username) "--password-file=/run/secrets/read-access/password" (printf "--admin-user=%s" $admin.user) "--admin-password-file=/run/secrets/read-access-admin/password" }}
+{{- $jobs = append $jobs (dict "name" (printf "api-read-access-%s" $reader) "args" $args "readerPassword" (dict "secret" $user.secret "key" $user.key) "adminPassword" (dict "secret" $admin.secret "key" $admin.key) "backoffLimit" 6) }}
+{{- end }}
+{{- end }}
+{{- if $api.jobs.createOrganisationType.enabled }}
+{{- $args := list "onboard" "create-organisation-type" (printf "--type=%s" (required "api.jobs.createOrganisationType.type is required" $api.jobs.createOrganisationType.type)) $config }}
+{{- $jobs = append $jobs (dict "name" "api-create-organisation-type" "args" $args) }}
+{{- end }}
+{{- /* The organisation of the first admin: the login refuses an admin
+without an organisation. The Job tries again until the admin and the
+organisation type exist (the Jobs of this revision run at the same time). */}}
+{{- if $api.jobs.createOrganisation.enabled }}
+{{- $create := $api.jobs.createOrganisation }}
+{{- $email := $create.adminEmail | default $api.jobs.registerAdmin.email }}
+{{- $type := $create.type | default $api.jobs.createOrganisationType.type }}
+{{- $args := list "onboard" "create-organisation" (printf "--admin-email=%s" (required "api.jobs.createOrganisation.adminEmail (or api.jobs.registerAdmin.email) is required" $email)) (printf "--name=%s" (required "api.jobs.createOrganisation.name is required" $create.name)) (printf "--type=%s" (required "api.jobs.createOrganisation.type (or api.jobs.createOrganisationType.type) is required" $type)) (printf "--location=%s" (required "api.jobs.createOrganisation.location is required" $create.location)) (printf "--policy-url=%s" (required "api.jobs.createOrganisation.policyUrl is required (the URL of the privacy policy of the organisation)" $create.policyUrl)) $config }}
+{{- with $create.description }}
+{{- $args = append $args (printf "--description=%s" .) }}
+{{- end }}
+{{- $jobs = append $jobs (dict "name" "api-create-organisation" "args" $args "backoffLimit" 6) }}
+{{- end }}
+{{- /* The Jobs run as a non-root user with a read-only root file system
+(api.jobs.podSecurityContext, .containerSecurityContext; empty: the values
+of the api pods). They write only to the /tmp memory volume. */}}
+{{- $jobPod := deepCopy $api }}
+{{- $_ := set $jobPod "podSecurityContext" ($api.jobs.podSecurityContext | default $api.podSecurityContext) }}
+{{- $_ := set $jobPod "containerSecurityContext" ($api.jobs.containerSecurityContext | default $api.containerSecurityContext) }}
+{{- range $job := $jobs }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ow.name" (list $ $job.name) }}-{{ $.Release.Revision }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $job.name) | nindent 4 }}
+spec:
+  {{- /* The read access Jobs are idempotent: they try again while the
+  database starts (a new installation). */}}
+  backoffLimit: {{ $job.backoffLimit | default 0 }}
+  ttlSecondsAfterFinished: {{ $api.jobs.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list $ $job.name) | nindent 8 }}
+        {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      # The Job does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.podSpecCommon" (list $ $jobPod) | nindent 6 }}
+      initContainers:
+        - name: migrate
+          image: {{ include "ow.image" (list $ $api.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $api.image) }}
+          command: ["/app/bin/igrant-api", "migrate", {{ $config | quote }}]
+          {{- include "ow.containerSecurityContext" (list $ $jobPod) | nindent 10 }}
+          {{- with $api.jobs.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.api.volumeMounts" $ | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+      containers:
+        - name: command
+          image: {{ include "ow.image" (list $ $api.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $api.image) }}
+          command: ["/app/bin/igrant-api"]
+          args:
+            {{- toYaml $job.args | nindent 12 }}
+          {{- include "ow.containerSecurityContext" (list $ $jobPod) | nindent 10 }}
+          {{- with $api.jobs.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.api.volumeMounts" $ | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+            {{- if $job.adminPassword }}
+            # The password of the new read-only user (--password-file) and
+            # of the admin user (--admin-password-file): files of their own
+            # Secrets, never arguments or variables.
+            - name: read-access
+              mountPath: /run/secrets/read-access
+              readOnly: true
+            - name: read-access-admin
+              mountPath: /run/secrets/read-access-admin
+              readOnly: true
+            {{- end }}
+            {{- if $job.password }}
+            # The password of "onboard register-admin" (--password-file):
+            # a file of its own Secret, never an argument or a variable.
+            - name: onboard-password
+              mountPath: /run/secrets/onboard
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- include "ow.api.volumes" (list $ "api") | nindent 8 }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+        {{- with $job.adminPassword }}
+        - name: read-access
+          secret:
+            secretName: {{ $job.readerPassword.secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ $job.readerPassword.key }}
+                path: password
+        - name: read-access-admin
+          secret:
+            secretName: {{ .secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .key }}
+                path: password
+        {{- end }}
+        {{- with $job.password }}
+        - name: onboard-password
+          secret:
+            secretName: {{ .secret }}
+            defaultMode: 0440
+            items:
+              - key: {{ .key }}
+                path: password
+        {{- end }}
+{{- end }}
+{{- end }}

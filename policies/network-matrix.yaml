@@ -1,0 +1,76 @@
+# Connection matrix of the Organisation Wallet Suite: the one source of the
+# network policy rules of the Helm chart (templates/networkpolicy/). The
+# chart templates read this file. It is deployment data, not a service
+# contract.
+#
+# Labels on every pod of the suite:
+#   netpol.igrant.io/role: <role>              one of "roles"
+#   netpol.igrant.io/egress-<profile>: "true"  one per external profile
+#
+# A new connection needs a change of this file on purpose (least privilege).
+
+# Roles and their named container ports (the numbers are the chart defaults;
+# the gateway port is gateway.listenPort).
+roles:
+  gateway: {ports: {http: 8070}}
+  api: {ports: {http: 80}}
+  webhook: {ports: {http: 80}}            # probes only: no caller
+  consent: {ports: {http: 80, admin: 8081}}   # admin: probes only
+  wallet-service: {ports: {http: 8080}}
+  wallet-config: {ports: {http: 8080}}
+  wallet-scheduler: {ports: {}}
+  dashboard: {ports: {http: 80}}
+  db: {ports: {database: 5432}}          # the port of database.engine: 5432 (postgresql) or 3306 (mysql)
+  nats: {ports: {client: 4222, cluster: 6222, monitor: 8222}}
+  openbao: {ports: {https: 8200, cluster: 8201}}   # the bundled OpenBao (openbao.mode bundled)
+  job: {ports: {}}                        # every Job and hook
+
+# Sources outside the roles: their selectors are platform values
+# (networkPolicy.ingressController, networkPolicy.monitoring).
+externalSources: [ingressController, monitoring]
+
+# Allowed in-cluster connections: <from> may open <to>:<port>. The chart
+# renders one ingress policy per destination role and one egress policy per
+# source role from this list.
+connections:
+  - {to: gateway, port: http, from: [ingressController]}
+  - {to: wallet-service, port: http, from: [ingressController]}
+  - {to: dashboard, port: http, from: [ingressController]}
+  - {to: api, port: http, from: [gateway]}
+  - {to: consent, port: http, from: [gateway]}
+  - {to: wallet-config, port: http, from: [gateway]}
+  # the own databases and the read-only reader connections across the services
+  - {to: db, port: database, from: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, job]}
+  - {to: nats, port: client, from: [api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, job]}
+  - {to: nats, port: cluster, from: [nats]}
+  - {to: nats, port: monitor, from: [monitoring]}
+  # the chart OpenBao (wallet KMS): the wallet roles; the raft peers (join and
+  # request forwarding on https, raft and cluster traffic on cluster)
+  - {to: openbao, port: https, from: [wallet-service, wallet-config, wallet-scheduler, openbao]}
+  - {to: openbao, port: cluster, from: [openbao]}
+
+# Connections that must be denied (the check proves it).
+forbidden:
+  - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-scheduler, db, nats, openbao]}
+  - {from: gateway, to: [webhook, wallet-service, nats, openbao]}
+  - {from: api, to: [consent, wallet-config, wallet-service, webhook, gateway, openbao]}
+  - {from: webhook, to: [api, consent, wallet-config, wallet-service, gateway, openbao]}
+  - {from: consent, to: [api, wallet-config, wallet-service, webhook, gateway, openbao]}
+  - {from: wallet-service, to: [api, consent, wallet-config, webhook, gateway]}
+  - {from: wallet-config, to: [api, consent, wallet-service, webhook, gateway]}
+  - {from: wallet-scheduler, to: [api, consent, wallet-config, wallet-service, webhook, gateway]}
+  - {from: dashboard, to: [gateway, api, webhook, consent, wallet-service, wallet-config, db, nats, openbao]}
+  - {from: job, to: [gateway, api, webhook, consent, wallet-service, wallet-config, dashboard, openbao]}
+  - {from: openbao, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats]}
+
+# External egress profiles and the roles that may use them. The targets
+# (CIDRs or namespace/pod selectors) and the default profiles of each role
+# are values of the deployment (chart: networkPolicy.egress).
+profiles:
+  internet: {roles: [api, webhook, gateway, consent, wallet-service, wallet-config, wallet-scheduler, job]}
+  internet-any-port: {roles: [api, webhook]}
+  metadata: {roles: [api, webhook, wallet-service, wallet-config, wallet-scheduler, job]}
+  kms: {roles: [wallet-service, wallet-config, wallet-scheduler, job]}
+  cloudKms: {roles: [wallet-service, wallet-config, wallet-scheduler]}   # a private endpoint of a cloud KMS (the key store types gcp-kms, aws-kms, azure-key-vault)
+  smtp: {roles: [api]}
+  kubeApi: {roles: [api]}

@@ -1,0 +1,171 @@
+{{- /*
+NetworkPolicies of the suite (networkPolicy.enabled;
+docs/network-policies.md). From policies/network-matrix.yaml: one ingress
+policy per destination role (an allow-list of source roles), one egress
+policy per source role, DNS for every pod, and one policy per egress
+profile (pods with netpol.igrant.io/egress-<profile>). The default deny is
+the last template file (zz-default-deny.yaml), so the allow policies exist
+first.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . }}
+{{- $np := .Values.networkPolicy }}
+{{- $matrix := include "ow.netpol.matrix" . | fromYaml }}
+{{- $present := include "ow.netpol.presentRoles" . | fromJsonArray }}
+{{- $instance := dict "app.kubernetes.io/instance" .Release.Name }}
+{{- /* Ingress: one policy per destination role of the release. */}}
+{{- $destinations := list }}
+{{- range $c := $matrix.connections }}{{- $destinations = append $destinations $c.to }}{{- end }}
+{{- range $role := $destinations | uniq }}
+{{- if has $role $present }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ow.name" (list $root (printf "netpol-ingress-%s" $role)) }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $root "networkpolicy") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml (merge (dict "netpol.igrant.io/role" $role) $instance) | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    {{- range $c := $matrix.connections }}
+    {{- if eq $c.to $role }}
+    {{- $peers := list }}
+    {{- range $from := $c.from }}
+    {{- if has $from $present }}
+    {{- $peers = append $peers (dict "podSelector" (dict "matchLabels" (merge (dict "netpol.igrant.io/role" $from) $instance))) }}
+    {{- else if eq $from "ingressController" }}
+    {{- $peers = append $peers (dict "namespaceSelector" ($np.ingressController.namespaceSelector | default dict) "podSelector" ($np.ingressController.podSelector | default dict)) }}
+    {{- else if and (eq $from "monitoring") $np.monitoring.enabled }}
+    {{- $peers = append $peers (dict "namespaceSelector" ($np.monitoring.namespaceSelector | default dict) "podSelector" ($np.monitoring.podSelector | default dict)) }}
+    {{- end }}
+    {{- end }}
+    {{- if $peers }}
+    - from:
+        {{- toYaml $peers | nindent 8 }}
+      ports:
+        - port: {{ include "ow.netpol.port" (list $root $c.to $c.port) }}
+          protocol: TCP
+    {{- end }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- /* Egress: one policy per source role of the release. */}}
+{{- range $role := $present }}
+{{- $rules := list }}
+{{- range $c := $matrix.connections }}
+{{- if has $role $c.from }}
+{{- if has $c.to $present }}
+{{- $port := include "ow.netpol.port" (list $root $c.to $c.port) }}
+{{- $port = ternary ($port | int) $port (regexMatch "^[0-9]+$" $port) }}
+{{- $rules = append $rules (dict "to" (list (dict "podSelector" (dict "matchLabels" (merge (dict "netpol.igrant.io/role" $c.to) $instance)))) "ports" (list (dict "port" $port "protocol" "TCP"))) }}
+{{- end }}
+{{- /* A database or NATS outside the chart. */}}
+{{- if eq $c.to "db" }}
+{{- range $db := $np.externalDatabases }}
+{{- $peers := list }}{{- range $cidr := $db.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
+{{- $ports := list }}{{- range $p := ($db.ports | default (list (include "ow.db.defaultPort" $root | int))) }}{{- $ports = append $ports (dict "port" $p "protocol" "TCP") }}{{- end }}
+{{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
+{{- end }}
+{{- end }}
+{{- if and (eq $c.to "nats") (eq $c.port "client") (not $root.Values.nats.enabled) }}
+{{- if or $np.nats.namespaceSelector $np.nats.podSelector }}
+{{- $rules = append $rules (dict "to" (list (dict "namespaceSelector" ($np.nats.namespaceSelector | default dict) "podSelector" ($np.nats.podSelector | default dict))) "ports" (list (dict "port" 4222 "protocol" "TCP"))) }}
+{{- end }}
+{{- range $n := $np.externalNats }}
+{{- $peers := list }}{{- range $cidr := $n.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
+{{- $ports := list }}{{- range $p := ($n.ports | default (list 4222)) }}{{- $ports = append $ports (dict "port" $p "protocol" "TCP") }}{{- end }}
+{{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if $rules }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ow.name" (list $root (printf "netpol-egress-%s" $role)) }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $root "networkpolicy") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml (merge (dict "netpol.igrant.io/role" $role) $instance) | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    {{- toYaml $rules | nindent 4 }}
+{{- end }}
+{{- end }}
+---
+# DNS for every pod of the suite.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ow.name" (list . "netpol-dns") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "networkpolicy") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml $instance | nindent 6 }}
+    matchExpressions:
+      - {key: netpol.igrant.io/role, operator: Exists}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- include "ow.netpol.selectorPeer" $np.dns | nindent 8 }}
+      ports:
+        {{- toYaml $np.dns.ports | nindent 8 }}
+{{- /* One policy per egress profile with a target. A profile that is not
+in the matrix selects no pod of the release, so it gets no policy here. */}}
+{{- range $name, $profile := $np.egress.profiles }}
+{{- if hasKey $matrix.profiles $name }}
+{{- $peers := list }}
+{{- range $cidr := ($profile.cidrs | default list) }}
+{{- $except := list }}
+{{- if eq $cidr "0.0.0.0/0" }}{{- $except = concat ($profile.except | default list) ($np.clusterCidrs | default list) | uniq }}{{- end }}
+{{- if $except }}
+{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr "except" $except)) }}
+{{- else }}
+{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}
+{{- end }}
+{{- end }}
+{{- if or $profile.namespaceSelector $profile.podSelector }}
+{{- $peers = append $peers (dict "namespaceSelector" ($profile.namespaceSelector | default dict) "podSelector" ($profile.podSelector | default dict)) }}
+{{- end }}
+{{- if $peers }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ow.name" (list $root (printf "netpol-egress-profile-%s" ($name | lower))) }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $root "networkpolicy") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- toYaml (merge (dict (printf "netpol.igrant.io/egress-%s" $name) "true") $instance) | nindent 6 }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        {{- toYaml $peers | nindent 8 }}
+      {{- with $profile.ports }}
+      ports:
+        {{- range $port := . }}
+        - port: {{ $port }}
+          protocol: TCP
+        {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

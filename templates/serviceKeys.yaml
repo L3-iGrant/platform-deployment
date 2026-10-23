@@ -1,0 +1,29 @@
+{{- /*
+Public JWKS of the signed NATS envelopes of each service (no secret): the
+receivers verify the senders with them. The chart makes the ConfigMap from
+serviceKeys.publicJwks when serviceKeys.existingConfigMap is empty. The
+private JWKS of each service is its own Secret (the operator makes it).
+*/}}
+{{- $keys := .Values.serviceKeys }}
+{{- if not $keys.existingConfigMap }}
+{{- $data := dict }}
+{{- range $issuer, $jwks := $keys.publicJwks }}
+{{- if $jwks }}
+{{- $_ := set $data (printf "%s.json" $issuer) $jwks }}
+{{- end }}
+{{- end }}
+{{- if $data }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.serviceKeys.configMap" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "service-keys") | nindent 4 }}
+data:
+  {{- range $file, $jwks := $data }}
+  {{ $file }}: |
+    {{- $jwks | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

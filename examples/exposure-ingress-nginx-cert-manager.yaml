@@ -1,0 +1,28 @@
+# Exposure with ingress-nginx, and the TLS certificates from your
+# cert-manager (an optional tool: the chart has no cert-manager object).
+# cert-manager reads the annotation and makes the TLS Secret of each host.
+exposure:
+  type: ingress
+  ingress:
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: 16m
+      cert-manager.io/cluster-issuer: letsencrypt-prod   # your ClusterIssuer
+api:
+  exposure:
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3900"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3900"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    tls:
+      secretName: api-tls
+organisationWallet:
+  exposure:
+    tls:
+      secretName: wallet-tls
+enterpriseDashboard:
+  exposure:
+    tls:
+      secretName: dashboard-tls
+clientAddress:
+  header: X-Real-IP

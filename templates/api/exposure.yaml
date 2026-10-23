@@ -1,0 +1,4 @@
+{{- if .Values.api.enabled }}
+{{- /* The api host: the auth gateway is in front of all its requests. */}}
+{{- include "ow.exposure" (dict "root" . "key" "api" "component" "api" "service" (include "ow.name" (list . "gateway")) "port" 80) }}
+{{- end }}

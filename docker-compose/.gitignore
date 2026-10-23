@@ -1,0 +1,4 @@
+# Your settings (a copy of .env.example) and the secrets of make secrets:
+# never commit them.
+.env
+secrets/

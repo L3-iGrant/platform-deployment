@@ -1,0 +1,152 @@
+{{- /*
+The bundled MariaDB server (database.engine mysql, database.mode bundled):
+one server for all components (MariaDB 13.0). The chart
+sets the server options that the components need: utf8mb4 with
+utf8mb4_bin (keys and tokens are case-sensitive), the time zone +00:00
+(the api and consent do not set the session time zone), max_allowed_packet
+(images in LONGBLOB) and max_connections (the fixed MySQL pools of the api,
+the gateway and consent). With TLS the server accepts only TLS connections
+over TCP (require_secure_transport); the probes use the socket.
+*/}}
+{{- if and (include "ow.db.bundled" .) (include "ow.db.isMysql" .) }}
+{{- include "ow.db.check" . }}
+{{- $db := .Values.database }}
+{{- $my := $db.mysql }}
+{{- $tls := include "ow.db.tls" . }}
+{{- $name := include "ow.db.serverName" . }}
+{{- $config := include "ow.db.mysqlConfig" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "mysql") | nindent 4 }}
+data:
+  igrant.cnf: |
+    {{- $config | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "mysql") | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "mysql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "mysql") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "db" list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" $config) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $db) | nindent 6 }}
+      # The server does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: mysql
+          image: {{ include "ow.image" (list . $my.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $my.image) }}
+          env:
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ow.db.secretName" . }}
+                  key: {{ include "ow.db.adminPasswordKey" . }}
+            # A new image version upgrades the system tables at the start
+            # (mariadb-upgrade), and makes the healthcheck user of the probes.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
+            # The components use the offset +00:00, not the named zones.
+            - name: MARIADB_INITDB_SKIP_TZINFO
+              value: "1"
+          ports:
+            - name: mysql
+              containerPort: 3306
+          {{- include "ow.containerSecurityContext" (list . $db) | nindent 10 }}
+          {{- with $db.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # healthcheck.sh of the image: over the socket, so also with
+          # require_secure_transport. The first start makes the system tables.
+          startupProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect", "--innodb_initialized"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["healthcheck.sh", "--connect"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            # One file next to the files of the image (subPath).
+            - name: config
+              mountPath: /etc/mysql/conf.d/90-igrant.cnf
+              subPath: igrant.cnf
+              readOnly: true
+            {{- if $tls }}
+            - name: tls
+              mountPath: /etc/mysql/tls
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $name }}
+        {{- if $tls }}
+        - name: tls
+          secret:
+            secretName: {{ include "ow.db.tlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "ow.storageClass" (list . $db.persistence.storageClass) | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $db.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "mysql") | nindent 4 }}
+spec:
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql
+  selector:
+    {{- include "ow.selectorLabels" (list . "mysql") | nindent 4 }}
+{{- end }}

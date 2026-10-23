@@ -1,0 +1,17 @@
+# Server options of the MariaDB server of DB_ENGINE=mysql: the options of
+# the bundled MariaDB of the Helm chart (templates/database/_database.tpl,
+# ow.db.mysqlConfig, and database.mysql.parameters).
+[mariadbd]
+# The components keep keys and tokens in utf8mb4 with a binary collation.
+character-set-server = utf8mb4
+collation-server = utf8mb4_bin
+# The api and consent do not set the session time zone: the column defaults
+# (CURRENT_TIMESTAMP) must be UTC.
+default-time-zone = +00:00
+skip-name-resolve
+# The api, the gateway and consent use a fixed MySQL pool (100 open
+# connections) in each process.
+max_connections = 1000
+# The api keeps images in LONGBLOB columns.
+max_allowed_packet = 64M
+innodb_buffer_pool_size = 256M

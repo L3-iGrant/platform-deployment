@@ -1,0 +1,31 @@
+# Your installation: the public host names and the file store of the wallet.
+# Copy this file and change the values. Use it with one file of each group
+# (database, OpenBao, exposure) and the keys file of scripts/make-keys.sh:
+#   helm install ows <chart> -n ows -f values-keys.yaml -f site.yaml \
+#     -f postgresql-bundled.yaml -f openbao-shamir.yaml -f exposure-ingress-nginx.yaml
+global:
+  # The release tag of the iGrant.io images (from iGrant.io). "2026.10.x" is
+  # a placeholder: no image has this tag.
+  imageTag: "2026.10.x"
+api:
+  # The public host of the api (the auth gateway receives every request).
+  host: api.example.org
+organisationWallet:
+  # The public host of the organisation wallet.
+  host: wallet.example.org
+  # The Google Cloud Storage bucket of the verifier files and the signed
+  # PDFs (the roles of its service account: docs/prerequisites.md). Empty
+  # credentials: the Google default credentials of the pod. Else a Secret
+  # with the key file of the service account, made before the install:
+  #   kubectl -n ows create secret generic ows-wallet-files \
+  #     --from-file=service-account.json=wallet-files-key.json
+  # and existingSecret: ows-wallet-files.
+  storage:
+    gcsBucket: example-wallet-files
+    gcsProject: example-project
+    credentials:
+      existingSecret: ""
+enterpriseDashboard:
+  # The public host of the enterprise dashboard. It must have the same
+  # registrable domain as the api host (the login cookie).
+  host: dashboard.example.org

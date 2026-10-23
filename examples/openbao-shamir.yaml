@@ -1,0 +1,6 @@
+# The bundled OpenBao with the Shamir seal (the default): after each start
+# of a pod, an operator unseals it with 3 of the 5 unseal keys
+# (docs/openbao.md).
+openbao:
+  mode: bundled
+  seal: shamir

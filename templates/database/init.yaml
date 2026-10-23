@@ -1,0 +1,206 @@
+{{- /*
+The init Job of the databases: one database and one owner user for each
+enabled component (the user name is the database name), with the password
+of the database Secret. It runs after each install and upgrade (its name
+has the release revision), on the bundled server or on an external server
+with database.external.admin. The script is idempotent: it makes a user or
+a database only when it does not exist, and it sets the password of each
+user from the Secret each time.
+postgresql: CREATE ROLE ... LOGIN, CREATE DATABASE ... OWNER (UTF8, C.UTF-8),
+REVOKE ALL ON DATABASE ... FROM PUBLIC.
+mysql: CREATE DATABASE ... utf8mb4 utf8mb4_bin, CREATE USER 'u'@'%',
+GRANT ALL PRIVILEGES ON `db`.* (the migrations make tables, views and
+foreign keys).
+*/}}
+{{- $admin := include "ow.db.admin" . | fromJson }}
+{{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
+{{- if and $admin.user $keys }}
+{{- include "ow.db.check" . }}
+{{- $db := .Values.database }}
+{{- $mysql := include "ow.db.isMysql" . }}
+{{- $image := ternary $db.mysql.image $db.postgresql.image (eq $mysql "true") }}
+{{- $ca := include "ow.db.ca" . | fromJson }}
+{{- $users := list }}
+{{- range $key := $keys }}
+{{- $users = append $users (index $db.databases $key).name }}
+{{- end }}
+{{- $name := include "ow.name" (list . "db-init") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "db-init") | nindent 4 }}
+data:
+  create-databases.sh: |
+    #!/bin/bash
+    # The passwords are files (/etc/db-users/<user>): they never go on a
+    # command line.
+    set -euo pipefail
+    {{- if $mysql }}
+    client() {
+      mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_ADMIN_USER" \
+        {{- if $ca.secret }}
+        --ssl --ssl-ca=/etc/db-ca/ca.crt --ssl-verify-server-cert \
+        {{- else }}
+        --skip-ssl \
+        {{- end }}
+        --batch "$@"
+    }
+    ready() { client -e 'SELECT 1' > /dev/null 2>&1; }
+    {{- else }}
+    ready() { pg_isready -q; }
+    {{- end }}
+    for attempt in $(seq 1 60); do
+      if ready; then
+        break
+      fi
+      if [ "$attempt" -eq 60 ]; then
+        echo "The database server is not ready after 300 seconds" >&2
+        exit 1
+      fi
+      sleep 5
+    done
+    for user in ${DATABASES}; do
+      echo "Configuring the user and the database ${user}"
+      {{- if $mysql }}
+      # A SQL string literal of the password (backslash and quote escaped).
+      pw="$(cat "/etc/db-users/${user}")"
+      while [[ $pw == *$'\r' || $pw == *$'\n' ]]; do pw="${pw%?}"; done
+      pw="${pw//\\/\\\\}"
+      pw="${pw//\'/\\\'}"
+      client <<SQL
+    CREATE DATABASE IF NOT EXISTS \`${user}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+    CREATE USER IF NOT EXISTS '${user}'@'%' IDENTIFIED BY '${pw}';
+    ALTER USER '${user}'@'%' IDENTIFIED BY '${pw}';
+    GRANT ALL PRIVILEGES ON \`${user}\`.* TO '${user}'@'%';
+    SQL
+      unset pw
+      {{- else }}
+      # psql reads the password from the file, so the password is not on the
+      # command line.
+      psql -v ON_ERROR_STOP=1 -d postgres -v role="${user}" <<'SQL'
+    \set pw `cat /etc/db-users/:role`
+    SELECT format('CREATE ROLE %I LOGIN', :'role')
+      WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
+    ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+    SELECT format('CREATE DATABASE %I OWNER %I TEMPLATE template0 ENCODING %L LC_COLLATE %L LC_CTYPE %L',
+                  :'role', :'role', 'UTF8', 'C', 'C.UTF-8')
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'role') \gexec
+    REVOKE ALL ON DATABASE :"role" FROM PUBLIC;
+    SQL
+      {{- end }}
+    done
+    echo "All databases are configured"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}-{{ .Release.Revision }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "db-init") | nindent 4 }}
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "db-init") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "job" list) | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      # The Job does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.podSpecCommon" (list . $db) | nindent 6 }}
+      containers:
+        - name: create-databases
+          image: {{ include "ow.image" (list . $image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $image) }}
+          command: ["bash", "/scripts/create-databases.sh"]
+          env:
+            {{- if $mysql }}
+            - name: DB_HOST
+              value: {{ include "ow.db.host" . | quote }}
+            - name: DB_PORT
+              value: {{ include "ow.db.port" . | quote }}
+            - name: DB_ADMIN_USER
+              value: {{ $admin.user | quote }}
+            - name: MYSQL_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $admin.secret }}
+                  key: {{ $admin.key }}
+            {{- else }}
+            - name: PGHOST
+              value: {{ include "ow.db.host" . | quote }}
+            - name: PGPORT
+              value: {{ include "ow.db.port" . | quote }}
+            - name: PGUSER
+              value: {{ $admin.user | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $admin.secret }}
+                  key: {{ $admin.key }}
+            - name: PGSSLMODE
+              value: {{ include "ow.db.sslMode" . | quote }}
+            {{- if $ca.secret }}
+            - name: PGSSLROOTCERT
+              value: /etc/db-ca/ca.crt
+            {{- end }}
+            {{- end }}
+            # The user names; each user has a database with the same name.
+            - name: DATABASES
+              value: {{ $users | join " " | quote }}
+            - name: HOME
+              value: /tmp
+          {{- include "ow.containerSecurityContext" (list . $db) | nindent 10 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: users
+              mountPath: /etc/db-users
+              readOnly: true
+            {{- if $ca.secret }}
+            - name: ca
+              mountPath: /etc/db-ca
+              readOnly: true
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ $name }}
+        - name: users
+          secret:
+            secretName: {{ include "ow.db.secretName" . }}
+            defaultMode: 0440
+            items:
+              {{- range $user := $users }}
+              - key: {{ $user }}
+                path: {{ $user }}
+              {{- end }}
+        {{- if $ca.secret }}
+        - name: ca
+          secret:
+            secretName: {{ $ca.secret }}
+            defaultMode: 0444
+            items:
+              - key: {{ $ca.key }}
+                path: ca.crt
+        {{- end }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+{{- end }}

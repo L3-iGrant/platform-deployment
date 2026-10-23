@@ -1,0 +1,54 @@
+Organisation Wallet Suite {{ .Chart.Version }} is installed in the namespace {{ .Release.Namespace }}.
+{{- $ns := .Release.Namespace }}
+{{- if eq (.Values.global.imageTag | toString) "2026.10.x" }}
+
+WARNING: global.imageTag is the placeholder "2026.10.x": no image has this tag, so the pods cannot pull their images.
+  Set global.imageTag to the release tag of your version (from iGrant.io) and run "helm upgrade".
+{{- end }}
+
+Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names point to your ingress controller or Gateway):
+{{- if .Values.api.enabled }}
+  API:                 {{ include "ow.publicUrlOf" (list . "api") }}
+{{- end }}
+{{- if .Values.organisationWallet.enabled }}
+  Organisation wallet: {{ include "ow.publicUrlOf" (list . "organisationWallet") }}
+{{- end }}
+{{- if .Values.enterpriseDashboard.enabled }}
+  Dashboard:           {{ include "ow.publicUrlOf" (list . "enterpriseDashboard") }}
+{{- end }}
+
+Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
+
+Next steps (docs/install.md has each step with its check):
+{{- $step := 1 }}
+{{- if include "ow.openbao.bundled" . }}
+{{- $seal := include "ow.openbao.seal" . }}
+{{- $pod := printf "%s-0" (include "ow.openbao.name" .) }}
+
+{{ $step }}. Initialise OpenBao (seal {{ $seal }}) ONE time, and keep the keys and the root token outside the cluster:
+     kubectl -n {{ $ns }} exec -it {{ $pod }} -- bao operator init -key-shares=5 -key-threshold=3
+   Then unseal EACH pod after EACH start (3 different unseal keys per pod):
+     kubectl -n {{ $ns }} exec -it {{ include "ow.openbao.name" . }}-<n> -- bao operator unseal
+   Then run the bootstrap of the wallet KMS (it asks for the root token):
+     kubectl -n {{ $ns }} exec -it {{ $pod }} -- /openbao/scripts/bootstrap.sh
+   Check: kubectl -n {{ $ns }} exec {{ $pod }} -- bao status   (you see "Initialized true" and "Sealed false")
+{{- $step = add1 $step }}
+{{- end }}
+
+{{ $step }}. Wait until all pods are ready and all Jobs are complete:
+     kubectl -n {{ $ns }} get pods,jobs
+{{- if (include "ow.db.admin" . | fromJson).user }}
+   The init Job {{ include "ow.name" (list . "db-init") }}-{{ .Release.Revision }} makes the databases and the users.
+{{- end }}
+{{- if not .Values.readAccess.jobs.enabled }}
+   readAccess.jobs.enabled is false: a DBA must make the read-only users (docs/read-access.md); until then the readers are not ready.
+{{- end }}
+{{- $step = add1 $step }}
+{{- if .Values.api.enabled }}
+
+{{ $step }}. Make the first admin and its organisation, at the first installation only (docs/install.md, step 7): set api.jobs.createOrganisationType,
+   api.jobs.registerAdmin and api.jobs.createOrganisation, run "helm upgrade", then turn the three Jobs off again.
+   Then log in to the dashboard.
+{{- $step = add1 $step }}
+{{- end }}
+

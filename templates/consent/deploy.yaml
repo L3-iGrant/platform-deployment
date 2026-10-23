@@ -1,0 +1,84 @@
+{{- if .Values.consent.enabled }}
+{{- $c := .Values.consent }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list . "consent") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "consent") | nindent 4 }}
+spec:
+  replicas: {{ $c.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "consent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "consent") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "consent" list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (include "ow.consent.config" .)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list .Values.gateway.publicKeys .Values.serviceKeys .Values.consent.serviceEnvelope .Values.nats.auth.users.consent .Values.nats.tlsCa .Values.readAccess.consent)) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (list (include "ow.db.secretFiles" (list . "consent" "database-password")) .Values.database.databases.consent)) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $c) | nindent 6 }}
+      # Consent does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.checkStopBudget" (list "consent.server" $c.server 5 20) }}
+      # The stop budget: drain + graceful shutdown + margin; no
+      # preStop, the process drains itself.
+      terminationGracePeriodSeconds: {{ $c.server.terminationGracePeriodSeconds | int }}
+      containers:
+        - name: consent
+          image: {{ include "ow.image" (list . $c.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $c.image) }}
+          args: ["serve", "--config", "/etc/consent/config.yaml"]
+          env:
+            # Go runtime limit (not a service setting).
+            - name: GOMEMLIMIT
+              value: 200MiB
+            {{- with $c.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+            - name: admin
+              containerPort: 8081
+          {{- include "ow.containerSecurityContext" (list . $c) | nindent 10 }}
+          {{- with $c.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          volumeMounts:
+            {{- include "ow.consent.volumeMounts" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        {{- include "ow.consent.volumes" . | nindent 8 }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}

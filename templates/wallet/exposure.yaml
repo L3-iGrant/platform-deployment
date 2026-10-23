@@ -1,0 +1,3 @@
+{{- if .Values.organisationWallet.enabled }}
+{{- include "ow.exposure" (dict "root" . "key" "organisationWallet" "component" "wallet-service" "service" (include "ow.name" (list . "wallet-service")) "port" 80) }}
+{{- end }}

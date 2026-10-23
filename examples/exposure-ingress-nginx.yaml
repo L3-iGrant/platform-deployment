@@ -1,0 +1,36 @@
+# Exposure with ingress-nginx: one Ingress per public host. The api host
+# carries server-sent event streams of up to 3900 s (no buffering) and
+# bodies of up to 10 MiB. The TLS Secrets (type kubernetes.io/tls) are
+# yours, in the release namespace.
+exposure:
+  type: ingress
+  ingress:
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-body-size: 16m
+api:
+  exposure:
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3900"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3900"
+      nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    tls:
+      secretName: api-tls
+organisationWallet:
+  exposure:
+    tls:
+      secretName: wallet-tls
+enterpriseDashboard:
+  exposure:
+    tls:
+      secretName: dashboard-tls
+# ingress-nginx sets X-Real-IP to the address of its TCP peer (the client),
+# and it replaces a value that the client sends.
+clientAddress:
+  header: X-Real-IP
+networkPolicy:
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    podSelector: {}

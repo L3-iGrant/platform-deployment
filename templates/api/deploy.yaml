@@ -1,52 +1,111 @@
 {{- if .Values.api.enabled }}
+{{- $api := .Values.api }}
+{{- range $role := list "api" "webhook" }}
+{{- $component := ternary "api" "webhook" (eq $role "api") }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  name: {{ include "ow.name" (list $ $component) }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-  name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-  namespace: {{ .Values.namespace }}
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ ternary $api.replicas $api.webhook.replicas (eq $role "api") }}
   selector:
     matchLabels:
-      app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+      {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+        {{- include "ow.labels" (list $ $component) | nindent 8 }}
+        {{- /* The api core calls the Kubernetes API for the privacy dashboards. */}}
+        {{- $privacy := and (eq $role "api") $.Values.privacyDashboard.enabled }}
+        {{- include "ow.netpol.labels" (list $ $component (ternary (list "kubeApi") list $privacy)) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (include "ow.api.config" (dict "root" $ "role" $role))) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (list (include "ow.api.secretFiles" $) (pick $api "apiSecretKey" "smtp" "twilio") $.Values.database.databases)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $api.serviceEnvelope (index $.Values.nats.auth.users (include "ow.api.natsUser" $role)) $.Values.nats.tlsCa $.Values.readAccess.api)) | nindent 8 }}
     spec:
-      {{- if .Values.api.imagePullSecret }}
-      imagePullSecrets:
-        - name: {{ .Values.api.imagePullSecret }}
+      {{- include "ow.podSpecCommon" (list $ $api) | nindent 6 }}
+      {{- if and (eq $role "api") $.Values.privacyDashboard.enabled }}
+      # The ServiceAccount with the Role of the privacy dashboards.
+      serviceAccountName: {{ include "ow.name" (list $ "api") }}
+      automountServiceAccountToken: true
+      {{- if and $.Values.networkPolicy.enabled (not (or $.Values.networkPolicy.egress.profiles.kubeApi.cidrs $.Values.networkPolicy.egress.profiles.kubeApi.namespaceSelector $.Values.networkPolicy.egress.profiles.kubeApi.podSelector)) }}
+      {{- fail "networkPolicy.egress.profiles.kubeApi needs the address of the Kubernetes API server when networkPolicy.enabled and privacyDashboard.enabled: the api deploys the privacy dashboards with it" }}
+      {{- end }}
+      {{- else }}
+      # The process does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- end }}
+      {{- include "ow.checkStopBudget" (list "api.server" $api.server 5 20) }}
+      # The stop budget: drain + graceful shutdown + margin; no
+      # preStop, the process drains itself.
+      terminationGracePeriodSeconds: {{ $api.server.terminationGracePeriodSeconds | int }}
+      {{- if eq $role "api" }}
+      initContainers:
+        # Applies the database schema migrations before the api starts. The
+        # migration uses an advisory lock, so parallel runs are safe.
+        - name: migrate
+          image: {{ include "ow.image" (list $ $api.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $api.image) }}
+          command: ["/app/bin/igrant-api", "migrate", "--config", {{ include "ow.api.configPath" $ | quote }}]
+          {{- include "ow.containerSecurityContext" (list $ $api) | nindent 10 }}
+          {{- with $api.migrate.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.api.volumeMounts" $ | nindent 12 }}
       {{- end }}
       containers:
-      - image: {{ .Values.api.image }}
-        imagePullPolicy: IfNotPresent
-        name: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-        env:
-        - name: WEBHOOK_URL
-          value: "http://{{ .Values.namespace }}-{{ .Values.prefix }}-webhook-handler-svc.{{ .Values.namespace }}.svc.cluster.local/v2/"
-        {{- if .Values.api.configuration.env }}
-          {{- toYaml .Values.api.configuration.env | nindent 8 }}
-        {{- end }}
-        ports:
-        - containerPort: 80
-          protocol: TCP
-        volumeMounts:
-        - mountPath: /opt/l3-igrant/api/config
-          name: config-volume
-        resources:
-          {{- if .Values.resources }}
-            {{- toYaml .Values.resources | nindent 12 }}
+        - name: {{ $component }}
+          image: {{ include "ow.image" (list $ $api.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $api.image) }}
+          command: ["/app/bin/igrant-api", {{ ternary "start-api" "start-webhook-api" (eq $role "api") | quote }}, "--config", {{ include "ow.api.configPath" $ | quote }}]
+          {{- with $api.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
           {{- end }}
-      securityContext:
-        {{- if .Values.securityContext }}
-          {{- toYaml .Values.securityContext | nindent 10 }}
-        {{- end }}
+          ports:
+            - name: http
+              containerPort: 80
+          {{- if eq $role "api" }}
+          {{- with $api.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $api.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $api.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- else }}
+          {{- with $api.webhook.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $api.webhook.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $api.webhook.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- include "ow.containerSecurityContext" (list $ $api) | nindent 10 }}
+          {{- with (ternary $api.resources $api.webhook.resources (eq $role "api")) }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.api.volumeMounts" $ | nindent 12 }}
       volumes:
-      - configMap:
-          defaultMode: 420
-          name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-config
-        name: config-volume
+        {{- include "ow.api.volumes" (list $ $role) | nindent 8 }}
+{{- end }}
 {{- end }}

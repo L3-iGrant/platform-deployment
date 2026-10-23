@@ -2,20 +2,38 @@
 apiVersion: v1
 kind: Service
 metadata:
+  name: {{ include "ow.name" (list . "nats") }}
+  namespace: {{ .Release.Namespace }}
   labels:
-    run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
-  name: {{ .Values.namespace }}-{{ .Values.prefix }}-nats-svc
-  namespace: {{ .Values.namespace }}
+    {{- include "ow.labels" (list . "nats") | nindent 4 }}
 spec:
   ports:
-    - port: 4222
-      protocol: TCP
-      targetPort: 4222
-      name: client
-    - port: 8222
-      protocol: TCP
-      targetPort: 8222
-      name: monitoring
+    - name: client
+      port: 4222
+      targetPort: client
   selector:
-    run: {{ .Values.namespace }}-{{ .Values.prefix }}-nats
+    {{- include "ow.selectorLabels" (list . "nats") | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.name" (list . "nats") }}-headless
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "nats") | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+    - name: cluster
+      port: 6222
+      targetPort: cluster
+    - name: monitor
+      port: 8222
+      targetPort: monitor
+  selector:
+    {{- include "ow.selectorLabels" (list . "nats") | nindent 4 }}
 {{- end }}

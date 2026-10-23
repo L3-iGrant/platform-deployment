@@ -1,16 +1,19 @@
 {{- if .Values.api.enabled }}
+{{- range $component := list "api" "webhook" }}
+---
 apiVersion: v1
 kind: Service
 metadata:
+  name: {{ include "ow.name" (list $ $component) }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
-  name: {{ .Values.namespace }}-{{ .Values.prefix }}-api-svc
-  namespace: {{ .Values.namespace }}
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: http
   selector:
-    app: {{ .Values.namespace }}-{{ .Values.prefix }}-api
+    {{- include "ow.selectorLabels" (list $ $component) | nindent 4 }}
+{{- end }}
 {{- end }}

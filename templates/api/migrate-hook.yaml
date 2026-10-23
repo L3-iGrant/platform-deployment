@@ -1,0 +1,20 @@
+{{- /*
+Migration hook of the api (ow.migrateHook, helm pre-upgrade): "igrant-api
+migrate" (the api database with the views of the read-only users, and the
+database of the OIDC provider) before any Deployment of the release changes.
+Its configuration has only the databases (ow.api.migrateConfig).
+*/}}
+{{- if .Values.api.enabled }}
+{{- include "ow.migrateHook" (dict
+  "root" .
+  "component" "api-migrate"
+  "values" .Values.api
+  "jobs" .Values.api.jobs
+  "configPath" "/etc/igrant-api-migrate/config.yaml"
+  "config" (include "ow.api.migrateConfig" .)
+  "steps" (list (dict "name" "migrate" "command" (list "/app/bin/igrant-api" "migrate" "--config=/etc/igrant-api-migrate/config.yaml")))
+  "secrets" (include "ow.migrateHook.secrets" (merge
+    (include "ow.db.secretFiles" (list . "api" "db-password") | fromJson)
+    (include "ow.db.secretFiles" (list . "oidc" "oidc-db-password") | fromJson)) | fromJsonArray)
+  "secretDir" (include "ow.api.secretDir" .)) }}
+{{- end }}

@@ -1,0 +1,40 @@
+{{- $keys := .Values.gateway.publicKeys }}
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.name" (list . "gateway") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "gateway") | nindent 4 }}
+data:
+  # The gateway mounts it as /etc/igrant-gateway/config.yaml. No secret is
+  # in it.
+  config.yaml: |
+    {{- include "ow.gateway.config" . | nindent 4 }}
+  {{- /* The public keys of the api tokens (only the gateway reads them),
+  unless gateway.publicKeys.existingTokenVerificationConfigMap is set. */}}
+  {{- if and (not $keys.existingTokenVerificationConfigMap) $keys.tokenVerificationJwks }}
+  {{ $keys.tokenVerificationJwksKey }}: |
+    {{- $keys.tokenVerificationJwks | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+{{- /*
+The shared ConfigMap <fullname>-igrant-gateway-jwks (no secret): the public
+keys of the gateway, which the api core, consent and the wallet config role
+mount. The chart makes it from the values when
+gateway.publicKeys.existingConfigMap is empty.
+*/}}
+{{- if and (not $keys.existingConfigMap) $keys.gatewayJwks }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.gateway.publicKeysConfigMap" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "gateway") | nindent 4 }}
+data:
+  {{ $keys.gatewayJwksKey }}: |
+    {{- $keys.gatewayJwks | nindent 4 }}
+{{- end }}

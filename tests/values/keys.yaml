@@ -1,0 +1,34 @@
+# Test keys (no secret: key ids, empty public JWKS, test public nkeys and
+# Secret names). In an installation, scripts/make-keys.sh writes this file.
+api:
+  keyStorage:
+    tokenSigning:
+      activeKid: test-token-kid
+  serviceEnvelope:
+    activeKid: test-api-envelope-kid
+organisationWallet:
+  serviceEnvelope:
+    activeKid: test-wallet-envelope-kid
+consent:
+  serviceEnvelope:
+    activeKid: test-consent-envelope-kid
+gateway:
+  internalToken:
+    activeKid: test-gateway-kid
+  publicKeys:
+    gatewayJwks: '{"keys":[]}'
+    tokenVerificationJwks: '{"keys":[]}'
+serviceKeys:
+  publicJwks:
+    igrant-api: '{"keys":[]}'
+    igrant-consent-management: '{"keys":[]}'
+    eudi-wallet: '{"keys":[]}'
+nats:
+  auth:
+    users:
+      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
+      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
+      consent: {nkey: UTESTCONSENT, seedSecret: t-nats-consent}
+      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
+      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
+      walletScheduler: {nkey: UTESTWALLETSCHEDULER, seedSecret: t-nats-wallet-scheduler}

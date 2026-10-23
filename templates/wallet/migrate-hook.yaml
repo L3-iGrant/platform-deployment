@@ -1,0 +1,21 @@
+{{- /*
+Migration hook of the organisation wallet (ow.migrateHook, helm
+pre-upgrade): "migrate-database" (the wallet migrations with the views of
+the read-only users) before any Deployment of the release changes. Its
+configuration has only the database (ow.wallet.migrateConfig; the wallet
+reads the file of EUDI_WALLET_CONFIG). command, not args: the image
+entrypoint would run the same migration again.
+*/}}
+{{- if .Values.organisationWallet.enabled }}
+{{- include "ow.migrateHook" (dict
+  "root" .
+  "component" "wallet-migrate"
+  "values" .Values.organisationWallet
+  "jobs" .Values.organisationWallet.jobs
+  "configPath" "/etc/eudi-wallet-migrate/config.yaml"
+  "config" (include "ow.wallet.migrateConfig" .)
+  "env" (list (dict "name" "EUDI_WALLET_CONFIG" "value" "/etc/eudi-wallet-migrate/config.yaml"))
+  "steps" (list (dict "name" "migrate" "command" (list "/app/.venv/bin/migrate-database")))
+  "secrets" (include "ow.migrateHook.secrets" (include "ow.db.secretFiles" (list . "wallet" "database-password") | fromJson) | fromJsonArray)
+  "secretDir" (include "ow.wallet.secretDir" .)) }}
+{{- end }}

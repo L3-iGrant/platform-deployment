@@ -1,0 +1,123 @@
+{{- if .Values.nats.enabled }}
+{{- $nats := .Values.nats }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ow.name" (list . "nats") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "nats") | nindent 4 }}
+spec:
+  serviceName: {{ include "ow.name" (list . "nats") }}-headless
+  replicas: {{ $nats.replicas }}
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "nats") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "nats") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "nats" list) | nindent 8 }}
+      annotations:
+        {{- /* The reloader applies a change of the users and of max_payload
+        without a restart; without it the pods restart. */}}
+        {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream") (pick $nats "replicas" "jetstream" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $nats) | nindent 6 }}
+      # NATS does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- if $nats.reloader.enabled }}
+      # The reloader sends SIGHUP to nats-server (the pid file).
+      shareProcessNamespace: true
+      {{- end }}
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: nats
+          image: {{ include "ow.image" (list . $nats.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $nats.image) }}
+          args: ["--config", "/etc/nats-config/nats.conf"]
+          env:
+            - name: SERVER_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: client
+              containerPort: 4222
+            - name: cluster
+              containerPort: 6222
+            - name: monitor
+              containerPort: 8222
+          {{- include "ow.containerSecurityContext" (list . $nats) | nindent 10 }}
+          {{- with $nats.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /healthz?js-server-only=true
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz?js-enabled-only=true
+              port: monitor
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["nats-server", "-sl=ldm=/var/run/nats/nats.pid"]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats-config
+            - name: pid
+              mountPath: /var/run/nats
+            - name: data
+              mountPath: /data
+        {{- if $nats.reloader.enabled }}
+        - name: reloader
+          image: {{ include "ow.image" (list . $nats.reloader.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $nats.reloader.image) }}
+          args: ["-pid", "/var/run/nats/nats.pid", "-config", "/etc/nats-config/nats.conf"]
+          {{- include "ow.containerSecurityContext" (list . $nats) | nindent 10 }}
+          {{- with $nats.reloader.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats-config
+            - name: pid
+              mountPath: /var/run/nats
+        {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "ow.name" (list . "nats") }}
+        - name: pid
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "ow.storageClass" (list . $nats.persistence.storageClass) | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $nats.persistence.size }}
+{{- end }}

@@ -1,0 +1,125 @@
+{{- /*
+The bundled PostgreSQL server (database.engine postgresql, database.mode
+bundled): one server for all components. Do not change the object names
+and labels: an upgrade must keep the volume.
+*/}}
+{{- if and (include "ow.db.bundled" .) (not (include "ow.db.isMysql" .)) }}
+{{- include "ow.db.check" . }}
+{{- $db := .Values.database }}
+{{- $pg := $db.postgresql }}
+{{- $tls := include "ow.db.tls" . }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ow.db.serverName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "postgres") | nindent 4 }}
+spec:
+  serviceName: {{ include "ow.db.serverName" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "postgres") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . "postgres") | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . "db" list) | nindent 8 }}
+    spec:
+      {{- include "ow.podSpecCommon" (list . $db) | nindent 6 }}
+      # The server does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: {{ include "ow.image" (list . $pg.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $pg.image) }}
+          args:
+            {{- range $name, $value := $pg.parameters }}
+            - -c
+            - {{ printf "%s=%v" $name $value | quote }}
+            {{- end }}
+            {{- if $tls }}
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/etc/pg-tls/tls.crt
+            - -c
+            - ssl_key_file=/etc/pg-tls/tls.key
+            {{- end }}
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ow.db.secretName" . }}
+                  key: {{ include "ow.db.adminPasswordKey" . }}
+            - name: POSTGRES_INITDB_ARGS
+              value: "--encoding=UTF8 --locale=C.UTF-8"
+          ports:
+            - name: postgres
+              containerPort: 5432
+          {{- include "ow.containerSecurityContext" (list . $db) | nindent 10 }}
+          {{- with $db.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres", "-d", "postgres"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          volumeMounts:
+            # PostgreSQL 18 images keep the data in /var/lib/postgresql/18/docker.
+            - name: data
+              mountPath: /var/lib/postgresql
+            {{- if $tls }}
+            - name: tls
+              mountPath: /etc/pg-tls
+              readOnly: true
+            {{- end }}
+      {{- if $tls }}
+      volumes:
+        # PostgreSQL accepts a key file with mode 0640 that root owns.
+        - name: tls
+          secret:
+            secretName: {{ include "ow.db.tlsSecretName" . }}
+            defaultMode: 0640
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "ow.storageClass" (list . $db.persistence.storageClass) | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $db.persistence.size }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.db.serverName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "postgres") | nindent 4 }}
+spec:
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    {{- include "ow.selectorLabels" (list . "postgres") | nindent 4 }}
+{{- end }}
