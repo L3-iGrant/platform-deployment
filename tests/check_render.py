@@ -182,10 +182,15 @@ def main() -> int:
     init_cm = find("ConfigMap", f"{RELEASE}-db-init")
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
+        # mysql: the wallet user also gets its data scope databases
+        # igrant_wallet_<scope>, with each "_" of the pattern escaped.
+        scope_grant = "GRANT ALL PRIVILEGES ON `igrant\\_wallet\\_%`.* TO 'igrant_wallet'@'%';"
         if engine == "mysql":
             check("utf8mb4_bin" in script and "mariadb " in script, "the init script is not the MySQL script")
+            check(scope_grant in script, "the init script does not grant the data scope databases of the wallet")
         else:
             check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
+            check("\\_%" not in script, "the PostgreSQL init script has a MySQL grant pattern")
     db_secret = find("Secret", server)
     if db_secret:
         keys = set(db_secret.get("data", {}))

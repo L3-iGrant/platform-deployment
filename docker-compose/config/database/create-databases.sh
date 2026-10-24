@@ -4,7 +4,9 @@
 # MariaDB server). The
 # user name is the database name. The script is idempotent: it makes a user
 # or a database only when it does not exist, and it sets the password of
-# each user each time.
+# each user each time. mysql: the user igrant_wallet also gets the data
+# scope databases igrant_wallet_<scope> that the wallet migration makes
+# (PostgreSQL: schemas in igrant_wallet, which its owner makes).
 #
 # Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)
@@ -95,6 +97,14 @@ CREATE USER IF NOT EXISTS '${database}'@'%' IDENTIFIED BY '${password}';
 ALTER USER '${database}'@'%' IDENTIFIED BY '${password}';
 GRANT ALL PRIVILEGES ON \`${database}\`.* TO '${database}'@'%';
 SQL
+    if [ "$database" = igrant_wallet ]; then
+      # The data scope databases of the wallet (igrant_wallet_<scope>), made
+      # by its migration. Each "_" of the name is escaped: it is a wildcard
+      # in a grant.
+      mariadb --defaults-extra-file="$options" <<'SQL'
+GRANT ALL PRIVILEGES ON `igrant\_wallet\_%`.* TO 'igrant_wallet'@'%';
+SQL
+    fi
   done
 }
 

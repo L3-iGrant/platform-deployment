@@ -265,7 +265,14 @@ your shell has priority over the value in `.env`.
 | `POSTGRES_IMAGE`, `MARIADB_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE` | see `.env.example` | The images of the dependencies. |
 
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
-`igrant_wallet`, each with its own owner user.
+`igrant_wallet`, each with its own owner user. The wallet keeps its tables
+in data scopes: schemas in `igrant_wallet` (PostgreSQL), or the databases
+`igrant_wallet_<scope>` on the same server (MariaDB, for example
+`igrant_wallet_issuer`). The wallet migration makes them; on MariaDB,
+`database-init` gives `igrant_wallet` all privileges on
+`` `igrant\_wallet\_%`.* `` (`_` is a wildcard in a grant, so the pattern
+escapes it). `wallet-migrate` starts after `database-init`, so a new
+release needs no step by hand.
 
 The configuration files of the components are in `compose.platform.yaml`
 (section `configs`). Compose writes the values of `.env` into them.

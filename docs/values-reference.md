@@ -28,7 +28,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | --- | --- | --- |
 | `database.engine` | `postgresql` or `mysql` | `postgresql` |
 | `database.mode` | `bundled` or `external` | `bundled` |
-| `database.databases.<component>.name`, `.password` | Database and owner user of `api`, `oidc`, `consent`, `wallet` | `igrant_<component>`, random |
+| `database.databases.<component>.name`, `.password` | Database and owner user of `api`, `oidc`, `consent`, `wallet`. MySQL: the wallet also has the data scope databases `<wallet name>_<scope>` (see [Database](database.md#data-scopes-of-the-wallet)) | `igrant_<component>`, random |
 | `database.auth.adminPassword`, `.existingSecret` | The admin password of the bundled server; an existing Secret with all passwords | random, `""` |
 | `database.external.host`, `.port`, `.admin.*` | The external server and its admin user | `""` |
 | `database.pools.<process>` | PostgreSQL only: the pool of `api`, `webhook`, `oidc`, `gateway`, `consent` | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
