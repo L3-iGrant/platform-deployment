@@ -6,7 +6,8 @@
 # or a database only when it does not exist, and it sets the password of
 # each user each time. mysql: the user igrant_wallet also gets the data
 # scope databases igrant_wallet_<scope> that the wallet migration makes
-# (PostgreSQL: schemas in igrant_wallet, which its owner makes).
+# (one pattern, or one grant for each with partial_revokes ON; PostgreSQL:
+# schemas in igrant_wallet, which its owner makes).
 #
 # Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)
@@ -15,6 +16,10 @@
 set -euo pipefail
 
 DATABASES="igrant_api igrant_oidc igrant_consent igrant_wallet"
+# The data scopes of the wallet: SCOPES of the wallet module ows.db.scopes,
+# the same list as the chart helper ow.db.walletScopes
+# (tests/compose-files.sh compares them).
+WALLET_SCOPES="platform kms trust issuer authorisation_server relying_party business_wallet wallet_provider events conformance"
 SECRETS=/run/secrets/database
 HOST=database
 
@@ -99,11 +104,23 @@ GRANT ALL PRIVILEGES ON \`${database}\`.* TO '${database}'@'%';
 SQL
     if [ "$database" = igrant_wallet ]; then
       # The data scope databases of the wallet (igrant_wallet_<scope>), made
-      # by its migration. Each "_" of the name is escaped: it is a wildcard
-      # in a grant.
-      mariadb --defaults-extra-file="$options" <<'SQL'
+      # by its migration. In a grant "_" is a wildcard, so the pattern
+      # escapes each "_" of the name. MySQL with partial_revokes ON reads
+      # "_" and "%" as plain characters: then one grant for each data scope
+      # database, by its name. MariaDB has no partial_revokes (no row).
+      local partial_revokes scope
+      partial_revokes="$(mariadb --defaults-extra-file="$options" --batch --skip-column-names \
+        -e "SHOW GLOBAL VARIABLES LIKE 'partial_revokes'" | cut -f2)"
+      if [ "$partial_revokes" = ON ]; then
+        echo "partial_revokes is ON: one grant for each data scope database"
+        for scope in $WALLET_SCOPES; do
+          printf "GRANT ALL PRIVILEGES ON \`igrant_wallet_%s\`.* TO 'igrant_wallet'@'%%';\n" "$scope"
+        done | mariadb --defaults-extra-file="$options"
+      else
+        mariadb --defaults-extra-file="$options" <<'SQL'
 GRANT ALL PRIVILEGES ON `igrant\_wallet\_%`.* TO 'igrant_wallet'@'%';
 SQL
+      fi
     fi
   done
 }

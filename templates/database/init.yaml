@@ -10,10 +10,12 @@ postgresql: CREATE ROLE ... LOGIN, CREATE DATABASE ... OWNER (UTF8, C.UTF-8),
 REVOKE ALL ON DATABASE ... FROM PUBLIC.
 mysql: CREATE DATABASE ... utf8mb4 utf8mb4_bin, CREATE USER 'u'@'%',
 GRANT ALL PRIVILEGES ON `db`.* (the migrations make tables, views and
-foreign keys). The wallet user also gets ALL PRIVILEGES ON `<db>\_%`.*
-(ow.db.walletScopePattern): the data scope databases <db>_<scope> that the
-wallet migration makes. On PostgreSQL the data scopes are schemas in the
-wallet database, which its owner can make.
+foreign keys). The wallet user also gets the data scope databases
+<db>_<scope> that the wallet migration makes: ALL PRIVILEGES ON
+`<db>\_%`.* (ow.db.walletScopePattern), or, on MySQL with partial_revokes
+ON, ALL PRIVILEGES ON each `<db>_<scope>`.* (ow.db.walletScopes). On
+PostgreSQL the data scopes are schemas in the wallet database, which its
+owner can make.
 */}}
 {{- $admin := include "ow.db.admin" . | fromJson }}
 {{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
@@ -87,11 +89,23 @@ data:
       {{- if $wallet }}
       if [ "${user}" = {{ $wallet | quote }} ]; then
         # The data scope databases of the wallet (<db>_<scope>), made by its
-        # migration. Each "_" of the name is escaped: it is a wildcard in a
-        # grant.
-        client <<'SQL'
+        # migration. In a grant "_" is a wildcard, so the pattern escapes
+        # each "_" of the name. MySQL with partial_revokes ON reads "_" and
+        # "%" as plain characters: then one grant for each data scope
+        # database, by its name. MariaDB has no partial_revokes (no row).
+        partial_revokes="$(client --skip-column-names -e "SHOW GLOBAL VARIABLES LIKE 'partial_revokes'" | cut -f2)"
+        if [ "${partial_revokes}" = "ON" ]; then
+          echo "partial_revokes is ON: one grant for each data scope database"
+          client <<'SQL'
+    {{- range $scope := include "ow.db.walletScopes" . | splitList " " }}
+    GRANT ALL PRIVILEGES ON `{{ $wallet }}_{{ $scope }}`.* TO '{{ $wallet }}'@'%';
+    {{- end }}
+    SQL
+        else
+          client <<'SQL'
     GRANT ALL PRIVILEGES ON `{{ include "ow.db.walletScopePattern" . }}`.* TO '{{ $wallet }}'@'%';
     SQL
+        fi
       fi
       {{- end }}
       {{- else }}

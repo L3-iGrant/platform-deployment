@@ -34,18 +34,23 @@ The wallet keeps its tables in data scopes: `platform`, `kms`, `trust`, `issuer`
 | Engine | A data scope is | The grant |
 | --- | --- | --- |
 | PostgreSQL | A schema in the wallet database, for example `issuer` in `igrant_wallet` | None: the owner of the wallet database makes the schemas |
-| MySQL | A database `<wallet>_<scope>` on the same server, for example `igrant_wallet_issuer` | The wallet user gets ``ALL PRIVILEGES ON `igrant\_wallet\_%`.*`` |
+| MySQL | A database `<wallet>_<scope>` on the same server, for example `igrant_wallet_issuer` | The wallet user gets ``ALL PRIVILEGES ON `igrant\_wallet\_%`.*``, or one grant for each data scope database with `partial_revokes=ON` |
 
-The init Job gives the MySQL grant. In a grant, `_` is a wildcard, so the pattern escapes each `_` of the wallet database name: for the name `my_wallet`, the pattern is `` `my\_wallet\_%` ``. When the wallet user cannot make the data scope databases, the wallet migration stops and shows the statements to run.
+The init Job gives the MySQL grant, in one of two forms. It reads `partial_revokes` of the server (`SHOW GLOBAL VARIABLES LIKE 'partial_revokes'`; MariaDB has no such variable):
+
+- MariaDB, and MySQL with `partial_revokes=OFF` (the default): one pattern. In a grant, `_` is a wildcard, so the pattern escapes each `_` of the wallet database name: for the name `my_wallet`, the pattern is `` `my\_wallet\_%` ``.
+- MySQL with `partial_revokes=ON`: MySQL reads `_` and `%` in a grant as plain characters, so the pattern gives nothing. The init Job grants each data scope database by its name, for example ``GRANT ALL PRIVILEGES ON `igrant_wallet_issuer`.* TO 'igrant_wallet'@'%'``.
+
+No step by hand is necessary for a new installation. For an installation that exists, see [Upgrade](upgrade.md#data-scopes-of-the-wallet-mysql). When the wallet user cannot make the data scope databases, the wallet migration stops and shows the statements to run.
 
 Rules on MySQL:
 
 - The wallet database name has at most 43 characters: the longest data scope database, `<wallet>_authorisation_server`, must fit the 64 characters of a database name. The chart limits each name to 32 characters, because the name is also the MySQL user name.
 - No other database may start with `<wallet>_`, because the wallet user gets all privileges on it. The chart refuses such a name for its own databases. On a shared server, do not give another installation a name such as `igrant_wallet_eu` next to `igrant_wallet`.
-- MySQL 8.0 with `partial_revokes=ON` reads `_` and `%` in a grant as plain characters, so the pattern grant gives nothing. On such a server, a DBA grants each data scope database by its name, without `\`: ``GRANT ALL PRIVILEGES ON `igrant_wallet_issuer`.* TO 'igrant_wallet'@'%'``, one statement for each data scope. Check the list of data scopes at each upgrade.
+- With `partial_revokes=ON`, a release that adds a data scope needs the grant of the new database before the upgrade, as in [Upgrade](upgrade.md#data-scopes-of-the-wallet-mysql). When you set `partial_revokes` to `ON` on a server with the pattern grant, give the grants by name at the same time: the pattern then gives nothing.
 
 The read views do not move: they stay in the schemas `read_v1` and `read_v2` (PostgreSQL) and in the wallet database (MySQL), with the same names and columns (see [Read access](read-access.md)).
 
 ## Without an admin user
 
-Create the databases and the users yourself: each user owns its database (PostgreSQL) or has all privileges on it (MySQL, with `utf8mb4` and `utf8mb4_bin`). On MySQL, also give the wallet user all privileges on its data scope databases (see [Data scopes of the wallet](#data-scopes-of-the-wallet)). Then set `readAccess.jobs.enabled: false`, and let a DBA create the read-only users (see [Read access](read-access.md)).
+Create the databases and the users yourself: each user owns its database (PostgreSQL) or has all privileges on it (MySQL, with `utf8mb4` and `utf8mb4_bin`). On MySQL, also give the wallet user all privileges on its data scope databases, in the form of your server (see [Data scopes of the wallet](#data-scopes-of-the-wallet) and the statements in [Upgrade](upgrade.md#data-scopes-of-the-wallet-mysql)). Then set `readAccess.jobs.enabled: false`, and let a DBA create the read-only users (see [Read access](read-access.md)).

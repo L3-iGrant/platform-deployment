@@ -46,7 +46,9 @@ The new init Job gives this grant, but too late for an installation that exists:
 
 The migration moves all tables of the wallet at once, with no compatibility views: the wallet pods of the release before fail from the start of the hook until the new wallet pods are ready. Do this upgrade in a maintenance window, on PostgreSQL too.
 
-Bundled MariaDB (release `ows`, wallet database `igrant_wallet`):
+The operations team gives the grant with the admin user of the server, in the form of the server (see [Database](database.md#data-scopes-of-the-wallet)). The examples are for the release `ows` and the wallet database `igrant_wallet`. With another wallet database name, escape each `_` of the name in the pattern; the grants by name use the name as it is.
+
+Bundled MariaDB (MariaDB has no `partial_revokes`, so always the pattern):
 
 ```bash
 kubectl -n ows exec -i ows-mysql-0 -c mysql -- \
@@ -55,8 +57,38 @@ GRANT ALL PRIVILEGES ON `igrant\_wallet\_%`.* TO 'igrant_wallet'@'%';
 SQL
 ```
 
-External server: your DBA runs the same statement with the admin user. With another wallet database name, escape each `_` of the name. MySQL 8.0 with `partial_revokes=ON`: grant each data scope database by its name (see [Database](database.md#data-scopes-of-the-wallet)).
+External server: first read `partial_revokes` (add the TLS options of your server, for example `--ssl-ca`):
 
-Check: `SHOW GRANTS FOR 'igrant_wallet'@'%'` shows the line with `` `igrant\_wallet\_%` ``.
+```bash
+db() { mysql --host=db.example.org --user=root -p "$@"; }
+db -e "SHOW GLOBAL VARIABLES LIKE 'partial_revokes'"
+```
 
-A change of the hook weights cannot put the init Job before the migration: a weight sets only the order of the hooks, and the init Job is not a hook. The init Job cannot become a `pre-upgrade` hook either: a hook reads the Secrets of the release before (the password of a new component is not there yet), and the init Job must also run at a new installation, where Helm makes the bundled server only after the hooks. Only a separate `pre-upgrade` hook with this one grant, between the weights -10 and -5, could give it in time. The chart does not have one, because the grant is necessary only once for each installation that exists.
+No row (MariaDB) or `OFF`: one pattern.
+
+```bash
+db <<'SQL'
+GRANT ALL PRIVILEGES ON `igrant\_wallet\_%`.* TO 'igrant_wallet'@'%';
+SQL
+```
+
+`ON`: one grant for each data scope database, by its name.
+
+```bash
+db <<'SQL'
+GRANT ALL PRIVILEGES ON `igrant_wallet_platform`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_kms`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_trust`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_issuer`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_authorisation_server`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_relying_party`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_business_wallet`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_wallet_provider`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_events`.* TO 'igrant_wallet'@'%';
+GRANT ALL PRIVILEGES ON `igrant_wallet_conformance`.* TO 'igrant_wallet'@'%';
+SQL
+```
+
+Check: `SHOW GRANTS FOR 'igrant_wallet'@'%'` shows the line with `` `igrant\_wallet\_%` ``, or the ten lines of the data scope databases. After the upgrade, the init Job gives the same grant at each install and upgrade.
+
+A change of the hook weights cannot put the init Job before the migration: a weight sets only the order of the hooks, and the init Job is not a hook. The init Job cannot become a `pre-upgrade` hook either: a hook reads the Secrets of the release before (the password of a new component is not there yet), and the init Job must also run at a new installation, where Helm makes the bundled server only after the hooks. Only a separate `pre-upgrade` hook with this one grant, between the weights -10 and -5, could give it in time. The chart does not have one: the grant by hand is necessary only at the upgrade to the data scopes and, with `partial_revokes=ON`, at an upgrade that adds a data scope.

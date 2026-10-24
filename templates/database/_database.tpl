@@ -152,11 +152,25 @@ require
 {{- end }}
 
 {{/*
-mysql: the grant pattern of the data scope databases of the wallet. The
-wallet migration makes one database <name>_<scope> for each data scope on
-the same server (PostgreSQL: one schema in the wallet database). In a
+The data scopes of the wallet: SCOPES of the wallet module ows.db.scopes
+(eudi-wallet packages/ows-core/src/ows/db/scopes.py), in its order. This
+list must follow that module: a new data scope there is a new name here
+(and in docker-compose/config/database/create-databases.sh, which
+tests/compose-files.sh compares). The wallet migration makes one schema
+for each scope in the wallet database (PostgreSQL) or one database
+<name>_<scope> on the same server (mysql). Output: the names, separated by
+spaces.
+*/}}
+{{- define "ow.db.walletScopes" -}}
+platform kms trust issuer authorisation_server relying_party business_wallet wallet_provider events conformance
+{{- end }}
+
+{{/*
+mysql: the grant pattern of the data scope databases of the wallet. In a
 grant pattern "_" is a wildcard, so each "_" of the name is escaped: for
-igrant_wallet the pattern is igrant\_wallet\_%.
+igrant_wallet the pattern is igrant\_wallet\_%. MySQL with partial_revokes
+ON reads "_" and "%" as plain characters: then the init Job grants each
+database of ow.db.walletScopes by its name.
 */}}
 {{- define "ow.db.walletScopePattern" -}}
 {{ printf "%s\\_%%" (replace "_" "\\_" .Values.database.databases.wallet.name) }}
@@ -165,22 +179,28 @@ igrant_wallet the pattern is igrant\_wallet\_%.
 {{/*
 Render guards of database.*. Output: nothing. Every template that writes a
 database connection calls it (through ow.db.go and ow.db.wallet). mysql:
-the wallet name has at most 43 characters (64 - 1 - 20, the longest data
-scope authorisation_server), and no other database name starts with
-<wallet name>_ (the wallet user has all privileges on these databases).
+<wallet name>_<scope> fits the 64 characters of a database name for each
+data scope (the wallet name has at most 43 characters: 64 - 1 - 20, the
+longest data scope authorisation_server), and no other database name
+starts with <wallet name>_ (the wallet user has all privileges on these
+databases).
 */}}
 {{- define "ow.db.check" -}}
 {{- $db := .Values.database -}}
 {{- $mysql := include "ow.db.isMysql" . -}}
 {{- $bundled := include "ow.db.bundled" . -}}
+{{- $longest := "" -}}
+{{- range $scope := include "ow.db.walletScopes" . | splitList " " -}}
+{{- if gt (len $scope) (len $longest) -}}{{- $longest = $scope -}}{{- end -}}
+{{- end -}}
 {{- $names := list -}}
 {{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
 {{- $name := (index $db.databases $key).name | default "" -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $name) -}}
 {{- fail (printf "database.databases.%s.name %q is not a database name: a lower-case letter, then lower-case letters, digits or _" $key $name) -}}
 {{- end -}}
-{{- if and $mysql (eq $key "wallet") (gt (len $name) 43) -}}
-{{- fail (printf "database.databases.wallet.name %q has more than 43 characters: on mysql the wallet makes one database <name>_<scope> for each data scope, and the longest, <name>_authorisation_server, must fit the 64 characters of a database name" $name) -}}
+{{- if and $mysql (eq $key "wallet") (gt (len $name) (sub 63 (len $longest))) -}}
+{{- fail (printf "database.databases.wallet.name %q has more than %d characters: on mysql the wallet makes one database <name>_<scope> for each data scope, and the longest, <name>_%s, must fit the 64 characters of a database name" $name (sub 63 (len $longest)) $longest) -}}
 {{- end -}}
 {{- if and $mysql (gt (len $name) 32) -}}
 {{- fail (printf "database.databases.%s.name %q has more than 32 characters: it is also the MySQL user name" $key $name) -}}
