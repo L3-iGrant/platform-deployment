@@ -152,8 +152,22 @@ require
 {{- end }}
 
 {{/*
+mysql: the grant pattern of the data scope databases of the wallet. The
+wallet migration makes one database <name>_<scope> for each data scope on
+the same server (PostgreSQL: one schema in the wallet database). In a
+grant pattern "_" is a wildcard, so each "_" of the name is escaped: for
+igrant_wallet the pattern is igrant\_wallet\_%.
+*/}}
+{{- define "ow.db.walletScopePattern" -}}
+{{ printf "%s\\_%%" (replace "_" "\\_" .Values.database.databases.wallet.name) }}
+{{- end }}
+
+{{/*
 Render guards of database.*. Output: nothing. Every template that writes a
-database connection calls it (through ow.db.go and ow.db.wallet).
+database connection calls it (through ow.db.go and ow.db.wallet). mysql:
+the wallet name has at most 43 characters (64 - 1 - 20, the longest data
+scope authorisation_server), and no other database name starts with
+<wallet name>_ (the wallet user has all privileges on these databases).
 */}}
 {{- define "ow.db.check" -}}
 {{- $db := .Values.database -}}
@@ -165,6 +179,9 @@ database connection calls it (through ow.db.go and ow.db.wallet).
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $name) -}}
 {{- fail (printf "database.databases.%s.name %q is not a database name: a lower-case letter, then lower-case letters, digits or _" $key $name) -}}
 {{- end -}}
+{{- if and $mysql (eq $key "wallet") (gt (len $name) 43) -}}
+{{- fail (printf "database.databases.wallet.name %q has more than 43 characters: on mysql the wallet makes one database <name>_<scope> for each data scope, and the longest, <name>_authorisation_server, must fit the 64 characters of a database name" $name) -}}
+{{- end -}}
 {{- if and $mysql (gt (len $name) 32) -}}
 {{- fail (printf "database.databases.%s.name %q has more than 32 characters: it is also the MySQL user name" $key $name) -}}
 {{- end -}}
@@ -172,6 +189,15 @@ database connection calls it (through ow.db.go and ow.db.wallet).
 {{- fail (printf "database.databases.%s.name %q is the name of another database: each component needs its own database" $key $name) -}}
 {{- end -}}
 {{- $names = append $names $name -}}
+{{- end -}}
+{{- if and $mysql .Values.organisationWallet.enabled -}}
+{{- $scopes := printf "%s_" $db.databases.wallet.name -}}
+{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
+{{- $name := (index $db.databases $key).name -}}
+{{- if and (ne $key "wallet") (hasPrefix $scopes $name) -}}
+{{- fail (printf "database.databases.%s.name %q starts with %q: on mysql the wallet user gets all privileges on the databases %s* (the data scope databases of the wallet)" $key $name $scopes $scopes) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and (not $bundled) (not $db.external.admin.user) (not $db.auth.existingSecret) -}}
 {{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}

@@ -128,7 +128,11 @@ database:
   mode: bundled
   # -- Database (= owner user) name and password of each component. Empty
   # password: random (kept across upgrades). MySQL user names have at most
-  # 32 characters.
+  # 32 characters. The wallet keeps its tables in data scopes: schemas in
+  # its database (postgresql), or databases <wallet name>_<scope> on the
+  # same server (mysql; the wallet user gets all privileges on them, so no
+  # other database name may start with <wallet name>_). See
+  # docs/database.md.
   databases:
     api:
       name: igrant_api
@@ -925,9 +929,9 @@ networkPolicy:
     podSelector: {}
 
 # Read-only database users of the reads between the services. A reader
-# service reads the views of an owner service (schema read_v1 on
-# PostgreSQL, the read_v1 views in the owner database on MySQL) with its
-# own read-only user; it never writes there. The owner makes the views in
+# service reads the views of an owner service (schema read_v1 or read_v2 on
+# PostgreSQL, the views in the owner database on MySQL) with its own
+# read-only user; it never writes there. The owner makes the views in
 # its schema migrations. readAccess.<reader>.<owner>:
 #   username: the read-only user. A PostgreSQL role (MySQL account) belongs
 #     to the whole database server, so each reader and owner pair needs its

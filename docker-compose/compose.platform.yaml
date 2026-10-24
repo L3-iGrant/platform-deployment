@@ -90,7 +90,9 @@ services:
 
   # Makes the databases igrant_api, igrant_oidc, igrant_consent and
   # igrant_wallet and their owner users (the user name is the database
-  # name), then stops. Idempotent: it sets the passwords each time.
+  # name), then stops. Idempotent: it sets the passwords each time. MariaDB:
+  # igrant_wallet also gets the data scope databases igrant_wallet_<scope>
+  # (wallet-migrate starts after this service: a new release needs no step).
   database-init:
     <<: *job
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql or mysql}

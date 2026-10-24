@@ -10,7 +10,10 @@ postgresql: CREATE ROLE ... LOGIN, CREATE DATABASE ... OWNER (UTF8, C.UTF-8),
 REVOKE ALL ON DATABASE ... FROM PUBLIC.
 mysql: CREATE DATABASE ... utf8mb4 utf8mb4_bin, CREATE USER 'u'@'%',
 GRANT ALL PRIVILEGES ON `db`.* (the migrations make tables, views and
-foreign keys).
+foreign keys). The wallet user also gets ALL PRIVILEGES ON `<db>\_%`.*
+(ow.db.walletScopePattern): the data scope databases <db>_<scope> that the
+wallet migration makes. On PostgreSQL the data scopes are schemas in the
+wallet database, which its owner can make.
 */}}
 {{- $admin := include "ow.db.admin" . | fromJson }}
 {{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
@@ -23,6 +26,10 @@ foreign keys).
 {{- $users := list }}
 {{- range $key := $keys }}
 {{- $users = append $users (index $db.databases $key).name }}
+{{- end }}
+{{- $wallet := "" }}
+{{- if and $mysql (has "wallet" $keys) }}
+{{- $wallet = $db.databases.wallet.name }}
 {{- end }}
 {{- $name := include "ow.name" (list . "db-init") }}
 apiVersion: v1
@@ -77,6 +84,16 @@ data:
     GRANT ALL PRIVILEGES ON \`${user}\`.* TO '${user}'@'%';
     SQL
       unset pw
+      {{- if $wallet }}
+      if [ "${user}" = {{ $wallet | quote }} ]; then
+        # The data scope databases of the wallet (<db>_<scope>), made by its
+        # migration. Each "_" of the name is escaped: it is a wildcard in a
+        # grant.
+        client <<'SQL'
+    GRANT ALL PRIVILEGES ON `{{ include "ow.db.walletScopePattern" . }}`.* TO '{{ $wallet }}'@'%';
+    SQL
+      fi
+      {{- end }}
       {{- else }}
       # psql reads the password from the file, so the password is not on the
       # command line.
