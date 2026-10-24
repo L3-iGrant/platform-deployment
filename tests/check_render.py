@@ -23,6 +23,9 @@ EXTERNAL_DB_HOST = "db.example.org"
 EXTERNAL_OPENBAO = "https://openbao.example.org:8200"
 HOSTS = {"t-api": "api.example.org", "t-wallet-service": "wallet.example.org", "t-dashboard": "dashboard.example.org"}
 KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
+# SCOPES of the wallet module ows.db.scopes (the chart helper ow.db.walletScopes).
+WALLET_SCOPES = ["platform", "kms", "trust", "issuer", "authorisation_server", "relying_party",
+                 "business_wallet", "wallet_provider", "events", "conformance"]
 
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
@@ -183,11 +186,16 @@ def main() -> int:
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
         # mysql: the wallet user also gets its data scope databases
-        # igrant_wallet_<scope>, with each "_" of the pattern escaped.
+        # igrant_wallet_<scope>: one pattern with each "_" escaped, or, with
+        # partial_revokes ON, one grant for each scope of ows.db.scopes.
         scope_grant = "GRANT ALL PRIVILEGES ON `igrant\\_wallet\\_%`.* TO 'igrant_wallet'@'%';"
         if engine == "mysql":
             check("utf8mb4_bin" in script and "mariadb " in script, "the init script is not the MySQL script")
             check(scope_grant in script, "the init script does not grant the data scope databases of the wallet")
+            check("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'" in script, "the init script does not read partial_revokes")
+            for scope in WALLET_SCOPES:
+                check(f"GRANT ALL PRIVILEGES ON `igrant_wallet_{scope}`.* TO 'igrant_wallet'@'%';" in script,
+                      f"the init script does not grant igrant_wallet_{scope} by its name")
         else:
             check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
             check("\\_%" not in script, "the PostgreSQL init script has a MySQL grant pattern")

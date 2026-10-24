@@ -201,6 +201,16 @@ PY
     if bash -n "$script"; then ok "bash -n $script"; else bad "bash -n $script"; fi
   done
   if sh -n config/openbao/bootstrap.sh; then ok "sh -n config/openbao/bootstrap.sh"; else bad "sh -n config/openbao/bootstrap.sh"; fi
+  # The data scopes of the wallet: one list in the chart (ow.db.walletScopes)
+  # and its copy in the Compose init.
+  local compose_scopes chart_scopes
+  compose_scopes="$(sed -n 's/^WALLET_SCOPES="\(.*\)"$/\1/p' config/database/create-databases.sh)"
+  chart_scopes="$(sed -n '/define "ow.db.walletScopes"/{n;p;}' ../templates/database/_database.tpl)"
+  if [ -n "$compose_scopes" ] && [ "$compose_scopes" = "$chart_scopes" ]; then
+    ok "data scopes of the wallet: the Compose init has the list of the chart"
+  else
+    bad "data scopes of the wallet: the Compose init has '${compose_scopes}', the chart '${chart_scopes}'"
+  fi
 
   if command -v nats-server > /dev/null; then
     local dir
