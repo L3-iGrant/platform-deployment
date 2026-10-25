@@ -1,37 +1,57 @@
 {{- /*
-Read access Jobs of the wallet (readAccess.jobs):
-"read-access apply" for the readers api and consent. The command connects
-with the database section of the wallet and an admin user; it reads only the
-database file (migrate.yaml, EUDI_WALLET_CONFIG) and the database password.
-The image entrypoint applies the wallet migrations first (the views). The
-name has the release revision, so the Jobs run at each install and upgrade.
-The Jobs are idempotent: they try again while the database starts (a new
-installation).
+Read access hooks of the wallet (readAccess.jobs; helm post-install and
+pre-upgrade, after the migration hook, so the views exist): "read-access
+apply" for the readers api and consent. The command connects with the admin
+user (readAccess.jobs.wallet, else ow.db.admin); its configuration has only
+the database, with the admin user and its password file (a pre-upgrade hook
+cannot read the new ConfigMaps of the release). The hooks run at each
+install and upgrade (idempotent; a new release can add views).
 */}}
 {{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $admin := include "ow.readAccess.admin" (list . "wallet") | fromJson }}
+{{- $name := include "ow.name" (list . "wallet-read-access") }}
+{{- $configDir := "/etc/eudi-wallet-read-access" }}
+{{- $secretDir := include "ow.wallet.secretDir" . }}
 {{- $jobPod := deepCopy $w }}
 {{- $_ := set $jobPod "podSecurityContext" ($w.jobs.podSecurityContext | default $w.podSecurityContext) }}
 {{- $_ := set $jobPod "containerSecurityContext" ($w.jobs.containerSecurityContext | default $w.containerSecurityContext) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "wallet-read-access") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  config.yaml: |
+    {{- include "ow.wallet.hookConfig" (list . $admin.user "database-admin-password") | nindent 4 }}
 {{- range $reader := list "api" "consent" }}
 {{- $user := include "ow.readAccess.reader" (list $ $reader "wallet") | fromJson }}
-{{- $name := printf "wallet-read-access-%s" $reader }}
+{{- $component := printf "wallet-read-access-%s" $reader }}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "ow.name" (list $ $name) }}-{{ $.Release.Revision }}
+  name: {{ include "ow.name" (list $ $component) }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "ow.labels" (list $ $name) | nindent 4 }}
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 6
   ttlSecondsAfterFinished: {{ $.Values.readAccess.jobs.ttlSecondsAfterFinished }}
   template:
     metadata:
       labels:
-        {{- include "ow.labels" (list $ $name) | nindent 8 }}
+        {{- include "ow.labels" (list $ $component) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
     spec:
       restartPolicy: Never
@@ -42,14 +62,14 @@ spec:
         - name: command
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
-          # args, not command: the image entrypoint runs the migrations
-          # first, then execs the program of the image (no uv: Python is
-          # process 1).
-          args:
-            {{- toYaml (list "/app/.venv/bin/read-access" "apply" "--reader" $reader "--user" $user.username "--password-file" "/run/secrets/read-access/password" "--admin-user" $admin.user "--admin-password-file" "/run/secrets/read-access-admin/password") | nindent 12 }}
+          # The password of the new read-only user (--password-file) and of
+          # the admin user (--admin-password-file): files of their Secrets,
+          # never arguments or variables.
+          command:
+            {{- toYaml (list "/app/.venv/bin/read-access" "apply" "--reader" $reader "--user" $user.username "--password-file" "/run/secrets/read-access/password" "--admin-user" $admin.user "--admin-password-file" (printf "%s/database-admin-password" $secretDir)) | nindent 12 }}
           env:
             - name: EUDI_WALLET_CONFIG
-              value: /etc/eudi-wallet-migrate/config.yaml
+              value: {{ printf "%s/config.yaml" $configDir }}
           {{- include "ow.containerSecurityContext" (list $ $jobPod) | nindent 10 }}
           {{- with $w.jobs.resources }}
           resources:
@@ -57,44 +77,31 @@ spec:
           {{- end }}
           volumeMounts:
             - name: config
-              mountPath: /etc/eudi-wallet-migrate
+              mountPath: {{ $configDir }}
               readOnly: true
             - name: secrets
-              mountPath: {{ include "ow.wallet.secretDir" $ }}
+              mountPath: {{ $secretDir }}
               readOnly: true
-            - name: tmp
-              mountPath: /tmp
-            # The password of the new read-only user (--password-file) and
-            # of the admin user (--admin-password-file): files of their own
-            # Secrets, never arguments or variables.
             - name: read-access
               mountPath: /run/secrets/read-access
               readOnly: true
-            - name: read-access-admin
-              mountPath: /run/secrets/read-access-admin
-              readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
-            name: {{ include "ow.name" (list $ "wallet") }}
-            items:
-              - key: migrate.yaml
-                path: config.yaml
+            name: {{ $name }}
         - name: secrets
           projected:
             defaultMode: 0440
             sources:
-              {{- range $path, $file := include "ow.db.secretFiles" (list $ "wallet" "database-password") | fromJson }}
+              {{- range $path, $file := include "ow.wallet.databaseFiles" (list $ "database-admin-password" (dict "secret" $admin.secret "key" $admin.key)) | fromJson }}
               - secret:
                   name: {{ $file.secret }}
                   items:
                     - key: {{ $file.key }}
                       path: {{ $path }}
               {{- end }}
-        - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 64Mi
         - name: read-access
           secret:
             secretName: {{ $user.secret }}
@@ -102,12 +109,9 @@ spec:
             items:
               - key: {{ $user.key }}
                 path: password
-        - name: read-access-admin
-          secret:
-            secretName: {{ $admin.secret }}
-            defaultMode: 0440
-            items:
-              - key: {{ $admin.key }}
-                path: password
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
 {{- end }}
 {{- end }}

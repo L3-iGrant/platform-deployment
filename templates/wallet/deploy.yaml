@@ -51,10 +51,8 @@ spec:
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
           {{- if eq $role "scheduler" }}
-          # The scheduler does not use the image entrypoint, which applies
-          # the migrations: the service and config pods do that. The command
-          # starts the program directly, so Python is process 1 and gets
-          # SIGTERM.
+          # The program of the scheduler (the image starts the server).
+          # Python is process 1 and gets SIGTERM.
           command: ["/app/.venv/bin/start-scheduler"]
           {{- end }}
           env:
@@ -69,16 +67,21 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+          # The server answers /healthz only when the database schema is at
+          # the head of its code: it waits up to 600 s (on a new
+          # installation the post-install hooks migrate while the pods
+          # start), then stops, and Kubernetes starts it again. The startup
+          # probe covers the wait: 5 s x 130 = 650 s.
           startupProbe:
             httpGet:
               path: /healthz
               port: http
             periodSeconds: 5
             timeoutSeconds: 3
-            failureThreshold: 60
-          # Startup and liveness: /healthz (the process runs; it never waits
-          # for a dependency). Readiness: /readyz (the config role waits for
-          # the api and consent views).
+            failureThreshold: 130
+          # Liveness: /healthz (the process runs; it never waits for a
+          # dependency after the start). Readiness: /readyz (the config role
+          # waits for the api and consent views).
           readinessProbe:
             httpGet:
               path: /readyz
