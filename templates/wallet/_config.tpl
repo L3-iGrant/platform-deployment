@@ -76,7 +76,7 @@ code has defaults that are not the bucket of this installation. */ -}}
 {{- $config := dict
   "domain" (include "ow.publicUrlOf" (list $root "organisationWallet"))
   "log_level" ($w.logLevel | upper)
-  "database" (include "ow.wallet.database" $root | fromJson)
+  "database" (include "ow.wallet.database" (list $root (include "ow.wallet.databaseUser" (list $root (include "ow.wallet.databaseRole" $role))) "database-password") | fromJson)
   "nats" (dict
     "url" (include "ow.nats.url" $root)
     "nkey_seed_file" (printf "%s/nats-seed" $dir)
@@ -204,27 +204,33 @@ Call with the root context.
 {{- end }}
 
 {{/*
-config.yaml of the wallet migration hook and Jobs (migrate.yaml): only the
-database and the log level. migrate-database and read-access read only these
-keys; the hook runs before the resources of the release change, so it
-cannot read the new ConfigMaps of the gateway and service keys.
+config.yaml of the wallet hooks (the roles, migration and read access
+hooks): only the database, with the login of the hook, and the log level.
+database-roles, migrate-database and read-access read only these keys; the
+hooks run before the resources of the release change, so they cannot read
+the new ConfigMaps of the release. Call with (list $ "<user>" "<password
+file name>").
 */}}
-{{- define "ow.wallet.migrateConfig" -}}
+{{- define "ow.wallet.hookConfig" -}}
 {{- toYaml (dict
-    "log_level" (.Values.organisationWallet.logLevel | upper)
+    "log_level" ((index . 0).Values.organisationWallet.logLevel | upper)
     "database" (include "ow.wallet.database" . | fromJson)) }}
 {{- end }}
 
-{{/* The database section of the wallet (its own database in the chart). Output: JSON. */}}
+{{/*
+The database section of the wallet (its own database in the chart) for one
+login: the user and the name of its password file in ow.wallet.secretDir.
+Call with (list $ "<user>" "<password file name>"). Output: JSON.
+*/}}
 {{- define "ow.wallet.database" -}}
-{{- $dir := include "ow.wallet.secretDir" . -}}
-{{- $name := .Values.database.databases.wallet.name -}}
+{{- $root := index . 0 -}}
+{{- $dir := include "ow.wallet.secretDir" $root -}}
 {{- include "ow.db.wallet" (dict
-  "root" .
-  "host" (include "ow.db.host" .)
-  "port" (include "ow.db.port" .)
-  "name" $name
-  "user" $name
-  "passwordFile" (printf "%s/database-password" $dir)
-  "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" .))) -}}
+  "root" $root
+  "host" (include "ow.db.host" $root)
+  "port" (include "ow.db.port" $root)
+  "name" $root.Values.database.databases.wallet.name
+  "user" (index . 1)
+  "passwordFile" (printf "%s/%s" $dir (index . 2))
+  "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) -}}
 {{- end }}

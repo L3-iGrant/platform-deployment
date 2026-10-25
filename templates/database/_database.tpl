@@ -84,10 +84,12 @@ ow.db.go and ow.db.wallet. Output: JSON.
 
 {{/*
 The admin user of the server: it makes the databases and the owner users
-(init Job) and the read-only users (read access Jobs).
+(init Job), the database roles of the wallet (roles hook) and the read-only
+users (read access Jobs).
 bundled: the admin user of the engine ("postgres") and the admin key of
 the database Secret.
-external: database.external.admin (empty user: no admin).
+external: database.external.admin (empty user: no admin; not with the
+organisation wallet, see ow.db.check).
 Output: JSON {user, secret, key}, or {} when there is no admin user.
 */}}
 {{- define "ow.db.admin" -}}
@@ -183,6 +185,11 @@ database connection calls it (through ow.db.go and ow.db.wallet).
 {{- fail (printf "database.databases.%s.name %q is the name of another database: each component needs its own database" $key $name) -}}
 {{- end -}}
 {{- $names = append $names $name -}}
+{{- end -}}
+{{- /* The roles hook makes the database roles of the wallet with the admin
+user: the chart cannot make them without it. */ -}}
+{{- if and .Values.organisationWallet.enabled (not $bundled) (not $db.external.admin.user) -}}
+{{- fail "database.external.admin.user is required with database.mode external and the organisation wallet: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
 {{- end -}}
 {{- if and (not $bundled) (not $db.external.admin.user) (not $db.auth.existingSecret) -}}
 {{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}

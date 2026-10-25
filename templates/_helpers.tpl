@@ -328,6 +328,65 @@ api,consent
 {{- end }}
 
 {{/*
+The login database roles of the wallet, comma-separated: the names without
+the prefix (ow.wallet.databaseUser). "database-roles apply" (the roles hook)
+makes them with the passwords of the role Secret
+(ow.wallet.databaseRolesSecretName), one key per name: the migrator, the
+launcher, the jobs role, the audit reader and one role per role
+application.
+*/}}
+{{- define "ow.wallet.databaseLogins" -}}
+migrator,launcher_app,jobs,audit_reader,issuer_app,relying_party_app,business_wallet_app,individual_wp_app,business_wp_app,admin_app
+{{- end }}
+
+{{/* Name of the Secret with the passwords of the database roles of the wallet (ow.wallet.databaseLogins). */}}
+{{- define "ow.wallet.databaseRolesSecretName" -}}
+{{ include "ow.name" (list . "wallet-database-roles") }}
+{{- end }}
+
+{{/*
+The database role of one wallet role (docs/database.md): the service and
+config roles connect as the launcher role, the scheduler as the jobs role.
+Output: the name without the prefix, also the key of its password in the
+role Secret.
+*/}}
+{{- define "ow.wallet.databaseRole" -}}
+{{- $roles := dict "service" "launcher_app" "config" "launcher_app" "scheduler" "jobs" -}}
+{{- get $roles . -}}
+{{- end }}
+
+{{/*
+The user of one database role of the wallet: <prefix>_<role>. The prefix is
+the wallet database name (the default prefix of "database-roles" and of the
+wallet setting database.role_prefix). A role name has at most 63 characters
+and the longest is <prefix>_business_wallet_app, so the name has at most 43.
+Call with (list $ "<role without the prefix>").
+*/}}
+{{- define "ow.wallet.databaseUser" -}}
+{{- $root := index . 0 -}}
+{{- $prefix := $root.Values.database.databases.wallet.name -}}
+{{- if gt (len $prefix) 43 -}}
+{{- fail (printf "database.databases.wallet.name %q has %d characters: it is the prefix of the database roles of the wallet (for example %s_business_wallet_app), and a role name has at most 63, so the name can have at most 43" $prefix (len $prefix) $prefix) -}}
+{{- end -}}
+{{- printf "%s_%s" $prefix (index . 1) -}}
+{{- end }}
+
+{{/*
+The database files of one wallet login in ow.wallet.secretDir: its password
+and the CA of the server. Call with (list $ "<password file name>"
+{secret, key}). Output: JSON "<file name>" -> {secret, key}.
+*/}}
+{{- define "ow.wallet.databaseFiles" -}}
+{{- $root := index . 0 -}}
+{{- $files := dict (index . 1) (index . 2) -}}
+{{- $ca := include "ow.db.ca" $root | fromJson -}}
+{{- if $ca.secret -}}
+{{- $_ := set $files (include "ow.db.caFileName" $root) $ca -}}
+{{- end -}}
+{{- toJson $files -}}
+{{- end }}
+
+{{/*
 Secret files of one wallet role ("service", "config" or "scheduler").
 All are files in one read-only folder (ow.wallet.secretDir), a
 projected volume of these Secret keys. Call with (list $ "<role>").
@@ -337,7 +396,10 @@ Output: JSON object "<file name>" -> {secret, key}.
 {{- $root := index . 0 -}}
 {{- $role := index . 1 -}}
 {{- $w := $root.Values.organisationWallet -}}
-{{- $files := include "ow.db.secretFiles" (list $root "wallet" "database-password") | fromJson -}}
+{{- /* The password of the database role of the role, never the password of
+the database owner user. */ -}}
+{{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" $root) "key" (include "ow.wallet.databaseRole" $role) -}}
+{{- $files := include "ow.wallet.databaseFiles" (list $root "database-password" $password) | fromJson -}}
 {{- /* Every wallet process connects to NATS with the nkey user of its role. */ -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.wallet.natsUser" $role)) | fromJson -}}
 {{- if $client.seed -}}

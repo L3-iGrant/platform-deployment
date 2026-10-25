@@ -139,16 +139,16 @@ def main() -> int:
         if role == "config":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])
-    wallet_migrate = config_map_file(f"{RELEASE}-wallet", "migrate.yaml")
-    if wallet_migrate:
-        wallet_section("wallet migrate.yaml database", wallet_migrate["database"])
 
-    # The migration hooks (their own ConfigMaps).
+    # The migration hooks and the other hooks of the wallet (their own
+    # ConfigMaps).
     for name, kind in (
         (f"{RELEASE}-api-migrate", "go"),
         (f"{RELEASE}-consent-migrate", "go"),
         (f"{RELEASE}-consent-migrate-after", "go"),
+        (f"{RELEASE}-wallet-database-roles", "wallet"),
         (f"{RELEASE}-wallet-migrate", "wallet"),
+        (f"{RELEASE}-wallet-read-access", "wallet"),
     ):
         hook = config_map_file(name, "config.yaml")
         if not hook:
@@ -197,6 +197,178 @@ def main() -> int:
     check(readers is not None and set(readers.get("data", {})) == {"api-wallet", "consent-api", "consent-wallet", "wallet-api", "wallet-consent"},
           "the read access Secret is missing or has other keys")
     check(not any(d.get("kind") == "CronJob" for d in docs), "a CronJob is rendered")
+
+    # --- The database roles of the wallet ------------------------------------
+    # Each wallet process connects with its own database role
+    # (<prefix>_<role>; the prefix is the wallet database name): the hooks
+    # make the roles (the administrator), migrate (the migrator) and give the
+    # read access (the administrator); the pods connect as the launcher or
+    # the jobs role. No wallet pod or Job mounts the password of the database
+    # owner user, and no wallet pod mounts the password of the administrator.
+    admin_user, admin_secret, admin_key = (
+        ("postgres", server, facts["admin_key"]) if mode == "bundled" else ("igrant_admin", "db-admin", "password"))
+    roles_secret = f"{RELEASE}-wallet-database-roles"
+    secret_dir = "/run/secrets/eudi-wallet"
+
+    def annotations(doc) -> dict:
+        return doc["metadata"].get("annotations") or {}
+
+    def pod_of(doc) -> dict:
+        return doc["spec"]["template"]["spec"]
+
+    def secret_refs(pod: dict) -> set:
+        """(Secret, key) of each Secret that a pod mounts or reads (key None: all keys)."""
+        refs = set()
+        for volume in pod.get("volumes", []):
+            sources = [volume] if "secret" in volume else (volume.get("projected") or {}).get("sources", [])
+            for source in sources:
+                secret = source.get("secret")
+                if not secret:
+                    continue
+                name = secret.get("secretName") or secret.get("name")
+                items = secret.get("items")
+                refs |= {(name, item["key"]) for item in items} if items else {(name, None)}
+        for container in pod.get("containers", []) + pod.get("initContainers", []):
+            for env in container.get("env", []):
+                ref = (env.get("valueFrom") or {}).get("secretKeyRef")
+                if ref:
+                    refs.add((ref["name"], ref["key"]))
+            for source in container.get("envFrom", []):
+                if source.get("secretRef"):
+                    refs.add((source["secretRef"]["name"], None))
+        return refs
+
+    def projected_files(pod: dict) -> dict:
+        """The files of the projected volume "secrets": path -> (Secret, key)."""
+        volume = next((v for v in pod.get("volumes", []) if v["name"] == "secrets"), {})
+        return {item["path"]: (source["secret"]["name"], item["key"])
+                for source in (volume.get("projected") or {}).get("sources", []) for item in source["secret"]["items"]}
+
+    owner_password = (server, "igrant_wallet")
+    admin_password = (admin_secret, admin_key)
+    logins = {"migrator", "launcher_app", "jobs", "audit_reader", "issuer_app", "relying_party_app",
+              "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"}
+
+    # The role Secret: one key per login role, kept; a hook before every
+    # other hook (Helm makes the normal resources only after the pre-upgrade
+    # hooks, and the roles and migration hooks read it).
+    secret = find("Secret", roles_secret)
+    check(secret is not None and set(secret.get("data", {})) == logins,
+          f"the role Secret {roles_secret} is missing or has the keys {sorted((secret or {}).get('data', {}))}")
+    if secret:
+        check(annotations(secret).get("helm.sh/resource-policy") == "keep", f"the role Secret {roles_secret} is not kept (resource-policy keep)")
+
+    # The hook kinds and weights: the role Secret, the roles, the migration,
+    # the read access.
+    install_upgrade = "post-install,pre-upgrade"
+    hooks = (
+        ("Secret", roles_secret, "pre-install,pre-upgrade", "-30"),
+        ("ConfigMap", f"{RELEASE}-wallet-database-roles", install_upgrade, "-25"),
+        ("Job", f"{RELEASE}-wallet-database-roles", install_upgrade, "-20"),
+        ("ConfigMap", f"{RELEASE}-wallet-migrate", install_upgrade, "-10"),
+        ("Job", f"{RELEASE}-wallet-migrate", install_upgrade, "-5"),
+        ("ConfigMap", f"{RELEASE}-wallet-read-access", install_upgrade, "0"),
+        ("Job", f"{RELEASE}-wallet-read-access-api", install_upgrade, "5"),
+        ("Job", f"{RELEASE}-wallet-read-access-consent", install_upgrade, "5"),
+    )
+    for kind, name, when, weight in hooks:
+        doc = find(kind, name)
+        if doc is None:
+            failures.append(f"the hook {kind} {name} is missing")
+            continue
+        found = tuple(annotations(doc).get(f"helm.sh/{key}") for key in ("hook", "hook-weight", "hook-delete-policy"))
+        check(found == (when, weight, "before-hook-creation"), f"the hook {kind} {name} has {found}, not ({when}, {weight}, before-hook-creation)")
+    weights = [int(weight) for _, _, _, weight in hooks]
+    check(weights == sorted(weights), "the wallet hooks are not in the order role Secret, roles, migration, read access")
+    # The api and consent migration hooks stay pre-upgrade (and post-upgrade).
+    for name, when in ((f"{RELEASE}-api-migrate", "pre-upgrade"), (f"{RELEASE}-consent-migrate", "pre-upgrade"),
+                       (f"{RELEASE}-consent-migrate-after", "post-upgrade")):
+        doc = find("Job", name)
+        check(doc is not None and annotations(doc).get("helm.sh/hook") == when, f"the hook {name} is not {when}")
+
+    # The user of each hook configuration.
+    for name, user in ((f"{RELEASE}-wallet-database-roles", admin_user), (f"{RELEASE}-wallet-migrate", "igrant_wallet_migrator"),
+                       (f"{RELEASE}-wallet-read-access", admin_user)):
+        database = (config_map_file(name, "config.yaml") or {}).get("database") or {}
+        check(database.get("user") == user, f"the hook configuration {name} has the database user {database.get('user')!r}, not {user}")
+        expected_file = f"{secret_dir}/{'database-password' if user.endswith('_migrator') else 'database-admin-password'}"
+        check(database.get("password_file") == expected_file, f"the hook configuration {name} has the password file {database.get('password_file')!r}")
+
+    # The roles hook: database-roles apply with the administrator and the
+    # role Secret; it tries again while the database server starts.
+    roles_job = find("Job", f"{RELEASE}-wallet-database-roles")
+    if roles_job:
+        pod = pod_of(roles_job)
+        container = pod["containers"][0]
+        check(container.get("command") == ["/app/.venv/bin/database-roles", "apply", "--password-dir", "/run/secrets/database-roles",
+                                           "--admin-user", admin_user, "--admin-password-file", f"{secret_dir}/database-admin-password"]
+              and "args" not in container, f"the roles hook has the command {container.get('command')}")
+        check(roles_job["spec"].get("backoffLimit") == 6 and roles_job["spec"].get("activeDeadlineSeconds") == 600,
+              "the roles hook has not backoffLimit 6 and activeDeadlineSeconds 600")
+        check(pod.get("restartPolicy") == "Never", "the roles hook has not restartPolicy Never")
+        mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
+        check(mounts.get("database-roles") == "/run/secrets/database-roles", "the roles hook does not mount the role Secret at /run/secrets/database-roles")
+        refs = secret_refs(pod)
+        check({(roles_secret, login) for login in logins} | {admin_password} <= refs,
+              "the roles hook does not mount every key of the role Secret and the password of the administrator")
+        check(projected_files(pod).get("database-admin-password") == admin_password, "the roles hook has not the password of the administrator as database-admin-password")
+
+    # The migration hook: the migrator, only the key migrator of the role Secret.
+    migrate_job = find("Job", f"{RELEASE}-wallet-migrate")
+    if migrate_job:
+        pod = pod_of(migrate_job)
+        check(pod["containers"][0].get("command") == ["/app/.venv/bin/migrate-database"], "the wallet migration hook has not the command migrate-database")
+        files = projected_files(pod)
+        check(files.get("database-password") == (roles_secret, "migrator"), f"the wallet migration hook mounts {files.get('database-password')} as database-password")
+        check({ref for ref in secret_refs(pod) if ref[0] == roles_secret} == {(roles_secret, "migrator")},
+              "the wallet migration hook mounts other keys of the role Secret than migrator")
+        check(admin_password not in secret_refs(pod), "the wallet migration hook mounts the password of the administrator")
+
+    # The read access hooks: the command (not the image entrypoint) and the
+    # administrator.
+    for reader in ("api", "consent"):
+        job = find("Job", f"{RELEASE}-wallet-read-access-{reader}")
+        if not job:
+            continue
+        container = pod_of(job)["containers"][0]
+        command = container.get("command") or []
+        check(command[:3] == ["/app/.venv/bin/read-access", "apply", "--reader"] and "args" not in container,
+              f"the read access hook of {reader} has not the command read-access (or has args)")
+        options = dict(zip(command, command[1:]))
+        check(options.get("--admin-user") == admin_user and options.get("--admin-password-file") == f"{secret_dir}/database-admin-password",
+              f"the read access hook of {reader} has not the administrator {admin_user} and its password file")
+        check(projected_files(pod_of(job)).get("database-admin-password") == admin_password,
+              f"the read access hook of {reader} has not the password of the administrator as database-admin-password")
+
+    # The Deployments: the user and the Secret key of each process.
+    processes = {"wallet-service": "launcher_app", "wallet-config": "launcher_app", "wallet-scheduler": "jobs"}
+    for component, role in processes.items():
+        deploy = find("Deployment", f"{RELEASE}-{component}")
+        if deploy is None:
+            failures.append(f"the Deployment {RELEASE}-{component} is missing")
+            continue
+        pod = pod_of(deploy)
+        files = projected_files(pod)
+        check(files.get("database-password") == (roles_secret, role),
+              f"the {component} pods mount {files.get('database-password')} as database-password, not ({roles_secret}, {role})")
+        check({ref for ref in secret_refs(pod) if ref[0] == roles_secret} == {(roles_secret, role)},
+              f"the {component} pods mount other keys of the role Secret than {role}")
+        file = config_map_file(f"{RELEASE}-wallet", f"{component.removeprefix('wallet-')}.yaml")
+        user = ((file or {}).get("database") or {}).get("user")
+        check(user == f"igrant_wallet_{role}", f"the {component} pods connect as {user!r}, not igrant_wallet_{role}")
+        check(admin_password not in secret_refs(pod), f"the {component} pods mount the password of the administrator")
+        if component != "wallet-scheduler":
+            # The server waits up to 600 s for the schema head before it
+            # answers /healthz: the startup probe covers the wait.
+            probe = pod["containers"][0].get("startupProbe") or {}
+            check(probe.get("periodSeconds", 10) * probe.get("failureThreshold", 3) >= 630,
+                  f"the startup probe of the {component} pods ends before the wait for the schema head (630 s)")
+
+    # No wallet pod or Job mounts the password of the database owner user.
+    for doc in docs:
+        if doc.get("kind") in ("Deployment", "Job", "StatefulSet") and doc["metadata"]["name"].startswith(f"{RELEASE}-wallet-"):
+            check(owner_password not in secret_refs(pod_of(doc)) and (server, None) not in secret_refs(pod_of(doc)),
+                  f"{doc['kind']} {doc['metadata']['name']} mounts the password of the database owner user")
 
     # --- Exposure ------------------------------------------------------------
     ingresses = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Ingress"}

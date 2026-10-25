@@ -1,21 +1,27 @@
 {{- /*
-Migration hook of the organisation wallet (ow.migrateHook, helm
-pre-upgrade): "migrate-database" (the wallet migrations with the views of
-the read-only users) before any Deployment of the release changes. Its
-configuration has only the database (ow.wallet.migrateConfig; the wallet
-reads the file of EUDI_WALLET_CONFIG). command, not args: the image
-entrypoint would run the same migration again.
+Migration hook of the organisation wallet (ow.migrateHook, helm post-install
+and pre-upgrade, after the roles hook): "migrate-database" (the wallet
+migrations with the views of the read-only users, then the grant step) as
+the migrator <prefix>_migrator, before any Deployment of the release changes.
+The migrator is a member of the owner role: the migrations make the objects
+as <prefix>_owner. On a new installation the hook runs after the resources
+of the release exist; the wallet pods wait for the schema head. Its
+configuration has only the database (ow.wallet.hookConfig; the wallet reads
+the file of EUDI_WALLET_CONFIG), and it mounts only the key migrator of the
+role Secret.
 */}}
 {{- if .Values.organisationWallet.enabled }}
+{{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" .) "key" "migrator" }}
 {{- include "ow.migrateHook" (dict
   "root" .
+  "hook" "post-install,pre-upgrade"
   "component" "wallet-migrate"
   "values" .Values.organisationWallet
   "jobs" .Values.organisationWallet.jobs
   "configPath" "/etc/eudi-wallet-migrate/config.yaml"
-  "config" (include "ow.wallet.migrateConfig" .)
+  "config" (include "ow.wallet.hookConfig" (list . (include "ow.wallet.databaseUser" (list . "migrator")) "database-password"))
   "env" (list (dict "name" "EUDI_WALLET_CONFIG" "value" "/etc/eudi-wallet-migrate/config.yaml"))
   "steps" (list (dict "name" "migrate" "command" (list "/app/.venv/bin/migrate-database")))
-  "secrets" (include "ow.migrateHook.secrets" (include "ow.db.secretFiles" (list . "wallet" "database-password") | fromJson) | fromJsonArray)
+  "secrets" (include "ow.migrateHook.secrets" (include "ow.wallet.databaseFiles" (list . "database-password" $password) | fromJson) | fromJsonArray)
   "secretDir" (include "ow.wallet.secretDir" .)) }}
 {{- end }}
