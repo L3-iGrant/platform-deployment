@@ -155,6 +155,19 @@ check_installation() {
     ok "test CA (${test_ca:-true}, ${days:-365} days)"
   fi
 
+  # The password file of each login database role of the wallet (make
+  # secrets; wallet-database-roles gives them to database-roles apply).
+  local role missing_roles=""
+  for role in migrator launcher_app jobs audit_reader issuer_app relying_party_app \
+    business_wallet_app individual_wp_app business_wp_app admin_app; do
+    [ -s "secrets/database/igrant_wallet_${role}-password" ] || missing_roles+=" igrant_wallet_${role}"
+  done
+  if [ -z "$missing_roles" ]; then
+    ok "database roles of the wallet: a password file for each login database role"
+  else
+    bad "no password file for the database roles${missing_roles}: run make secrets"
+  fi
+
   # docker compose config for the engine of the installation.
   local json
   if ! json="$(docker compose config --format json 2>&1)"; then
