@@ -192,7 +192,13 @@ guard "engine" "database.engine" "${shamir[@]}" --set database.engine=oracle
 guard "engine without the schema" 'database.engine "oracle" is not supported: use postgresql' "${shamir[@]}" --skip-schema-validation --set database.engine=oracle
 guard "mode" "database.mode" "${shamir[@]}" --set database.mode=cluster
 guard "external host" "database.external.host" "${shamir[@]}" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
-guard "external without admin" "database.auth.existingSecret" "${shamir[@]}" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
+# The roles hook of the wallet makes its database roles with the
+# administrator of the server: an external server needs one with the wallet.
+guard "external without admin" "database.external.admin.user is required with database.mode external and the organisation wallet" "${shamir[@]}" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
+guard "external without admin and wallet" "database.auth.existingSecret" "${shamir[@]}" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org
+# The wallet database name is the prefix of the database roles of the
+# wallet: <prefix>_business_wallet_app has at most 63 characters.
+guard "wallet database name too long for the role prefix" "can have at most 43" "${shamir[@]}" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
 guard "seal" "openbao.seal" --set openbao.seal=transit
 guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.existingSecret=s
 guard "external OpenBao without password" "openbao.wallet.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
@@ -280,6 +286,8 @@ test_ca "off, 90 days" '{"enabled": false, "leaf_validity_days": 90}' "${shamir[
 guard "test CA validity" "organisationWallet.keyStores.testCa.leafValidityDays" "${shamir[@]}" --set organisationWallet.keyStores.testCa.leafValidityDays=3651
 
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
+# The longest wallet database name: 43 characters.
+renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
 # The WIA pool refill event (core NATS): the scheduler subscribes to it.
 renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_pool.refill_requested", "_INBOX_wallet.>"] }' "${shamir[@]}"
 

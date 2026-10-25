@@ -5,10 +5,13 @@ Deployment of the release changes. So a new reader never starts before the
 views and rows that it reads exist. A failed hook stops the upgrade: the old
 pods stay. The hook runs at each upgrade; the commands are idempotent.
 
-A new installation has no hook (no old data, and the bundled database server
-does not exist yet when a pre-install hook runs): each owner migrates when its pod
-starts, and the /readyz of each reader checks that the views that it reads
-exist, so a reader gets no traffic before the owner has migrated.
+A new installation has no pre-install hook (the bundled database server
+does not exist yet when a pre-install hook runs). The api and consent
+migrate when their pods start, and the /readyz of each reader checks that
+the views that it reads exist, so a reader gets no traffic before the owner
+has migrated. The wallet pods never migrate: the wallet hook is also
+post-install (after the resources of the release exist), and the wallet
+pods wait for the schema head.
 
 The hook has its own configuration file with only the database (a
 pre-upgrade hook cannot read the new ConfigMaps of the release) and only the
@@ -20,7 +23,8 @@ of the earlier release wrote during the rolling update.
 
 Call with (dict
   "root" $
-  "hook" "pre-upgrade"|"post-upgrade"    optional; default pre-upgrade
+  "hook" "pre-upgrade"|"post-upgrade"|"post-install,pre-upgrade"
+                                         optional; default pre-upgrade
   "component" "<name suffix>"            the ConfigMap and the Job
   "values" <service values>              image, podSecurityContext, containerSecurityContext, ...
   "jobs" <jobs values>                   ttlSecondsAfterFinished, resources, podSecurityContext, containerSecurityContext (empty: the service values)
@@ -42,8 +46,10 @@ Call with (dict
 {{- $steps := .steps -}}
 {{- $hook := . -}}
 {{- $when := .hook | default "pre-upgrade" -}}
-{{- if not (has $when (list "pre-upgrade" "post-upgrade")) -}}
-{{- fail (printf "ow.migrateHook: hook %q must be pre-upgrade or post-upgrade" $when) -}}
+{{- range $event := splitList "," $when -}}
+{{- if not (has $event (list "post-install" "pre-upgrade" "post-upgrade")) -}}
+{{- fail (printf "ow.migrateHook: hook %q must be post-install, pre-upgrade or post-upgrade (comma-separated)" $when) -}}
+{{- end -}}
 {{- end -}}
 apiVersion: v1
 kind: ConfigMap
