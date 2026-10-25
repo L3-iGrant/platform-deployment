@@ -14,6 +14,7 @@ check: do the next step only when you see the result of the check.
 - [Installation](#installation)
 - [Operation](#operation)
 - [Settings](#settings)
+- [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
 - [Privacy dashboard](#privacy-dashboard)
@@ -36,9 +37,10 @@ check: do the next step only when you see the result of the check.
 | File store (`storage`) | Keeps the PDF documents of the verifier (the uploaded and the signed documents). | none |
 
 Some services run one time at each start and then stop:
-`database-init`, `api-migrate`, `consent-migrate`, `wallet-migrate`,
-`api-read-access`, `consent-read-access`, `wallet-read-access` and
-`openbao-init`. They create the databases, the database tables, the
+`database-init`, `wallet-database-roles`, `api-migrate`,
+`consent-migrate`, `wallet-migrate`, `api-read-access`,
+`consent-read-access`, `wallet-read-access` and `openbao-init`. They create
+the databases, the database roles of the wallet, the database tables, the
 read-only database users and the configuration of OpenBao.
 
 For HSM support and larger installations, see the chart pages [Connect your on-premise HSM](../docs/on-premise-hsm.md), [DPoD key stores](../docs/dpod-key-stores.md) and [Scaled deployments](../docs/scaled-deployments.md).
@@ -120,8 +122,8 @@ This command creates all passwords and keys of the platform in the folder
 the keys. When `SMTP_USERNAME` is set, it asks for the SMTP password (the
 input is hidden). It prints no secret value.
 
-Check: you see `secrets: secrets/: 26 new, 0 kept (no value printed)`
-(27 with the SMTP password).
+Check: you see `secrets: secrets/: 36 new, 0 kept (no value printed)`
+(37 with the SMTP password).
 
 ### Step 4: Check the configuration
 
@@ -160,9 +162,9 @@ Check: you see one line for each service.
   `wallet-service`, `wallet-scheduler`, `dashboard`, `nats`, `openbao`,
   `storage` and `postgres`: `running`. The services with a
   health check also show `(healthy)`.
-- `database-init`, the three `*-migrate` services, the three
-  `*-read-access` services and `openbao-init`: `exited`, with the status
-  `Exited (0)`.
+- `database-init`, `wallet-database-roles`, the three `*-migrate`
+  services, the three `*-read-access` services and `openbao-init`:
+  `exited`, with the status `Exited (0)`.
 
 If a service has another state, see [Troubleshooting](#troubleshooting).
 
@@ -228,7 +230,7 @@ organisation.
 | Stop the platform (the data stays) | `make down` |
 | Start the platform again | `make up` |
 | Change a setting | Change `.env`, then `make check` and `make up` (Compose starts the changed services again) |
-| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make check` and `make up` |
+| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)) |
 | Delete all data and start again | `make reset`, then `make up`, then steps 8 and 9 |
 | OpenBao seal status | `make openbao-status` |
 | SQL shell of the database server | `make db-shell` |
@@ -265,11 +267,59 @@ your shell has priority over the value in `.env`.
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
 `igrant_wallet`, each with its own owner user. The wallet keeps its tables
 in data scopes: schemas in `igrant_wallet` (for example `issuer`), which
-the wallet migration makes. `wallet-migrate` starts after `database-init`,
-so a new release needs no step by hand.
+`wallet-database-roles` creates. Each process of the wallet connects with
+its own database role (see
+[Database roles of the wallet](#database-roles-of-the-wallet)).
 
 The configuration files of the components are in `compose.platform.yaml`
 (section `configs`). Compose writes the values of `.env` into them.
+
+## Database roles of the wallet
+
+The wallet connects to `igrant_wallet` with one database role for each
+process, never with the owner user `igrant_wallet` of the database. The
+prefix of the database roles is the name of the database, `igrant_wallet`.
+
+At each `make up`, the one-shot services of the wallet run in this order;
+each one starts only when the one before it stopped with exit code 0:
+
+1. `database-init` creates the database `igrant_wallet` and its owner user.
+2. `wallet-database-roles` (`database-roles apply`, as the admin user of
+   the database server) creates the owner role `igrant_wallet_owner` and
+   the login database roles with their passwords from `secrets/database/`,
+   creates the data scope schemas, gives the tables, views and sequences of
+   an older release to the owner role, and gives the grants.
+3. `wallet-migrate` (`migrate-database`, as `igrant_wallet_migrator`)
+   applies the migrations of the wallet as the owner role, then gives the
+   database roles their grants on the new tables. It is the only service
+   that changes the schema of the wallet.
+4. `wallet-read-access` (as the admin user) creates the read-only users of
+   the api and of consent on the wallet views. The wallet processes start
+   after `wallet-migrate`.
+
+| Process | Service | Database role |
+|---|---|---|
+| Database roles | `wallet-database-roles` | The admin user (`DB_ADMIN_USER`) |
+| Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
+| Read access | `wallet-read-access` | The admin user (`DB_ADMIN_USER`) |
+| Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
+| Background jobs | `wallet-scheduler` | `igrant_wallet_jobs` |
+
+The database roles of the wallet processes read and write the data, but
+cannot change the schema. A wallet process waits until the schema is at
+the head of its code. When the schema does not get there in time, the
+process stops and Compose starts it again.
+
+The other login database roles (`igrant_wallet_audit_reader` and one
+database role for each role application, for example
+`igrant_wallet_issuer_app`) also get their passwords. No process of this
+release logs in with them.
+
+A new release can add database roles and migrations. Set its tag in
+`PLATFORM_TAG` in `.env`, then do `make secrets`, `make check` and
+`make up`. `make secrets` creates the password files that the release adds
+and keeps the others. The one-shot services then do the database work in
+the order above: there is no step by hand.
 
 ## Secrets
 
@@ -286,7 +336,7 @@ installation with data, do not delete these files:
 
 | Folder | Content |
 |---|---|
-| `secrets/database/` | The passwords of the admin user of the database server, of the owner user of each database and of the read-only users. |
+| `secrets/database/` | The passwords of the admin user of the database server, of the owner user of each database, of the read-only users and of the login database roles of the wallet (`igrant_wallet_<name>-password`). |
 | `secrets/api/` | The keys of the api (API secret key, token keys, database wrapping key, service key), its NATS seeds and the SMTP password. |
 | `secrets/gateway/` | The key that the gateway uses to sign its requests to the other components. |
 | `secrets/consent/`, `secrets/wallet/` | The keys that sign the NATS messages of consent and of the wallet, and their NATS seeds. |
@@ -372,6 +422,12 @@ the function is off, and the api answers that it is not configured.
 - A one-shot service shows an exit code other than 0, or a service does not
   start: `docker compose logs <service>`. When a one-shot service fails,
   the services that wait for it do not start.
+- `wallet-migrate` shows `Exited (1)`: a migration failed; `Exited (2)`:
+  a configuration or connection error; `Exited (3)`: the schema is at the
+  head, but the grants are not complete. Read `docker compose logs
+  wallet-migrate`, correct the cause, then do `make up` again.
+- `make check` shows `no password file for the database roles ...`: do
+  `make secrets` (a new release can add database roles).
 - `openbao-init` shows "init.json is missing": OpenBao has data, but
   `secrets/openbao/init.json` is not there. Put your copy of the file back.
 - A host port is in use: change `API_PORT`, `WALLET_PORT` or
