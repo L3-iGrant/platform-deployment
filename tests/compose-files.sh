@@ -5,6 +5,9 @@
 #   - docker compose config for each engine (postgresql): the database
 #     server of the engine, the images, and the database type and port in
 #     each configuration file of the components;
+#   - the database roles of the wallet: the service wallet-database-roles,
+#     the order of the one-shot services and the database user of each
+#     wallet configuration;
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -151,6 +154,112 @@ PY
         ok "key stores: $output"
       else
         bad "key stores: $output"
+      fi
+      rm -f "$project_file"
+    fi
+  fi
+
+  # The database roles of the wallet: wallet-database-roles (database-roles
+  # apply as the admin user, one password file per login database role)
+  # after database-init, then wallet-migrate as the migrator, then the
+  # read access (admin user) and the wallet processes (launcher and jobs
+  # database roles). The database user of each configuration has the
+  # password file of make secrets for that user, and no service of the
+  # wallet image mounts the password of the owner user igrant_wallet.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local output project_file admin
+    admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/engine/postgresql.env)"
+    if ! json="$(docker compose config --format json 2>&1)"; then
+      bad "database roles: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" "$admin" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+admin = sys.argv[2]
+services = project["services"]
+problems = []
+# The login database roles of database-roles, by the name without the
+# prefix igrant_wallet (the name of the wallet database).
+roles = ["migrator", "launcher_app", "jobs", "audit_reader", "issuer_app", "relying_party_app",
+         "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"]
+# Each service of the wallet image: its database user and the service that
+# it waits for.
+wallet = {
+    "wallet-database-roles": (admin, "database-init"),
+    "wallet-migrate": ("igrant_wallet_migrator", "wallet-database-roles"),
+    "wallet-read-access": (admin, "wallet-migrate"),
+    "wallet-config": ("igrant_wallet_launcher_app", "wallet-migrate"),
+    "wallet-service": ("igrant_wallet_launcher_app", "wallet-migrate"),
+    "wallet-scheduler": ("igrant_wallet_jobs", "wallet-migrate"),
+}
+
+
+def secret_file(name):
+    """The file of make secrets of the secret name."""
+    return project.get("secrets", {}).get(name, {}).get("file", "")
+
+
+def password_file(user):
+    return f"/secrets/database/{'admin' if user == admin else user}-password"
+
+
+images = sorted(name for name, service in services.items() if "/eudi-wallet:" in service.get("image", ""))
+if images != sorted(wallet):
+    problems.append(f"the services of the wallet image are {images}, not {sorted(wallet)}")
+for name, (user, before) in wallet.items():
+    service = services.get(name)
+    if service is None:
+        problems.append(f"no service {name}")
+        continue
+    if service.get("depends_on", {}).get(before, {}).get("condition") != "service_completed_successfully":
+        problems.append(f"{name} does not wait for {before} (service_completed_successfully)")
+    path = service.get("environment", {}).get("EUDI_WALLET_CONFIG", "/etc/eudi-wallet/config.yaml")
+    sources = [config["source"] for config in service.get("configs", []) if config.get("target") == path]
+    if len(sources) != 1:
+        problems.append(f"{name}: no configuration file at {path}")
+        continue
+    database = yaml.safe_load(project["configs"][sources[0]]["content"])["database"]
+    if database.get("user") != user:
+        problems.append(f"{name}: database user {database.get('user')!r}, not {user!r}")
+    mounted = {secret.get("target"): secret["source"] for secret in service.get("secrets", [])}
+    if not secret_file(mounted.get(database.get("password_file"), "")).endswith(password_file(user)):
+        problems.append(f"{name}: {database.get('password_file')} is not the password file of {user}")
+    if "db-igrant-wallet-password" in mounted.values():
+        problems.append(f"{name} mounts the password of the owner user igrant_wallet")
+
+roles_service = services.get("wallet-database-roles", {})
+if roles_service.get("entrypoint") != ["/app/.venv/bin/database-roles"]:
+    problems.append(f"wallet-database-roles: entrypoint {roles_service.get('entrypoint')}")
+command = ["apply", "--password-dir", "/run/secrets/database-roles", "--admin-user", admin,
+           "--admin-password-file", "/run/secrets/database/admin-password"]
+if roles_service.get("command") != command:
+    problems.append(f"wallet-database-roles: command {roles_service.get('command')}, not {command}")
+mounted = {secret.get("target"): secret["source"] for secret in roles_service.get("secrets", [])}
+if not secret_file(mounted.get("/run/secrets/database/admin-password", "")).endswith(password_file(admin)):
+    problems.append("wallet-database-roles: no admin password at /run/secrets/database/admin-password")
+directory = {target.rsplit("/", 1)[1]: source for target, source in mounted.items()
+             if target.startswith("/run/secrets/database-roles/")}
+if sorted(directory) != sorted(roles):
+    problems.append(f"wallet-database-roles: --password-dir has {sorted(directory)}, not {sorted(roles)}")
+for role, source in sorted(directory.items()):
+    if not secret_file(source).endswith(password_file(f"igrant_wallet_{role}")):
+        problems.append(f"wallet-database-roles: {role} is not the password file of igrant_wallet_{role}")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print(f"wallet-database-roles ({len(roles)} login database roles), the order and the user of each wallet configuration")
+PY
+)"; then
+        ok "database roles: $output"
+      else
+        bad "database roles: $output"
       fi
       rm -f "$project_file"
     fi
