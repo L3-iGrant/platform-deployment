@@ -4,7 +4,7 @@ This page explains the NetworkPolicy objects of the chart and their values.
 
 [Back to the contents](../README.md#contents)
 
-`networkPolicy.enabled: true` (default `false`) creates NetworkPolicy objects. Use them only when your cluster enforces NetworkPolicy (for example Calico, Cilium, OVN-Kubernetes). The rules come from `policies/network-matrix.yaml`: only your ingress controller or Gateway reaches the gateway, the wallet service and the dashboard; only the gateway reaches the API core, consent and the wallet config role; the database (port 5432 or 3306) and NATS accept only their clients; a default policy refuses all other traffic.
+`networkPolicy.enabled: true` (default `false`) creates NetworkPolicy objects. Use them only when your cluster enforces NetworkPolicy (for example Calico, Cilium, OVN-Kubernetes). The rules come from `policies/network-matrix.yaml`: only your ingress controller or Gateway reaches the gateway, the wallet service and the dashboard; only the gateway reaches the API core, consent and the wallet config role; the database (port 5432) and NATS accept only their clients; a default policy refuses all other traffic.
 
 | Value | Description |
 | --- | --- |
