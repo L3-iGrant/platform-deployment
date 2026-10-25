@@ -4,7 +4,9 @@
 # is the database name. The script is idempotent: it makes a user or a
 # database only when it does not exist, and it sets the password of each
 # user each time. The data scopes of the wallet are schemas in
-# igrant_wallet, which its owner makes.
+# igrant_wallet: the service wallet-database-roles makes them, with the
+# database roles of the wallet. No process of the wallet logs in as the
+# owner user igrant_wallet.
 #
 # Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)

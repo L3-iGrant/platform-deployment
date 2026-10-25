@@ -61,7 +61,9 @@ services:
   # Makes the databases igrant_api, igrant_oidc, igrant_consent and
   # igrant_wallet and their owner users (the user name is the database
   # name), then stops. Idempotent: it sets the passwords each time. The data
-  # scopes of the wallet are schemas in igrant_wallet, which its owner makes.
+  # scopes of the wallet are schemas in igrant_wallet, which
+  # wallet-database-roles makes; no process of the wallet logs in as the
+  # owner user igrant_wallet.
   database-init:
     <<: *job
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
@@ -175,6 +177,47 @@ services:
     depends_on:
       database-init: {condition: service_completed_successfully}
 
+  # The database roles of the wallet (database-roles apply, as the admin
+  # user): the owner role igrant_wallet_owner, the login database roles
+  # igrant_wallet_<name> with their passwords (one file each in
+  # --password-dir, named without the prefix), the data scope schemas, the
+  # objects of an older release given to the owner role, and the grants.
+  # The prefix igrant_wallet is the name of the wallet database.
+  wallet-database-roles:
+    <<: *job
+    image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    entrypoint: ["/app/.venv/bin/database-roles"]
+    command:
+      - apply
+      - --password-dir
+      - /run/secrets/database-roles
+      - --admin-user
+      - ${DB_ADMIN_USER}
+      - --admin-password-file
+      - /run/secrets/database/admin-password
+    environment:
+      EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
+    configs:
+      - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
+    secrets:
+      - {source: database-admin-password, target: /run/secrets/database/admin-password}
+      - {source: db-igrant-wallet-migrator-password, target: /run/secrets/database-roles/migrator}
+      - {source: db-igrant-wallet-launcher-app-password, target: /run/secrets/database-roles/launcher_app}
+      - {source: db-igrant-wallet-jobs-password, target: /run/secrets/database-roles/jobs}
+      - {source: db-igrant-wallet-audit-reader-password, target: /run/secrets/database-roles/audit_reader}
+      - {source: db-igrant-wallet-issuer-app-password, target: /run/secrets/database-roles/issuer_app}
+      - {source: db-igrant-wallet-relying-party-app-password, target: /run/secrets/database-roles/relying_party_app}
+      - {source: db-igrant-wallet-business-wallet-app-password, target: /run/secrets/database-roles/business_wallet_app}
+      - {source: db-igrant-wallet-individual-wp-app-password, target: /run/secrets/database-roles/individual_wp_app}
+      - {source: db-igrant-wallet-business-wp-app-password, target: /run/secrets/database-roles/business_wp_app}
+      - {source: db-igrant-wallet-admin-app-password, target: /run/secrets/database-roles/admin_app}
+    depends_on:
+      database-init: {condition: service_completed_successfully}
+
+  # The migrations of the wallet (migrate-database), as the migrator
+  # igrant_wallet_migrator: the revisions run as the owner role, then the
+  # grant step gives the database roles their grants on the new objects.
+  # Only this service changes the schema of the wallet.
   wallet-migrate:
     <<: *job
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
@@ -184,13 +227,13 @@ services:
     configs:
       - {source: wallet-migrate-config, target: /etc/eudi-wallet/migrate.yaml}
     secrets:
-      - {source: db-igrant-wallet-password, target: /run/secrets/eudi-wallet/database-password}
+      - {source: db-igrant-wallet-migrator-password, target: /run/secrets/eudi-wallet/database-password}
     depends_on:
-      database-init: {condition: service_completed_successfully}
+      wallet-database-roles: {condition: service_completed_successfully}
 
   # The owner of a database makes the read-only users of the other services
   # on its views (rule <reader>_<owner>_reader) with its read-access command.
-  # The admin user (DB_ADMIN_USER: postgres or root) makes the users.
+  # The admin user (DB_ADMIN_USER) makes the users.
   api-read-access:
     <<: *job
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
@@ -253,11 +296,10 @@ services:
             --admin-user "${DB_ADMIN_USER}" --admin-password-file /run/secrets/database/admin-password
         done
     environment:
-      EUDI_WALLET_CONFIG: /etc/eudi-wallet/migrate.yaml
+      EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
     configs:
-      - {source: wallet-migrate-config, target: /etc/eudi-wallet/migrate.yaml}
+      - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
     secrets:
-      - {source: db-igrant-wallet-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: reader-api-wallet-password, target: /run/secrets/read-access/api_wallet_reader}
       - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
@@ -364,8 +406,11 @@ services:
       nats: {condition: service_healthy}
 
   # --- Organisation wallet: config, service and scheduler roles of one image ----
-  # The image entrypoint applies the wallet migrations, then starts the
-  # process.
+  # The image entrypoint only starts the process (it applies no migration):
+  # wallet-migrate changes the schema before the processes start. Each
+  # process waits until the schema is at the head of its code, and connects
+  # with a database role that cannot change the schema: config and service
+  # as igrant_wallet_launcher_app, the scheduler as igrant_wallet_jobs.
 
   # The config routes: only the gateway calls them (internal token).
   wallet-config:
@@ -375,7 +420,7 @@ services:
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
       - {source: service-jwks-api, target: /etc/igrant-service-keys/igrant-api.json}
     secrets:
-      - {source: db-igrant-wallet-password, target: /run/secrets/eudi-wallet/database-password}
+      - {source: db-igrant-wallet-launcher-app-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-config, target: /run/secrets/eudi-wallet/nats-seed}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
@@ -403,7 +448,7 @@ services:
     configs:
       - {source: wallet-service-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
-      - {source: db-igrant-wallet-password, target: /run/secrets/eudi-wallet/database-password}
+      - {source: db-igrant-wallet-launcher-app-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-service, target: /run/secrets/eudi-wallet/nats-seed}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
@@ -421,7 +466,7 @@ services:
     configs:
       - {source: wallet-scheduler-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
-      - {source: db-igrant-wallet-password, target: /run/secrets/eudi-wallet/database-password}
+      - {source: db-igrant-wallet-jobs-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-scheduler, target: /run/secrets/eudi-wallet/nats-seed}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
@@ -464,6 +509,17 @@ secrets:
   db-igrant-oidc-password: {file: ./secrets/database/igrant_oidc-password}
   db-igrant-consent-password: {file: ./secrets/database/igrant_consent-password}
   db-igrant-wallet-password: {file: ./secrets/database/igrant_wallet-password}
+  # The login database roles of the wallet (wallet-database-roles).
+  db-igrant-wallet-migrator-password: {file: ./secrets/database/igrant_wallet_migrator-password}
+  db-igrant-wallet-launcher-app-password: {file: ./secrets/database/igrant_wallet_launcher_app-password}
+  db-igrant-wallet-jobs-password: {file: ./secrets/database/igrant_wallet_jobs-password}
+  db-igrant-wallet-audit-reader-password: {file: ./secrets/database/igrant_wallet_audit_reader-password}
+  db-igrant-wallet-issuer-app-password: {file: ./secrets/database/igrant_wallet_issuer_app-password}
+  db-igrant-wallet-relying-party-app-password: {file: ./secrets/database/igrant_wallet_relying_party_app-password}
+  db-igrant-wallet-business-wallet-app-password: {file: ./secrets/database/igrant_wallet_business_wallet_app-password}
+  db-igrant-wallet-individual-wp-app-password: {file: ./secrets/database/igrant_wallet_individual_wp_app-password}
+  db-igrant-wallet-business-wp-app-password: {file: ./secrets/database/igrant_wallet_business_wp_app-password}
+  db-igrant-wallet-admin-app-password: {file: ./secrets/database/igrant_wallet_admin_app-password}
   reader-api-wallet-password: {file: ./secrets/database/api_wallet_reader-password}
   reader-consent-api-password: {file: ./secrets/database/consent_api_reader-password}
   reader-consent-wallet-password: {file: ./secrets/database/consent_wallet_reader-password}
@@ -894,7 +950,9 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        user: igrant_wallet
+        # The launcher database role: it reads and writes every data scope
+        # and cannot change the schema.
+        user: igrant_wallet_launcher_app
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
         url: nats://nats:4222
@@ -974,7 +1032,9 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        user: igrant_wallet
+        # The launcher database role: it reads and writes every data scope
+        # and cannot change the schema.
+        user: igrant_wallet_launcher_app
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
         url: nats://nats:4222
@@ -1020,7 +1080,9 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        user: igrant_wallet
+        # The jobs database role: it reads and writes the data scopes of the
+        # background jobs and cannot change the schema.
+        user: igrant_wallet_jobs
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
         url: nats://nats:4222
@@ -1056,7 +1118,7 @@ configs:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
 
-  # migrate-database and read-access apply of the wallet: only the database.
+  # migrate-database of the wallet: only the database.
   wallet-migrate-config:
     content: |
       log_level: INFO
@@ -1065,8 +1127,23 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        user: igrant_wallet
+        # The migrator: it changes the schema as the owner role
+        # igrant_wallet_owner.
+        user: igrant_wallet_migrator
         password_file: /run/secrets/eudi-wallet/database-password
+
+  # database-roles apply and read-access apply of the wallet: only the
+  # database, with the admin user (DB_ADMIN_USER).
+  wallet-database-admin-config:
+    content: |
+      log_level: INFO
+      database:
+        type: ${DB_ENGINE}
+        host: database
+        port: ${DB_PORT}
+        name: igrant_wallet
+        user: ${DB_ADMIN_USER}
+        password_file: /run/secrets/database/admin-password
 
   # Runtime configuration of the dashboard: the API (the gateway) and the
   # wallet (the vct metadata of the credential types; the
