@@ -127,7 +127,10 @@ database:
   mode: bundled
   # -- Database (= owner user) name and password of each component. Empty
   # password: random (kept across upgrades). The wallet keeps its tables in
-  # data scopes: schemas in its database. See docs/database.md.
+  # data scopes: schemas in its database. The wallet processes connect with
+  # their own database roles, not as the owner user: the wallet database
+  # name is the prefix of their names (at most 43 characters, for example
+  # igrant_wallet_launcher_app). See docs/database.md.
   databases:
     api:
       name: igrant_api
@@ -148,7 +151,8 @@ database:
     # -- Existing Secret with one key per database name (igrant_api,
     # igrant_oidc, igrant_consent, igrant_wallet) and, for bundled, the
     # admin password (key POSTGRES_PASSWORD). Then the chart does not make
-    # the database Secret. Required for external without an admin user.
+    # the database Secret. Required for external without an admin user
+    # (only without the organisation wallet).
     existingSecret: ""
   external:
     # -- Host name of the external server (required for external).
@@ -156,8 +160,10 @@ database:
     # -- Port. Empty: 5432.
     port: ""
     # -- An admin user of the external server. With it, the init Job makes
-    # the databases and the owner users, and the read access Jobs use it.
-    # Empty user: the databases and the users exist; give their passwords in
+    # the databases and the owner users, the roles hook makes the database
+    # roles of the wallet, and the read access Jobs use it. Required with
+    # the organisation wallet. Empty user (only without the wallet): the
+    # databases and the users exist; give their passwords in
     # database.auth.existingSecret.
     admin:
       user: ""
@@ -965,11 +971,12 @@ readAccess:
   # "read-access apply" (one Job per owner and reader, for example
   # <fullname>-api-read-access-wallet-<revision>): api for the readers wallet
   # and consent, consent for the reader wallet, wallet for the readers api
-  # and consent. They run at each install and upgrade (idempotent; a new
-  # release can add views). Each Job connects with an admin user that may
-  # make users and grant SELECT on the views: adminUser and the Secret
-  # adminPasswordSecret (key adminPasswordKey). Empty: the admin user of
-  # database.* (the "postgres" or "root" user of the bundled server, or
+  # and consent (hooks after the wallet migration hook, for example
+  # <fullname>-wallet-read-access-api). They run at each install and upgrade
+  # (idempotent; a new release can add views). Each Job connects with an
+  # admin user that may make users and grant SELECT on the views: adminUser
+  # and the Secret adminPasswordSecret (key adminPasswordKey). Empty: the
+  # admin user of database.* (the "postgres" user of the bundled server, or
   # database.external.admin). enabled false: a DBA runs the SQL of
   # "read-access print-sql" (see docs/read-access.md).
   jobs:
@@ -1365,9 +1372,9 @@ organisationWallet:
     backgroundShutdownSeconds: 10
     preStopSeconds: 10
     terminationGracePeriodSeconds: 45
-  # -- The wallet migration hook and the read access Jobs of the wallet:
-  # they read only the database file (migrate.yaml), the database password
-  # and its CA. Non-root with a read-only root file system.
+  # -- The hooks of the wallet (the roles, migration and read access hooks):
+  # each reads only its database file, the password of its login and the
+  # CA. Non-root with a read-only root file system.
   jobs:
     ttlSecondsAfterFinished: 86400
     resources:

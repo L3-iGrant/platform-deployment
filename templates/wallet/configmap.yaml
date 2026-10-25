@@ -14,8 +14,4 @@ data:
     # kms.vault: the login of the wallet to OpenBao (the Transit engine).
     {{- include "ow.wallet.config" (dict "root" $ "role" $role) | nindent 4 }}
   {{- end }}
-  # Only the database: the file of the wallet Jobs (migrate-database and
-  # read-access read only database and log_level).
-  migrate.yaml: |
-    {{- include "ow.wallet.migrateConfig" . | nindent 4 }}
 {{- end }}
