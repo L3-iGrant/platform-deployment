@@ -37,7 +37,3 @@ This page upgrades an installation to a new release of the platform.
 5. Bundled OpenBao: run `bootstrap.sh` again (install step 5, item 3). It changes only what the new version needs, for example new Transit paths in the wallet policy. External OpenBao: compare your policy with [External OpenBao](openbao.md#external-openbao).
 
 Check: `helm -n ows status ows` shows `STATUS: deployed`, and `kubectl -n ows get pods` shows all pods `Running` and `READY`.
-
-## Data scopes of the wallet
-
-The release that moves the tables of the wallet into data scopes (see [Database](database.md#data-scopes-of-the-wallet)) needs no grant: the owner of the wallet database makes the schemas. The migration moves all tables of the wallet at once, with no compatibility views: the wallet pods of the release before fail from the start of the hook until the new wallet pods are ready. Do this upgrade in a maintenance window.
