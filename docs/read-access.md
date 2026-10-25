@@ -16,6 +16,6 @@ The read access Jobs (`readAccess.jobs.enabled`, default `true`) create the user
 
 Without an admin user (an external server), a DBA creates the users with the SQL of the owner command `read-access print-sql` (for example `igrant-api read-access print-sql --config <file> --reader wallet --user wallet_api_reader`), and you set `readAccess.jobs.enabled: false` and the password Secrets.
 
-PostgreSQL: the user gets `CONNECT`, `USAGE` on the schema of its views and `SELECT` on the views. The schema is `read_v1`, except for consent on the wallet database: it reads `read_v2` (the view `wallet_read_v2_presentation_event`). MySQL: the user is `'<user>'@'%'` and gets `SELECT` on the views in the owner database. The views have the migration user of the owner as definer: do not drop it.
+The user gets `CONNECT`, `USAGE` on the schema of its views and `SELECT` on the views. The schema is `read_v1`, except for consent on the wallet database: it reads `read_v2` (the view `wallet_read_v2_presentation_event`). The views belong to the migration user of the owner: do not drop it.
 
-The wallet views read the tables in the data scopes of the wallet (see [Database](database.md#data-scopes-of-the-wallet)) with the rights of the definer. The views keep their names, columns and places, and the read-only users get no right on the data scopes. On MySQL, the definer needs its grant on the data scope databases: do not revoke it.
+The wallet views read the tables in the data scopes of the wallet (see [Database](database.md#data-scopes-of-the-wallet)) with the rights of the user that owns the views. The views keep their names, columns and places, and the read-only users get no right on the data scopes.

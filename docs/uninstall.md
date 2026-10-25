@@ -18,9 +18,9 @@ Helm keeps the data of the platform and the objects that belong to it:
 
 Check: `helm -n ows list` does not show `ows`, and `kubectl -n ows get pods` shows no pod of the platform (finished Jobs stay for one day).
 
-**Install again with the same data:** run [install step 4](install.md#step-4-install) with the same values files (the same database engine). The chart uses the kept Secrets and volumes. With the bundled OpenBao, unseal again (install step 5, item 2).
+**Install again with the same data:** run [install step 4](install.md#step-4-install) with the same values files. The chart uses the kept Secrets and volumes. With the bundled OpenBao, unseal again (install step 5, item 2).
 
-**Start again without data** (for example with another database engine): delete the kept objects of the release. This deletes all data of the platform: organisations, credentials and the keys of the wallet in OpenBao.
+**Start again without data**: delete the kept objects of the release. This deletes all data of the platform: organisations, credentials and the keys of the wallet in OpenBao.
 
 ```bash
 kubectl -n ows delete pvc,job,configmap,secret -l app.kubernetes.io/instance=ows,app.kubernetes.io/component!=keys
@@ -34,4 +34,4 @@ kubectl -n ows delete secret -l app.kubernetes.io/instance=ows,app.kubernetes.io
 
 Check: `kubectl -n ows get pvc,job,configmap -l app.kubernetes.io/instance=ows` shows `No resources found`. Then install again from install step 3 (from install step 2 when you created new keys).
 
-With an external database server (`database.mode: external`), these commands do not change your server: the databases `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet` (on MySQL also the data scope databases `igrant_wallet_<scope>`, see [Database](database.md#data-scopes-of-the-wallet)), their owner users and the read-only users stay. For a start without data, your DBA drops them before the new install. Foreign keys refer from one data scope database to another: drop the data scope databases in one session after `SET FOREIGN_KEY_CHECKS = 0`. Otherwise, the new installation uses the old databases.
+With an external database server (`database.mode: external`), these commands do not change your server: the databases `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet`, their owner users and the read-only users stay. For a start without data, your DBA drops them before the new install. Otherwise, the new installation uses the old databases.

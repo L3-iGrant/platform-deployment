@@ -26,15 +26,14 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 
 | Value | Description | Default |
 | --- | --- | --- |
-| `database.engine` | `postgresql` or `mysql` | `postgresql` |
+| `database.engine` | `postgresql` (the only supported engine) | `postgresql` |
 | `database.mode` | `bundled` or `external` | `bundled` |
-| `database.databases.<component>.name`, `.password` | Database and owner user of `api`, `oidc`, `consent`, `wallet`. MySQL: the wallet also has the data scope databases `<wallet name>_<scope>` (see [Database](database.md#data-scopes-of-the-wallet)) | `igrant_<component>`, random |
+| `database.databases.<component>.name`, `.password` | Database and owner user of `api`, `oidc`, `consent`, `wallet` | `igrant_<component>`, random |
 | `database.auth.adminPassword`, `.existingSecret` | The admin password of the bundled server; an existing Secret with all passwords | random, `""` |
 | `database.external.host`, `.port`, `.admin.*` | The external server and its admin user | `""` |
-| `database.pools.<process>` | PostgreSQL only: the pool of `api`, `webhook`, `oidc`, `gateway`, `consent` | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
+| `database.pools.<process>` | The pool of `api`, `webhook`, `oidc`, `gateway`, `consent` | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
 | `database.tls.enabled`, `.existingSecret`, `.caSecret`, `.caKey`, `.sslMode` | TLS to the server | `true` |
 | `database.postgresql.image`, `.parameters` | The bundled PostgreSQL | `postgres:18.6` |
-| `database.mysql.image`, `.parameters` | The bundled MariaDB | `mariadb:13.0.2`, `max_connections: 1000` |
 | `database.persistence.size`, `.storageClass`, `database.resources` | The volume and the resources of the bundled server | `50Gi`, 250m/1536Mi (CPU limit 2) |
 
 ## OpenBao

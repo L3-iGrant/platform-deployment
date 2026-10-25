@@ -41,7 +41,7 @@ Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.ima
 
 | Group | Files | Read first |
 | --- | --- | --- |
-| Database | `postgresql-bundled.yaml`, `mysql-bundled.yaml`, `postgresql-external.yaml`, `mysql-external.yaml` | [Database](database.md) |
+| Database | `postgresql-bundled.yaml`, `postgresql-external.yaml` | [Database](database.md) |
 | OpenBao | `openbao-shamir.yaml` (the bundled OpenBao, manual unseal), `openbao-external.yaml` (your OpenBao) | [OpenBao](openbao.md) |
 | Exposure | `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-envoy-gateway.yaml`, `exposure-kgateway.yaml`, `exposure-none.yaml` | [Exposure](exposure.md) |
 | Network policies (optional) | `networkpolicy.yaml` | [Network policies](network-policies.md) |
