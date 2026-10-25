@@ -2,7 +2,7 @@
 """Checks the key facts of one "helm template" output of the chart.
 
 Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy>
-  engine: postgresql | mysql; mode: bundled | external;
+  engine: postgresql; mode: bundled | external;
   openbao: shamir | external;
   exposure: ingress | gatewayAPI | none; networkpolicy: off | on.
 
@@ -23,9 +23,9 @@ EXTERNAL_DB_HOST = "db.example.org"
 EXTERNAL_OPENBAO = "https://openbao.example.org:8200"
 HOSTS = {"t-api": "api.example.org", "t-wallet-service": "wallet.example.org", "t-dashboard": "dashboard.example.org"}
 KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
-# SCOPES of the wallet module ows.db.scopes (the chart helper ow.db.walletScopes).
-WALLET_SCOPES = ["platform", "kms", "trust", "issuer", "authorisation_server", "relying_party",
-                 "business_wallet", "wallet_provider", "events", "conformance"]
+# The facts of each engine of the chart helper ow.db.engines: the name
+# suffix of the bundled server, the port and the admin password key.
+ENGINES = {"postgresql": {"server": "postgres", "port": 5432, "admin_key": "POSTGRES_PASSWORD"}}
 
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
@@ -70,8 +70,9 @@ def main() -> int:
             return {}
         return cm["data"][key] if raw else yaml.safe_load(cm["data"][key])
 
-    port = 3306 if engine == "mysql" else 5432
-    server = f"{RELEASE}-mysql" if engine == "mysql" else f"{RELEASE}-postgres"
+    facts = ENGINES[engine]
+    port = facts["port"]
+    server = f"{RELEASE}-{facts['server']}"
     host = f"{server}.{NAMESPACE}.svc" if mode == "bundled" else EXTERNAL_DB_HOST
 
     # --- The engine in each config file ----------------------------------
@@ -81,22 +82,14 @@ def main() -> int:
         check(section.get("hosts") == [host], f"{where}.hosts is {section.get('hosts')!r}")
         tls = section.get("tls") or {}
         check(bool(tls.get("caFile")), f"{where}.tls.caFile is missing")
-        if engine == "mysql":
-            check("sslMode" not in tls, f"{where}.tls.sslMode is set for mysql (no effect there)")
-            check("maxConns" not in section, f"{where}.maxConns is set for mysql (no effect there)")
-            check((section.get("params") or {}).get("time_zone") == "'+00:00'", f"{where}.params.time_zone is not '+00:00'")
-        else:
-            check(tls.get("sslMode") == "verify-full", f"{where}.tls.sslMode is {tls.get('sslMode')!r}, not verify-full")
+        check(tls.get("sslMode") == "verify-full", f"{where}.tls.sslMode is {tls.get('sslMode')!r}, not verify-full")
 
     def wallet_section(where: str, section: dict) -> None:
         check(section.get("type") == engine, f"{where}.type is {section.get('type')!r}, not {engine}")
         check(section.get("port") == port, f"{where}.port is {section.get('port')!r}, not {port}")
         check(section.get("host") == host, f"{where}.host is {section.get('host')!r}")
         check(bool(section.get("ssl_ca_file")), f"{where}.ssl_ca_file is missing")
-        if engine == "mysql":
-            check("ssl_mode" not in section, f"{where}.ssl_mode is set for mysql (postgresql only)")
-        else:
-            check(section.get("ssl_mode") == "verify-full", f"{where}.ssl_mode is {section.get('ssl_mode')!r}, not verify-full")
+        check(section.get("ssl_mode") == "verify-full", f"{where}.ssl_mode is {section.get('ssl_mode')!r}, not verify-full")
 
     for key in ("api.yaml", "webhook.yaml"):
         api = config_map_file(f"{RELEASE}-api", key)
@@ -168,41 +161,28 @@ def main() -> int:
             wallet_section(f"{name} database", hook["database"])
 
     # --- The database server and the Jobs --------------------------------
-    pg = find("StatefulSet", f"{RELEASE}-postgres")
-    my = find("StatefulSet", f"{RELEASE}-mysql")
+    # The database server: the StatefulSet with the network role db.
+    servers = [d["metadata"]["name"] for d in docs if d.get("kind") == "StatefulSet"
+               and d["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "db"]
     if mode == "bundled":
-        check((my if engine == "mysql" else pg) is not None, f"the bundled server StatefulSet {server} is missing")
-        check((pg if engine == "mysql" else my) is None, "the StatefulSet of the other engine is rendered")
+        check(servers == [server], f"the database StatefulSets are {servers}, not [{server}]")
         svc = find("Service", server)
         check(svc is not None and svc["spec"]["ports"][0]["port"] == port, f"Service {server} has not port {port}")
         tls = find("Secret", f"{server}-tls")
         check(tls is not None and set(tls.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"},
               f"the TLS Secret {server}-tls is missing or has other keys")
     else:
-        check(pg is None and my is None, "a database StatefulSet is rendered with mode external")
+        check(not servers, f"a database StatefulSet is rendered with mode external: {servers}")
     init = [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith(f"{RELEASE}-db-init-")]
     check(len(init) == 1, "the database init Job is missing")
     init_cm = find("ConfigMap", f"{RELEASE}-db-init")
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
-        # mysql: the wallet user also gets its data scope databases
-        # igrant_wallet_<scope>: one pattern with each "_" escaped, or, with
-        # partial_revokes ON, one grant for each scope of ows.db.scopes.
-        scope_grant = "GRANT ALL PRIVILEGES ON `igrant\\_wallet\\_%`.* TO 'igrant_wallet'@'%';"
-        if engine == "mysql":
-            check("utf8mb4_bin" in script and "mariadb " in script, "the init script is not the MySQL script")
-            check(scope_grant in script, "the init script does not grant the data scope databases of the wallet")
-            check("SHOW GLOBAL VARIABLES LIKE 'partial_revokes'" in script, "the init script does not read partial_revokes")
-            for scope in WALLET_SCOPES:
-                check(f"GRANT ALL PRIVILEGES ON `igrant_wallet_{scope}`.* TO 'igrant_wallet'@'%';" in script,
-                      f"the init script does not grant igrant_wallet_{scope} by its name")
-        else:
-            check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
-            check("\\_%" not in script, "the PostgreSQL init script has a MySQL grant pattern")
+        check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
     db_secret = find("Secret", server)
     if db_secret:
         keys = set(db_secret.get("data", {}))
-        admin = {"MARIADB_ROOT_PASSWORD"} if engine == "mysql" else {"POSTGRES_PASSWORD"}
+        admin = {facts["admin_key"]}
         expected = {"igrant_api", "igrant_oidc", "igrant_consent", "igrant_wallet"} | (admin if mode == "bundled" else set())
         check(keys == expected, f"the database Secret {server} has the keys {sorted(keys)}, not {sorted(expected)}")
     else:

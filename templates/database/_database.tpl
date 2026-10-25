@@ -1,24 +1,38 @@
 {{/*
-Database helpers. ONE engine for the whole platform (database.engine:
-postgresql or mysql) and one server (database.mode: bundled or external).
-Each component has its own database and its own owner user: the user name
-is the database name. Every component config file, Job and NetworkPolicy
-gets the engine, the host, the port and the TLS settings from
-these helpers only.
+Database helpers. ONE engine for the whole platform (database.engine) and
+one server (database.mode: bundled or external). Each component has its
+own database and its own owner user: the user name is the database name.
+Every component config file, Job and NetworkPolicy gets the engine, the
+host, the port and the TLS settings from these helpers only.
 */}}
 
-{{/* The engine of all components ("postgresql" or "mysql"), validated. */}}
+{{/*
+The supported engines and the facts of each: the name suffix of the
+bundled server objects, the port, the admin user of the bundled server and
+the key of its password in the database Secret. PostgreSQL is the only
+engine. The other helpers read the facts here, so a new engine is a new
+entry, its server template (templates/database/<engine>.yaml, with the
+values database.<engine>), its init script (init.yaml) and its section in
+ow.db.go and ow.db.wallet. Output: JSON.
+*/}}
+{{- define "ow.db.engines" -}}
+{{- toJson (dict
+  "postgresql" (dict "server" "postgres" "port" 5432 "adminUser" "postgres" "adminPasswordKey" "POSTGRES_PASSWORD")) -}}
+{{- end }}
+
+{{/* The engine of all components, validated. */}}
 {{- define "ow.db.engine" -}}
 {{- $engine := .Values.database.engine | default "postgresql" -}}
-{{- if not (has $engine (list "postgresql" "mysql")) -}}
-{{- fail (printf "database.engine %q is not supported: use \"postgresql\" or \"mysql\"" $engine) -}}
+{{- $engines := include "ow.db.engines" . | fromJson -}}
+{{- if not (hasKey $engines $engine) -}}
+{{- fail (printf "database.engine %q is not supported: use %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
 {{- end -}}
 {{ $engine }}
 {{- end }}
 
-{{/* "true" when the engine is mysql, else "". */}}
-{{- define "ow.db.isMysql" -}}
-{{- if eq (include "ow.db.engine" .) "mysql" -}}true{{- end -}}
+{{/* The facts of the engine (its entry in ow.db.engines). Output: JSON. */}}
+{{- define "ow.db.engineFacts" -}}
+{{- index (include "ow.db.engines" . | fromJson) (include "ow.db.engine" .) | toJson -}}
 {{- end }}
 
 {{/* "true" when the chart runs the server (database.mode bundled), else "". */}}
@@ -30,14 +44,14 @@ these helpers only.
 {{- if eq $mode "bundled" -}}true{{- end -}}
 {{- end }}
 
-{{/* Name of the bundled server objects (StatefulSet, Service) and of the database Secret: <fullname>-postgres or <fullname>-mysql. */}}
+{{/* Name of the bundled server objects (StatefulSet, Service) and of the database Secret: <fullname>-postgres. */}}
 {{- define "ow.db.serverName" -}}
-{{ include "ow.name" (list . (ternary "mysql" "postgres" (eq (include "ow.db.isMysql" .) "true"))) }}
+{{ include "ow.name" (list . (include "ow.db.engineFacts" . | fromJson).server) }}
 {{- end }}
 
 {{/* Default port of the engine. */}}
 {{- define "ow.db.defaultPort" -}}
-{{ ternary 3306 5432 (eq (include "ow.db.isMysql" .) "true") }}
+{{ (include "ow.db.engineFacts" . | fromJson).port | int }}
 {{- end }}
 
 {{/* Host name that the components use: the bundled Service, else database.external.host. */}}
@@ -65,13 +79,14 @@ these helpers only.
 
 {{/* Key of the admin password of the bundled server in the database Secret (the variable of the server image). */}}
 {{- define "ow.db.adminPasswordKey" -}}
-{{ ternary "MARIADB_ROOT_PASSWORD" "POSTGRES_PASSWORD" (eq (include "ow.db.isMysql" .) "true") }}
+{{ (include "ow.db.engineFacts" . | fromJson).adminPasswordKey }}
 {{- end }}
 
 {{/*
 The admin user of the server: it makes the databases and the owner users
 (init Job) and the read-only users (read access Jobs).
-bundled: "postgres" or "root" and the admin key of the database Secret.
+bundled: the admin user of the engine ("postgres") and the admin key of
+the database Secret.
 external: database.external.admin (empty user: no admin).
 Output: JSON {user, secret, key}, or {} when there is no admin user.
 */}}
@@ -79,7 +94,7 @@ Output: JSON {user, secret, key}, or {} when there is no admin user.
 {{- $db := .Values.database -}}
 {{- if include "ow.db.bundled" . -}}
 {{- toJson (dict
-  "user" (ternary "root" "postgres" (eq (include "ow.db.isMysql" .) "true"))
+  "user" (include "ow.db.engineFacts" . | fromJson).adminUser
   "secret" (include "ow.db.secretName" .)
   "key" (include "ow.db.adminPasswordKey" .)) -}}
 {{- else if $db.external.admin.user -}}
@@ -126,7 +141,7 @@ database-ca.crt
 {{- end }}
 
 {{/*
-sslmode of the PostgreSQL clients (api, gateway, consent, init Job):
+sslmode of the clients (api, gateway, consent, wallet, init Job):
 database.tls.sslMode, else verify-full with a CA, require with
 TLS and no CA, disable without TLS.
 */}}
@@ -152,72 +167,22 @@ require
 {{- end }}
 
 {{/*
-The data scopes of the wallet: SCOPES of the wallet module ows.db.scopes
-(eudi-wallet packages/ows-core/src/ows/db/scopes.py), in its order. This
-list must follow that module: a new data scope there is a new name here
-(and in docker-compose/config/database/create-databases.sh, which
-tests/compose-files.sh compares). The wallet migration makes one schema
-for each scope in the wallet database (PostgreSQL) or one database
-<name>_<scope> on the same server (mysql). Output: the names, separated by
-spaces.
-*/}}
-{{- define "ow.db.walletScopes" -}}
-platform kms trust issuer authorisation_server relying_party business_wallet wallet_provider events conformance
-{{- end }}
-
-{{/*
-mysql: the grant pattern of the data scope databases of the wallet. In a
-grant pattern "_" is a wildcard, so each "_" of the name is escaped: for
-igrant_wallet the pattern is igrant\_wallet\_%. MySQL with partial_revokes
-ON reads "_" and "%" as plain characters: then the init Job grants each
-database of ow.db.walletScopes by its name.
-*/}}
-{{- define "ow.db.walletScopePattern" -}}
-{{ printf "%s\\_%%" (replace "_" "\\_" .Values.database.databases.wallet.name) }}
-{{- end }}
-
-{{/*
 Render guards of database.*. Output: nothing. Every template that writes a
-database connection calls it (through ow.db.go and ow.db.wallet). mysql:
-<wallet name>_<scope> fits the 64 characters of a database name for each
-data scope (the wallet name has at most 43 characters: 64 - 1 - 20, the
-longest data scope authorisation_server), and no other database name
-starts with <wallet name>_ (the wallet user has all privileges on these
-databases).
+database connection calls it (through ow.db.go and ow.db.wallet).
 */}}
 {{- define "ow.db.check" -}}
 {{- $db := .Values.database -}}
-{{- $mysql := include "ow.db.isMysql" . -}}
 {{- $bundled := include "ow.db.bundled" . -}}
-{{- $longest := "" -}}
-{{- range $scope := include "ow.db.walletScopes" . | splitList " " -}}
-{{- if gt (len $scope) (len $longest) -}}{{- $longest = $scope -}}{{- end -}}
-{{- end -}}
 {{- $names := list -}}
 {{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
 {{- $name := (index $db.databases $key).name | default "" -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $name) -}}
 {{- fail (printf "database.databases.%s.name %q is not a database name: a lower-case letter, then lower-case letters, digits or _" $key $name) -}}
 {{- end -}}
-{{- if and $mysql (eq $key "wallet") (gt (len $name) (sub 63 (len $longest))) -}}
-{{- fail (printf "database.databases.wallet.name %q has more than %d characters: on mysql the wallet makes one database <name>_<scope> for each data scope, and the longest, <name>_%s, must fit the 64 characters of a database name" $name (sub 63 (len $longest)) $longest) -}}
-{{- end -}}
-{{- if and $mysql (gt (len $name) 32) -}}
-{{- fail (printf "database.databases.%s.name %q has more than 32 characters: it is also the MySQL user name" $key $name) -}}
-{{- end -}}
 {{- if has $name $names -}}
 {{- fail (printf "database.databases.%s.name %q is the name of another database: each component needs its own database" $key $name) -}}
 {{- end -}}
 {{- $names = append $names $name -}}
-{{- end -}}
-{{- if and $mysql .Values.organisationWallet.enabled -}}
-{{- $scopes := printf "%s_" $db.databases.wallet.name -}}
-{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
-{{- $name := (index $db.databases $key).name -}}
-{{- if and (ne $key "wallet") (hasPrefix $scopes $name) -}}
-{{- fail (printf "database.databases.%s.name %q starts with %q: on mysql the wallet user gets all privileges on the databases %s* (the data scope databases of the wallet)" $key $name $scopes $scopes) -}}
-{{- end -}}
-{{- end -}}
 {{- end -}}
 {{- if and (not $bundled) (not $db.external.admin.user) (not $db.auth.existingSecret) -}}
 {{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
@@ -225,12 +190,6 @@ databases).
 {{- fail (printf "database.mode external without database.external.admin.user: the databases and the users exist, so give their passwords in database.auth.existingSecret (or database.databases.%s.password); the chart cannot make them" $key) -}}
 {{- end -}}
 {{- end -}}
-{{- end -}}
-{{- if and $mysql (include "ow.db.tls" .) (not (include "ow.db.ca" . | fromJson).secret) -}}
-{{- fail "database.tls.caSecret is required with database.engine mysql and database.tls.enabled: the MySQL clients of the components verify the server with its CA (or set database.tls.enabled false)" -}}
-{{- end -}}
-{{- if and $mysql $db.tls.sslMode -}}
-{{- fail "database.tls.sslMode is for postgresql only: with mysql the components verify the server with the CA" -}}
 {{- end -}}
 {{- with $db.tls.sslMode -}}
 {{- if not (has . (list "disable" "require" "verify-ca" "verify-full")) -}}
@@ -245,14 +204,11 @@ databases).
 {{/*
 The DataBase section of the Go components (api DataBase,
 Extensions.oidc.database and ReadAccess.*, gateway DataBase, consent
-DataBase and ReadAccess.*: one struct, exact keys). postgresql: tls.sslMode
-(+ tls.caFile with a CA) and the pool. mysql: tls.caFile (TLS 1.2+, the CA
-and hosts[0] are checked; without a tls block the connection is plain text,
-and tls.sslMode has no effect) and the session time zone +00:00 (the
-components do not set it); the pool keys have no effect on mysql. Call with
-(dict "root" $ "host" "<host>" "port" <port> "name" "<database>"
-"username" "<user>" "passwordFile" "<path>" "caFile" "<path>" "pool"
-<{maxConns, minConns} or nil>). Output: JSON.
+DataBase and ReadAccess.*: one struct, exact keys): tls.sslMode (+
+tls.caFile with a CA) and the pool. Call with (dict "root" $ "host"
+"<host>" "port" <port> "name" "<database>" "username" "<user>"
+"passwordFile" "<path>" "caFile" "<path>" "pool" <{maxConns, minConns} or
+nil>). Output: JSON.
 */}}
 {{- define "ow.db.go" -}}
 {{- $root := .root -}}
@@ -265,12 +221,6 @@ components do not set it); the pool keys have no effect on mysql. Call with
   "username" .username
   "passwordFile" .passwordFile -}}
 {{- $hasCa := (include "ow.db.ca" $root | fromJson).secret -}}
-{{- if include "ow.db.isMysql" $root -}}
-{{- if include "ow.db.tls" $root -}}
-{{- $_ := set $section "tls" (dict "caFile" .caFile) -}}
-{{- end -}}
-{{- $_ := set $section "params" (dict "time_zone" "'+00:00'") -}}
-{{- else -}}
 {{- $sslMode := include "ow.db.sslMode" $root -}}
 {{- $tls := dict "sslMode" $sslMode -}}
 {{- if and $hasCa (ne $sslMode "disable") -}}
@@ -280,7 +230,6 @@ components do not set it); the pool keys have no effect on mysql. Call with
 {{- with .pool -}}
 {{- $_ := set $section "maxConns" (.maxConns | int) -}}
 {{- $_ := set $section "minConns" (.minConns | int) -}}
-{{- end -}}
 {{- end -}}
 {{- toJson $section -}}
 {{- end }}
@@ -307,12 +256,11 @@ the file ow.db.caFileName in the same folder. Output: JSON.
 
 {{/*
 The database section of the wallet (pydantic, exact keys: type, host,
-port, name, user, password_file, ssl_ca_file, ssl_mode). postgresql:
-ssl_mode (the sslmode of the other components) and, for verify-ca and
-verify-full, ssl_ca_file; the wallet never falls back to plain text with
-these. mysql: ssl_ca_file (the certificate and the host name are checked;
-ssl_mode is for postgresql only). Call with (dict "root" $ "host" "port"
-"name" "user" "passwordFile" "caFile"). Output: JSON.
+port, name, user, password_file, ssl_ca_file, ssl_mode): ssl_mode (the
+sslmode of the other components) and, for verify-ca and verify-full,
+ssl_ca_file; the wallet never falls back to plain text with these. Call
+with (dict "root" $ "host" "port" "name" "user" "passwordFile" "caFile").
+Output: JSON.
 */}}
 {{- define "ow.db.wallet" -}}
 {{- $root := .root -}}
@@ -324,16 +272,10 @@ ssl_mode is for postgresql only). Call with (dict "root" $ "host" "port"
   "name" .name
   "user" .user
   "password_file" .passwordFile -}}
-{{- if include "ow.db.isMysql" $root -}}
-{{- if include "ow.db.tls" $root -}}
-{{- $_ := set $section "ssl_ca_file" .caFile -}}
-{{- end -}}
-{{- else -}}
 {{- $sslMode := include "ow.db.sslMode" $root -}}
 {{- $_ := set $section "ssl_mode" $sslMode -}}
 {{- if has $sslMode (list "verify-ca" "verify-full") -}}
 {{- $_ := set $section "ssl_ca_file" .caFile -}}
-{{- end -}}
 {{- end -}}
 {{- toJson $section -}}
 {{- end }}
@@ -351,32 +293,4 @@ owner user and the CA. Call with (list $ "<key of database.databases>"
 {{- $_ := set $files (include "ow.db.caFileName" $root) $ca -}}
 {{- end -}}
 {{- toJson $files -}}
-{{- end }}
-
-{{/*
-The option file of the bundled MariaDB server ([mariadbd] group): the
-options that the components need, database.mysql.parameters, and the TLS
-options. Output: text.
-*/}}
-{{- define "ow.db.mysqlConfig" -}}
-{{- $params := .Values.database.mysql.parameters | default dict -}}
-[mariadbd]
-# The components keep keys and tokens in utf8mb4 with a binary collation.
-character-set-server = utf8mb4
-collation-server = utf8mb4_bin
-# The api and consent do not set the session time zone: the column defaults
-# (CURRENT_TIMESTAMP) must be UTC.
-default-time-zone = +00:00
-skip-name-resolve
-{{- range $name := keys $params | sortAlpha }}
-{{ $name }} = {{ index $params $name }}
-{{- end }}
-{{- if include "ow.db.tls" . }}
-# TLS with the certificate of the chart (or database.tls.existingSecret).
-# A TCP connection without TLS is refused.
-ssl_cert = /etc/mysql/tls/tls.crt
-ssl_key = /etc/mysql/tls/tls.key
-ssl_ca = /etc/mysql/tls/ca.crt
-require_secure_transport = ON
-{{- end }}
 {{- end }}

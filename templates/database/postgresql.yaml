@@ -3,7 +3,7 @@ The bundled PostgreSQL server (database.engine postgresql, database.mode
 bundled): one server for all components. Do not change the object names
 and labels: an upgrade must keep the volume.
 */}}
-{{- if and (include "ow.db.bundled" .) (not (include "ow.db.isMysql" .)) }}
+{{- if and (include "ow.db.bundled" .) (eq (include "ow.db.engine" .) "postgresql") }}
 {{- include "ow.db.check" . }}
 {{- $db := .Values.database }}
 {{- $pg := $db.postgresql }}

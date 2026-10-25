@@ -11,7 +11,7 @@
 #    (tests/check_links.py).
 # 2. The matrix of the examples (examples/): every combination of one file of
 #    each group, with examples/site.yaml and tests/values/keys.yaml:
-#      database   postgresql-bundled, mysql-bundled, postgresql-external, mysql-external
+#      database   postgresql-bundled, postgresql-external
 #      OpenBao    openbao-shamir, openbao-external
 #      exposure   exposure-ingress-nginx, exposure-ingress-nginx-cert-manager,
 #                 exposure-envoy-gateway, exposure-kgateway, exposure-none
@@ -104,10 +104,11 @@ if [ -z "$kubeconform_bin" ]; then
 fi
 kubeconform_cache="$out/kubeconform-cache"
 mkdir -p "$kubeconform_cache"
-engine_of() { case "$1" in mysql-*) echo mysql ;; *) echo postgresql ;; esac; }
+# The example files of the database are <engine>-<mode>.yaml.
+engine_of() { echo "${1%%-*}"; }
 mode_of() { case "$1" in *-external) echo external ;; *) echo bundled ;; esac; }
 exposure_of() { case "$1" in exposure-ingress-*) echo ingress ;; exposure-none) echo none ;; *) echo gatewayAPI ;; esac; }
-for database in postgresql-bundled mysql-bundled postgresql-external mysql-external; do
+for database in postgresql-bundled postgresql-external; do
   for openbao in openbao-shamir openbao-external; do
     base=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/$openbao.yaml")
     if helm lint "$chart" --quiet "${base[@]}" > "$out/lint.txt" 2>&1; then
@@ -185,17 +186,13 @@ guard() {
   fi
 }
 shamir=(-f "$examples/openbao-shamir.yaml")
+# PostgreSQL is the only engine: the schema refuses another engine, and so
+# does the template guard (ow.db.engine) without the schema.
 guard "engine" "database.engine" "${shamir[@]}" --set database.engine=oracle
+guard "engine without the schema" 'database.engine "oracle" is not supported: use postgresql' "${shamir[@]}" --skip-schema-validation --set database.engine=oracle
 guard "mode" "database.mode" "${shamir[@]}" --set database.mode=cluster
 guard "external host" "database.external.host" "${shamir[@]}" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
 guard "external without admin" "database.auth.existingSecret" "${shamir[@]}" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
-guard "mysql TLS without CA" "database.tls.caSecret" "${shamir[@]}" -f "$examples/mysql-external.yaml" --set database.tls.caSecret=
-guard "mysql sslMode" "sslMode" "${shamir[@]}" -f "$examples/mysql-bundled.yaml" --set database.tls.sslMode=require
-# mysql: the data scope databases <wallet name>_<scope> must fit 64
-# characters, and the wallet user has all privileges on <wallet name>_*.
-long_wallet=wallet_database_name_with_forty_four_chars_x
-guard "mysql wallet name for the data scopes" "the longest, <name>_authorisation_server" "${shamir[@]}" -f "$examples/mysql-bundled.yaml" --set database.databases.wallet.name="$long_wallet"
-guard "mysql database name in the data scopes of the wallet" "the data scope databases of the wallet" "${shamir[@]}" -f "$examples/mysql-bundled.yaml" --set database.databases.api.name=igrant_wallet_api
 guard "seal" "openbao.seal" --set openbao.seal=transit
 guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.existingSecret=s
 guard "external OpenBao without password" "openbao.wallet.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
@@ -283,8 +280,6 @@ test_ca "off, 90 days" '{"enabled": false, "leaf_validity_days": 90}' "${shamir[
 guard "test CA validity" "organisationWallet.keyStores.testCa.leafValidityDays" "${shamir[@]}" --set organisationWallet.keyStores.testCa.leafValidityDays=3651
 
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
-# PostgreSQL has no limit of the data scopes: they are schemas.
-renders "postgresql long wallet database name" "name: $long_wallet" "${shamir[@]}" --set database.databases.wallet.name="$long_wallet"
 # The WIA pool refill event (core NATS): the scheduler subscribes to it.
 renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_pool.refill_requested", "_INBOX_wallet.>"] }' "${shamir[@]}"
 

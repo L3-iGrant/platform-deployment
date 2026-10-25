@@ -20,7 +20,7 @@ roles:
   wallet-config: {ports: {http: 8080}}
   wallet-scheduler: {ports: {}}
   dashboard: {ports: {http: 80}}
-  db: {ports: {database: 5432}}          # the port of database.engine: 5432 (postgresql) or 3306 (mysql)
+  db: {ports: {database: 5432}}          # the port of database.engine (5432)
   nats: {ports: {client: 4222, cluster: 6222, monitor: 8222}}
   openbao: {ports: {https: 8200, cluster: 8201}}   # the bundled OpenBao (openbao.mode bundled)
   job: {ports: {}}                        # every Job and hook

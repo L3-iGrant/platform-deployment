@@ -25,8 +25,8 @@
 # - OpenBao: an external OpenBao needs openbao.external.address and
 #   openbao.wallet.existingSecret;
 # - an external database (database.mode external) needs
-#   database.external.host, database.tls.caSecret (engine mysql with TLS
-#   only), and an admin user or database.auth.existingSecret.
+#   database.external.host, and an admin user or
+#   database.auth.existingSecret.
 #
 # The chart makes the passwords that you do not set (a random value at the
 # first installation; "helm upgrade" keeps the value from the Secret).
@@ -118,21 +118,16 @@ clientAddress:
 # is the database name). The init Job makes the databases and the users
 # after each install and upgrade (bundled, or external with an admin user).
 database:
-  # -- The engine of all components: "postgresql" (PostgreSQL 18) or
-  # "mysql" (the MySQL protocol: the bundled server is MariaDB; an external
-  # server can be MariaDB or MySQL 8.0).
+  # -- The engine of all components: "postgresql" (PostgreSQL 18), the only
+  # supported engine.
   engine: postgresql
   # -- "bundled": the chart runs ONE server of the engine (StatefulSet
-  # <fullname>-postgres or <fullname>-mysql). "external": you give the
-  # server (database.external).
+  # <fullname>-postgres). "external": you give the server
+  # (database.external).
   mode: bundled
   # -- Database (= owner user) name and password of each component. Empty
-  # password: random (kept across upgrades). MySQL user names have at most
-  # 32 characters. The wallet keeps its tables in data scopes: schemas in
-  # its database (postgresql), or databases <wallet name>_<scope> on the
-  # same server (mysql; the wallet user gets all privileges on them, so no
-  # other database name may start with <wallet name>_). See
-  # docs/database.md.
+  # password: random (kept across upgrades). The wallet keeps its tables in
+  # data scopes: schemas in its database. See docs/database.md.
   databases:
     api:
       name: igrant_api
@@ -147,19 +142,18 @@ database:
       name: igrant_wallet
       password: ""
   auth:
-    # -- Password of the admin user of the bundled server ("postgres" for
-    # postgresql, "root" for mysql). Empty: random.
+    # -- Password of the admin user "postgres" of the bundled server.
+    # Empty: random.
     adminPassword: ""
     # -- Existing Secret with one key per database name (igrant_api,
     # igrant_oidc, igrant_consent, igrant_wallet) and, for bundled, the
-    # admin password (key POSTGRES_PASSWORD for postgresql,
-    # MARIADB_ROOT_PASSWORD for mysql). Then the chart does not make the
-    # database Secret. Required for external without an admin user.
+    # admin password (key POSTGRES_PASSWORD). Then the chart does not make
+    # the database Secret. Required for external without an admin user.
     existingSecret: ""
   external:
     # -- Host name of the external server (required for external).
     host: ""
-    # -- Port. Empty: 5432 (postgresql) or 3306 (mysql).
+    # -- Port. Empty: 5432.
     port: ""
     # -- An admin user of the external server. With it, the init Job makes
     # the databases and the owner users, and the read access Jobs use it.
@@ -169,10 +163,8 @@ database:
       user: ""
       passwordSecret: ""
       passwordKey: password
-  # -- postgresql only: connection pool of each process (maxConns, minConns
-  # of DataBase and Extensions.oidc.database). On mysql the api, the
-  # gateway and consent use a fixed pool (100 open, 10 idle), so the chart
-  # writes no pool keys and the bundled MariaDB has max_connections 1000.
+  # -- Connection pool of each process (maxConns, minConns of DataBase and
+  # Extensions.oidc.database).
   pools:
     api: {maxConns: 10, minConns: 2}
     webhook: {maxConns: 5, minConns: 1}
@@ -186,21 +178,20 @@ database:
     enabled: true
     # -- bundled: an existing kubernetes.io/tls Secret with tls.crt, tls.key
     # and ca.crt. The certificate must have the name
-    # <fullname>-<postgres|mysql>.<namespace>.svc. Empty: the chart makes a
+    # <fullname>-postgres.<namespace>.svc. Empty: the chart makes a
     # CA and a certificate (10 years, kept across upgrades).
     existingSecret: ""
     # -- external: an existing Secret with the CA certificate (PEM) of the
     # server. The components verify the certificate and the host name with
-    # it. Required for mysql with TLS. Empty with postgresql: sslmode
-    # "require" (encryption without verification).
+    # it. Empty: sslmode "require" (encryption without verification).
     caSecret: ""
     caKey: ca.crt
-    # -- postgresql only: the sslmode of all components and of the init
-    # Job (disable, require, verify-ca or verify-full). Empty: "verify-full"
+    # -- The sslmode of all components and of the init Job (disable,
+    # require, verify-ca or verify-full). Empty: "verify-full"
     # with a CA, else "require"; "disable" without TLS. verify-ca and
     # verify-full need a CA.
     sslMode: ""
-  # The bundled PostgreSQL server (engine postgresql).
+  # The bundled PostgreSQL server.
   postgresql:
     image:
       registry: docker.io
@@ -218,26 +209,11 @@ database:
       maintenance_work_mem: 64MB
       idle_session_timeout: 10min
       password_encryption: scram-sha-256
-  # The bundled MariaDB 13.0 server (engine mysql).
-  mysql:
-    image:
-      registry: docker.io
-      repository: library/mariadb
-      tag: "13.0.2"
-    # -- Server options (lines "name = value" of the [mariadbd] group). The
-    # chart also sets utf8mb4 with utf8mb4_bin, the time zone +00:00,
-    # skip-name-resolve and the TLS options (with require_secure_transport).
-    # max_connections: see database.pools. max_allowed_packet: the api
-    # keeps images in LONGBLOB columns.
-    parameters:
-      max_connections: "1000"
-      max_allowed_packet: 64M
-      innodb_buffer_pool_size: 256M
   persistence:
     size: 50Gi
     storageClass: ""
-  # -- The resources of the bundled server (both engines). The memory must
-  # hold the PostgreSQL parameters above under load.
+  # -- The resources of the bundled server. The memory must hold the
+  # PostgreSQL parameters above under load.
   resources:
     requests:
       cpu: 250m
@@ -245,7 +221,7 @@ database:
     limits:
       cpu: "2"
       memory: 1536Mi
-  # -- The server images run as the user 999 (postgres, mysql).
+  # -- The server image runs as the user 999 (postgres).
   podSecurityContext:
     fsGroup: 999
   containerSecurityContext: {}
@@ -866,7 +842,7 @@ networkPolicy:
   # -- Databases outside the chart (database.mode external, or a
   # readAccess.<reader>.<owner>.host): their CIDRs and ports. "hosts" is a
   # note for you: a NetworkPolicy uses only the CIDRs. Empty ports: the port
-  # of database.engine (5432 or 3306).
+  # of database.engine (5432).
   # Example: [{hosts: ["db.customer.example"], cidrs: ["192.0.2.10/32"], ports: [5432]}]
   externalDatabases: []
   # -- A NATS outside the cluster: [{hosts: [...], cidrs: [...], ports: [4222]}].
@@ -929,13 +905,11 @@ networkPolicy:
     podSelector: {}
 
 # Read-only database users of the reads between the services. A reader
-# service reads the views of an owner service (schema read_v1 or read_v2 on
-# PostgreSQL, the views in the owner database on MySQL) with its own
-# read-only user; it never writes there. The owner makes the views in
-# its schema migrations. readAccess.<reader>.<owner>:
-#   username: the read-only user. A PostgreSQL role (MySQL account) belongs
-#     to the whole database server, so each reader and owner pair needs its
-#     own name. MySQL: at most 32 characters.
+# service reads the views of an owner service (schema read_v1 or read_v2)
+# with its own read-only user; it never writes there. The owner makes the
+# views in its schema migrations. readAccess.<reader>.<owner>:
+#   username: the read-only user. A PostgreSQL role belongs to the whole
+#     database server, so each reader and owner pair needs its own name.
 #   passwordSecret, passwordKey: an existing Secret with its password.
 #     Empty: the Secret <fullname>-read-access of the chart (key
 #     <reader>-<owner>, random, kept across upgrades).
