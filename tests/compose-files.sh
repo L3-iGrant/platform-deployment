@@ -2,9 +2,9 @@
 # Tests of the files of docker-compose/ for the maintainers. No container
 # starts and no image is pulled: "docker compose config" needs no Docker
 # daemon. Checks:
-#   - docker compose config for both engines (postgresql, mysql): the
-#     database server of the engine only, the images, and the database type
-#     and port in each configuration file of the components;
+#   - docker compose config for each engine (postgresql): the database
+#     server of the engine, the images, and the database type and port in
+#     each configuration file of the components;
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -35,20 +35,19 @@ check_files() {
     cp .env.example .env
     created_env=1
   fi
-  local engine json services own other images
-  for engine in postgresql mysql; do
+  local engine json services server images
+  for engine in postgresql; do
     if ! json="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --format json 2>&1)"; then
       bad "$engine: docker compose config: $json"
       continue
     fi
     ok "$engine: docker compose config"
     services="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --services)"
-    own=$([ "$engine" = mysql ] && echo mariadb || echo postgres)
-    other=$([ "$engine" = mysql ] && echo postgres || echo mariadb)
-    if grep -qx "$own" <<< "$services" && ! grep -qx "$other" <<< "$services"; then
-      ok "$engine: database server $own only"
+    case "$engine" in postgresql) server=postgres ;; esac
+    if grep -qx "$server" <<< "$services"; then
+      ok "$engine: database server $server"
     else
-      bad "$engine: the services must have $own and not $other"
+      bad "$engine: the services must have $server"
     fi
     images="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --images)"
     if grep -Eiq 'hashicorp|(^|/)vault(:|@|$)|keycloak|facade|mongo' <<< "$images"; then
@@ -67,7 +66,7 @@ import sys
 import yaml
 
 engine = sys.argv[1]
-port = {"postgresql": 5432, "mysql": 3306}[engine]
+port = {"postgresql": 5432}[engine]
 with open(sys.argv[2], encoding="utf-8") as project_file:
     project = json.load(project_file)
 problems = []
@@ -201,16 +200,6 @@ PY
     if bash -n "$script"; then ok "bash -n $script"; else bad "bash -n $script"; fi
   done
   if sh -n config/openbao/bootstrap.sh; then ok "sh -n config/openbao/bootstrap.sh"; else bad "sh -n config/openbao/bootstrap.sh"; fi
-  # The data scopes of the wallet: one list in the chart (ow.db.walletScopes)
-  # and its copy in the Compose init.
-  local compose_scopes chart_scopes
-  compose_scopes="$(sed -n 's/^WALLET_SCOPES="\(.*\)"$/\1/p' config/database/create-databases.sh)"
-  chart_scopes="$(sed -n '/define "ow.db.walletScopes"/{n;p;}' ../templates/database/_database.tpl)"
-  if [ -n "$compose_scopes" ] && [ "$compose_scopes" = "$chart_scopes" ]; then
-    ok "data scopes of the wallet: the Compose init has the list of the chart"
-  else
-    bad "data scopes of the wallet: the Compose init has '${compose_scopes}', the chart '${chart_scopes}'"
-  fi
 
   if command -v nats-server > /dev/null; then
     local dir
@@ -240,8 +229,7 @@ NKEYS
   # Text rules of the files of this folder (not the generated files): no em
   # or en dash, British English, none of the removed products and settings,
   # and no backup or upgrade text. Exceptions (keys that the code reads):
-  # the wallet key "vault" (with its OpenBao comment) and the MariaDB
-  # setting MARIADB_AUTO_UPGRADE.
+  # the wallet key "vault" (with its OpenBao comment).
   local text_files
   text_files="$(find . -type f ! -path './secrets/*' ! -name .env ! -name '*.orig' | sort)"
   local hits dashes
@@ -254,7 +242,7 @@ NKEYS
   if [ -n "$hits" ]; then bad "American spelling: $hits"; else ok "British English spelling"; fi
   # shellcheck disable=SC2086
   hits="$(grep -n -i -E 'hashicorp|vault|kms_key|platform: *database|db-backed|data_key|facade|keycloak|mongo|aries|aca-py|cloud ?agent|\bssi\b|backup|upgrade|migration step|mailpit|rotator' $text_files \
-    | grep -v -E '^\./compose\.platform\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +MARIADB_AUTO_UPGRADE: "1"$| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
+    | grep -v -E '^\./compose\.platform\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
   if [ -n "$hits" ]; then bad "removed product or setting: $hits"; else ok "no removed product or setting"; fi
   # The relative links of README.md (also into the docs of the chart): each
   # target file and each heading of an anchor exists.

@@ -30,7 +30,7 @@ check: do the next step only when you see the result of the check.
 | Consent management (`consent`) | The data agreements and the consent records. | none |
 | Organisation wallet (`wallet-service`, `wallet-config`, `wallet-scheduler`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. | `WALLET_PORT` (8090) |
 | Enterprise dashboard (`dashboard`) | The web application of the admins of your organisations. | `DASHBOARD_PORT` (3000) |
-| Database (`postgres` or `mariadb`) | One database server for all components (`DB_ENGINE`). | none |
+| Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
 | NATS (`nats`) | The messages between the components. | none |
 | OpenBao (`openbao`) | Keeps the signing keys of your organisations. | none |
 | File store (`storage`) | Keeps the PDF documents of the verifier (the uploaded and the signed documents). | none |
@@ -103,8 +103,6 @@ installations:
 
 For a production installation, also set:
 
-- `DB_ENGINE`: `postgresql` or `mysql`. Choose it now: a change later does
-  not copy the data.
 - `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL`: the
   `https://` URLs of your reverse proxy.
 - `CLIENT_ADDRESS_HEADER`: the header with the client address that your
@@ -135,7 +133,7 @@ This command checks the values of `.env`, the files in `secrets/` and the
 Compose files for your `DB_ENGINE`. It starts no container.
 
 Check: the last line is
-`check: the configuration is valid (DB_ENGINE=<your engine>, <n> warning(s))`.
+`check: the configuration is valid (DB_ENGINE=postgresql, <n> warning(s))`.
 Each `FAIL` line tells what to correct; correct it and do this step again.
 Read each `WARN` line. For example, a public URL with `http://` does not
 work with mobile wallets.
@@ -160,7 +158,7 @@ Check: you see one line for each service.
 
 - `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
   `wallet-service`, `wallet-scheduler`, `dashboard`, `nats`, `openbao`,
-  `storage` and `postgres` (or `mariadb`): `running`. The services with a
+  `storage` and `postgres`: `running`. The services with a
   health check also show `(healthy)`.
 - `database-init`, the three `*-migrate` services, the three
   `*-read-access` services and `openbao-init`: `exited`, with the status
@@ -252,7 +250,7 @@ your shell has priority over the value in `.env`.
 
 | Setting | Default | Use |
 |---|---|---|
-| `DB_ENGINE` | `postgresql` | The database engine of all components: `postgresql` (PostgreSQL 18) or `mysql` (the MySQL protocol; the server is MariaDB 13). |
+| `DB_ENGINE` | `postgresql` | The database engine of all components: `postgresql` (PostgreSQL 18), the only supported engine. |
 | `COMPOSE_PROFILES` | the derived line at the end of `.env.example` | Starts the database server of `DB_ENGINE`. Do not change it. |
 | `TEST_CA_ENABLED`, `TEST_CA_LEAF_VALIDITY_DAYS` | `true`, `365` | The built-in test CA of the wallet issues test certificates for development and testing. They are not on any trusted list. Set `TEST_CA_ENABLED=false` when the installation must not offer it. `TEST_CA_LEAF_VALIDITY_DAYS` (1 to 3650) is the validity of a test certificate when the request gives none; the largest validity of the preset caps it. |
 | `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL` | `http://localhost:8080`, `:8090`, `:3000` | The public URLs (your reverse proxy). |
@@ -262,17 +260,13 @@ your shell has priority over the value in `.env`.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. Empty `SMTP_HOST`: no e-mail. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the default of the Helm chart). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
 | `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
-| `POSTGRES_IMAGE`, `MARIADB_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE` | see `.env.example` | The images of the dependencies. |
+| `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE` | see `.env.example` | The images of the dependencies. |
 
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
 `igrant_wallet`, each with its own owner user. The wallet keeps its tables
-in data scopes: schemas in `igrant_wallet` (PostgreSQL), or the databases
-`igrant_wallet_<scope>` on the same server (MariaDB, for example
-`igrant_wallet_issuer`). The wallet migration makes them; on MariaDB,
-`database-init` gives `igrant_wallet` all privileges on
-`` `igrant\_wallet\_%`.* `` (`_` is a wildcard in a grant, so the pattern
-escapes it). `wallet-migrate` starts after `database-init`, so a new
-release needs no step by hand.
+in data scopes: schemas in `igrant_wallet` (for example `issuer`), which
+the wallet migration makes. `wallet-migrate` starts after `database-init`,
+so a new release needs no step by hand.
 
 The configuration files of the components are in `compose.platform.yaml`
 (section `configs`). Compose writes the values of `.env` into them.
@@ -374,7 +368,7 @@ the function is off, and the api answers that it is not configured.
 - `stat .../.env: no such file or directory`: do step 2 (`make env`).
 - `make check` shows `missing: secrets/...`: do step 3 (`make secrets`).
 - `stat .../config/engine/<value>.env: no such file or directory`:
-  `DB_ENGINE` (in `.env` or in your shell) is not `postgresql` or `mysql`.
+  `DB_ENGINE` (in `.env` or in your shell) is not `postgresql`.
 - A one-shot service shows an exit code other than 0, or a service does not
   start: `docker compose logs <service>`. When a one-shot service fails,
   the services that wait for it do not start.
