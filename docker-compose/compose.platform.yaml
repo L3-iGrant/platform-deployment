@@ -30,9 +30,9 @@ x-job: &job
 
 services:
   # --- Database: one server of DB_ENGINE for all components ------------------
-  # COMPOSE_PROFILES (.env) selects the server: profile postgresql or mysql.
-  # Both have the network alias "database", the host of all database
-  # configurations.
+  # COMPOSE_PROFILES (.env) selects the server: the profile of DB_ENGINE
+  # (postgresql). The server has the network alias "database", the host of
+  # all database configurations.
 
   postgres:
     image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
@@ -58,44 +58,13 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # DB_ENGINE=mysql (the MySQL protocol): the server is MariaDB 13.0, as in
-  # the Helm chart. The components get the type "mysql".
-  mariadb:
-    image: ${MARIADB_IMAGE:?set MARIADB_IMAGE in .env}
-    profiles: [mysql]
-    environment:
-      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/database/admin-password
-      # At the start with a new image version, the server brings its system
-      # tables to that version; the image also makes the user of
-      # healthcheck.sh.
-      MARIADB_AUTO_UPGRADE: "1"
-      # The components use the offset +00:00, not the named zones.
-      MARIADB_INITDB_SKIP_TZINFO: "1"
-    configs:
-      - {source: mariadb-config, target: /etc/mysql/conf.d/90-igrant.cnf}
-    secrets:
-      - source: database-admin-password
-        target: /run/secrets/database/admin-password
-    volumes:
-      - mariadb-data:/var/lib/mysql
-    networks:
-      default:
-        aliases: [database]
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 5s
-      timeout: 5s
-      retries: 60
-    restart: unless-stopped
-
   # Makes the databases igrant_api, igrant_oidc, igrant_consent and
   # igrant_wallet and their owner users (the user name is the database
-  # name), then stops. Idempotent: it sets the passwords each time. MariaDB:
-  # igrant_wallet also gets the data scope databases igrant_wallet_<scope>
-  # (wallet-migrate starts after this service: a new release needs no step).
+  # name), then stops. Idempotent: it sets the passwords each time. The data
+  # scopes of the wallet are schemas in igrant_wallet, which its owner makes.
   database-init:
     <<: *job
-    image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql or mysql}
+    image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
     entrypoint: ["bash", "/scripts/create-databases.sh"]
     environment:
       DB_ENGINE: ${DB_ENGINE}
@@ -112,7 +81,6 @@ services:
       - {source: db-igrant-wallet-password, target: /run/secrets/database/igrant_wallet-password}
     depends_on:
       postgres: {condition: service_healthy, required: false}
-      mariadb: {condition: service_healthy, required: false}
 
   # --- NATS JetStream: one nkey user for each process --------------------------
 
@@ -484,7 +452,6 @@ services:
 
 volumes:
   postgres-data:
-  mariadb-data:
   nats-data:
   openbao-data:
   storage-data:
@@ -525,7 +492,6 @@ secrets:
 configs:
   # --- Files of this folder and public keys of make secrets --------------------
   database-init-script: {file: ./config/database/create-databases.sh}
-  mariadb-config: {file: ./config/database/mariadb.cnf}
   nats-conf: {file: ./config/nats/nats.conf}
   nats-users: {file: ./config/nats/users.conf}
   openbao-config: {file: ./config/openbao/openbao.hcl}
@@ -546,8 +512,8 @@ configs:
   # The keys are the keys that each component reads; the values are the
   # values of this Compose network. A <name>File or <name>_file key names a
   # secret file. An unknown key stops the component. The database "port" comes from
-  # config/engine/<DB_ENGINE>.env. "tls.sslMode" is a PostgreSQL key: the
-  # Compose network has no database TLS, and MariaDB ignores the key.
+  # config/engine/<DB_ENGINE>.env. "tls.sslMode" is disable: the Compose
+  # network has no database TLS.
 
   # api core (start-api).
   api-config:

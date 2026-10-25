@@ -7,8 +7,8 @@
 #
 # The services are in compose.platform.yaml. This file loads it with two
 # files of values:
-#   - .env: your settings, for example DB_ENGINE (postgresql or mysql), the
-#     public URLs and the images;
+#   - .env: your settings, for example DB_ENGINE (postgresql), the public
+#     URLs and the images;
 #   - config/engine/<DB_ENGINE>.env: the values that follow from the engine
 #     (database port, admin user, client image).
 # Thus DB_ENGINE is the one choice of the database engine of all

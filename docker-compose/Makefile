@@ -79,12 +79,7 @@ organisation: ## Step 9: make the organisation of the admin: make organisation A
 		--config /etc/igrant-api/config.yaml
 
 db-shell: ## Open the SQL shell of the database server as the admin user
-	@service="$$($(COMPOSE) ps --services --status running | grep -Ex 'postgres|mariadb' || true)"; \
-	case "$$service" in \
-	  postgres) $(COMPOSE) exec postgres psql -U postgres -d postgres ;; \
-	  mariadb) $(COMPOSE) exec mariadb sh -c 'MYSQL_PWD="$$(cat /run/secrets/database/admin-password)" exec mariadb -uroot' ;; \
-	  *) echo "db-shell: no database server runs (make up)" >&2; exit 1 ;; \
-	esac
+	$(COMPOSE) exec postgres psql -U postgres -d postgres
 
 openbao-status: ## Show the seal status of OpenBao
 	$(COMPOSE) exec openbao bao status

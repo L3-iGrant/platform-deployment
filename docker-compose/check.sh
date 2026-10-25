@@ -71,8 +71,8 @@ check_installation() {
   local engine profiles
   engine="$(setting DB_ENGINE)"
   case "$engine" in
-    postgresql | mysql) ok "DB_ENGINE ($engine)" ;;
-    *) bad "DB_ENGINE ($engine) must be postgresql or mysql" ;;
+    postgresql) ok "DB_ENGINE ($engine)" ;;
+    *) bad "DB_ENGINE ($engine) must be postgresql" ;;
   esac
   # The derived lines at the end of .env (do not change them).
   local name expected
@@ -128,7 +128,7 @@ check_installation() {
   fi
 
   local name
-  for name in IMAGE_REGISTRY PLATFORM_TAG POSTGRES_IMAGE MARIADB_IMAGE NATS_IMAGE OPENBAO_IMAGE STORAGE_IMAGE; do
+  for name in IMAGE_REGISTRY PLATFORM_TAG POSTGRES_IMAGE NATS_IMAGE OPENBAO_IMAGE STORAGE_IMAGE; do
     [ -n "$(setting "$name")" ] || bad "$name is not set"
   done
   local tag
@@ -162,14 +162,12 @@ check_installation() {
     finish ""
   fi
   ok "docker compose config"
-  local services own other
+  local services
   services="$(docker compose config --services)"
-  own=$([ "$engine" = mysql ] && echo mariadb || echo postgres)
-  other=$([ "$engine" = mysql ] && echo postgres || echo mariadb)
-  if grep -qx "$own" <<< "$services" && ! grep -qx "$other" <<< "$services"; then
-    ok "database server: $own"
+  if grep -qx postgres <<< "$services"; then
+    ok "database server: postgres"
   else
-    bad "the services must have $own and not $other (COMPOSE_PROFILES)"
+    bad "the services must have postgres (COMPOSE_PROFILES)"
   fi
 
   # Every file of a secret and of a file configuration exists. Only the
