@@ -6,7 +6,8 @@
 #
 # What it makes:
 # - secrets/database/: the password of the admin user of the database
-#   server, of the owner user of each database and of each read-only user;
+#   server, of the owner user of each database, of each read-only user and
+#   of each login database role of the wallet;
 # - secrets/api/: the API secret key, the token hash secret, the database
 #   wrapping key, the token signing key, the service key of the NATS
 #   messages, the NATS seeds of the api and of the webhook handler, and the
@@ -129,11 +130,17 @@ nats_seed() {
   count made
 }
 
-# 1. Databases: the admin user (postgres or root), the owner user of each
+# 1. Databases: the admin user (DB_ADMIN_USER), the owner user of each
 # database and the read-only users (<reader>_<owner>_reader).
 for name in admin igrant_api igrant_oidc igrant_consent igrant_wallet \
   wallet_api_reader consent_api_reader api_wallet_reader consent_wallet_reader wallet_consent_reader; do
   password "database/${name}-password"
+done
+# The login database roles of the wallet (igrant_wallet_<name>; the service
+# wallet-database-roles makes them with these passwords).
+for name in migrator launcher_app jobs audit_reader issuer_app relying_party_app \
+  business_wallet_app individual_wp_app business_wp_app admin_app; do
+  password "database/igrant_wallet_${name}-password"
 done
 
 # 2. api: the API secret key, the token hash secret, the database wrapping
