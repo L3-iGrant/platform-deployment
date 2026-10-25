@@ -788,13 +788,9 @@ always the ones of database.* (ow.db.go, ow.db.wallet).
 {{- fail (printf "%s.username is required: %s reads the views of the %s database with its own read-only user (see docs/read-access.md)" $key $reader $owner) -}}
 {{- end -}}
 {{- /* A name that the read-access commands of all owners accept (wallet:
-^[a-z][a-z0-9_]{0,62}$; api and consent accept more); MySQL user names
-have at most 32 characters. */ -}}
+^[a-z][a-z0-9_]{0,62}$; api and consent accept more). */ -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $entry.username) -}}
 {{- fail (printf "%s.username %q is not a database user name: a lower-case letter, then lower-case letters, digits or _ (at most 63)" $key $entry.username) -}}
-{{- end -}}
-{{- if and (include "ow.db.isMysql" $root) (gt (len $entry.username) 32) -}}
-{{- fail (printf "%s.username %q has more than 32 characters: the limit of a MySQL user name" $key $entry.username) -}}
 {{- end -}}
 {{- toJson (dict
   "host" ($entry.host | default (include "ow.db.host" $root))
@@ -815,7 +811,7 @@ The admin user of the read access Job of one owner database
 (readAccess.jobs.<owner>; "read-access apply --admin-user
 --admin-password-file"): it makes the read-only users and grants SELECT on
 the views. Empty values: the admin user of database.* (ow.db.admin: the
-"postgres" or "root" user of the bundled server, or
+"postgres" user of the bundled server, or
 database.external.admin). Call with (list $ "<owner>"). Output: JSON
 {user, secret, key}.
 */}}
@@ -840,9 +836,9 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 
 {{/*
 Checks that no two read-only users of the chart have the same name on one
-database server: a PostgreSQL role (MySQL account) belongs to the whole
-server, so the second "read-access apply" would change the password of the
-first user, and one read connection would fail. The pairs of the enabled
+database server: a PostgreSQL role belongs to the whole server, so the
+second "read-access apply" would change the password of the first user,
+and one read connection would fail. The pairs of the enabled
 services: api -> wallet; consent -> api, wallet; wallet -> api, consent.
 Output: nothing.
 */}}
@@ -863,7 +859,7 @@ Output: nothing.
 {{- $port := $entry.port | default (include "ow.db.port" $root) | toString -}}
 {{- $key := printf "%s|%s|%s" $host $port $entry.username -}}
 {{- with get $seen $key -}}
-{{- fail (printf "readAccess.%s.username and readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role (MySQL account) belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
+{{- fail (printf "readAccess.%s.username and readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
 {{- end -}}
 {{- $_ := set $seen $key (printf "%s.%s" $reader $owner) -}}
 {{- end -}}

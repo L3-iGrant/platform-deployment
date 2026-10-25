@@ -168,8 +168,7 @@
         "engine": {
           "type": "string",
           "enum": [
-            "postgresql",
-            "mysql"
+            "postgresql"
           ]
         },
         "mode": {
@@ -415,48 +414,6 @@
             }
           }
         },
-        "mysql": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "registry": {
-                  "type": "string"
-                },
-                "repository": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "tag": {
-                  "type": [
-                    "string",
-                    "integer",
-                    "number"
-                  ]
-                },
-                "digest": {
-                  "type": "string",
-                  "pattern": "^(sha256:[0-9a-f]{64})?$"
-                },
-                "pullPolicy": {
-                  "type": "string",
-                  "enum": [
-                    "",
-                    "Always",
-                    "IfNotPresent",
-                    "Never"
-                  ]
-                }
-              }
-            },
-            "parameters": {
-              "type": "object"
-            }
-          }
-        },
         "persistence": {
           "type": "object",
           "additionalProperties": false,
@@ -512,26 +469,6 @@
                 "properties": {
                   "host": {
                     "minLength": 1
-                  }
-                }
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "engine": {
-                "const": "mysql"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "tls": {
-                "properties": {
-                  "sslMode": {
-                    "const": ""
                   }
                 }
               }

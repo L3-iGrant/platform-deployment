@@ -5,33 +5,21 @@ of the database Secret. It runs after each install and upgrade (its name
 has the release revision), on the bundled server or on an external server
 with database.external.admin. The script is idempotent: it makes a user or
 a database only when it does not exist, and it sets the password of each
-user from the Secret each time.
-postgresql: CREATE ROLE ... LOGIN, CREATE DATABASE ... OWNER (UTF8, C.UTF-8),
-REVOKE ALL ON DATABASE ... FROM PUBLIC.
-mysql: CREATE DATABASE ... utf8mb4 utf8mb4_bin, CREATE USER 'u'@'%',
-GRANT ALL PRIVILEGES ON `db`.* (the migrations make tables, views and
-foreign keys). The wallet user also gets the data scope databases
-<db>_<scope> that the wallet migration makes: ALL PRIVILEGES ON
-`<db>\_%`.* (ow.db.walletScopePattern), or, on MySQL with partial_revokes
-ON, ALL PRIVILEGES ON each `<db>_<scope>`.* (ow.db.walletScopes). On
-PostgreSQL the data scopes are schemas in the wallet database, which its
-owner can make.
+user from the Secret each time: CREATE ROLE ... LOGIN, CREATE DATABASE ...
+OWNER (UTF8, C.UTF-8), REVOKE ALL ON DATABASE ... FROM PUBLIC. The data
+scopes of the wallet are schemas in the wallet database, which its owner
+makes.
 */}}
 {{- $admin := include "ow.db.admin" . | fromJson }}
 {{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
 {{- if and $admin.user $keys }}
 {{- include "ow.db.check" . }}
 {{- $db := .Values.database }}
-{{- $mysql := include "ow.db.isMysql" . }}
-{{- $image := ternary $db.mysql.image $db.postgresql.image (eq $mysql "true") }}
+{{- $image := $db.postgresql.image }}
 {{- $ca := include "ow.db.ca" . | fromJson }}
 {{- $users := list }}
 {{- range $key := $keys }}
 {{- $users = append $users (index $db.databases $key).name }}
-{{- end }}
-{{- $wallet := "" }}
-{{- if and $mysql (has "wallet" $keys) }}
-{{- $wallet = $db.databases.wallet.name }}
 {{- end }}
 {{- $name := include "ow.name" (list . "db-init") }}
 apiVersion: v1
@@ -47,22 +35,8 @@ data:
     # The passwords are files (/etc/db-users/<user>): they never go on a
     # command line.
     set -euo pipefail
-    {{- if $mysql }}
-    client() {
-      mariadb --host="$DB_HOST" --port="$DB_PORT" --user="$DB_ADMIN_USER" \
-        {{- if $ca.secret }}
-        --ssl --ssl-ca=/etc/db-ca/ca.crt --ssl-verify-server-cert \
-        {{- else }}
-        --skip-ssl \
-        {{- end }}
-        --batch "$@"
-    }
-    ready() { client -e 'SELECT 1' > /dev/null 2>&1; }
-    {{- else }}
-    ready() { pg_isready -q; }
-    {{- end }}
     for attempt in $(seq 1 60); do
-      if ready; then
+      if pg_isready -q; then
         break
       fi
       if [ "$attempt" -eq 60 ]; then
@@ -73,42 +47,6 @@ data:
     done
     for user in ${DATABASES}; do
       echo "Configuring the user and the database ${user}"
-      {{- if $mysql }}
-      # A SQL string literal of the password (backslash and quote escaped).
-      pw="$(cat "/etc/db-users/${user}")"
-      while [[ $pw == *$'\r' || $pw == *$'\n' ]]; do pw="${pw%?}"; done
-      pw="${pw//\\/\\\\}"
-      pw="${pw//\'/\\\'}"
-      client <<SQL
-    CREATE DATABASE IF NOT EXISTS \`${user}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
-    CREATE USER IF NOT EXISTS '${user}'@'%' IDENTIFIED BY '${pw}';
-    ALTER USER '${user}'@'%' IDENTIFIED BY '${pw}';
-    GRANT ALL PRIVILEGES ON \`${user}\`.* TO '${user}'@'%';
-    SQL
-      unset pw
-      {{- if $wallet }}
-      if [ "${user}" = {{ $wallet | quote }} ]; then
-        # The data scope databases of the wallet (<db>_<scope>), made by its
-        # migration. In a grant "_" is a wildcard, so the pattern escapes
-        # each "_" of the name. MySQL with partial_revokes ON reads "_" and
-        # "%" as plain characters: then one grant for each data scope
-        # database, by its name. MariaDB has no partial_revokes (no row).
-        partial_revokes="$(client --skip-column-names -e "SHOW GLOBAL VARIABLES LIKE 'partial_revokes'" | cut -f2)"
-        if [ "${partial_revokes}" = "ON" ]; then
-          echo "partial_revokes is ON: one grant for each data scope database"
-          client <<'SQL'
-    {{- range $scope := include "ow.db.walletScopes" . | splitList " " }}
-    GRANT ALL PRIVILEGES ON `{{ $wallet }}_{{ $scope }}`.* TO '{{ $wallet }}'@'%';
-    {{- end }}
-    SQL
-        else
-          client <<'SQL'
-    GRANT ALL PRIVILEGES ON `{{ include "ow.db.walletScopePattern" . }}`.* TO '{{ $wallet }}'@'%';
-    SQL
-        fi
-      fi
-      {{- end }}
-      {{- else }}
       # psql reads the password from the file, so the password is not on the
       # command line.
       psql -v ON_ERROR_STOP=1 -d postgres -v role="${user}" <<'SQL'
@@ -121,7 +59,6 @@ data:
       WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'role') \gexec
     REVOKE ALL ON DATABASE :"role" FROM PUBLIC;
     SQL
-      {{- end }}
     done
     echo "All databases are configured"
 ---
@@ -151,19 +88,6 @@ spec:
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $image) }}
           command: ["bash", "/scripts/create-databases.sh"]
           env:
-            {{- if $mysql }}
-            - name: DB_HOST
-              value: {{ include "ow.db.host" . | quote }}
-            - name: DB_PORT
-              value: {{ include "ow.db.port" . | quote }}
-            - name: DB_ADMIN_USER
-              value: {{ $admin.user | quote }}
-            - name: MYSQL_PWD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $admin.secret }}
-                  key: {{ $admin.key }}
-            {{- else }}
             - name: PGHOST
               value: {{ include "ow.db.host" . | quote }}
             - name: PGPORT
@@ -180,7 +104,6 @@ spec:
             {{- if $ca.secret }}
             - name: PGSSLROOTCERT
               value: /etc/db-ca/ca.crt
-            {{- end }}
             {{- end }}
             # The user names; each user has a database with the same name.
             - name: DATABASES
