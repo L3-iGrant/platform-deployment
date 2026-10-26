@@ -39,7 +39,7 @@ These logs show the changes of the schemas and of the rights, and the sessions o
 
 `database.postgresql.logDdlAndConnections` (default `true`) sets the three parameters. A value of the same name in `database.postgresql.parameters` wins, for example `log_statement: mod` to also log the data changes. With `false`, the chart sets none of the three. A change of these values restarts the server pod: the components lose their connections for a short time and connect again.
 
-The log holds the text of each DDL statement. Do not put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init Job sets the passwords of the owner users in this way.
+The log holds the text of each DDL statement. Do not put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init Job sets the passwords of the owner users in this way. The database roles hook of the wallet (`database-roles apply`) and the read access Jobs of the wallet, the api and consent (`read-access apply`) also send the SCRAM-SHA-256 verifier of each password, never the password.
 
 On an external server, set the same three parameters yourself, for example as the database flags of your managed service.
 

@@ -347,7 +347,10 @@ The log holds the text of each DDL statement. Do not put a password in the
 text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes
 the password to the log. Use `\password` of psql (`make db-shell`), which
 sends a SCRAM-SHA-256 verifier, not the password. `database-init` sets the
-passwords of the owner users in this way.
+passwords of the owner users in this way. `wallet-database-roles`
+(`database-roles apply`) and the read access services of the wallet, the
+api and consent (`read-access apply`) also send the SCRAM-SHA-256 verifier
+of each password, never the password.
 
 Docker keeps the container logs. Set a log rotation for your Docker
 daemon (the options `max-size` and `max-file` of the log driver
