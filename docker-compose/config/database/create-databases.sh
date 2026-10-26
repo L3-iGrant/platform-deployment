@@ -11,7 +11,8 @@
 # Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)
 # and <database>-password for each database. No password goes on a command
-# line.
+# line or into a statement: psql \password sends the SCRAM-SHA-256 verifier
+# of the password, so the DDL log of the server does not show it.
 set -euo pipefail
 
 DATABASES="igrant_api igrant_oidc igrant_consent igrant_wallet"
@@ -38,6 +39,21 @@ wait_for() {
   done
 }
 
+# Sets the password of the user $1 with psql \password: psql reads the
+# password twice from its standard input (the service has no terminal), and
+# printf is a shell builtin. The output (the two prompts) shows only on an
+# error.
+set_password() {
+  local role="$1" password output
+  password="$(secret "${role}-password")"
+  if ! output="$(printf '%s\n%s\n' "$password" "$password" \
+      | psql -v ON_ERROR_STOP=1 -v role="$role" -c '\password :"role"' 2>&1)"; then
+    printf '%s\n' "$output" >&2
+    echo "the password of the user ${role} is not set" >&2
+    exit 1
+  fi
+}
+
 postgresql() {
   export PGHOST="$HOST" PGPORT="$DB_PORT" PGUSER="$DB_ADMIN_USER" PGDATABASE=postgres
   PGPASSWORD="$(secret admin-password)"
@@ -45,19 +61,16 @@ postgresql() {
   wait_for pg_isready
   for database in $DATABASES; do
     echo "Configuring the user and the database ${database}"
-    # psql reads the password from the environment of the command, so the
-    # password is not on the command line.
-    ROLE_PASSWORD="$(secret "${database}-password")" \
-      psql -v ON_ERROR_STOP=1 -q -v role="$database" <<'SQL'
-\set pw `printenv ROLE_PASSWORD`
+    psql -v ON_ERROR_STOP=1 -q -v role="$database" <<'SQL'
 SELECT format('CREATE ROLE %I LOGIN', :'role')
   WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
-ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+ALTER ROLE :"role" WITH LOGIN;
 SELECT format('CREATE DATABASE %I OWNER %I TEMPLATE template0 ENCODING %L LC_COLLATE %L LC_CTYPE %L',
               :'role', :'role', 'UTF8', 'C', 'C.UTF-8')
   WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'role') \gexec
 REVOKE ALL ON DATABASE :"role" FROM PUBLIC;
 SQL
+    set_password "$database"
   done
 }
 
