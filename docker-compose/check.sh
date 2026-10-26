@@ -182,6 +182,17 @@ check_installation() {
   else
     bad "the services must have postgres (COMPOSE_PROFILES)"
   fi
+  # The DDL and connection logs of the database server (the command of
+  # postgres). A Compose override file can remove them: a warning.
+  local setting missing_logs=""
+  for setting in log_statement=ddl log_connections=on log_disconnections=on; do
+    grep -q -F "\"${setting}\"" <<< "$json" || missing_logs+=" ${setting}"
+  done
+  if [ -z "$missing_logs" ]; then
+    ok "database server logs: DDL statements, connections and disconnections"
+  else
+    warn "the database server does not log DDL and connections (missing:${missing_logs}); see README.md"
+  fi
 
   # Every file of a secret and of a file configuration exists. Only the
   # SMTP password can be empty (no SMTP authentication).
