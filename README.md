@@ -23,7 +23,7 @@ This documentation is for the developers and IT operations teams who install and
 ### Configure
 
 - [Exposure](docs/exposure.md): the three public hosts, and the settings of your ingress controller or Gateway.
-- [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, and the database roles and hooks of the wallet.
+- [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, the database roles and hooks of the wallet, and the logs of the server.
 - [OpenBao](docs/openbao.md): the bundled OpenBao and its Shamir seal, or your own OpenBao.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.

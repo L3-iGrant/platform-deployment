@@ -23,6 +23,28 @@ The memory (`database.resources`, default 1536Mi) holds `shared_buffers`, about 
 
 The admin user needs `CREATEROLE` and `CREATEDB`, and must be able to `SET ROLE` to the users that it creates (a superuser, or PostgreSQL 16 or later with `createrole_self_grant = 'set, inherit'`). The organisation wallet needs this admin user: the roles hook makes the database roles of the wallet with it, and the render stops without `database.external.admin.user`.
 
+Set the log parameters of [Logs of the database server](#logs-of-the-database-server) on your server too. The chart does not change the parameters of an external server.
+
+## Logs of the database server
+
+The bundled server writes these events to its container log (`kubectl -n <namespace> logs <release>-postgres-0`, or the log system of your cluster):
+
+| Parameter | The server logs |
+| --- | --- |
+| `log_statement = 'ddl'` | The text of each DDL statement: `CREATE`, `ALTER` and `DROP` (also of roles), `GRANT` and `REVOKE`. Not the data statements (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). |
+| `log_connections = on` | Each connection: the client address, the user, the database and the authentication method. |
+| `log_disconnections = on` | The end of each session, with its duration. |
+
+These logs show the changes of the schemas and of the rights, and the sessions of each database user. The audit log of the wallet does not see them: it records the actions of the platform, not the work of the database server. The migration hooks write the DDL of each release to this log. The components connect through connection pools, so the connection lines stay few.
+
+`database.postgresql.logDdlAndConnections` (default `true`) sets the three parameters. A value of the same name in `database.postgresql.parameters` wins, for example `log_statement: mod` to also log the data changes. With `false`, the chart sets none of the three. A change of these values restarts the server pod: the components lose their connections for a short time and connect again.
+
+The log holds the text of each DDL statement. Do not put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init Job sets the passwords of the owner users in this way.
+
+On an external server, set the same three parameters yourself, for example as the database flags of your managed service.
+
+pgaudit (an audit log with the objects of each statement) needs a PostgreSQL image with the extension. The bundled image `postgres` does not have it: pgaudit comes later, with an own image.
+
 ## Database roles of the wallet
 
 Each process of the organisation wallet connects with its own database role, so that no running process can change the schema of the wallet database: only the migration hook changes it. The names of the roles begin with the wallet database name (`database.databases.wallet.name`), for example `igrant_wallet_launcher_app`. A role name has at most 63 characters, so the wallet database name has at most 43.
