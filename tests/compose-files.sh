@@ -8,6 +8,9 @@
 #   - the database roles of the wallet: the service wallet-database-roles,
 #     the order of the one-shot services and the database user of each
 #     wallet configuration;
+#   - the DDL and connection logs of the database server, and
+#     database-init sets the passwords with psql \password (no password in
+#     a statement, so the DDL log does not show one);
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -263,6 +266,49 @@ PY
       fi
       rm -f "$project_file"
     fi
+  fi
+
+  # The DDL and connection logs of the database server: log_statement=ddl,
+  # log_connections=on and log_disconnections=on in the command of postgres,
+  # each server parameter once.
+  if command -v python3 > /dev/null; then
+    local output project_file
+    if ! json="$(docker compose config --format json 2>&1)"; then
+      bad "database logs: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" 2>&1 <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+command = project["services"]["postgres"]["command"]
+parameters = [arg.split("=", 1) for option, arg in zip(command, command[1:]) if option == "-c"]
+names = [name for name, _ in parameters]
+expected = {"log_statement": "ddl", "log_connections": "on", "log_disconnections": "on"}
+logs = {name: value for name, value in parameters if name in expected}
+if len(names) != len(set(names)):
+    sys.exit(f"a server parameter is set twice: {sorted(names)}")
+if logs != expected:
+    sys.exit(f"the log parameters of postgres are {logs}, not {expected}")
+print("postgres logs the DDL statements, the connections and the disconnections")
+PY
+)"; then
+        ok "database logs: $output"
+      else
+        bad "database logs: $output"
+      fi
+      rm -f "$project_file"
+    fi
+  fi
+  # psql \password sends a SCRAM-SHA-256 verifier, never the password: no
+  # password in a statement of database-init.
+  if grep -q -F '\password' config/database/create-databases.sh && ! grep -q -w 'PASSWORD' config/database/create-databases.sh; then
+    ok "database-init sets the passwords with psql \\password"
+  else
+    bad "database-init sends a password in a statement, not with psql \\password"
   fi
 
   # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS): the
