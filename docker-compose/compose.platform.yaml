@@ -652,7 +652,6 @@ configs:
         tokenHashSecretFile: /run/secrets/igrant-api/token-hash-secret.json
         dbWrappingKeysFile: /run/secrets/igrant-api/db-wrapping-keys.json
         allowPlaintextProviderKeys: false
-        allowPlainApiKeys: false
       # The api trusts only the internal token of the gateway.
       GatewayToken:
         jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
@@ -759,7 +758,6 @@ configs:
         tokenHashSecretFile: /run/secrets/igrant-api/token-hash-secret.json
         dbWrappingKeysFile: /run/secrets/igrant-api/db-wrapping-keys.json
         allowPlaintextProviderKeys: false
-        allowPlainApiKeys: false
       GatewayToken:
         jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
       ServiceEnvelope:
@@ -837,7 +835,6 @@ configs:
         tokenHashSecretFile: /run/secrets/igrant-gateway/token-hash-secret.json
         # The PUBLIC keys of the api token keys (not a secret).
         tokenVerificationJwksFile: /etc/igrant-gateway/token-verification-jwks.json
-        allowPlainApiKeys: false
       Gateway:
         listenPort: 8070
         drainSeconds: 1

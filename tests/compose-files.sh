@@ -350,7 +350,7 @@ NKEYS
   hits="$(grep -n -i -E 'organiz|\binitializ|behavior|\bcolor|\bcenter\b|authoriz|optimiz|licens|analyz|customiz|recogniz|minimiz|normaliz' $text_files | grep -v -E 'Apache License|authorization \\?\{' || true)"
   if [ -n "$hits" ]; then bad "American spelling: $hits"; else ok "British English spelling"; fi
   # shellcheck disable=SC2086
-  hits="$(grep -n -i -E 'hashicorp|vault|kms_key|platform: *database|db-backed|data_key|facade|keycloak|mongo|aries|aca-py|cloud ?agent|\bssi\b|backup|upgrade|migration step|mailpit|rotator' $text_files \
+  hits="$(grep -n -i -E 'hashicorp|vault|kms_key|platform: *database|db-backed|data_key|facade|keycloak|mongo|aries|aca-py|cloud ?agent|\bssi\b|backup|upgrade|migration step|mailpit|rotator|allowplainapikeys' $text_files \
     | grep -v -E '^\./compose\.platform\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
   if [ -n "$hits" ]; then bad "removed product or setting: $hits"; else ok "no removed product or setting"; fi
   # The relative links of README.md (also into the docs of the chart): each
