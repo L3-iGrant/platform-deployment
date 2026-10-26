@@ -37,7 +37,7 @@ FORBIDDEN = [
     (r"data_key", "the KMS data key"),
     (r"\baries\b|aca-py|cloud ?agent|\bssi\b", "an Aries or SSI name"),
     (r"apikey-rotator|apiKeyRotator", "the API key rotator"),
-    (r"allowplainapikeys", "the removed api setting allowPlainApiKeys"),
+    (r"allowplainapikeys", "the removed api setting of the plain API key window"),
     (r"cert-manager\.io/v1", "a cert-manager object"),
     ("\u2014", "an em dash"),
     ("\u2013", "an en dash"),
