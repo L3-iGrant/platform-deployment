@@ -35,7 +35,7 @@ The bundled server writes these events to its container log (`kubectl -n <namesp
 | `log_connections = on` | Each connection: the client address, the user, the database and the authentication method. |
 | `log_disconnections = on` | The end of each session, with its duration. |
 
-These logs show the changes of the schemas and of the rights, and the sessions of each database user. The audit log of the wallet does not see them: it records the actions of the platform, not the work of the database server. The migration hooks write the DDL of each release to this log. The components connect through connection pools, so the connection lines stay few.
+These logs show the changes of the schemas and of the rights, and the sessions of each database user. The audit log of the wallet (see [Audit log](audit-log.md)) does not see them: it records the actions of the platform, not the work of the database server. The migration hooks write the DDL of each release to this log. The components connect through connection pools, so the connection lines stay few.
 
 `database.postgresql.logDdlAndConnections` (default `true`) sets the three parameters. A value of the same name in `database.postgresql.parameters` wins, for example `log_statement: mod` to also log the data changes. With `false`, the chart sets none of the three. A change of these values restarts the server pod: the components lose their connections for a short time and connect again.
 
@@ -56,7 +56,7 @@ Each process of the organisation wallet connects with its own database role, so 
 | `<prefix>_launcher_app` | The service and config pods | Reads and writes the tables of all data scopes; no schema change |
 | `<prefix>_jobs` | The scheduler | Reads and writes the tables of the data scopes of the background tasks; no schema change |
 
-The roles hook also makes the audit reader and one role for each role application of the wallet (for example `<prefix>_issuer_app`). The chart does not use them yet.
+The roles hook also makes the audit reader `<prefix>_audit_reader`, which can only read the audit tables (see [Audit log](audit-log.md#check-the-audit-log)), and one role for each role application of the wallet (for example `<prefix>_issuer_app`). No pod of the chart uses them yet.
 
 The passwords of the roles are in the Secret `<release>-wallet-database-roles` (one key for each role, with the name of the role without the prefix, for example `launcher_app`; random values, kept across upgrades). Each wallet pod and the migration hook mount only the key of their own role; the roles hook mounts all keys. No wallet pod or Job mounts the password of the owner user `igrant_wallet`, which stays the owner of the database. Only the roles hook and the read access hooks of the wallet mount the password of the admin user.
 
@@ -68,7 +68,7 @@ The hooks of the wallet run in this order:
 | --- | --- | --- | --- |
 | 1 | The Secret `<release>-wallet-database-roles` | | Created before the other hooks, with the passwords of the earlier release |
 | 2 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the objects of the wallet database, creates the missing data scope schemas and gives the grants |
-| 3 | `<release>-wallet-migrate` | `<prefix>_migrator` | `migrate-database`: migrates the schema to the head of the release, then gives the grants on the new objects |
+| 3 | `<release>-wallet-migrate` | `<prefix>_migrator` | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then makes the monthly partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)) |
 | 4 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` | The admin user | `read-access apply`: the read-only users with which the api and consent read the wallet database (see [Read access](read-access.md)) |
 
 On a new installation, Helm creates the Secret first (Helm `pre-install`), and the Jobs run after the resources of the release exist (Helm `post-install`). The database server and its init Job start at the same time, so the roles hook tries again for up to 10 minutes while the server and the wallet database do not exist yet. On an upgrade, the hooks run before any pod changes (Helm `pre-upgrade`); see [Upgrade](upgrade.md). The wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again.

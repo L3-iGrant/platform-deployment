@@ -1237,6 +1237,59 @@ organisationWallet:
     # Google (storage.emulator_host), for example a fake-gcs-server for
     # tests. Empty: Google Cloud Storage.
     emulatorHost: ""
+  # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
+  # chain in the wallet database for each data scope and organisation, an
+  # hourly anchor of each scope signed with an installation key (the
+  # Transit key audit-anchor-<scope> of OpenBao), and the monthly exports.
+  audit:
+    # -- audit.retention_years: the years that the audit events of a data
+    # scope stay in the database (at least 1). The migration hook drops the
+    # months that are older, only after the export of the month is
+    # verified.
+    retentionYears: 7
+    # -- audit.scope_retention_years: another period for some data scopes
+    # (platform, kms, trust, issuer, authorisation_server, relying_party,
+    # business_wallet, wallet_provider), for example {kms: 10}.
+    scopeRetentionYears: {}
+    # -- audit.bucket: the write-once Google Cloud Storage bucket of the
+    # copies of the anchors and of the monthly exports. The bucket must have
+    # a locked retention policy, and its service account may only create
+    # and read objects (docs/audit-log.md). Empty name: no bucket; the
+    # anchors stay in the database only, no month is exported, and no
+    # partition is dropped.
+    bucket:
+      name: ""
+      # -- Empty: the project of the credentials.
+      project: ""
+      # -- The folder of the objects in the bucket, for example
+      # audit/production/ (it ends with /). Empty: the top of the bucket.
+      prefix: ""
+      # -- Existing Secret with the service account JSON of the bucket
+      # (audit.bucket.credentials_file); only the scheduler mounts it.
+      # Empty: the Google default credentials, for example Workload
+      # Identity (with network policies, add the egress profile metadata to
+      # the scheduler).
+      credentials:
+        existingSecret: ""
+        key: service-account.json
+  # -- The retention purge of the scheduler (retention.*;
+  # docs/audit-log.md): the days after which the daily job deletes the
+  # rows.
+  retention:
+    # -- Soft-deleted history rows, after their delete.
+    softDeletedDays: 30
+    # -- A deactivated organisation and a deactivated sandbox, after the
+    # deactivation (the delete of an organisation or of a sandbox).
+    deactivatedOrganisationDays: 30
+    deactivatedSandboxDays: 7
+    # -- The dead letters of the event consumers.
+    deadLetterDays: 30
+    # -- The login codes of the conformance tests, after their expiry.
+    loginCodeDays: 1
+    # -- The verifier response keys, after the expiry of their verification.
+    verifierResponseKeyDays: 1
+    # -- The rows of one delete statement (1 to 10000).
+    batchSize: 500
   trustList:
     # -- trust_list.lookup_url: the trust list lookup service.
     lookupUrl: https://trustlist.nxd.foundation/trust-list/lookup

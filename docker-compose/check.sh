@@ -155,6 +155,16 @@ check_installation() {
     ok "test CA (${test_ca:-true}, ${days:-365} days)"
   fi
 
+  # The retention of the audit log of the wallet. Empty: the default of
+  # compose.platform.yaml.
+  local years
+  years="$(setting AUDIT_RETENTION_YEARS)"
+  if [ -n "$years" ] && [[ ! $years =~ ^[1-9][0-9]{0,2}$ ]]; then
+    bad "AUDIT_RETENTION_YEARS ($years) must be a number of years, 1 to 999"
+  else
+    ok "audit log (${years:-7} years; no audit bucket: the anchors stay in the database)"
+  fi
+
   # The password file of each login database role of the wallet (make
   # secrets; wallet-database-roles gives them to database-roles apply).
   local role missing_roles=""
