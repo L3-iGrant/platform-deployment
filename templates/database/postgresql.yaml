@@ -8,6 +8,15 @@ and labels: an upgrade must keep the volume.
 {{- $db := .Values.database }}
 {{- $pg := $db.postgresql }}
 {{- $tls := include "ow.db.tls" . }}
+{{- /*
+The server parameters: database.postgresql.parameters, and the DDL and
+connection logs (database.postgresql.logDdlAndConnections). A parameter of
+the same name wins over a log parameter, so each name has one -c.
+*/}}
+{{- $parameters := deepCopy ($pg.parameters | default dict) }}
+{{- if $pg.logDdlAndConnections }}
+{{- $parameters = merge $parameters (dict "log_statement" "ddl" "log_connections" "on" "log_disconnections" "on") }}
+{{- end }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -36,7 +45,7 @@ spec:
           image: {{ include "ow.image" (list . $pg.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $pg.image) }}
           args:
-            {{- range $name, $value := $pg.parameters }}
+            {{- range $name, $value := $parameters }}
             - -c
             - {{ printf "%s=%v" $name $value | quote }}
             {{- end }}

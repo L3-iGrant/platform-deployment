@@ -215,6 +215,12 @@ database:
       maintenance_work_mem: 64MB
       idle_session_timeout: 10min
       password_encryption: scram-sha-256
+    # -- The server logs each DDL statement (log_statement = 'ddl': CREATE,
+    # ALTER, DROP, GRANT, REVOKE and the role statements) and each
+    # connection and disconnection (log_connections, log_disconnections =
+    # on) to the container log. A value of the same name in parameters wins.
+    # false: the chart sets none of the three. See docs/database.md.
+    logDdlAndConnections: true
   persistence:
     size: 50Gi
     storageClass: ""
