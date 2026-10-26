@@ -56,7 +56,6 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "tokenSigningJwksFile" (include "ow.api.secretFile" (list $root "token-signing-jwks.json"))
     "tokenSigningActiveKid" (required "api.keyStorage.tokenSigning.activeKid is required (the kid of the active key in the token signing JWKS)" $api.keyStorage.tokenSigning.activeKid | toString)
     "dbWrappingKeysFile" (include "ow.api.secretFile" (list $root "db-wrapping-keys.json"))
-    "allowPlainApiKeys" false
     "allowPlaintextProviderKeys" false)
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" $api.logLevel)

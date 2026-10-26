@@ -45,8 +45,7 @@ client gets the 413 of the gateway with another text. 0 = the defaults
   "DataBase" (include "ow.db.goOwner" (dict "root" $root "db" "api" "secretDir" $dir "passwordFile" "db-password" "pool" $v.database.pools.gateway) | fromJson)
   "KeyStorage" (dict
     "tokenHashSecretFile" (printf "%s/token-hash-secret.json" $dir)
-    "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir))
-    "allowPlainApiKeys" false)
+    "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir)))
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" ($g.logLevel | default $api.logLevel))
   "Gateway" (dict

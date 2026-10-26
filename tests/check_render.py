@@ -37,6 +37,7 @@ FORBIDDEN = [
     (r"data_key", "the KMS data key"),
     (r"\baries\b|aca-py|cloud ?agent|\bssi\b", "an Aries or SSI name"),
     (r"apikey-rotator|apiKeyRotator", "the API key rotator"),
+    (r"allowplainapikeys", "the removed api setting allowPlainApiKeys"),
     (r"cert-manager\.io/v1", "a cert-manager object"),
     ("\u2014", "an em dash"),
     ("\u2013", "an en dash"),
@@ -97,7 +98,6 @@ def main() -> int:
             go_section(f"api {key} DataBase", api["DataBase"])
             go_section(f"api {key} Extensions.oidc.database", api["Extensions"]["oidc"]["database"])
             go_section(f"api {key} ReadAccess.wallet", api["ReadAccess"]["wallet"])
-            check(api["KeyStorage"].get("allowPlainApiKeys") is False, f"api {key} KeyStorage.allowPlainApiKeys is not false")
             check(api["KeyStorage"].get("allowPlaintextProviderKeys") is False, f"api {key} KeyStorage.allowPlaintextProviderKeys is not false")
             check("PrivacyDashboardDeployment" not in api, f"api {key} has PrivacyDashboardDeployment")
     gateway = config_map_file(f"{RELEASE}-gateway", "config.yaml")
