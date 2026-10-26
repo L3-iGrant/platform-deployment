@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Checks the key facts of one "helm template" output of the chart.
 
-Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy>
+Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs>]
   engine: postgresql; mode: bundled | external;
   openbao: shamir | external;
-  exposure: ingress | gatewayAPI | none; networkpolicy: off | on.
+  exposure: ingress | gatewayAPI | none; networkpolicy: off | on;
+  database-logs: on (default) | off (database.postgresql.logDdlAndConnections
+    false).
 
 The values are tests/values/keys.yaml, examples/site.yaml and one example
 file of each group (see tests/render-matrix.sh). The script writes one line
@@ -26,6 +28,9 @@ KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
 # The facts of each engine of the chart helper ow.db.engines: the name
 # suffix of the bundled server, the port and the admin password key.
 ENGINES = {"postgresql": {"server": "postgres", "port": 5432, "admin_key": "POSTGRES_PASSWORD"}}
+# The server parameters of the DDL and connection logs of the bundled
+# server (database.postgresql.logDdlAndConnections).
+DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnections": "on"}
 
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
@@ -45,6 +50,7 @@ FORBIDDEN = [
 
 def main() -> int:
     path, engine, mode, openbao, exposure, netpol = sys.argv[1:7]
+    database_logs = sys.argv[7] if len(sys.argv) > 7 else "on"
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
     docs = [d for d in yaml.safe_load_all(text) if d]
@@ -171,6 +177,17 @@ def main() -> int:
         tls = find("Secret", f"{server}-tls")
         check(tls is not None and set(tls.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"},
               f"the TLS Secret {server}-tls is missing or has other keys")
+        # The server parameters (postgres -c name=value): each name once,
+        # and the DDL and connection logs unless they are off.
+        sts = find("StatefulSet", server)
+        if sts:
+            args = sts["spec"]["template"]["spec"]["containers"][0].get("args", [])
+            parameters = [arg.split("=", 1) for option, arg in zip(args, args[1:]) if option == "-c"]
+            names = [name for name, _ in parameters]
+            check(len(names) == len(set(names)), f"a server parameter is set twice: {sorted(names)}")
+            logs = {name: value for name, value in parameters if name in DATABASE_LOGS}
+            expected = DATABASE_LOGS if database_logs == "on" else {}
+            check(logs == expected, f"the database log parameters are {logs}, not {expected}")
     else:
         check(not servers, f"a database StatefulSet is rendered with mode external: {servers}")
     init = [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith(f"{RELEASE}-db-init-")]
@@ -179,6 +196,10 @@ def main() -> int:
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
         check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
+        # psql \password sends a SCRAM-SHA-256 verifier, never the password:
+        # the DDL log of the server must not show a password.
+        check("\\password" in script and not re.search(r"\bPASSWORD\b", script),
+              "the init script sends a password in a statement, not with psql \\password")
     db_secret = find("Secret", server)
     if db_secret:
         keys = set(db_secret.get("data", {}))
