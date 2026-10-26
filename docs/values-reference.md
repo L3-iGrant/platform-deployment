@@ -34,6 +34,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `database.pools.<process>` | The pool of `api`, `webhook`, `oidc`, `gateway`, `consent` | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
 | `database.tls.enabled`, `.existingSecret`, `.caSecret`, `.caKey`, `.sslMode` | TLS to the server | `true` |
 | `database.postgresql.image`, `.parameters` | The bundled PostgreSQL | `postgres:18.6` |
+| `database.postgresql.logDdlAndConnections` | The bundled server logs each DDL statement, connection and disconnection (see [Database](database.md#logs-of-the-database-server)) | `true` |
 | `database.persistence.size`, `.storageClass`, `database.resources` | The volume and the resources of the bundled server | `50Gi`, 250m/1536Mi (CPU limit 2) |
 
 ## OpenBao

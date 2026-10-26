@@ -6,9 +6,10 @@ has the release revision), on the bundled server or on an external server
 with database.external.admin. The script is idempotent: it makes a user or
 a database only when it does not exist, and it sets the password of each
 user from the Secret each time: CREATE ROLE ... LOGIN, CREATE DATABASE ...
-OWNER (UTF8, C.UTF-8), REVOKE ALL ON DATABASE ... FROM PUBLIC. The data
-scopes of the wallet are schemas in the wallet database, which its owner
-makes.
+OWNER (UTF8, C.UTF-8), REVOKE ALL ON DATABASE ... FROM PUBLIC, then psql
+\password (the server gets the SCRAM-SHA-256 verifier, never the password,
+so its DDL log does not show the password). The data scopes of the wallet
+are schemas in the wallet database, which its owner makes.
 */}}
 {{- $admin := include "ow.db.admin" . | fromJson }}
 {{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
@@ -47,18 +48,27 @@ data:
     done
     for user in ${DATABASES}; do
       echo "Configuring the user and the database ${user}"
-      # psql reads the password from the file, so the password is not on the
-      # command line.
       psql -v ON_ERROR_STOP=1 -d postgres -v role="${user}" <<'SQL'
-    \set pw `cat /etc/db-users/:role`
     SELECT format('CREATE ROLE %I LOGIN', :'role')
       WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = :'role') \gexec
-    ALTER ROLE :"role" WITH LOGIN PASSWORD :'pw';
+    ALTER ROLE :"role" WITH LOGIN;
     SELECT format('CREATE DATABASE %I OWNER %I TEMPLATE template0 ENCODING %L LC_COLLATE %L LC_CTYPE %L',
                   :'role', :'role', 'UTF8', 'C', 'C.UTF-8')
       WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = :'role') \gexec
     REVOKE ALL ON DATABASE :"role" FROM PUBLIC;
     SQL
+      # psql \password sends the SCRAM-SHA-256 verifier of the password, never
+      # the password, so the DDL log of the server does not show it. psql
+      # reads the password twice from its standard input (the Job has no
+      # terminal); printf is a shell builtin, so the password is not on a
+      # command line. The output (the two prompts) shows only on an error.
+      password="$(< "/etc/db-users/${user}")"
+      if ! output="$(printf '%s\n%s\n' "$password" "$password" \
+          | psql -v ON_ERROR_STOP=1 -d postgres -v role="${user}" -c '\password :"role"' 2>&1)"; then
+        printf '%s\n' "$output" >&2
+        echo "The password of the user ${user} is not set" >&2
+        exit 1
+      fi
     done
     echo "All databases are configured"
 ---
