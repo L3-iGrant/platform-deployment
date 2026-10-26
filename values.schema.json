@@ -2489,6 +2489,99 @@
             }
           }
         },
+        "audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "retentionYears": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "scopeRetentionYears": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "platform",
+                  "kms",
+                  "trust",
+                  "issuer",
+                  "authorisation_server",
+                  "relying_party",
+                  "business_wallet",
+                  "wallet_provider"
+                ]
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "bucket": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^$|^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$"
+                },
+                "project": {
+                  "type": "string"
+                },
+                "prefix": {
+                  "type": "string",
+                  "pattern": "^([A-Za-z0-9_-][A-Za-z0-9._-]*/)*$"
+                },
+                "credentials": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "retention": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "softDeletedDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "deactivatedOrganisationDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "deactivatedSandboxDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "deadLetterDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "loginCodeDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "verifierResponseKeyDays": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "batchSize": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          }
+        },
         "trustList": {
           "type": "object",
           "additionalProperties": false,

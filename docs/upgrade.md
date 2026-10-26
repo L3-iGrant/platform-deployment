@@ -18,7 +18,7 @@ This page upgrades an installation to a new release of the platform.
    Before the pods change, the hooks of the release run in this order:
 
    1. The roles hook of the wallet (`ows-wallet-database-roles`) creates the database roles of the wallet, sets their passwords and gives their grants, with the admin user of the database server.
-   2. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the migrator role of the wallet.
+   2. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the migrator role of the wallet; after the grants, it makes the partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)).
    3. The read access hooks of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`) update the read-only users with which the api and consent read the wallet database.
 
    When a hook fails, the upgrade stops and the old pods stay. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`. After the upgrade, the hook `ows-consent-migrate-after` completes the data of consent: it needs `--wait`. The new wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again. See [Database](database.md#hooks-of-the-wallet).
@@ -31,6 +31,7 @@ This page upgrades an installation to a new release of the platform.
    | 1 | A revision failed | The log names the revision and the error. Correct the cause, or contact iGrant.io with the log, then run the upgrade again. |
    | 2 | A configuration or connection error | Check the database values and the database roles of the wallet (the roles hook ran before), then run the upgrade again. |
    | 3 | The grant step failed: the schema is at the head, but the grants are not complete | Run the upgrade again: the hook gives the missing grants. |
+   | 4 | The partition step of the audit log failed: the schema is at the head with all grants, but a partition is missing or a drop failed | Run the upgrade again: the hook completes the partitions. |
 
 4. Bundled OpenBao: the OpenBao pods do not restart on their own (update strategy `OnDelete`), because a restarted pod stays sealed. Check whether the upgrade changed the OpenBao pods (for example a new release tag or a new OpenBao configuration):
 

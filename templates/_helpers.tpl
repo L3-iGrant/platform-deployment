@@ -422,6 +422,11 @@ the database owner user. */ -}}
 {{- with $w.trustList.lookupToken.existingSecret -}}
 {{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
 {{- end -}}
+{{- /* The scheduler writes the copies of the audit anchors and the monthly
+exports to the audit bucket with its service account. */ -}}
+{{- if and (eq $role "scheduler") $w.audit.bucket.name $w.audit.bucket.credentials.existingSecret -}}
+{{- $_ := set $files "audit-bucket-service-account.json" (dict "secret" $w.audit.bucket.credentials.existingSecret "key" $w.audit.bucket.credentials.key) -}}
+{{- end -}}
 {{- /* The config role reads the views of the api and consent databases with
 the read-only users of the wallet (read_access). */ -}}
 {{- if eq $role "config" -}}

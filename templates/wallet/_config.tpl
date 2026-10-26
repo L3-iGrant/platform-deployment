@@ -69,6 +69,37 @@ code has defaults that are not the bucket of this installation. */ -}}
 {{- with $w.storage.emulatorHost -}}
 {{- $_ := set $storage "emulator_host" . -}}
 {{- end -}}
+{{- /* The audit log (audit.*): the retention in the file of every role,
+so that each process and the migration hook have the same values; the
+bucket of the anchor copies and of the monthly exports only in the
+scheduler, which writes them and mounts the service account of the bucket
+(ow.wallet.secretFiles). */ -}}
+{{- include "ow.wallet.checkAudit" $root -}}
+{{- $audit := include "ow.wallet.auditRetention" $root | fromJson -}}
+{{- if and (eq $role "scheduler") $w.audit.bucket.name -}}
+{{- $bucket := dict "name" $w.audit.bucket.name -}}
+{{- with $w.audit.bucket.project -}}
+{{- $_ := set $bucket "project" . -}}
+{{- end -}}
+{{- if hasKey $files "audit-bucket-service-account.json" -}}
+{{- $_ := set $bucket "credentials_file" (printf "%s/audit-bucket-service-account.json" $dir) -}}
+{{- end -}}
+{{- with $w.audit.bucket.prefix -}}
+{{- $_ := set $bucket "prefix" . -}}
+{{- end -}}
+{{- $_ := set $audit "bucket" $bucket -}}
+{{- end -}}
+{{- /* The retention purge (retention.*): the deactivation of an organisation
+in the config role writes its purge date, the scheduler purges. */ -}}
+{{- $r := $w.retention -}}
+{{- $retention := dict
+    "soft_deleted_days" ($r.softDeletedDays | int)
+    "deactivated_organisation_days" ($r.deactivatedOrganisationDays | int)
+    "deactivated_sandbox_days" ($r.deactivatedSandboxDays | int)
+    "dead_letter_days" ($r.deadLetterDays | int)
+    "login_code_days" ($r.loginCodeDays | int)
+    "verifier_response_key_days" ($r.verifierResponseKeyDays | int)
+    "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- if hasKey $files "play-integrity-service-account.json" -}}
 {{- $_ := set $walletUnit "play_integrity_credentials_file" (printf "%s/play-integrity-service-account.json" $dir) -}}
@@ -94,7 +125,9 @@ code has defaults that are not the bucket of this installation. */ -}}
   "kms" $kms
   "trust_list" $trustList
   "storage" $storage
-  "wallet_unit" $walletUnit -}}
+  "wallet_unit" $walletUnit
+  "audit" $audit
+  "retention" $retention -}}
 {{- if has $role (list "service" "config") -}}
 {{- include "ow.wallet.checkServer" $root -}}
 {{- $server := dict
@@ -205,11 +238,12 @@ Call with the root context.
 
 {{/*
 config.yaml of the wallet hooks (the roles, migration and read access
-hooks): only the database, with the login of the hook, and the log level.
-database-roles, migrate-database and read-access read only these keys; the
-hooks run before the resources of the release change, so they cannot read
-the new ConfigMaps of the release. Call with (list $ "<user>" "<password
-file name>").
+hooks): only the database, with the login of the hook, and the log level
+(the migration hook adds the retention of the audit log:
+ow.wallet.migrateConfig). database-roles, migrate-database and read-access
+read only these keys; the hooks run before the resources of the release
+change, so they cannot read the new ConfigMaps of the release. Call with
+(list $ "<user>" "<password file name>").
 */}}
 {{- define "ow.wallet.hookConfig" -}}
 {{- toYaml (dict
@@ -233,4 +267,46 @@ Call with (list $ "<user>" "<password file name>"). Output: JSON.
   "user" (index . 1)
   "passwordFile" (printf "%s/%s" $dir (index . 2))
   "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) -}}
+{{- end }}
+
+{{/*
+config.yaml of the migration hook of the wallet: ow.wallet.hookConfig and
+the retention of the audit log (ow.wallet.auditRetention): the partition
+step of migrate-database drops the months of the audit events that are
+older than the retention, only after a verified export. Call with (list $
+"<user>" "<password file name>").
+*/}}
+{{- define "ow.wallet.migrateConfig" -}}
+{{- $config := include "ow.wallet.hookConfig" . | fromYaml -}}
+{{- $_ := set $config "audit" (include "ow.wallet.auditRetention" (index . 0) | fromJson) -}}
+{{- toYaml $config }}
+{{- end }}
+
+{{/*
+The retention of the audit log (audit.retention_years and
+audit.scope_retention_years) of the wallet files and of the migration hook.
+Call with the root context. Output: JSON.
+*/}}
+{{- define "ow.wallet.auditRetention" -}}
+{{- $a := .Values.organisationWallet.audit -}}
+{{- $audit := dict "retention_years" ($a.retentionYears | int) -}}
+{{- if $a.scopeRetentionYears -}}
+{{- $scopes := dict -}}
+{{- range $scope, $years := $a.scopeRetentionYears -}}
+{{- $_ := set $scopes $scope ($years | int) -}}
+{{- end -}}
+{{- $_ := set $audit "scope_retention_years" $scopes -}}
+{{- end -}}
+{{- toJson $audit -}}
+{{- end }}
+
+{{/*
+Render guards of the audit log: the service account of the bucket needs the
+bucket. Call with the root context.
+*/}}
+{{- define "ow.wallet.checkAudit" -}}
+{{- $a := .Values.organisationWallet.audit -}}
+{{- if and $a.bucket.credentials.existingSecret (not $a.bucket.name) -}}
+{{- fail "organisationWallet.audit.bucket.credentials.existingSecret needs organisationWallet.audit.bucket.name: the service account is the one of the audit bucket" -}}
+{{- end -}}
 {{- end }}

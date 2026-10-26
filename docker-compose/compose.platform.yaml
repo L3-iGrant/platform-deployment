@@ -988,6 +988,10 @@ configs:
         emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
+      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
+      # "Audit log"): the same value in each wallet file.
+      audit:
+        retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
@@ -1070,6 +1074,10 @@ configs:
         emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
+      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
+      # "Audit log"): the same value in each wallet file.
+      audit:
+        retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
@@ -1118,6 +1126,13 @@ configs:
         emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
+      # The audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
+      # scheduler signs the hourly anchors with the Transit keys of OpenBao.
+      # There is no audit bucket: the storage server of Compose is not
+      # write-once. The anchors stay in the database only, no month is
+      # exported, and no partition is dropped.
+      audit:
+        retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
@@ -1135,6 +1150,10 @@ configs:
         # igrant_wallet_owner.
         user: igrant_wallet_migrator
         password_file: /run/secrets/eudi-wallet/database-password
+      # The partition step of migrate-database drops the months of the audit
+      # log that are older than this retention (only after a verified export).
+      audit:
+        retention_years: ${AUDIT_RETENTION_YEARS:-7}
 
   # database-roles apply and read-access apply of the wallet: only the
   # database, with the admin user (DB_ADMIN_USER).

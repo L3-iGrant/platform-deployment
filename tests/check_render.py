@@ -31,6 +31,12 @@ ENGINES = {"postgresql": {"server": "postgres", "port": 5432, "admin_key": "POST
 # The server parameters of the DDL and connection logs of the bundled
 # server (database.postgresql.logDdlAndConnections).
 DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnections": "on"}
+# The audit log and the retention purge of the wallet with the defaults of
+# the values: the retention of the audit events in every wallet file and in
+# the migration hook, no audit bucket.
+AUDIT = {"retention_years": 7}
+RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deactivated_sandbox_days": 7,
+             "dead_letter_days": 30, "login_code_days": 1, "verifier_response_key_days": 1, "batch_size": 500}
 
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
@@ -145,6 +151,8 @@ def main() -> int:
         if role == "config":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])
+        check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
+        check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
 
     # The migration hooks and the other hooks of the wallet (their own
     # ConfigMaps).
@@ -165,6 +173,12 @@ def main() -> int:
                 go_section(f"{name} Extensions.oidc.database", hook["Extensions"]["oidc"]["database"])
         else:
             wallet_section(f"{name} database", hook["database"])
+            # Only the migration hook reads the retention of the audit log
+            # (the partition step of migrate-database).
+            expected = {"log_level", "database"} | ({"audit"} if name == f"{RELEASE}-wallet-migrate" else set())
+            check(set(hook) == expected, f"{name} has the keys {sorted(hook)}, not {sorted(expected)}")
+            if "audit" in expected:
+                check(hook.get("audit") == AUDIT, f"{name} audit is {hook.get('audit')!r}, not {AUDIT}")
 
     # --- The database server and the Jobs --------------------------------
     # The database server: the StatefulSet with the network role db.
@@ -378,6 +392,7 @@ def main() -> int:
         user = ((file or {}).get("database") or {}).get("user")
         check(user == f"igrant_wallet_{role}", f"the {component} pods connect as {user!r}, not igrant_wallet_{role}")
         check(admin_password not in secret_refs(pod), f"the {component} pods mount the password of the administrator")
+        check("audit-bucket-service-account.json" not in files, f"the {component} pods mount the service account of an audit bucket")
         if component != "wallet-scheduler":
             # The server waits up to 600 s for the schema head before it
             # answers /healthz: the startup probe covers the wait.

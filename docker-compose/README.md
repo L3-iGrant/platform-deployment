@@ -16,6 +16,7 @@ check: do the next step only when you see the result of the check.
 - [Settings](#settings)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
+- [Audit log](#audit-log)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
 - [Privacy dashboard](#privacy-dashboard)
@@ -257,6 +258,7 @@ your shell has priority over the value in `.env`.
 | `DB_ENGINE` | `postgresql` | The database engine of all components: `postgresql` (PostgreSQL 18), the only supported engine. |
 | `COMPOSE_PROFILES` | the derived line at the end of `.env.example` | Starts the database server of `DB_ENGINE`. Do not change it. |
 | `TEST_CA_ENABLED`, `TEST_CA_LEAF_VALIDITY_DAYS` | `true`, `365` | The built-in test CA of the wallet issues test certificates for development and testing. They are not on any trusted list. Set `TEST_CA_ENABLED=false` when the installation must not offer it. `TEST_CA_LEAF_VALIDITY_DAYS` (1 to 3650) is the validity of a test certificate when the request gives none; the largest validity of the preset caps it. |
+| `AUDIT_RETENTION_YEARS` | `7` | The years that the audit log of the wallet keeps the events of each data scope (1 to 999). See [Audit log](#audit-log). |
 | `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL` | `http://localhost:8080`, `:8090`, `:3000` | The public URLs (your reverse proxy). |
 | `PUBLISH_ADDRESS` | `127.0.0.1` | The IP address of the host ports. |
 | `API_PORT`, `WALLET_PORT`, `DASHBOARD_PORT` | `8080`, `8090`, `3000` | The host ports. |
@@ -315,7 +317,8 @@ process stops and Compose starts it again.
 The other login database roles (`igrant_wallet_audit_reader` and one
 database role for each role application, for example
 `igrant_wallet_issuer_app`) also get their passwords. No process of this
-release logs in with them.
+release logs in with them. The audit reader can only read the audit log
+(see [Audit log](#audit-log)).
 
 A new release can add database roles and migrations. Set its tag in
 `PLATFORM_TAG` in `.env`, then do `make secrets`, `make check` and
@@ -349,6 +352,44 @@ passwords of the owner users in this way.
 Docker keeps the container logs. Set a log rotation for your Docker
 daemon (the options `max-size` and `max-file` of the log driver
 `json-file`), so that the logs do not fill the disk.
+
+## Audit log
+
+The wallet records the actions of the platform in an audit log in its
+database: for example a configuration change, a key retirement, an issued
+credential or a refused request. Each data scope of the wallet has its own
+hash chains. Every hour, `wallet-scheduler` signs an anchor of each scope
+with the Transit key
+`audit-anchor-<scope>` of OpenBao; the scheduler makes the keys at its start.
+
+| Part | Compose |
+| --- | --- |
+| Retention | `AUDIT_RETENTION_YEARS` (default 7) in each wallet file and in `wallet-migrate` |
+| Monthly partitions | `wallet-migrate` makes the partitions of the next 24 months at each start |
+| Audit bucket | None. The anchors stay in the database only, no month is exported, and `wallet-migrate` drops no partition |
+
+An installation of the Helm chart can copy the anchors and the monthly
+exports to a write-once Google Cloud Storage bucket (a locked retention
+policy; see [Audit log](../docs/audit-log.md)). Compose has no such
+bucket: its storage server is not write-once, so it is not a place for
+evidence.
+
+Check the chains and the anchors (exit code 0: verified; 1: evidence of
+change, with the first bad row of each chain; 2: an input or connection
+error):
+
+```bash
+docker compose exec wallet-scheduler /app/.venv/bin/audit verify
+```
+
+The check of the bucket copies (C9) is skipped. For support,
+`audit timeline --request-id <id>` gives the events of one request in time
+order.
+
+The scheduler also purges the wallet data every day: soft-deleted history
+rows 30 days after their delete, a deleted organisation 30 days and a
+deleted sandbox 7 days after its deactivation, dead letters after 30 days
+(the `retention` settings of the wallet, with their defaults).
 
 ## Secrets
 
