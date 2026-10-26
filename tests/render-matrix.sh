@@ -19,7 +19,8 @@
 #    For each: helm template, kubeconform -strict (when it is installed; the
 #    HTTPRoute schema of the Gateway API from the CRDs catalog) and
 #    tests/check_render.py. helm lint runs once per database and OpenBao
-#    pair.
+#    pair. One more render of the bundled server has the DDL and connection
+#    logs off.
 # 3. The next steps (NOTES.txt).
 # 4. The render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
@@ -144,6 +145,19 @@ for database in postgresql-bundled postgresql-external; do
     done
   done
 done
+# The DDL and connection logs of the bundled server off
+# (database.postgresql.logDdlAndConnections false): no log parameter.
+name="postgresql-bundled-openbao-shamir-exposure-none-none-database-logs-off"
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/postgresql-bundled.yaml" \
+    -f "$examples/openbao-shamir.yaml" -f "$examples/exposure-none.yaml" --set database.postgresql.logDdlAndConnections=false \
+    > "$out/$name.yaml" 2> "$out/$name.err"; then
+  bad "$name: helm template"
+  sed 's/^/  /' "$out/$name.err" | head -10
+elif python3 "$here/check_render.py" "$out/$name.yaml" postgresql bundled shamir none off off; then
+  ok "$name"
+else
+  bad "$name"
+fi
 
 # --- 3. The next steps (NOTES.txt) --------------------------------------------
 # helm template does not render NOTES.txt: a copy of the chart renders it as
@@ -235,6 +249,18 @@ renders() {
     bad "renders $name: no \"$expect\""
   fi
 }
+# Each case: a text that the render must not have.
+lacks() {
+  local name="$1" unexpected="$2"; shift 2
+  local text
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" 2>&1)"; then
+    bad "lacks $name: $(printf '%s' "$text" | head -c 200)"
+  elif grep -q -F -- "$unexpected" <<< "$text"; then
+    bad "lacks $name: has \"$unexpected\""
+  else
+    ok "lacks $name"
+  fi
+}
 # A restarted pod with the seal shamir waits sealed for an operator: the
 # StatefulSet must not roll the pods by itself.
 renders "OpenBao OnDelete with shamir" "type: OnDelete" "${shamir[@]}"
@@ -290,6 +316,10 @@ renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
 # The WIA pool refill event (core NATS): the scheduler subscribes to it.
 renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_pool.refill_requested", "_INBOX_wallet.>"] }' "${shamir[@]}"
+# A value of database.postgresql.parameters wins over a log parameter of
+# database.postgresql.logDdlAndConnections: one -c for each name.
+renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
+lacks "database log parameter under a server parameter" '"log_statement=ddl"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
 
 echo "result: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]
