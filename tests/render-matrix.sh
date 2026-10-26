@@ -310,6 +310,61 @@ for role in ("service", "config", "scheduler"):
 test_ca "on by default" '{"enabled": true, "leaf_validity_days": 365}' "${shamir[@]}"
 test_ca "off, 90 days" '{"enabled": false, "leaf_validity_days": 90}' "${shamir[@]}" --set organisationWallet.keyStores.testCa.enabled=false --set organisationWallet.keyStores.testCa.leafValidityDays=90
 guard "test CA validity" "organisationWallet.keyStores.testCa.leafValidityDays" "${shamir[@]}" --set organisationWallet.keyStores.testCa.leafValidityDays=3651
+# The audit log: audit.* of every wallet role file and of the migration
+# hook; the bucket only in the scheduler file, and the Secret of its service
+# account only in the scheduler pods.
+audit() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  # Only stdout is YAML (helm writes its warnings to stderr).
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" > "$out/audit.yaml" 2> "$out/audit.err"; then
+    bad "audit $name: $(head -c 200 "$out/audit.err")"
+  elif problems="$(python3 - "$out/audit.yaml" "$expect" <<'PY' 2>&1
+import json, sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = json.loads(sys.argv[2])
+def find(kind, name):
+    return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
+files = find("ConfigMap", "t-wallet")["data"]
+for role in ("service", "config", "scheduler"):
+    audit = yaml.safe_load(files[f"{role}.yaml"]).get("audit")
+    want = dict(expected["audit"], **({"bucket": expected["bucket"]} if role == "scheduler" and expected["bucket"] else {}))
+    if audit != want:
+        print(f"{role}.yaml audit is {audit!r}")
+    pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
+    mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
+               for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
+    secret = mounted.get("audit-bucket-service-account.json")
+    if secret != (expected["secret"] if role == "scheduler" else None):
+        print(f"the {role} pods mount {secret!r} as the service account of the audit bucket")
+retention = {key: value for key, value in expected["audit"].items() if key != "anchor_key_store"}
+migrate = yaml.safe_load(find("ConfigMap", "t-wallet-migrate")["data"]["config.yaml"]).get("audit")
+if migrate != retention:
+    print(f"the migration hook audit is {migrate!r}")
+PY
+)" && [ -z "$problems" ]; then
+    ok "audit $name"
+  else
+    bad "audit $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+}
+audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secret": null}' "${shamir[@]}"
+audit "bucket with its service account" \
+  '{"audit": {"retention_years": 10, "scope_retention_years": {"kms": 12}}, "bucket": {"name": "example-audit", "project": "example-project", "prefix": "audit/production/", "credentials_file": "/run/secrets/eudi-wallet/audit-bucket-service-account.json"}, "secret": ["audit-bucket", "sa.json"]}' \
+  "${shamir[@]}" --set organisationWallet.audit.retentionYears=10 --set organisationWallet.audit.scopeRetentionYears.kms=12 \
+  --set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.project=example-project \
+  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.credentials.existingSecret=audit-bucket \
+  --set organisationWallet.audit.bucket.credentials.key=sa.json
+audit "bucket with the Google default credentials" '{"audit": {"retention_years": 7}, "bucket": {"name": "example-audit"}, "secret": null}' \
+  "${shamir[@]}" --set organisationWallet.audit.bucket.name=example-audit
+guard "audit bucket service account without bucket" "organisationWallet.audit.bucket.credentials.existingSecret needs organisationWallet.audit.bucket.name" \
+  "${shamir[@]}" --set organisationWallet.audit.bucket.credentials.existingSecret=audit-bucket
+guard "audit bucket name" "organisationWallet.audit.bucket.name" "${shamir[@]}" --set organisationWallet.audit.bucket.name=Audit_Bucket
+guard "audit bucket prefix" "organisationWallet.audit.bucket.prefix" "${shamir[@]}" --set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.prefix=/audit
+guard "audit retention of at least one year" "organisationWallet.audit.retentionYears" "${shamir[@]}" --set organisationWallet.audit.retentionYears=0
+guard "audit retention of a scope without an audit log" "organisationWallet.audit.scopeRetentionYears" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.events=3
+guard "retention purge batch size" "organisationWallet.retention.batchSize" "${shamir[@]}" --set organisationWallet.retention.batchSize=20000
+renders "retention purge of a deactivated sandbox" "deactivated_sandbox_days: 14" "${shamir[@]}" --set organisationWallet.retention.deactivatedSandboxDays=14
 
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
 # The longest wallet database name: 43 characters.
