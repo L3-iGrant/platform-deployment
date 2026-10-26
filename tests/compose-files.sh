@@ -350,6 +350,42 @@ PY
     done
   fi
 
+  # The audit log (AUDIT_RETENTION_YEARS): the same retention in the files of
+  # the wallet roles and of wallet-migrate (the partition step), and no audit
+  # bucket. Empty value: the default.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local years
+    for years in "" 10; do
+      if ! json="$(AUDIT_RETENTION_YEARS="$years" docker compose config --format json 2>&1)"; then
+        bad "audit log ${years:-default}: docker compose config: $json"
+        continue
+      fi
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" "${years:-7}" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+expected = {"retention_years": int(sys.argv[2])}
+for name in ("config", "service", "scheduler", "migrate"):
+    audit = yaml.safe_load(project["configs"][f"wallet-{name}-config"]["content"]).get("audit")
+    if audit != expected:
+        sys.exit(f"wallet-{name}: audit {audit!r}, not {expected!r}")
+print(f"audit {expected}, no bucket")
+PY
+)"; then
+        ok "audit log ${years:-default}: $output"
+      else
+        bad "audit log ${years:-default}: $output"
+      fi
+      rm -f "$project_file"
+    done
+  fi
+
   local script
   for script in secrets.sh check.sh config/database/create-databases.sh; do
     if bash -n "$script"; then ok "bash -n $script"; else bad "bash -n $script"; fi
