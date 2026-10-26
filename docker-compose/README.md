@@ -15,6 +15,7 @@ check: do the next step only when you see the result of the check.
 - [Operation](#operation)
 - [Settings](#settings)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
+- [Database server logs](#database-server-logs)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
 - [Privacy dashboard](#privacy-dashboard)
@@ -234,6 +235,7 @@ organisation.
 | Delete all data and start again | `make reset`, then `make up`, then steps 8 and 9 |
 | OpenBao seal status | `make openbao-status` |
 | SQL shell of the database server | `make db-shell` |
+| Log of the database server (DDL statements, connections) | `docker compose logs postgres` |
 
 Keep these files safe. Without them, the data of the platform cannot be
 used:
@@ -320,6 +322,33 @@ A new release can add database roles and migrations. Set its tag in
 `make up`. `make secrets` creates the password files that the release adds
 and keeps the others. The one-shot services then do the database work in
 the order above: there is no step by hand.
+
+## Database server logs
+
+The server `postgres` writes these events to its container log
+(`docker compose logs postgres`):
+
+- the text of each DDL statement (`log_statement=ddl`): `CREATE`, `ALTER`
+  and `DROP` (also of roles), `GRANT` and `REVOKE`, but not the data
+  statements;
+- each connection, with the client address, the user, the database and the
+  authentication method (`log_connections=on`);
+- the end of each session, with its duration (`log_disconnections=on`).
+
+These logs show the changes of the schemas and of the rights, and the
+sessions of each database user. `make check` gives a warning when the
+command of `postgres` does not have the three settings, for example when a
+Compose override file changes it.
+
+The log holds the text of each DDL statement. Do not put a password in the
+text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes
+the password to the log. Use `\password` of psql (`make db-shell`), which
+sends a SCRAM-SHA-256 verifier, not the password. `database-init` sets the
+passwords of the owner users in this way.
+
+Docker keeps the container logs. Set a log rotation for your Docker
+daemon (the options `max-size` and `max-file` of the log driver
+`json-file`), so that the logs do not fill the disk.
 
 ## Secrets
 
