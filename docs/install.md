@@ -71,11 +71,11 @@ helm install ows ./helmcharts -n ows \
 
 Do not add `--wait`: the OpenBao pods become ready only after step 5.
 
-After Helm creates the resources, the command waits for the hooks of the wallet (Helm `post-install`): the roles hook creates the database roles of the wallet, the migration hook creates the schema of the wallet database, and the read access hooks of the wallet create the read-only users with which the api and consent read the wallet database (see [Database](database.md#hooks-of-the-wallet)). The database server and its init Job start at the same time, so the roles hook tries again until the wallet database exists. This can take some minutes; `--timeout 15m` gives each hook enough time.
+After Helm creates the resources, the command waits for the hooks of the databases (Helm `post-install`): the init hook waits until the database server is ready and creates the databases and the users, the roles hook creates the database roles of the wallet, the migration hook creates the schema of the wallet database, and the read access hooks of the wallet create the read-only users with which the api and consent read the wallet database (see [Database](database.md#hooks-of-the-databases)). This can take some minutes; `--timeout 15m` gives each hook enough time.
 
 Check: `helm -n ows status ows` shows `STATUS: deployed`, and the output of the install shows the next steps.
 
-When a hook fails, the install stops. Read the log of its Job (for example `kubectl -n ows logs job/ows-wallet-database-roles`) and correct the cause, for example the admin user of an external database server. Then uninstall (Helm keeps the data, see [Uninstall](uninstall.md)) and do this step again.
+When a hook fails, the install stops. Read the log of its Job (for example `kubectl -n ows logs job/ows-db-init` or `job/ows-wallet-database-roles`) and correct the cause, for example the admin user of an external database server. Then uninstall (Helm keeps the data, see [Uninstall](uninstall.md)) and do this step again.
 
 ## Step 5: initialise OpenBao (bundled OpenBao only)
 
@@ -107,7 +107,7 @@ Check: `kubectl -n ows exec ows-openbao-0 -- bao status` shows `Initialized true
 kubectl -n ows get pods,jobs
 ```
 
-Check: after some minutes, all pods are `Running` and `READY`, and the Jobs `ows-db-init-1`, `ows-api-read-access-*`, `ows-consent-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
+Check: after some minutes, all pods are `Running` and `READY`, and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
 
 Some restarts are usual at the first start (`RESTARTS` 3 to 5). The Jobs try again while the database starts, the wallet pods wait until the migration hook has created the schema of the wallet database, and a service that reads the views of another service (the API, consent and the wallet config role) is ready only when its read-only database user exists. Until then, a process stops when the database, its read-only user or the OpenBao login of the wallet (step 5) is not ready yet, and its log shows the reason. When a pod still restarts after 10 minutes, read its log (`kubectl -n ows logs <pod> --previous`).
 

@@ -21,9 +21,9 @@ The chart creates these Secrets itself (random values, kept across upgrades):
 
 | Secret | Keys |
 | --- | --- |
-| `<release>-postgres` | one key per database name, and the admin password of the bundled server (`POSTGRES_PASSWORD`) |
+| `<release>-postgres` | one key per database name, and the admin password of the bundled server (`POSTGRES_PASSWORD`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#hooks-of-the-databases)) |
 | `<release>-postgres-tls` | `tls.crt`, `tls.key`, `ca.crt` of the bundled server |
-| `<release>-read-access` | the passwords of the read-only users (`<reader>-<owner>`) |
+| `<release>-read-access` | the passwords of the read-only users (`<reader>-<owner>`); a Helm hook, as `<release>-postgres` |
 | `<release>-wallet-database-roles` | the passwords of the database roles of the wallet, one key for each role without the prefix (for example `launcher_app`, `jobs`, `migrator`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#database-roles-of-the-wallet)) |
 | `<release>-api` | `api-secret-key`, and the SMTP and Twilio values when you set them as values |
 | `<release>-openbao-wallet`, `<release>-openbao-tls` | see [OpenBao](openbao.md) |

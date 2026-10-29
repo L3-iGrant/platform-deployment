@@ -17,11 +17,14 @@ This page upgrades an installation to a new release of the platform.
 
    Before the pods change, the hooks of the release run in this order:
 
-   1. The roles hook of the wallet (`ows-wallet-database-roles`) creates the database roles of the wallet, sets their passwords and gives their grants, with the admin user of the database server.
-   2. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the migrator role of the wallet; after the grants, it makes the partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)).
-   3. The read access hooks of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`) update the read-only users with which the api and consent read the wallet database.
+   1. The init hook (`ows-db-init`) creates the database and the owner user of each enabled component that does not have them yet, and sets the passwords of the owner users, with the admin user of the database server.
+   2. The roles hook of the wallet (`ows-wallet-database-roles`) creates the database roles of the wallet, sets their passwords and gives their grants, with the admin user of the database server.
+   3. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the migrator role of the wallet; after the grants, it makes the partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)).
+   4. The read access hooks of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`) update the read-only users with which the api and consent read the wallet database.
 
-   When a hook fails, the upgrade stops and the old pods stay. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`. After the upgrade, the hook `ows-consent-migrate-after` completes the data of consent: it needs `--wait`. The new wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again. See [Database](database.md#hooks-of-the-wallet).
+   When a hook fails, the upgrade stops and the old pods stay. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`. After the upgrade, the hook `ows-consent-migrate-after` completes the data of consent: it needs `--wait`. The new wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again. See [Database](database.md#hooks-of-the-databases).
+
+   An upgrade can turn a component on, for example `organisationWallet.enabled: true`: the hooks create its passwords, its database and its users before its migration hook runs. With `database.auth.existingSecret`, first add the password of the new database to your Secret (the key is the database name, for example `igrant_wallet`).
 
    The exit code of the wallet migration hook (`migrate-database`):
 

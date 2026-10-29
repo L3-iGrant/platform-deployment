@@ -1,4 +1,4 @@
-# Database: your PostgreSQL server. The init Job makes the databases and the
+# Database: your PostgreSQL server. The init hook makes the databases and the
 # users with the admin user, and the roles hook makes the database roles of
 # the wallet with it; the components verify the server with its CA.
 # Make the two Secrets first:
