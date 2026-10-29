@@ -320,6 +320,18 @@ def main() -> int:
                        (f"{RELEASE}-consent-migrate-after", "post-upgrade")):
         doc = find("Job", name)
         check(doc is not None and annotations(doc).get("helm.sh/hook") == when, f"the hook {name} is not {when}")
+    # A new installation has no api or consent hook: their pods migrate at
+    # the start. The api pod runs "igrant-api migrate" in an init container;
+    # the consent process ("serve") applies its migrations before it serves.
+    api_deploy = find("Deployment", f"{RELEASE}-api")
+    if api_deploy:
+        init = [c.get("command") for c in pod_of(api_deploy).get("initContainers", [])]
+        check(init == [["/app/bin/igrant-api", "migrate", "--config", "/etc/igrant-api/config.yaml"]],
+              f"the api pods do not migrate in an init container (init containers {init})")
+    consent_deploy = find("Deployment", f"{RELEASE}-consent")
+    if consent_deploy:
+        args = pod_of(consent_deploy)["containers"][0].get("args") or []
+        check(args[:1] == ["serve"], f"the consent pods do not run serve (args {args})")
 
     # The user of each hook configuration.
     for name, user in ((f"{RELEASE}-wallet-database-roles", admin_user), (f"{RELEASE}-wallet-migrate", "igrant_wallet_migrator"),
