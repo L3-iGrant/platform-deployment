@@ -4,7 +4,7 @@ This page explains the database options of the platform: PostgreSQL for all comp
 
 [Back to the contents](../README.md#contents)
 
-The whole platform uses one database engine: `database.engine` is `postgresql`, the only supported engine. The engine applies to every component, to the migration and read access Jobs and to the network policies. Each component has its own database and owner user: `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet`. The processes of the organisation wallet do not connect as its owner user: each one has its own database role (see [Database roles of the wallet](#database-roles-of-the-wallet)).
+The whole platform uses one database engine: `database.engine` is `postgresql`, the only supported engine. The api, consent and the organisation wallet accept only PostgreSQL, so another value (for example `mysql`) stops the render with a message. The engine applies to every component, to the migration and read access Jobs and to the network policies. Each component has its own database and owner user: `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet`. The processes of the organisation wallet do not connect as its owner user: each one has its own database role (see [Database roles of the wallet](#database-roles-of-the-wallet)).
 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |

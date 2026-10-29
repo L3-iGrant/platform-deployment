@@ -166,10 +166,7 @@
       "additionalProperties": false,
       "properties": {
         "engine": {
-          "type": "string",
-          "enum": [
-            "postgresql"
-          ]
+          "type": "string"
         },
         "mode": {
           "type": "string",

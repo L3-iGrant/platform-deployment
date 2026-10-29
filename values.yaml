@@ -119,7 +119,8 @@ clientAddress:
 # after each install and upgrade (bundled, or external with an admin user).
 database:
   # -- The engine of all components: "postgresql" (PostgreSQL 18), the only
-  # supported engine.
+  # supported engine. The api, consent and the organisation wallet accept
+  # only PostgreSQL: another value (for example mysql) stops the render.
   engine: postgresql
   # -- "bundled": the chart runs ONE server of the engine (StatefulSet
   # <fullname>-postgres). "external": you give the server

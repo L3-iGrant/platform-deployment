@@ -20,12 +20,18 @@ ow.db.go and ow.db.wallet. Output: JSON.
   "postgresql" (dict "server" "postgres" "port" 5432 "adminUser" "postgres" "adminPasswordKey" "POSTGRES_PASSWORD")) -}}
 {{- end }}
 
-{{/* The engine of all components, validated. */}}
+{{/*
+The engine of all components, validated. The api, consent and the
+organisation wallet accept only the engines of ow.db.engines, so another
+value (for example mysql) stops the render with a message that names them.
+values.schema.json has no enum for database.engine: the message of the
+schema cannot name the components.
+*/}}
 {{- define "ow.db.engine" -}}
 {{- $engine := .Values.database.engine | default "postgresql" -}}
 {{- $engines := include "ow.db.engines" . | fromJson -}}
 {{- if not (hasKey $engines $engine) -}}
-{{- fail (printf "database.engine %q is not supported: use %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
+{{- fail (printf "database.engine %q is not supported: the api, consent and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
 {{- end -}}
 {{ $engine }}
 {{- end }}

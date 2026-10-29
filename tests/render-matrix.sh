@@ -200,10 +200,19 @@ guard() {
   fi
 }
 shamir=(-f "$examples/openbao-shamir.yaml")
-# PostgreSQL is the only engine: the schema refuses another engine, and so
-# does the template guard (ow.db.engine) without the schema.
-guard "engine" "database.engine" "${shamir[@]}" --set database.engine=oracle
-guard "engine without the schema" 'database.engine "oracle" is not supported: use postgresql' "${shamir[@]}" --skip-schema-validation --set database.engine=oracle
+# PostgreSQL is the only engine: the template guard (ow.db.engine) refuses
+# another engine with a message that names the components (the schema has
+# no enum for it). mysql stops the render also when only one of the api,
+# consent and the organisation wallet is on.
+only_postgresql="is not supported: the api, consent and the organisation wallet accept only postgresql"
+guard "engine" "database.engine \"oracle\" $only_postgresql" "${shamir[@]}" --set database.engine=oracle
+guard "engine mysql" "database.engine \"mysql\" $only_postgresql" "${shamir[@]}" --set database.engine=mysql
+mysql_external=("${shamir[@]}" -f "$examples/postgresql-external.yaml" --set database.engine=mysql
+  --set api.enabled=false --set consent.enabled=false --set organisationWallet.enabled=false)
+guard "engine mysql with the api only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set api.enabled=true \
+  --set gateway.upstreams.consent.url=http://consent.example.org --set gateway.upstreams.walletConfig.url=http://wallet.example.org
+guard "engine mysql with consent only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set consent.enabled=true
+guard "engine mysql with the organisation wallet only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set organisationWallet.enabled=true
 guard "mode" "database.mode" "${shamir[@]}" --set database.mode=cluster
 guard "external host" "database.external.host" "${shamir[@]}" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
 # The roles hook of the wallet makes its database roles with the
