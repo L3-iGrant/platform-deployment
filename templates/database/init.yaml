@@ -1,11 +1,17 @@
 {{- /*
-The init Job of the databases: one database and one owner user for each
+The init hook of the databases: one database and one owner user for each
 enabled component (the user name is the database name), with the password
-of the database Secret. It runs after each install and upgrade (its name
-has the release revision), on the bundled server or on an external server
-with database.external.admin. The script is idempotent: it makes a user or
-a database only when it does not exist, and it sets the password of each
-user from the Secret each time: CREATE ROLE ... LOGIN, CREATE DATABASE ...
+of the database Secret, on the bundled server or on an external server with
+database.external.admin. A hook (helm post-install and pre-upgrade), before
+every hook that connects to a component database (the roles hook of the
+wallet, weight -25 and -20; the migration hooks, -10 and -5): on a new
+installation it runs after the resources of the release exist (the bundled
+server too), and on an upgrade before any resource changes, so an upgrade
+that turns a component on makes its database and its owner user before the
+hooks of the component connect. It reads only the database Secret (a hook,
+weight -30) and the CA of the server. The script is idempotent: it makes a
+user or a database only when it does not exist, and it sets the password of
+each user from the Secret each time: CREATE ROLE ... LOGIN, CREATE DATABASE ...
 OWNER (UTF8, C.UTF-8), REVOKE ALL ON DATABASE ... FROM PUBLIC, then psql
 \password (the server gets the SCRAM-SHA-256 verifier, never the password,
 so its DDL log does not show the password). The data scopes of the wallet
@@ -30,6 +36,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ow.labels" (list . "db-init") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "-28"
+    helm.sh/hook-delete-policy: before-hook-creation
 data:
   create-databases.sh: |
     #!/bin/bash
@@ -75,11 +85,17 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ $name }}-{{ .Release.Revision }}
+  name: {{ $name }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ow.labels" (list . "db-init") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,pre-upgrade
+    helm.sh/hook-weight: "-27"
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
+  # On a new installation the bundled server starts with the release: the
+  # script waits up to 300 s for it, and the pod runs again on a failure.
   backoffLimit: 6
   ttlSecondsAfterFinished: 86400
   template:

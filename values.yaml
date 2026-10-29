@@ -115,8 +115,9 @@ clientAddress:
 # (and its OIDC provider), the auth gateway, consent, the organisation
 # wallet, the migration and read access Jobs and the NetworkPolicy ports.
 # Each component has its own database and its own owner user (the user name
-# is the database name). The init Job makes the databases and the users
-# after each install and upgrade (bundled, or external with an admin user).
+# is the database name). The init hook makes the databases and the users
+# at each install and upgrade, before the other database hooks (bundled, or
+# external with an admin user).
 database:
   # -- The engine of all components: "postgresql" (PostgreSQL 18), the only
   # supported engine. The api, consent and the organisation wallet accept
@@ -160,7 +161,7 @@ database:
     host: ""
     # -- Port. Empty: 5432.
     port: ""
-    # -- An admin user of the external server. With it, the init Job makes
+    # -- An admin user of the external server. With it, the init hook makes
     # the databases and the owner users, the roles hook makes the database
     # roles of the wallet, and the read access Jobs use it. Required with
     # the organisation wallet. Empty user (only without the wallet): the
@@ -193,7 +194,7 @@ database:
     # it. Empty: sslmode "require" (encryption without verification).
     caSecret: ""
     caKey: ca.crt
-    # -- The sslmode of all components and of the init Job (disable,
+    # -- The sslmode of all components and of the init hook (disable,
     # require, verify-ca or verify-full). Empty: "verify-full"
     # with a CA, else "require"; "disable" without TLS. verify-ca and
     # verify-full need a CA.

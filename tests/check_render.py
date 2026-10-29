@@ -204,8 +204,9 @@ def main() -> int:
             check(logs == expected, f"the database log parameters are {logs}, not {expected}")
     else:
         check(not servers, f"a database StatefulSet is rendered with mode external: {servers}")
-    init = [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith(f"{RELEASE}-db-init-")]
-    check(len(init) == 1, "the database init Job is missing")
+    check(find("Job", f"{RELEASE}-db-init") is not None, "the database init hook is missing")
+    check(not [d for d in docs if d.get("kind") == "Job" and d["metadata"]["name"].startswith(f"{RELEASE}-db-init-")],
+          "a database init Job has the release revision in its name: the init is a hook")
     init_cm = find("ConfigMap", f"{RELEASE}-db-init")
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
@@ -284,20 +285,26 @@ def main() -> int:
     logins = {"migrator", "launcher_app", "jobs", "audit_reader", "issuer_app", "relying_party_app",
               "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"}
 
-    # The role Secret: one key per login role, kept; a hook before every
-    # other hook (Helm makes the normal resources only after the pre-upgrade
-    # hooks, and the roles and migration hooks read it).
+    # The role Secret: one key per login role.
     secret = find("Secret", roles_secret)
     check(secret is not None and set(secret.get("data", {})) == logins,
           f"the role Secret {roles_secret} is missing or has the keys {sorted((secret or {}).get('data', {}))}")
-    if secret:
-        check(annotations(secret).get("helm.sh/resource-policy") == "keep", f"the role Secret {roles_secret} is not kept (resource-policy keep)")
+    # The Secrets that the hooks read: hooks before every other hook (Helm
+    # makes the resources only after the pre-upgrade hooks), and kept.
+    for name in (server, f"{RELEASE}-read-access", roles_secret):
+        doc = find("Secret", name)
+        check(doc is not None and annotations(doc).get("helm.sh/resource-policy") == "keep",
+              f"the Secret {name} is missing or not kept (resource-policy keep)")
 
-    # The hook kinds and weights: the role Secret, the roles, the migration,
-    # the read access.
+    # The hook kinds and weights: the Secrets, the init of the databases,
+    # the roles, the migration, the read access.
     install_upgrade = "post-install,pre-upgrade"
     hooks = (
+        ("Secret", server, "pre-install,pre-upgrade", "-30"),
+        ("Secret", f"{RELEASE}-read-access", "pre-install,pre-upgrade", "-30"),
         ("Secret", roles_secret, "pre-install,pre-upgrade", "-30"),
+        ("ConfigMap", f"{RELEASE}-db-init", install_upgrade, "-28"),
+        ("Job", f"{RELEASE}-db-init", install_upgrade, "-27"),
         ("ConfigMap", f"{RELEASE}-wallet-database-roles", install_upgrade, "-25"),
         ("Job", f"{RELEASE}-wallet-database-roles", install_upgrade, "-20"),
         ("ConfigMap", f"{RELEASE}-wallet-migrate", install_upgrade, "-10"),
@@ -314,12 +321,14 @@ def main() -> int:
         found = tuple(annotations(doc).get(f"helm.sh/{key}") for key in ("hook", "hook-weight", "hook-delete-policy"))
         check(found == (when, weight, "before-hook-creation"), f"the hook {kind} {name} has {found}, not ({when}, {weight}, before-hook-creation)")
     weights = [int(weight) for _, _, _, weight in hooks]
-    check(weights == sorted(weights), "the wallet hooks are not in the order role Secret, roles, migration, read access")
-    # The api and consent migration hooks stay pre-upgrade (and post-upgrade).
+    check(weights == sorted(weights), "the hooks are not in the order Secrets, init, roles, migration, read access")
+    # The api and consent migration hooks stay pre-upgrade (and post-upgrade),
+    # after the init hook.
     for name, when in ((f"{RELEASE}-api-migrate", "pre-upgrade"), (f"{RELEASE}-consent-migrate", "pre-upgrade"),
                        (f"{RELEASE}-consent-migrate-after", "post-upgrade")):
         doc = find("Job", name)
         check(doc is not None and annotations(doc).get("helm.sh/hook") == when, f"the hook {name} is not {when}")
+        check(doc is not None and int(annotations(doc).get("helm.sh/hook-weight", "0")) > -27, f"the hook {name} does not run after the init hook")
     # A new installation has no api or consent hook: their pods migrate at
     # the start. The api pod runs "igrant-api migrate" in an init container;
     # the consent process ("serve") applies its migrations before it serves.
@@ -342,7 +351,7 @@ def main() -> int:
         check(database.get("password_file") == expected_file, f"the hook configuration {name} has the password file {database.get('password_file')!r}")
 
     # The roles hook: database-roles apply with the administrator and the
-    # role Secret; it tries again while the database server starts.
+    # role Secret.
     roles_job = find("Job", f"{RELEASE}-wallet-database-roles")
     if roles_job:
         pod = pod_of(roles_job)
@@ -350,8 +359,9 @@ def main() -> int:
         check(container.get("command") == ["/app/.venv/bin/database-roles", "apply", "--password-dir", "/run/secrets/database-roles",
                                            "--admin-user", admin_user, "--admin-password-file", f"{secret_dir}/database-admin-password"]
               and "args" not in container, f"the roles hook has the command {container.get('command')}")
-        check(roles_job["spec"].get("backoffLimit") == 6 and roles_job["spec"].get("activeDeadlineSeconds") == 600,
-              "the roles hook has not backoffLimit 6 and activeDeadlineSeconds 600")
+        # The init hook runs before it: no wait for the server or the database.
+        check(roles_job["spec"].get("backoffLimit") == 1 and "activeDeadlineSeconds" not in roles_job["spec"],
+              "the roles hook has not backoffLimit 1 without activeDeadlineSeconds")
         check(pod.get("restartPolicy") == "Never", "the roles hook has not restartPolicy Never")
         mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
         check(mounts.get("database-roles") == "/run/secrets/database-roles", "the roles hook does not mount the role Secret at /run/secrets/database-roles")

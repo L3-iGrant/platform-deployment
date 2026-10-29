@@ -90,7 +90,7 @@ schema cannot name the components.
 
 {{/*
 The admin user of the server: it makes the databases and the owner users
-(init Job), the database roles of the wallet (roles hook) and the read-only
+(init hook), the database roles of the wallet (roles hook) and the read-only
 users (read access Jobs).
 bundled: the admin user of the engine ("postgres") and the admin key of
 the database Secret.
@@ -149,7 +149,7 @@ database-ca.crt
 {{- end }}
 
 {{/*
-sslmode of the clients (api, gateway, consent, wallet, init Job):
+sslmode of the clients (api, gateway, consent, wallet, init hook):
 database.tls.sslMode, else verify-full with a CA, require with
 TLS and no CA, disable without TLS.
 */}}

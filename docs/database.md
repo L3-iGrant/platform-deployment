@@ -8,8 +8,8 @@ The whole platform uses one database engine: `database.engine` is `postgresql`, 
 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |
-| `bundled` (default) | Runs one PostgreSQL 18.6 server (`<release>-postgres`). Creates the databases, the users (init Job), the database roles of the wallet (roles hook) and a TLS certificate. | The size of the volume and the resources |
-| `external` | Creates the databases and the users (init Job) and the database roles of the wallet (roles hook) with your admin user. Without the organisation wallet, it can also use your databases and users. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`, required with the organisation wallet) or the passwords of your users (`database.auth.existingSecret`, one key for each database name) |
+| `bundled` (default) | Runs one PostgreSQL 18.6 server (`<release>-postgres`). Creates the databases, the users (init hook), the database roles of the wallet (roles hook) and a TLS certificate. | The size of the volume and the resources |
+| `external` | Creates the databases and the users (init hook) and the database roles of the wallet (roles hook) with your admin user. Without the organisation wallet, it can also use your databases and users. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`, required with the organisation wallet) or the passwords of your users (`database.auth.existingSecret`, one key for each database name) |
 
 ## TLS
 
@@ -39,7 +39,7 @@ These logs show the changes of the schemas and of the rights, and the sessions o
 
 `database.postgresql.logDdlAndConnections` (default `true`) sets the three parameters. A value of the same name in `database.postgresql.parameters` wins, for example `log_statement: mod` to also log the data changes. With `false`, the chart sets none of the three. A change of these values restarts the server pod: the components lose their connections for a short time and connect again.
 
-The log holds the text of each DDL statement. Do not put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init Job sets the passwords of the owner users in this way. The database roles hook of the wallet (`database-roles apply`) and the read access Jobs of the wallet, the api and consent (`read-access apply`) also send the SCRAM-SHA-256 verifier of each password, never the password.
+The log holds the text of each DDL statement. Do not put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init hook sets the passwords of the owner users in this way. The database roles hook of the wallet (`database-roles apply`) and the read access Jobs of the wallet, the api and consent (`read-access apply`) also send the SCRAM-SHA-256 verifier of each password, never the password.
 
 On an external server, set the same three parameters yourself, for example as the database flags of your managed service.
 
@@ -60,18 +60,19 @@ The roles hook also makes the audit reader `<prefix>_audit_reader`, which can on
 
 The passwords of the roles are in the Secret `<release>-wallet-database-roles` (one key for each role, with the name of the role without the prefix, for example `launcher_app`; random values, kept across upgrades). Each wallet pod and the migration hook mount only the key of their own role; the roles hook mounts all keys. No wallet pod or Job mounts the password of the owner user `igrant_wallet`, which stays the owner of the database. Only the roles hook and the read access hooks of the wallet mount the password of the admin user.
 
-## Hooks of the wallet
+## Hooks of the databases
 
-The hooks of the wallet run in this order:
+The hooks of the databases run in this order:
 
 | Order | Hook | Connects as | What it does |
 | --- | --- | --- | --- |
-| 1 | The Secret `<release>-wallet-database-roles` | | Created before the other hooks, with the passwords of the earlier release |
-| 2 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the objects of the wallet database, creates the missing data scope schemas and gives the grants |
-| 3 | `<release>-wallet-migrate` | `<prefix>_migrator` | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then makes the monthly partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)) |
-| 4 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` | The admin user | `read-access apply`: the read-only users with which the api and consent read the wallet database (see [Read access](read-access.md)) |
+| 1 | The Secrets `<release>-postgres` (the passwords of the database users), `<release>-read-access` (the passwords of the read-only users) and `<release>-wallet-database-roles` (the passwords of the database roles of the wallet) | | Created before the other hooks, with the passwords of the earlier release |
+| 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the passwords of the owner users |
+| 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the objects of the wallet database, creates the missing data scope schemas and gives the grants |
+| 4 | `<release>-wallet-migrate`; on an upgrade also `<release>-api-migrate` and `<release>-consent-migrate` | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then makes the monthly partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
+| 5 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` | The admin user | `read-access apply`: the read-only users with which the api and consent read the wallet database (see [Read access](read-access.md)) |
 
-On a new installation, Helm creates the Secret first (Helm `pre-install`), and the Jobs run after the resources of the release exist (Helm `post-install`). The database server and its init Job start at the same time, so the roles hook tries again for up to 10 minutes while the server and the wallet database do not exist yet. On an upgrade, the hooks run before any pod changes (Helm `pre-upgrade`); see [Upgrade](upgrade.md). The wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again.
+On a new installation, Helm creates the Secrets first (Helm `pre-install`), and the Jobs run after the resources of the release exist (Helm `post-install`), so the init hook waits for the bundled server that starts with the release. The api and consent migrate their databases when their pods start: the api in an init container, consent before it serves. On an upgrade, the hooks run before any pod changes (Helm `pre-upgrade`); see [Upgrade](upgrade.md). An upgrade can turn a component on (the organisation wallet, the api or consent): the hooks create its passwords and its database before its migration hook connects. With `database.auth.existingSecret`, add the password of the new database to your Secret before that upgrade. The wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again.
 
 ## Data scopes of the wallet
 

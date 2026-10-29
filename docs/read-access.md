@@ -12,7 +12,7 @@ A service reads the data of another service from read-only views in the database
 | consent | api, wallet | `readAccess.consent.api`, `readAccess.consent.wallet` |
 | wallet | api, consent | `readAccess.wallet.api`, `readAccess.wallet.consent` |
 
-The read access Jobs (`readAccess.jobs.enabled`, default `true`) create the users with the admin user of the database server at each install and upgrade (for example `ows-api-read-access-wallet-<revision>`). On the wallet database they are hooks after the migration hook of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`; see [Database](database.md#hooks-of-the-wallet)). The passwords are in the Secret `<release>-read-access` (or your Secrets: `readAccess.<reader>.<owner>.passwordSecret`).
+The read access Jobs (`readAccess.jobs.enabled`, default `true`) create the users with the admin user of the database server at each install and upgrade (for example `ows-api-read-access-wallet-<revision>`). On the wallet database they are hooks after the migration hook of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`; see [Database](database.md#hooks-of-the-databases)). The passwords are in the Secret `<release>-read-access`, a hook that Helm creates before the other hooks (or your Secrets: `readAccess.<reader>.<owner>.passwordSecret`).
 
 Without an admin user (an external server without the organisation wallet), a DBA creates the users with the SQL of the owner command `read-access print-sql` (for example `igrant-api read-access print-sql --config <file> --reader wallet --user wallet_api_reader`), and you set `readAccess.jobs.enabled: false` and the password Secrets.
 

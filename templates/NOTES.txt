@@ -38,7 +38,7 @@ Next steps (docs/install.md has each step with its check):
 {{ $step }}. Wait until all pods are ready and all Jobs are complete:
      kubectl -n {{ $ns }} get pods,jobs
 {{- if (include "ow.db.admin" . | fromJson).user }}
-   The init Job {{ include "ow.name" (list . "db-init") }}-{{ .Release.Revision }} makes the databases and the users.
+   The init hook {{ include "ow.name" (list . "db-init") }} makes the databases and the users.
 {{- end }}
 {{- if not .Values.readAccess.jobs.enabled }}
    readAccess.jobs.enabled is false: a DBA must make the read-only users (docs/read-access.md); until then the readers are not ready.
