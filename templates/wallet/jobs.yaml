@@ -1,13 +1,15 @@
 {{- /*
 Read access hooks of the wallet (readAccess.jobs; helm post-install and
 pre-upgrade, after the migration hook, so the views exist): "read-access
-apply" for the readers api and consent. The command connects with the admin
-user (readAccess.jobs.wallet, else ow.db.admin); its configuration has only
-the database, with the admin user and its password file (a pre-upgrade hook
-cannot read the new ConfigMaps of the release). The hooks run at each
-install and upgrade (idempotent; a new release can add views).
+apply" for the readers api and consent that are on (ow.readAccess.enabledReaders).
+The command connects with the admin user (readAccess.jobs.wallet, else
+ow.db.admin); its configuration has only the database, with the admin user
+and its password file (a pre-upgrade hook cannot read the new ConfigMaps of
+the release). The hooks run at each install and upgrade (idempotent; a new
+release can add views).
 */}}
-{{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled }}
+{{- $readers := include "ow.readAccess.enabledReaders" (list . (list "api" "consent")) | splitList "," | compact }}
+{{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled $readers }}
 {{- $w := .Values.organisationWallet }}
 {{- $admin := include "ow.readAccess.admin" (list . "wallet") | fromJson }}
 {{- $name := include "ow.name" (list . "wallet-read-access") }}
@@ -30,7 +32,7 @@ metadata:
 data:
   config.yaml: |
     {{- include "ow.wallet.hookConfig" (list . $admin.user "database-admin-password") | nindent 4 }}
-{{- range $reader := list "api" "consent" }}
+{{- range $reader := $readers }}
 {{- $user := include "ow.readAccess.reader" (list $ $reader "wallet") | fromJson }}
 {{- $component := printf "wallet-read-access-%s" $reader }}
 ---
