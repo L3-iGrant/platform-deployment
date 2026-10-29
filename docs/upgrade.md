@@ -56,3 +56,19 @@ This page upgrades an installation to a new release of the platform.
 5. Bundled OpenBao: run `bootstrap.sh` again (install step 5, item 3). It changes only what the new version needs, for example new Transit paths in the wallet policy. External OpenBao: compare your policy with [External OpenBao](openbao.md#external-openbao).
 
 Check: `helm -n ows status ows` shows `STATUS: deployed`, and `kubectl -n ows get pods` shows all pods `Running` and `READY`.
+
+## Rollback
+
+From this chart version, the database Secret `<release>-postgres`, the read access Secret `<release>-read-access` and the init Job `<release>-db-init` are Helm hooks (see [Database](database.md#hooks-of-the-databases)). In the revisions of earlier chart versions, they are resources of the release. A rollback to such a revision is not supported. Helm stops with an error:
+
+- `helm rollback` stops with `no Secret with the name "ows-postgres" found`: the Secret is in the cluster, but not in the manifest of the current revision. Before it stops, Helm has already applied the network policies, the disruption budgets and the service accounts of the earlier revision.
+- `helm upgrade` with an earlier chart version stops with `invalid ownership metadata`: the Secret in the cluster has no owner data of the release.
+
+To see if a revision is of this kind: `helm -n ows get manifest ows --revision <revision> | grep 'name: ows-postgres$'` shows a line.
+
+A rollback also does not take the database schemas back. The migration hooks changed them, and the wallet pods of an earlier release wait for the schema head of their own release, then stop.
+
+The supported ways back:
+
+- Run the upgrade of step 3 with this chart version and your earlier values files, for example to turn a component off again.
+- To go back to an earlier release of the platform, install that release again as its release notes say.
