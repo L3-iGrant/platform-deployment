@@ -874,6 +874,22 @@ always the ones of database.* (ow.db.go, ow.db.wallet).
 {{- end }}
 
 {{/*
+The readers of a list (keys of database.databases: api, consent, wallet)
+that are on in this chart. Only they get a read access Job on an owner
+database: the read access Secret has the password of a reader only when the
+reader is on, and a reader that is off reads nothing. Call with (list $
+(list "<reader>" ...)). Output: the readers, separated by commas.
+*/}}
+{{- define "ow.readAccess.enabledReaders" -}}
+{{- $enabled := include "ow.db.enabledDatabases" (index . 0) | splitList "," -}}
+{{- $readers := list -}}
+{{- range $reader := index . 1 -}}
+{{- if has $reader $enabled -}}{{- $readers = append $readers $reader -}}{{- end -}}
+{{- end -}}
+{{ join "," $readers }}
+{{- end }}
+
+{{/*
 The admin user of the read access Job of one owner database
 (readAccess.jobs.<owner>; "read-access apply --admin-user
 --admin-password-file"): it makes the read-only users and grants SELECT on

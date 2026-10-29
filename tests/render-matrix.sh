@@ -26,8 +26,9 @@
 #    (values.schema.json and the template guards).
 # 5. Rendered settings.
 # 6. Install and upgrade: tests/check_hook_order.py replays the steps of
-#    Helm on the renders (each render of the matrix is an install; an upgrade
-#    with the same values, and upgrades that turn the organisation wallet,
+#    Helm on the renders (each render of the matrix is an install; installs
+#    with consent, the api or the organisation wallet off; an upgrade with
+#    the same values, and upgrades that turn the organisation wallet,
 #    consent or the api on). The Secrets that are hooks keep the values of
 #    the earlier Secrets (a copy of the chart reads them from a file in place
 #    of lookup).
@@ -396,10 +397,26 @@ renders "server parameter wins over a database log parameter" '"log_statement=al
 lacks "database log parameter under a server parameter" '"log_statement=ddl"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
 
 # --- 6. Install and upgrade --------------------------------------------------------
-# The order of the hooks of an upgrade (tests/check_hook_order.py, no
-# cluster): the Jobs of the hooks find their Secrets, ConfigMaps, databases
-# and users when they start. The new release has all components on; the
-# earlier release has the values of each case.
+# The order of the hooks (tests/check_hook_order.py, no cluster): the Jobs
+# of the hooks find their Secrets, ConfigMaps, databases and users when they
+# start, and each Job and pod finds its Secrets at the end.
+# An install with one component off: no read access Job of a reader that is
+# off (the read access Secret has no password for it).
+install_order() {
+  local name="$1" database="$2"; shift 2
+  local case="$out/install-$database-${name// /-}"
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" \
+      -f "$examples/openbao-shamir.yaml" -f "$examples/exposure-ingress-nginx.yaml" "$@" > "$case.yaml" 2> "$case.err"; then
+    bad "install $name ($database): helm template"
+    sed 's/^/  /' "$case.err" | head -5
+  elif python3 "$here/check_hook_order.py" install "$case.yaml"; then
+    ok "install $name ($database)"
+  else
+    bad "install $name ($database)"
+  fi
+}
+# An upgrade: the new release has all components on; the earlier release
+# has the values of each case.
 upgrade_order() {
   local name="$1" database="$2"; shift 2
   local args=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/openbao-shamir.yaml"
@@ -416,6 +433,10 @@ upgrade_order() {
   fi
 }
 for database in postgresql-bundled postgresql-external; do
+  install_order "with consent off" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
+  install_order "with the api off" "$database" --set api.enabled=false
+  install_order "with the organisation wallet off" "$database" --set organisationWallet.enabled=false \
+    --set gateway.upstreams.walletConfig.url=http://wallet.example.org
   upgrade_order "with the same values" "$database"
   upgrade_order "that turns the organisation wallet on" "$database" --set organisationWallet.enabled=false \
     --set gateway.upstreams.walletConfig.url=http://wallet.example.org
