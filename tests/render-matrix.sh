@@ -24,6 +24,13 @@
 # 3. The next steps (NOTES.txt).
 # 4. The render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
+# 5. Rendered settings.
+# 6. Install and upgrade: tests/check_hook_order.py replays the steps of
+#    Helm on the renders (each render of the matrix is an install; an upgrade
+#    with the same values, and upgrades that turn the organisation wallet,
+#    consent or the api on). The Secrets that are hooks keep the values of
+#    the earlier Secrets (a copy of the chart reads them from a file in place
+#    of lookup).
 #
 # Usage: tests/render-matrix.sh [--keep <dir>]
 #   --keep <dir>: keep the renders in <dir> (else a temporary folder).
@@ -138,6 +145,9 @@ for database in postgresql-bundled postgresql-external; do
         fi
         if ! python3 "$here/check_render.py" "$out/$name.yaml" "$(engine_of "$database")" "$(mode_of "$database")" \
             "${openbao#openbao-}" "$(exposure_of "$exposure")" "$([ "$policies" = networkpolicy ] && echo on || echo off)"; then
+          good=0
+        fi
+        if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
           good=0
         fi
         if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
@@ -384,6 +394,116 @@ renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
 lacks "database log parameter under a server parameter" '"log_statement=ddl"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
+
+# --- 6. Install and upgrade --------------------------------------------------------
+# The order of the hooks of an upgrade (tests/check_hook_order.py, no
+# cluster): the Jobs of the hooks find their Secrets, ConfigMaps, databases
+# and users when they start. The new release has all components on; the
+# earlier release has the values of each case.
+upgrade_order() {
+  local name="$1" database="$2"; shift 2
+  local args=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/openbao-shamir.yaml"
+    -f "$examples/exposure-ingress-nginx.yaml")
+  local case="$out/upgrade-$database-${name// /-}"
+  if ! helm template t "$chart" --namespace ow "${args[@]}" > "$case-after.yaml" 2> "$case.err" \
+      || ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case-before.yaml" 2> "$case.err"; then
+    bad "upgrade $name ($database): helm template"
+    sed 's/^/  /' "$case.err" | head -5
+  elif python3 "$here/check_hook_order.py" upgrade "$case-before.yaml" "$case-after.yaml"; then
+    ok "upgrade $name ($database)"
+  else
+    bad "upgrade $name ($database)"
+  fi
+}
+for database in postgresql-bundled postgresql-external; do
+  upgrade_order "with the same values" "$database"
+  upgrade_order "that turns the organisation wallet on" "$database" --set organisationWallet.enabled=false \
+    --set gateway.upstreams.walletConfig.url=http://wallet.example.org
+  upgrade_order "that turns consent on" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
+  upgrade_order "that turns the api on" "$database" --set api.enabled=false
+  # The first upgrade from a release in which the database Secret, the read
+  # access Secret and the init Job were resources, not hooks: the earlier
+  # release is the render of the new release without their hook annotations
+  # (the init Job with the release revision in its name). Helm must not
+  # delete the Secrets at the end of the upgrade (keep on the live Secret).
+  case="$out/upgrade-$database-with-the-same-values"
+  if python3 -c '
+import sys, yaml
+docs = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
+for doc in docs:
+    if (doc["kind"], doc["metadata"]["name"]) in (("Secret", "t-postgres"), ("Secret", "t-read-access"), ("ConfigMap", "t-db-init"), ("Job", "t-db-init")):
+        for name in ("helm.sh/hook", "helm.sh/hook-weight", "helm.sh/hook-delete-policy"):
+            doc["metadata"]["annotations"].pop(name)
+        if doc["kind"] == "Job":
+            doc["metadata"]["name"] = "t-db-init-1"
+yaml.safe_dump_all(docs, open(sys.argv[2], "w"))
+' "$case-after.yaml" "$case-resources-before.yaml" \
+      && python3 "$here/check_hook_order.py" upgrade "$case-resources-before.yaml" "$case-after.yaml"; then
+    ok "upgrade from Secrets and an init Job that were resources ($database)"
+  else
+    bad "upgrade from Secrets and an init Job that were resources ($database)"
+  fi
+done
+
+# The Secrets that are hooks (the database Secret, the read access Secret
+# and the role Secret of the wallet) keep the values of the Secrets of the
+# earlier release. "helm template" has no cluster, so a copy of the chart
+# reads the earlier Secrets from the file earlier-secrets.json in place of
+# lookup (ow.lookupSecretKey). The earlier database Secret has no password
+# of consent (an upgrade that turns consent on): the render gives a new one.
+lookup_chart="$out/lookup-chart"
+rm -rf "$lookup_chart"
+mkdir -p "$lookup_chart"
+cp -R "$chart/Chart.yaml" "$chart/values.yaml" "$chart/values.schema.json" "$chart/templates" "$chart/files" "$chart/policies" "$lookup_chart/"
+lookup_line='{{- $secret := lookup "v1" "Secret" $root.Release.Namespace (index . 1) -}}'
+stub_line='{{- $secret := index ($root.Files.Get "earlier-secrets.json" | fromJson) (index . 1) -}}'
+lookup_args=(-f "$keys" -f "$examples/site.yaml" -f "$examples/postgresql-bundled.yaml" -f "$examples/openbao-shamir.yaml")
+if [ "$(grep -c -F -- "$lookup_line" "$lookup_chart/templates/_helpers.tpl")" != 1 ]; then
+  bad "upgrade keeps the values of the Secrets: ow.lookupSecretKey has not the lookup line of the test"
+elif ! helm template t "$chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/secrets-new.yaml" 2> "$out/secrets.err"; then
+  bad "upgrade keeps the values of the Secrets: $(head -c 200 "$out/secrets.err")"
+else
+  LOOKUP_LINE="$lookup_line" STUB_LINE="$stub_line" perl -pi -e 's/\Q$ENV{LOOKUP_LINE}\E/$ENV{STUB_LINE}/' "$lookup_chart/templates/_helpers.tpl"
+  # The earlier Secrets: the keys of a new render, with known test values
+  # (not secrets), without the password of consent.
+  python3 -c '
+import base64, json, sys, yaml
+earlier = {}
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["metadata"]["name"] in ("t-postgres", "t-read-access", "t-wallet-database-roles"):
+        name = doc["metadata"]["name"]
+        earlier[name] = {"data": {key: base64.b64encode(f"earlier-{name}-{key}".encode()).decode()
+                                  for key in doc["data"] if (name, key) != ("t-postgres", "igrant_consent")}}
+json.dump(earlier, open(sys.argv[2], "w"))
+' "$out/secrets-new.yaml" "$lookup_chart/earlier-secrets.json"
+  if ! helm template t "$lookup_chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/secrets-kept.yaml" 2> "$out/secrets.err"; then
+    bad "upgrade keeps the values of the Secrets: $(head -c 200 "$out/secrets.err")"
+  elif problems="$(python3 -c '
+import json, sys, yaml
+earlier = json.load(open(sys.argv[1]))
+rendered = {doc["metadata"]["name"]: doc for doc in yaml.safe_load_all(open(sys.argv[2])) if doc}
+for name, secret in sorted(earlier.items()):
+    doc = rendered.get(name)
+    if doc is None:
+        print(f"the Secret {name} is missing")
+        continue
+    hooks = (doc["metadata"].get("annotations") or {}).get("helm.sh/hook")
+    if hooks != "pre-install,pre-upgrade":
+        print(f"the Secret {name} is not a pre-install,pre-upgrade hook")
+    for key, value in sorted(secret["data"].items()):
+        if doc["data"].get(key) != value:
+            print(f"the Secret {name} has not the earlier value of {key}")
+    for key in sorted(set(doc["data"]) - set(secret["data"])):
+        if not doc["data"][key] or doc["data"][key] in secret["data"].values():
+            print(f"the Secret {name} has no new value for {key}")
+if "igrant_consent" not in rendered.get("t-postgres", {}).get("data", {}):
+    print("the Secret t-postgres has no password of consent")
+' "$lookup_chart/earlier-secrets.json" "$out/secrets-kept.yaml" 2>&1)" && [ -z "$problems" ]; then
+    ok "upgrade keeps the values of the Secrets"
+  else
+    bad "upgrade keeps the values of the Secrets: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+fi
 
 echo "result: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]
