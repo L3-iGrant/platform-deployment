@@ -83,6 +83,8 @@ The image `redis.metrics.image` is `docker.io/oliver006/redis_exporter` (MIT Lic
 
 The wallet roles and the gateway log in with their own user. `redis.users.<key>.username` sets the name; the password is in the Secret `<release>-redis-users` of the chart (random, kept across upgrades), or in your Secret (`redis.users.<key>.passwordSecret`, `.passwordKey`). A password has only letters, digits and `. _ ~ + / = -`.
 
+The keys of the Secret `<release>-redis-users` are the values keys (`walletService`, `walletConfig`, `walletWorker`, `walletClock`, `gateway`), not the user names. The deploy files of eudi-wallet (`deploy/staging`, `deploy/demo`) keep the passwords in the Secret `<env>-eudi-wallet-redis` with the user names as keys (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`). To use such a Secret, give each user its key: for example `redis.users.walletWorker: {passwordSecret: <env>-eudi-wallet-redis, passwordKey: wallet-worker}`.
+
 | User (`redis.users.<key>`) | Process | Rights on the data servers | Rights on the Sentinels |
 | --- | --- | --- | --- |
 | `walletService` (`wallet-service`), `walletConfig` (`wallet-config`), `walletWorker` (`wallet-worker`) and `walletClock` (`wallet-clock`) | the roles of the wallet (`walletWorker`: all worker groups) | `resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys` | `-@all +ping +auth +hello +client\|setinfo +client\|setname +sentinel\|masters +sentinel\|master +sentinel\|get-master-addr-by-name +sentinel\|replicas +sentinel\|slaves +sentinel\|sentinels` |
