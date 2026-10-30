@@ -666,6 +666,13 @@ def main() -> int:
         pod = pod_of(nats)
         tls_volume = next((v for v in pod["volumes"] if v["name"] == "tls"), {})
         check((tls_volume.get("secret") or {}).get("secretName") == f"{RELEASE}-nats-tls", "the NATS pods do not mount the TLS Secret of the chart")
+        # The reloader watches each file of nats.conf: it needs the same
+        # mounts as the server for them, else it stops at its start.
+        for container in pod["containers"]:
+            mounts = {m["mountPath"] for m in container.get("volumeMounts", [])}
+            for path in sorted(set(re.findall(r'"(/etc/[^"]+)"', nats_conf))):
+                check(any(path.startswith(m.rstrip("/") + "/") for m in mounts),
+                      f"the NATS container {container['name']} does not mount {path} of nats.conf")
     files = {"cert_file": '"/etc/nats-tls/tls.crt"', "key_file": '"/etc/nats-tls/tls.key"', "ca_file": '"/etc/nats-tls/ca.crt"'}
     blocks = re.findall(r"^(\s*)tls \{\n(.*?)^\1\}", nats_conf, re.M | re.S)
     settings = [dict(line.strip().split(": ", 1) for line in body.strip().splitlines()) for _, body in blocks]
