@@ -14,10 +14,12 @@ data:
   {{- range $g := .Values.organisationWallet.workers.groups }}
   {{- $files = append $files (dict "key" (printf "worker-%s.yaml" $g.name) "role" "worker" "group" $g) }}
   {{- end }}
-  {{- $files = concat $files (list (dict "key" "clock.yaml" "role" "clock") (dict "key" "scheduler.yaml" "role" "scheduler")) }}
+  {{- $files = append $files (dict "key" "clock.yaml" "role" "clock") }}
   {{- range $file := $files }}
   {{ $file.key }}: |
+    {{- if ne $file.role "clock" }}
     # kms.vault: the login of the wallet to OpenBao (the Transit engine).
+    {{- end }}
     {{- include "ow.wallet.config" (dict "root" $ "role" $file.role "group" $file.group) | nindent 4 }}
   {{- end }}
 {{- end }}

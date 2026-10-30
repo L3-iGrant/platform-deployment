@@ -85,7 +85,7 @@ The wallet roles and the gateway log in with their own user. `redis.users.<key>.
 
 | User (`redis.users.<key>`) | Process | Rights on the data servers | Rights on the Sentinels |
 | --- | --- | --- | --- |
-| `walletService` (`wallet-service`), `walletConfig` (`wallet-config`), `walletWorker` (`wallet-worker`), `walletClock` (`wallet-clock`), `walletScheduler` (`wallet-scheduler`) | the roles of the wallet (`walletWorker`: all worker groups) | `resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys` | `-@all +ping +auth +hello +client\|setinfo +client\|setname +sentinel\|masters +sentinel\|master +sentinel\|get-master-addr-by-name +sentinel\|replicas +sentinel\|slaves +sentinel\|sentinels` |
+| `walletService` (`wallet-service`), `walletConfig` (`wallet-config`), `walletWorker` (`wallet-worker`) and `walletClock` (`wallet-clock`) | the roles of the wallet (`walletWorker`: all worker groups) | `resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys` | `-@all +ping +auth +hello +client\|setinfo +client\|setname +sentinel\|masters +sentinel\|master +sentinel\|get-master-addr-by-name +sentinel\|replicas +sentinel\|slaves +sentinel\|sentinels` |
 | `gateway` (`gateway`) | the gateway | `resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous` | the same as the wallet |
 
 The bundled Valkey also has these users, with the passwords of the Secret `<release>-redis-users`:
@@ -102,7 +102,7 @@ The wallet needs `INFO`: at its start it reads `INFO` and refuses a server that 
 
 ## The settings of the wallet
 
-The chart writes the `redis` section of each wallet role (`service`, `config`, each worker group, `clock`, `scheduler`): the Sentinels, the primary name, the user of the role, its password file and the CA. Without separate groups, the wallet uses this one server also for the single-use values (`state`) and the caches (`cache`). With `redis.state` or `redis.cache`, the section also has the endpoint `state` or `cache`, with the same keys (see [Separate groups](#separate-groups-for-the-single-use-values-and-the-caches)).
+The chart writes the `redis` section of each wallet role (`service`, `config`, each worker group, `clock`): the Sentinels, the primary name, the user of the role, its password file and the CA. Without separate groups, the wallet uses this one server also for the single-use values (`state`) and the caches (`cache`). With `redis.state` or `redis.cache`, the section also has the endpoint `state` or `cache`, with the same keys (see [Separate groups](#separate-groups-for-the-single-use-values-and-the-caches)).
 
 ```yaml
 redis:
@@ -167,6 +167,6 @@ The values of each group:
 | `.sentinelAuth` | `true` (default): the processes log in to the Sentinels with their user |
 | `.caSecret`, `.caKey` | The CA of the group. Empty: the system CAs. |
 
-The wallet processes log in to each group with their ACL users of `redis.users` and the same passwords (from `redis.users.<key>.passwordSecret`, or from the Secret `<release>-redis-users` of the bundled Valkey). Create these users on the group with the rights of the wallet users (see [ACL users](#acl-users)): `walletService`, `walletConfig`, `walletWorker`, `walletClock` and `walletScheduler`. The gateway and KEDA use only the queue group.
+The wallet processes log in to each group with their ACL users of `redis.users` and the same passwords (from `redis.users.<key>.passwordSecret`, or from the Secret `<release>-redis-users` of the bundled Valkey). Create these users on the group with the rights of the wallet users (see [ACL users](#acl-users)): `walletService`, `walletConfig`, `walletWorker` and `walletClock`. The gateway and KEDA use only the queue group.
 
 Each wallet file then has the endpoints `state` and `cache` (see [The settings of the wallet](#the-settings-of-the-wallet)), and the wallet pods mount the CA of each group (`redis-state-ca.crt`, `redis-cache-ca.crt`). With network policies, add the addresses of the groups to `networkPolicy.externalRedis`: the chart gives them only to the wallet roles when Valkey is bundled. The render stops when a group has no `sentinels` and no `address`, both, a Sentinel group without `masterName`, or no `networkPolicy.externalRedis` with network policies.

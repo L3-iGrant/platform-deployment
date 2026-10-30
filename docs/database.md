@@ -37,10 +37,9 @@ The pools of each process:
 | gateway | `maxConns` | `database.pools.gateway` |
 | consent | `maxConns`, and 5 for each of its two readers (api and wallet views) | `database.pools.consent` |
 | wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
-| wallet config | the same, plus 10 for each of its two readers (api and consent views) | `database.pools.walletConfig` |
+| wallet config | the same, plus 10 for each of its two readers (api and consent views), and 1 for each WIA pool mint that runs in the route of the wallet unit attestation (the lock of the mint has a connection of its own) | `database.pools.walletConfig` |
 | wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (a lock of an actor has a connection of its own) + 1; plus 1 for the health server of the pod | `database.pools.walletWorker`, the `processes` and `threads` of the group |
 | wallet clock | 1 (the leader lock) + 1 (the health server) | none |
-| wallet scheduler | the defaults of the wallet: 20 + 30 (the sessions) + 5 + 15 (the job store) + 1, and at most 4 locks of the WIA pool mints | none |
 
 The default values give these largest numbers. They are first values, not measured: the load test of your installation gives the values.
 
@@ -55,8 +54,7 @@ The default values give these largest numbers. They are first values, not measur
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| scheduler | 1 | 20 + 30 + 5 + 15 (job store) + 1 + 4 (locks) = 75 | 75 |
-| **Total** | | | **295** |
+| **Total** | | | **220** |
 
 The bundled server has `max_connections: 150` (`database.postgresql.parameters`). Usually far fewer connections are open: a pool opens a connection only when a process needs it. When the pools of your installation can open more than the server allows, lower the pools, or raise `max_connections` and `database.resources` together (see [Size of the bundled PostgreSQL](#size-of-the-bundled-postgresql)). For an external server, size `max_connections` with this rule.
 
@@ -95,7 +93,7 @@ Each process of the organisation wallet connects with its own database role, so 
 | `<prefix>_owner` | No process: it cannot log in | Owns the data scope schemas and their tables, views and sequences, and the read view schemas |
 | `<prefix>_migrator` | The migration hook (`migrate-database`) | A member of the owner role: it changes the schema as the owner, then gives the grants on the new objects |
 | `<prefix>_launcher_app` | The service and config pods | Reads and writes the tables of all data scopes; no schema change |
-| `<prefix>_jobs` | The workers and the scheduler | Reads and writes the tables of the data scopes of the background tasks; no schema change |
+| `<prefix>_jobs` | The workers | Reads and writes the tables of the data scopes of the background tasks; no schema change |
 | `<prefix>_clock` | The clock | Only connects: the clock takes its leader lock (a session advisory lock) and reads `pg_is_in_recovery()`, and reads or writes no table |
 
 The roles hook also makes the audit reader `<prefix>_audit_reader`, which can only read the audit tables (see [Audit log](audit-log.md#check-the-audit-log)), and one role for each role application of the wallet (for example `<prefix>_issuer_app`). No pod of the chart uses them yet.

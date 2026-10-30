@@ -115,7 +115,7 @@ From the release that runs the background work of the wallet on the queues of Va
    kubectl -n ows scale deployment/ows-wallet-scheduler --replicas=0
    ```
 
-   The upgrade gives the scheduler its replica again.
+   A chart version with the scheduler gives it its replica again; from the release without the scheduler, see [The removal of the scheduler](#the-removal-of-the-scheduler).
 
 The roles hook makes the new database role `<prefix>_clock` (a new key `clock` of the Secret `<release>-wallet-database-roles`, with a random value). With an audit bucket, the workers write the anchor copies and the exports: the scheduler no longer mounts the credentials of the bucket.
 
@@ -135,3 +135,21 @@ The bundled PostgreSQL always serves TLS from this release, also with `database.
 2. Upgrade again with `database.tls.enabled: true`. The hooks and the pods connect with TLS and verify the server with its CA.
 
 Do not do the two steps in one upgrade: the hooks of that upgrade connect with TLS to the server of the earlier release, which does not serve TLS yet, and they stop.
+
+## The removal of the scheduler
+
+From the release without the scheduler, the workers run all the background work of the wallet, and the clock sends the cron actors (see [Workers and clock](workers.md)). The image has no `start-scheduler`. The migration hook runs the revision `b04698aed63e`: it drops the job store table `public.apscheduler_jobs` with its grants. The clock file has only the log level, the database, Valkey and its health port.
+
+1. Remove the values of the scheduler from your values files, else the render stops: `organisationWallet.scheduler`, `nats.auth.users.walletScheduler`, `redis.users.walletScheduler`, and `networkPolicy.egress.roles.wallet-scheduler`.
+2. Stop the scheduler before the upgrade: the migration hook drops its table.
+
+   ```bash
+   kubectl -n ows scale deployment/ows-wallet-scheduler --replicas=0
+   ```
+
+3. Upgrade (step 3 above). Helm deletes the Deployment `<release>-wallet-scheduler` and the key `scheduler.yaml` of the ConfigMap `<release>-wallet`. The NATS user `wallet-scheduler` leaves the configuration of the bundled NATS, and the Valkey user `wallet-scheduler` leaves the ACL files of the bundled Valkey (the Valkey pods restart one at a time).
+4. Delete the Secret of the NATS seed of the scheduler (`kubectl -n ows delete secret ows-nats-wallet-scheduler`, the name of your `seedSecret`). With an external NATS, remove the user `wallet-scheduler` from your server. With your own Valkey or Redis, remove the ACL user `wallet-scheduler` and its password Secret.
+
+Check: no pod `ows-wallet-scheduler`, the workers and the clocks are ready, and exactly one clock leads (see [Workers and clock](workers.md#check)).
+
+A rollback to a release with the scheduler needs the job store table again: the downgrade of the migration to `287d66228c5a` with the image of this release, then the earlier release (see [Rollback](#rollback)).

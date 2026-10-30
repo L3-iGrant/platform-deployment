@@ -177,7 +177,6 @@ services:
         - {source: valkey-wallet-service-password, target: /run/secrets/valkey/wallet-service}
         - {source: valkey-wallet-worker-password, target: /run/secrets/valkey/wallet-worker}
         - {source: valkey-wallet-clock-password, target: /run/secrets/valkey/wallet-clock}
-        - {source: valkey-wallet-scheduler-password, target: /run/secrets/valkey/wallet-scheduler}
         - {source: valkey-gateway-password, target: /run/secrets/valkey/gateway}
         - {source: valkey-replication-password, target: /run/secrets/valkey/replication}
         - {source: valkey-sentinel-password, target: /run/secrets/valkey/sentinel}
@@ -473,13 +472,13 @@ services:
       wallet-read-access: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
-  # --- Organisation wallet: config, service, worker, clock and scheduler roles of one image
+  # --- Organisation wallet: config, service, worker and clock roles of one image
   # The image entrypoint only starts the process (it applies no migration):
   # wallet-migrate changes the schema before the processes start. Each
   # process (but the clock) waits until the schema is at the head of its
   # code, and connects with a database role that cannot change the schema:
-  # config and service as igrant_wallet_launcher_app, the worker and the
-  # scheduler as igrant_wallet_jobs, the clock as igrant_wallet_clock.
+  # config and service as igrant_wallet_launcher_app, the worker as
+  # igrant_wallet_jobs, the clock as igrant_wallet_clock.
 
   # The config routes: only the gateway calls them (internal token).
   wallet-config:
@@ -577,20 +576,6 @@ services:
       wallet-migrate: {condition: service_completed_successfully}
       valkey-sentinel: {condition: service_started}
 
-  # The background jobs that are not actors in this release (no HTTP server).
-  wallet-scheduler:
-    <<: *wallet
-    command: ["/app/.venv/bin/start-scheduler"]
-    configs:
-      - {source: wallet-scheduler-config, target: /etc/eudi-wallet/config.yaml}
-    secrets:
-      - {source: db-igrant-wallet-jobs-password, target: /run/secrets/eudi-wallet/database-password}
-      - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
-      - {source: nats-seed-wallet-scheduler, target: /run/secrets/eudi-wallet/nats-seed}
-      - {source: valkey-wallet-scheduler-password, target: /run/secrets/eudi-wallet/redis-password}
-      - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
-    depends_on: *wallet-role-depends
-
   # --- Dashboard ----------------------------------------------------------------
 
   dashboard:
@@ -652,7 +637,6 @@ secrets:
   wallet-service-key: {file: ./secrets/wallet/service-envelope-jwks.json}
   nats-seed-wallet-config: {file: ./secrets/wallet/nats-wallet-config.nk}
   nats-seed-wallet-service: {file: ./secrets/wallet/nats-wallet-service.nk}
-  nats-seed-wallet-scheduler: {file: ./secrets/wallet/nats-wallet-scheduler.nk}
   nats-seed-wallet-worker: {file: ./secrets/wallet/nats-wallet-worker.nk}
   openbao-wallet-password: {file: ./secrets/openbao/wallet-password}
   openbao-static-seal-key: {file: ./secrets/openbao/static-seal.key}
@@ -660,7 +644,6 @@ secrets:
   # and the users of the Valkey services (replication, sentinel, probe).
   valkey-wallet-config-password: {file: ./secrets/valkey/wallet-config-password}
   valkey-wallet-service-password: {file: ./secrets/valkey/wallet-service-password}
-  valkey-wallet-scheduler-password: {file: ./secrets/valkey/wallet-scheduler-password}
   valkey-wallet-worker-password: {file: ./secrets/valkey/wallet-worker-password}
   valkey-wallet-clock-password: {file: ./secrets/valkey/wallet-clock-password}
   valkey-gateway-password: {file: ./secrets/valkey/gateway-password}
@@ -1218,66 +1201,6 @@ configs:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
 
-  # Wallet scheduler role (the background jobs, no server).
-  wallet-scheduler-config:
-    content: |
-      domain: ${WALLET_PUBLIC_URL}
-      log_level: INFO
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The jobs database role: it reads and writes the data scopes of the
-        # background jobs and cannot change the schema.
-        user: igrant_wallet_jobs
-        password_file: /run/secrets/eudi-wallet/database-password
-      nats:
-        url: nats://nats:4222
-        nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
-        inbox_prefix: _INBOX_wallet
-        stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the work queue, the single-use values
-      # and the caches, through the Sentinel. The Compose network has no
-      # Valkey TLS.
-      redis:
-        queue:
-          sentinels: ["valkey-sentinel:26379"]
-          master_name: ows
-          username: wallet-scheduler
-          password_file: /run/secrets/eudi-wallet/redis-password
-          sentinel_username: wallet-scheduler
-          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
-          tls: false
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
-      kms:
-        platform: transit
-        # The local key store: the Transit engine of OpenBao.
-        local_backend: openbao
-        organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
-        # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
-        # test certificates for development and testing only.
-        test_ca:
-          enabled: ${TEST_CA_ENABLED:-true}
-          leaf_validity_days: ${TEST_CA_LEAF_VALIDITY_DAYS:-365}
-        vault:
-          addr: http://openbao:8200
-          user: eudi-wallet
-          password_file: /run/secrets/eudi-wallet/openbao-password
-          transit_mount: transit
-      trust_list:
-        lookup_url: https://trustlist.nxd.foundation/trust-list/lookup
-      wallet_unit:
-        production_checks_enabled: false
-      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
-      # "Audit log"): the same value in each wallet file.
-      audit:
-        retention_years: ${AUDIT_RETENTION_YEARS:-7}
-      service_envelope:
-        signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
-        active_kid: eudi-wallet-1
-
   # Wallet worker (the actors of the queues; the health port 9191).
   wallet-worker-config:
     content: |
@@ -1352,7 +1275,6 @@ configs:
   # OpenBao password.
   wallet-clock-config:
     content: |
-      domain: ${WALLET_PUBLIC_URL}
       log_level: INFO
       database:
         type: ${DB_ENGINE}
@@ -1363,8 +1285,6 @@ configs:
         # pg_is_in_recovery()).
         user: igrant_wallet_clock
         password_file: /run/secrets/eudi-wallet/database-password
-      nats:
-        url: nats://nats:4222
       redis:
         queue:
           sentinels: ["valkey-sentinel:26379"]
@@ -1376,13 +1296,6 @@ configs:
           tls: false
       clock:
         health_port: 9192
-      kms:
-        platform: transit
-        vault:
-          addr: http://openbao:8200
-          user: eudi-wallet
-          password_file: /run/secrets/eudi-wallet/openbao-password
-          transit_mount: transit
 
   # migrate-database of the wallet: only the database.
   wallet-migrate-config:

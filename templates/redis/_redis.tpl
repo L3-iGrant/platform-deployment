@@ -67,7 +67,7 @@ has the users replication (the replicas), sentinel (the Sentinels) and
 probe (the probes), with the passwords of the Secret of the chart.
 */}}
 {{- define "ow.redis.processUsers" -}}
-walletService,walletConfig,walletWorker,walletClock,walletScheduler,gateway
+walletService,walletConfig,walletWorker,walletClock,gateway
 {{- end }}
 
 {{/*
@@ -80,9 +80,9 @@ sentinel (the Sentinels), probe (the probes) and, with redis.metrics, metrics
 replication,sentinel,probe{{- if .Values.redis.metrics.enabled -}},metrics{{- end -}}
 {{- end }}
 
-{{/* The values key of the ACL user of one wallet role (service, config, worker, clock, scheduler). */}}
+{{/* The values key of the ACL user of one wallet role (service, config, worker, clock). */}}
 {{- define "ow.wallet.redisUser" -}}
-{{- get (dict "service" "walletService" "config" "walletConfig" "worker" "walletWorker" "clock" "walletClock" "scheduler" "walletScheduler") . -}}
+{{- get (dict "service" "walletService" "config" "walletConfig" "worker" "walletWorker" "clock" "walletClock") . -}}
 {{- end }}
 
 {{/*

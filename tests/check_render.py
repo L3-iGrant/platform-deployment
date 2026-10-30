@@ -45,7 +45,7 @@ RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deac
 # and the rights of the wallet users (the rights of the wallet tests,
 # eudi-wallet ows/testing/redis_servers.py).
 REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletWorker": "wallet-worker", "walletClock": "wallet-clock",
-               "walletScheduler": "wallet-scheduler", "gateway": "gateway"}
+               "gateway": "gateway"}
 # The wallet processes with the defaults of the values: the configuration
 # key of each (ConfigMap <release>-wallet), its Deployment, its Valkey
 # user and its database role. The worker groups of
@@ -60,7 +60,6 @@ WALLET_PROCESSES = {
     "config.yaml": ("wallet-config", "walletConfig", "launcher_app"),
     **{f"worker-{name}.yaml": (f"wallet-worker-{name}", "walletWorker", "jobs") for name in WORKER_GROUPS},
     "clock.yaml": ("wallet-clock", "walletClock", "clock"),
-    "scheduler.yaml": ("wallet-scheduler", "walletScheduler", "jobs"),
 }
 # The files of the processes with the KMS, the trust list and the audit
 # log (all but the clock, which only sends the cron actors).
@@ -198,9 +197,9 @@ def main() -> int:
     # worker group (dramatiq with the queues of the group) and the clock
     # (start-clock); the health port (the probes and /metrics), the stop,
     # the state folder of the worker processes, no service account token.
-    # The clock file has only the database, the NATS address (the clock
-    # connects to no NATS), kms (the schema of every wallet file names it;
-    # the clock mounts none of its files), Valkey and the health port.
+    # The clock file has only the log level, the database, Valkey and the
+    # health port (load_clock_settings of the wallet: no domain, nats or
+    # kms).
     def probe(container: dict, name: str) -> tuple:
         get = ((container.get(name) or {}).get("httpGet") or {})
         return get.get("path"), get.get("port")
@@ -252,8 +251,11 @@ def main() -> int:
         check({"database-password", "redis-password"} <= paths <= {"database-password", "database-ca.crt", "redis-password", "redis-ca.crt"},
               f"the clock pods mount {sorted(paths)}, not only the files of the database and of Valkey")
     clock_file = config_map_file(f"{RELEASE}-wallet", "clock.yaml") or {}
-    check(set(clock_file) == {"domain", "log_level", "database", "nats", "kms", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")
-    check(clock_file.get("nats") == {"url": f"nats://{RELEASE}-nats.{NAMESPACE}.svc:4222"}, f"the clock file has nats {clock_file.get('nats')!r}")
+    # The scheduler is gone (eudi-wallet P3-D): no Deployment and no
+    # configuration key.
+    check(find("Deployment", f"{RELEASE}-wallet-scheduler") is None, "the Deployment of the scheduler is rendered")
+    check("scheduler.yaml" not in ((find("ConfigMap", f"{RELEASE}-wallet") or {}).get("data") or {}), "the wallet ConfigMap has scheduler.yaml")
+    check(set(clock_file) == {"log_level", "database", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")
     check(clock_file.get("clock") == {"health_port": 9192}, f"the clock file has clock {clock_file.get('clock')!r}")
     if clock_file:
         wallet_section("wallet clock.yaml database", clock_file["database"])
@@ -267,9 +269,8 @@ def main() -> int:
         database = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}
         found = (database.get("pool_size"), database.get("max_overflow"), database.get("allocation_pool_size"))
         check(found == (size, overflow, allocation), f"wallet {file} has the pools {found}, not {(size, overflow, allocation)}")
-    for file in ("clock.yaml", "scheduler.yaml"):
-        database = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}
-        check(not {"pool_size", "max_overflow", "allocation_pool_size"} & set(database), f"wallet {file} has a pool value")
+    clock_database = (config_map_file(f"{RELEASE}-wallet", "clock.yaml") or {}).get("database") or {}
+    check(not {"pool_size", "max_overflow", "allocation_pool_size"} & set(clock_database), "wallet clock.yaml has a pool value")
     for key in ("api.yaml", "webhook.yaml"):
         reader = ((config_map_file(f"{RELEASE}-api", key) or {}).get("ReadAccess") or {}).get("wallet") or {}
         check((reader.get("maxConns"), reader.get("minConns")) == (5, 1), f"api {key} ReadAccess.wallet has not the pool 5/1")
@@ -669,7 +670,7 @@ def main() -> int:
         check(section.get("tls_ca_file") == "/run/secrets/eudi-wallet/nats-ca.crt", f"wallet {file} has no nats.tls_ca_file")
     users = re.findall(r"^\s*# (\S+)$", nats_conf, re.M)
     # The clock connects to no NATS: it has no user.
-    check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-scheduler", "wallet-worker"],
+    check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-worker"],
           f"the NATS users are {users}")
     # The WIA pool refill is an actor of the workers (P3-B): no NATS user
     # publishes or subscribes to ows.wia_pool.refill_requested.
@@ -779,7 +780,7 @@ def main() -> int:
             reach = {d["metadata"]["name"] for d in policies for rule in d["spec"].get("egress", [])
                      if {(t.get("ipBlock") or {}).get("cidr") for t in rule.get("to", [])} == REDIS_EXTERNAL_CIDRS
                      and {p["port"] for p in rule.get("ports", [])} == {6379, 26379}}
-            want = {f"{RELEASE}-netpol-egress-{role}" for role in ("gateway", "wallet-service", "wallet-config", "wallet-worker", "wallet-clock", "wallet-scheduler")}
+            want = {f"{RELEASE}-netpol-egress-{role}" for role in ("gateway", "wallet-service", "wallet-config", "wallet-worker", "wallet-clock")}
             check(reach == want, f"the policies to the external Valkey are {sorted(reach)}, not {sorted(want)}")
 
     # --- Words that must not be in the render ------------------------------

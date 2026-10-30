@@ -154,14 +154,14 @@ session="$(docker exec "$prefix-valkey-sentinel" sh -c "printf 'SET ows:n:wp:o1:
 [ "$session" = "OK 1 " ] && ok "wallet: SET NX and WAIT 1 (the replica confirms)" || bad "wallet: the session gives $session"
 as valkey-sentinel wallet-config valkey 6379 SET other:key 1 | grep -q NOPERM && ok "wallet: no key outside ows:* and ows-wallet" || bad "wallet: a key outside its namespace"
 as valkey-sentinel wallet-config valkey 6379 CONFIG GET maxmemory | grep -q NOPERM && ok "wallet: no CONFIG" || bad "wallet: CONFIG"
-[ "$(as valkey-sentinel wallet-scheduler valkey 6379 "EVAL \"return redis.call('EXISTS', KEYS[1])\" 1 ows-wallet")" = 0 ] \
+[ "$(as valkey-sentinel wallet-worker valkey 6379 "EVAL \"return redis.call('EXISTS', KEYS[1])\" 1 ows-wallet")" = 0 ] \
   && ok "wallet: EVAL with the key ows-wallet (KEYS[1] of the broker script)" || bad "wallet: EVAL with the key ows-wallet"
 [ "$(as valkey-sentinel gateway valkey 6379 INCR gw:authfail:x)" = 1 ] && ok "gateway: INCR in gw:*" || bad "gateway: INCR"
 as valkey-sentinel gateway valkey 6379 SET ows:n:wp:o1:h2 1 | grep -q NOPERM && ok "gateway: no key of the wallet" || bad "gateway: a key of the wallet"
 if problems="$(python3 - "$work/project.json" <<'PY' 2>&1
 import json, sys, yaml
 project = json.load(open(sys.argv[1]))
-for role in ("config", "service", "worker", "clock", "scheduler"):
+for role in ("config", "service", "worker", "clock"):
     redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"])["redis"]
     user = f"wallet-{role}"
     expected = {"queue": {"sentinels": ["valkey-sentinel:26379"], "master_name": "ows", "username": user,

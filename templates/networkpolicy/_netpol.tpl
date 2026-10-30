@@ -30,6 +30,11 @@ column 0.
 {{- if not (hasKey $matrix.roles $role) -}}
 {{- fail (printf "network role %q is not in policies/network-matrix.yaml" $role) -}}
 {{- end -}}
+{{- range $key, $_ := $root.Values.networkPolicy.egress.roles -}}
+{{- if not (hasKey $matrix.roles $key) -}}
+{{- fail (printf "networkPolicy.egress.roles.%s: %q is not a network role of policies/network-matrix.yaml (the wallet has no scheduler any more: remove wallet-scheduler)" $key $key) -}}
+{{- end -}}
+{{- end -}}
 {{- $profiles := concat (index $root.Values.networkPolicy.egress.roles $role | default list) $extra | uniq -}}
 netpol.igrant.io/role: {{ $role }}
 {{- range $profile := $profiles }}
@@ -50,7 +55,7 @@ list.
 {{- $roles := list "job" -}}
 {{- if $v.api.enabled -}}{{- $roles = concat $roles (list "gateway" "api" "webhook") -}}{{- end -}}
 {{- if $v.consent.enabled -}}{{- $roles = append $roles "consent" -}}{{- end -}}
-{{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-worker" "wallet-clock" "wallet-scheduler") -}}{{- end -}}
+{{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-worker" "wallet-clock") -}}{{- end -}}
 {{- if $v.enterpriseDashboard.enabled -}}{{- $roles = append $roles "dashboard" -}}{{- end -}}
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}
 {{- if $v.nats.enabled -}}{{- $roles = append $roles "nats" -}}{{- end -}}

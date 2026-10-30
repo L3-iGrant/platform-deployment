@@ -3,7 +3,6 @@ user wallet-config on {hash:wallet-config} resetchannels ~ows:* ~ows-wallet ~ows
 user wallet-service on {hash:wallet-service} resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys
 user wallet-worker on {hash:wallet-worker} resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys
 user wallet-clock on {hash:wallet-clock} resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys
-user wallet-scheduler on {hash:wallet-scheduler} resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys
 user gateway on {hash:gateway} resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous
 user replication on {hash:replication} -@all +psync +replconf +ping
 user sentinel on {hash:sentinel} allchannels -@all +multi +slaveof +replicaof +ping +exec +subscribe +config|rewrite +role +publish +info +client|setname +client|kill +script|kill

@@ -5,8 +5,7 @@ EUDI_WALLET_CONFIG. The file has no secret: each <key>_file names a file in
 ow.wallet.secretDir (see ow.wallet.secretFiles).
 Roles: "service" (public routes), "config" (internal configuration
 routes), "worker" (a group of organisationWallet.workers.groups: the
-actors of its queues), "clock" (it sends the cron actors) and "scheduler"
-(no HTTP server).
+actors of its queues) and "clock" (it sends the cron actors).
 Call with (dict "root" $ "role" "<role>"), for a worker with (dict "root"
 $ "role" "worker" "group" <group>).
 */}}
@@ -132,8 +131,8 @@ writes its purge date, the workers purge. */ -}}
 {{- /* The pools of the process (database.pools.wallet*; docs/database.md,
 "Connection budget"): the session pool and the allocation pool of a
 service, config or worker process. A worker process has one session
-connection for each thread of its group. The clock, the scheduler and the
-signer manager keep the defaults of the wallet. */ -}}
+connection for each thread of its group. The clock keeps the defaults of
+the wallet. */ -}}
 {{- $pools := $v.database.pools -}}
 {{- $pool := dict -}}
 {{- if eq $role "service" -}}
@@ -148,13 +147,12 @@ signer manager keep the defaults of the wallet. */ -}}
 {{- end -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
-{{- /* The clock reads only the database and Valkey: no service envelope (it
-publishes nothing), no trust list, wallet unit, audit log or retention
-settings. The clock connects to no NATS and starts no KMS, but the file of
-every wallet process names the NATS address and kms.vault; the clock
-mounts no NATS seed and no OpenBao password. */ -}}
+{{- /* The clock reads only the database and Valkey (load_clock_settings of
+the wallet): no domain, NATS, KMS, service envelope, trust list, wallet
+unit, audit log or retention settings; it mounts no NATS seed and no
+OpenBao password. */ -}}
 {{- if eq $role "clock" -}}
-{{- range $key := list "service_envelope" "trust_list" "wallet_unit" "audit" "retention" -}}
+{{- range $key := list "domain" "nats" "kms" "service_envelope" "trust_list" "wallet_unit" "audit" "retention" -}}
 {{- $_ := unset $config $key -}}
 {{- end -}}
 {{- end -}}
@@ -165,7 +163,6 @@ state_directory (an emptyDir). */ -}}
 {{- if eq $role "worker" -}}
 {{- $_ := set $config "worker" (dict "health_port" (include "ow.wallet.workerHealthPort" $root | int) "state_directory" (include "ow.wallet.workerStateDir" $root)) -}}
 {{- else if eq $role "clock" -}}
-{{- $_ := set $config "nats" (dict "url" (include "ow.nats.url" $root)) -}}
 {{- $_ := set $config "clock" (dict "health_port" (include "ow.wallet.clockHealthPort" $root | int)) -}}
 {{- end -}}
 {{- if has $role (list "service" "config") -}}

@@ -33,7 +33,7 @@ check: do the next step only when you see the result of the check.
 | Gateway (`gateway`) | The entry point of all API calls of your systems and of the dashboard. It checks each request (API keys, logins, rate limits). | `API_PORT` (8080) |
 | API (`api`) and webhook handler (`webhook`) | The organisations, the admins, the API keys, the webhooks to your systems. | none |
 | Consent management (`consent`) | The data agreements and the consent records. | none |
-| Organisation wallet (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`, `wallet-scheduler`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. The worker runs the background work, the clock sends the scheduled work (see [Worker and clock](#worker-and-clock)). | `WALLET_PORT` (8090) |
+| Organisation wallet (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. The worker runs the background work, the clock sends the scheduled work (see [Worker and clock](#worker-and-clock)). | `WALLET_PORT` (8090) |
 | Enterprise dashboard (`dashboard`) | The web application of the admins of your organisations. | `DASHBOARD_PORT` (3000) |
 | Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
 | NATS (`nats`) | The messages between the components. | none |
@@ -163,7 +163,7 @@ make status
 Check: you see one line for each service.
 
 - `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
-  `wallet-service`, `wallet-worker`, `wallet-clock`, `wallet-scheduler`,
+  `wallet-service`, `wallet-worker`, `wallet-clock`,
   `dashboard`, `nats`, `openbao` and `postgres`: `running`. The services with a health check also
   show `(healthy)`.
 - `database-init`, `wallet-database-roles`, the three `*-migrate`
@@ -309,7 +309,7 @@ each one starts only when the one before it stopped with exit code 0:
 | Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
 | Read access | `wallet-read-access` | The admin user (`DB_ADMIN_USER`) |
 | Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
-| Background work | `wallet-worker`, `wallet-scheduler` | `igrant_wallet_jobs` |
+| Background work | `wallet-worker` | `igrant_wallet_jobs` |
 | Clock | `wallet-clock` | `igrant_wallet_clock` (it can only connect) |
 
 The database roles of the wallet processes read and write the data, but
@@ -405,7 +405,6 @@ The wallet runs its background work as actors on the queues of Valkey:
 | --- | --- |
 | `wallet-worker` | Runs the actors of all queues (`realtime`, `attestation`, `status`, `kms`, `maintenance`): one worker process with 8 threads. A stop waits at most one hour for the running actors (`stop_grace_period`); an actor that does not end in that time runs again from its message. |
 | `wallet-clock` | Sends the messages of the cron actors to the queues when their time comes. It holds the leader lock of the database while it sends. It connects to no NATS and to no key store. |
-| `wallet-scheduler` | Runs the jobs of the wallet that are not actors in this release. A later release removes it. |
 
 The worker and the clock have a health port (9191 and 9192, only on the
 Compose network): `/healthz` (the heartbeat), `/readyz` (Valkey and the
@@ -447,7 +446,7 @@ Each wallet role and the gateway log in with their own ACL user (no
 
 | User | Process | Rights |
 | --- | --- | --- |
-| `wallet-config`, `wallet-service`, `wallet-worker`, `wallet-clock`, `wallet-scheduler` | the roles of the wallet | the keys `ows:*`, `ows-wallet` and `ows-wallet:*`; read, write, scripts, `INFO` and `KEYS`; on the Sentinel, the discovery of the primary |
+| `wallet-config`, `wallet-service`, `wallet-worker`, `wallet-clock` | the roles of the wallet | the keys `ows:*`, `ows-wallet` and `ows-wallet:*`; read, write, scripts, `INFO` and `KEYS`; on the Sentinel, the discovery of the primary |
 | `gateway` | the gateway | the keys `gw:*`; read and write |
 | `replication`, `sentinel`, `probe` | the replica, the Sentinel, the healthchecks | the commands of each |
 
