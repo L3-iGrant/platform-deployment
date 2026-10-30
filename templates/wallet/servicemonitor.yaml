@@ -1,34 +1,43 @@
 {{- /*
-The ServiceMonitor of /metrics of the workers and of the clock
+The ServiceMonitor of /metrics of the servers, the workers and the clock
 (organisationWallet.serviceMonitor.enabled; the CRD of the Prometheus
-Operator must exist; docs/workers.md). A headless Service for each worker
-group and for the clock gives the pods as the targets, also the pods that
+Operator must exist; docs/workers.md). A headless Service for the service
+and config roles (the port metrics), for each worker group and for the
+clock (the port health) gives the pods as the targets, also the pods that
 are not ready (a worker is not ready while Valkey does not answer, and its
-metrics show it).
+metrics show it). The label metrics.igrant.io/job of each Service is the
+job of its targets: wallet-server, wallet-worker, wallet-clock (the job
+names of the alerts of eudi-wallet).
 */}}
 {{- if and .Values.organisationWallet.enabled .Values.organisationWallet.serviceMonitor.enabled }}
 {{- $w := .Values.organisationWallet }}
-{{- $targets := list (dict "component" "wallet-clock" "port" (include "ow.wallet.clockHealthPort" . | int)) }}
+{{- $metrics := include "ow.wallet.serverMetricsPort" . | int }}
+{{- $targets := list
+  (dict "name" "wallet-service-metrics" "pods" "wallet-service" "port" $metrics "portName" "metrics" "job" "wallet-server")
+  (dict "name" "wallet-config-metrics" "pods" "wallet-config" "port" $metrics "portName" "metrics" "job" "wallet-server")
+  (dict "name" "wallet-clock" "pods" "wallet-clock" "port" (include "ow.wallet.clockHealthPort" . | int) "portName" "health" "job" "wallet-clock") }}
 {{- range $g := $w.workers.groups }}
-{{- $targets = append $targets (dict "component" (include "ow.wallet.workerComponent" $g) "port" (include "ow.wallet.workerHealthPort" $ | int)) }}
+{{- $component := include "ow.wallet.workerComponent" $g }}
+{{- $targets = append $targets (dict "name" $component "pods" $component "port" (include "ow.wallet.workerHealthPort" $ | int) "portName" "health" "job" "wallet-worker") }}
 {{- end }}
 {{- range $target := $targets }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "ow.name" (list $ $target.component) }}
+  name: {{ include "ow.name" (list $ $target.name) }}
   namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "ow.labels" (list $ $target.component) | nindent 4 }}
+    {{- include "ow.labels" (list $ $target.name) | nindent 4 }}
+    metrics.igrant.io/job: {{ $target.job }}
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
   ports:
-    - name: health
+    - name: {{ $target.portName }}
       port: {{ $target.port }}
-      targetPort: health
+      targetPort: {{ $target.portName }}
   selector:
-    {{- include "ow.selectorLabels" (list $ $target.component) | nindent 4 }}
+    {{- include "ow.selectorLabels" (list $ $target.pods) | nindent 4 }}
 ---
 {{- end }}
 apiVersion: monitoring.coreos.com/v1
@@ -42,6 +51,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
+  jobLabel: metrics.igrant.io/job
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ .Chart.Name }}
@@ -51,9 +61,12 @@ spec:
         operator: In
         values:
           {{- range $target := $targets }}
-          - {{ $target.component }}
+          - {{ $target.name }}
           {{- end }}
   endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $w.serviceMonitor.interval }}
     - port: health
       path: /metrics
       interval: {{ $w.serviceMonitor.interval }}

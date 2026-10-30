@@ -1825,11 +1825,12 @@ organisationWallet:
             memory: 384Mi
           limits:
             memory: 1536Mi
-  # -- A ServiceMonitor of /metrics of the workers and the clock (the CRD
-  # of the Prometheus Operator must exist; docs/workers.md).
+  # -- A ServiceMonitor of /metrics of the servers (port 9190), the workers
+  # and the clock (the CRD of the Prometheus Operator must exist;
+  # docs/workers.md). interval: 15s, the scrape of the alerts of eudi-wallet.
   serviceMonitor:
     enabled: false
-    interval: 30s
+    interval: 15s
     labels: {}
   # -- The wallet image runs as root. When you set a non-root runAsUser,
   # also set fsGroup: the secret files have mode 0440.

@@ -55,6 +55,11 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            # The Prometheus metrics of the server (/metrics only): the
+            # monitoring namespace scrapes it; no Service of the routes and
+            # no Ingress has it.
+            - name: metrics
+              containerPort: {{ include "ow.wallet.serverMetricsPort" $ }}
           # The server answers /healthz only when the database schema is at
           # the head of its code: it waits up to 600 s (on a new
           # installation the post-install hooks migrate while the pods
@@ -95,6 +100,8 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.wallet.volumeMounts" $ | nindent 12 }}
+            - name: server-metrics
+              mountPath: {{ include "ow.wallet.serverMetricsDir" $ }}
             {{- if $gatewayKeys }}
             - name: gateway-keys
               mountPath: {{ include "ow.gateway.keysDir" $ }}
@@ -105,6 +112,12 @@ spec:
             {{- end }}
       volumes:
         {{- include "ow.wallet.volumes" (list $ $role) | nindent 8 }}
+        # The metrics files of the processes of the server
+        # (server.metrics_directory).
+        - name: server-metrics
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
         {{- if $gatewayKeys }}
         {{- include "ow.gateway.keysVolume" $ | nindent 8 }}
         {{- include "ow.serviceKeys.volume" (list $ "igrant-api") | nindent 8 }}

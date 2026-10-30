@@ -595,9 +595,35 @@ renders "one worker group: its configuration key" "worker-all.yaml: |" "${shamir
 lacks "one worker group: no Deployment of the default groups" "name: t-wallet-worker-main" "${shamir[@]}" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" "${shamir[@]}" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
 renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+# The servers (service and config): a headless Service of the port metrics
+# (9190) and the job wallet-server; the ServiceMonitor names the jobs with
+# the label metrics.igrant.io/job.
+renders "metrics Service of the service role" "name: t-wallet-service-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "metrics Service of the config role" "name: t-wallet-config-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job of the server targets" "metrics.igrant.io/job: wallet-server" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job label of the ServiceMonitor" "jobLabel: metrics.igrant.io/job" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "scrape interval of the servers" "interval: 15s" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+lacks "no metrics port in the Services of the routes" "9190" "${shamir[@]}" --show-only templates/wallet/svc.yaml
 renders "metrics Service of a worker group (also the pods that are not ready)" "publishNotReadyAddresses: true" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
 # The health port of the workers and of the clock (the scrape of
 # /metrics): open only to the monitoring namespace (networkPolicy.monitoring).
+# The port metrics of the servers: open only to the monitoring namespace.
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+    --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+    --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
+import sys, yaml
+docs = {d["metadata"]["name"]: d for d in yaml.safe_load_all(sys.stdin) if d}
+for role in ("wallet-service", "wallet-config"):
+    rules = docs[f"t-netpol-ingress-{role}"]["spec"]["ingress"]
+    scrape = [r for r in rules if [p["port"] for p in r.get("ports", [])] == ["metrics"]]
+    peers = [p for r in scrape for p in r.get("from", [])]
+    if not peers or any(p.get("namespaceSelector") != {"matchLabels": {"kubernetes.io/metadata.name": "monitoring"}} for p in peers):
+        print(f"{role}: the port metrics is not open to the monitoring namespace only: {scrape}")
+' 2>&1)" && [ -z "$problems" ]; then
+  ok "scrape of the servers with network policies"
+else
+  bad "scrape of the servers with network policies: $(printf '%s' "$problems" | head -c 300)"
+fi
 renders "scrape of the workers and the clock with network policies" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
   --show-only templates/networkpolicy/policies.yaml

@@ -44,7 +44,7 @@ The objects of the background work of the wallet (see [Workers and clock](worker
 | `<release>-wallet-worker-<group>` (Deployment) | The workers of one group of `organisationWallet.workers.groups`: `dramatiq ows.worker.run:start` with the queues of the group, the port 9191 and an `emptyDir` in memory for the heartbeat and metric files of its worker processes |
 | `<release>-wallet-clock` (Deployment) | The clock: `start-clock` in 2 replicas, the port 9192 |
 | The keys `worker-<group>.yaml` and `clock.yaml` of the ConfigMap `<release>-wallet` | The configuration of each worker group and of the clock |
-| `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `organisationWallet.serviceMonitor.enabled`: the scrape of `/metrics` |
+| `<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`, `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `organisationWallet.serviceMonitor.enabled`: the scrape of `/metrics` of the servers (port 9190), the workers (9191) and the clock (9192) |
 
 The worker and clock pods mount no service account token.
 

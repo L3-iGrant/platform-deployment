@@ -16,8 +16,8 @@ roles:
   api: {ports: {http: 80}}
   webhook: {ports: {http: 80}}            # probes only: no caller
   consent: {ports: {http: 80, admin: 8081}}   # admin: probes only
-  wallet-service: {ports: {http: 8080}}
-  wallet-config: {ports: {http: 8080}}
+  wallet-service: {ports: {http: 8080, metrics: 9190}}   # metrics: /metrics only, the scrape only
+  wallet-config: {ports: {http: 8080, metrics: 9190}}
   wallet-worker: {ports: {health: 9191}}   # /healthz, /readyz, /metrics: probes and the scrape only
   wallet-clock: {ports: {health: 9192}}    # /healthz, /readyz, /metrics: probes and the scrape only
   dashboard: {ports: {http: 80}}
@@ -58,6 +58,8 @@ connections:
   - {to: redis, port: sentinel, from: [gateway, wallet-service, wallet-config, wallet-worker, wallet-clock, redis]}
   # the metrics of the workers and of the clock (the ServiceMonitor)
   - {to: redis, port: metrics, from: [monitoring]}
+  - {to: wallet-service, port: metrics, from: [monitoring]}
+  - {to: wallet-config, port: metrics, from: [monitoring]}
   - {to: wallet-worker, port: health, from: [monitoring]}
   - {to: wallet-clock, port: health, from: [monitoring]}
 
