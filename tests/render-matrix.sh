@@ -112,7 +112,8 @@ else
   printf '%s\n' "$links" | sed "s|$chart/||; s/^/  /" | head -10
 fi
 # The images of values.yaml: each in docs/images.md, each image of another
-# project in THIRD-PARTY-NOTICES.md; the licence text of Valkey.
+# project in THIRD-PARTY-NOTICES.md; the licence texts of Valkey and of
+# redis_exporter.
 if problems="$(python3 - "$chart" <<'PY' 2>&1
 import sys, yaml
 chart = sys.argv[1]
@@ -130,6 +131,8 @@ def walk(node, path):
 walk(yaml.safe_load(open(f"{chart}/values.yaml")), "")
 if "Copyright (c) 2024-present, Valkey contributors" not in open(f"{chart}/licenses/valkey/COPYING").read():
     print("licenses/valkey/COPYING is not the licence of Valkey")
+if "Copyright (c) 2016 Oliver" not in open(f"{chart}/licenses/redis_exporter/LICENSE").read():
+    print("licenses/redis_exporter/LICENSE is not the licence of redis_exporter")
 PY
 )" && [ -z "$problems" ]; then
   ok "text: images in docs/images.md and THIRD-PARTY-NOTICES.md"
@@ -664,6 +667,104 @@ lacks "external redis address without the Sentinel login" "sentinel_username" "$
 lacks "external redis Sentinels without a login" "sentinel_username" "${external_redis[@]}" --set redis.external.sentinelAuth=false
 lacks "external redis without CA (the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.caSecret=
 lacks "no Valkey without the wallet and the api" "t-redis" "${shamir[@]}" --set organisationWallet.enabled=false --set api.enabled=false
+
+# The metrics of the bundled Valkey (redis.metrics): the exporter in each
+# pod with the ACL user metrics, its password, the ServiceMonitor, and the
+# scrape port open only to the monitoring namespace.
+metrics=(--set redis.metrics.enabled=true)
+redis_sts "with the exporter" "--redis.user=metrics" "${metrics[@]}"
+redis_sts "the exporter reads no CONFIG" "--config-command=-" "${metrics[@]}"
+redis_sts "the exporter gets only the CA" "mountPath: /etc/valkey-metrics" "${metrics[@]}"
+renders "the ACL user metrics" "user metrics on {hash:metrics} -@all +info +client|setname +slowlog|len +latency|latest +latency|histogram" "${shamir[@]}" "${metrics[@]}"
+renders "the password of the user metrics" "  metrics: " "${shamir[@]}" "${metrics[@]}" --show-only templates/secrets.yaml
+lacks "no exporter by default" "redis_exporter" "${shamir[@]}"
+lacks "no ACL user metrics by default" "user metrics on" "${shamir[@]}"
+lacks "no password of the user metrics by default" "  metrics: " "${shamir[@]}" --show-only templates/secrets.yaml
+renders "ServiceMonitor of Valkey" "name: t-redis-metrics" "${shamir[@]}" "${metrics[@]}" --set redis.metrics.serviceMonitor.enabled=true
+lacks "no ServiceMonitor of Valkey without its value" "t-redis-metrics" "${shamir[@]}" "${metrics[@]}"
+renders "scrape of Valkey with network policies" "port: metrics" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --show-only templates/networkpolicy/policies.yaml
+guard "redis ServiceMonitor without the exporter" "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled" "${shamir[@]}" --set redis.metrics.serviceMonitor.enabled=true
+guard "redis metrics with an external Valkey" "redis.metrics is for the bundled Valkey" "${external_redis[@]}" "${metrics[@]}"
+guard "redis user name metrics" 'redis.users.gateway.username "metrics" is a user of the bundled Valkey' "${shamir[@]}" --set redis.users.gateway.username=metrics
+
+# Separate groups of the wallet (redis.state, redis.cache): the guards; one
+# endpoint for each group in each wallet file, the CA of a group in the
+# wallet pods (not in the gateway), and the egress to
+# networkPolicy.externalRedis only for the wallet roles (also with the
+# bundled Valkey).
+guard "redis state without sentinels or address" "redis.state.sentinels or redis.state.address is required with redis.state.enabled" "${shamir[@]}" --set redis.state.enabled=true
+guard "redis cache with sentinels and address" "set redis.cache.sentinels or redis.cache.address, not both" "${shamir[@]}" --set redis.cache.enabled=true \
+  --set-json 'redis.cache.sentinels=["cache.example.org:26379"]' --set redis.cache.masterName=cache --set redis.cache.address=cache.example.org:6379
+guard "redis state Sentinels without a master name" 'redis.state.masterName "" is not a name' "${shamir[@]}" --set redis.state.enabled=true \
+  --set-json 'redis.state.sentinels=["state.example.org:26379"]'
+guard "redis state address without port" "redis.state.address" "${shamir[@]}" --set redis.state.enabled=true --set redis.state.address=state.example.org
+guard "redis state address without port without the schema" '"state.example.org" is not host:port' "${shamir[@]}" --skip-schema-validation \
+  --set redis.state.enabled=true --set redis.state.address=state.example.org
+guard "redis state with network policies without addresses" "networkPolicy.externalRedis needs the addresses of the group redis.state" "${shamir[@]}" \
+  -f "$examples/networkpolicy.yaml" --set redis.state.enabled=true --set redis.state.address=state.example.org:6379
+groups=(--set redis.state.enabled=true --set-json 'redis.state.sentinels=["state-1.example.org:26379","state-2.example.org:26379"]'
+  --set redis.state.masterName=state --set redis.state.caSecret=state-ca
+  --set redis.cache.enabled=true --set redis.cache.address=cache.example.org:6380 --set redis.cache.sentinelAuth=false)
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+    --set-json 'networkPolicy.externalRedis=[{"cidrs":["198.51.100.0/24"]}]' "${groups[@]}" > "$out/redis-groups.yaml" 2> "$out/redis-groups.err"; then
+  bad "Valkey groups: $(head -c 200 "$out/redis-groups.err")"
+elif problems="$(python3 - "$out/redis-groups.yaml" <<'PY' 2>&1
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+def find(kind, name):
+    return next((d for d in docs if d["kind"] == kind and d["metadata"]["name"] == name), None)
+sentinels = [f"t-redis-{i}.t-redis-headless.ow.svc:26379" for i in range(3)]
+files = 0
+for key, text in find("ConfigMap", "t-wallet")["data"].items():
+    redis = yaml.safe_load(text).get("redis")
+    if redis is None:
+        continue
+    files += 1
+    queue, state, cache = redis.get("queue", {}), redis.get("state", {}), redis.get("cache", {})
+    user = queue.get("username")
+    if queue.get("sentinels") != sentinels or queue.get("ca_file") != "/run/secrets/eudi-wallet/redis-ca.crt":
+        print(f"{key}: the queue is not the bundled Valkey: {queue}")
+    if (state.get("sentinels") != ["state-1.example.org:26379", "state-2.example.org:26379"] or state.get("master_name") != "state"
+            or state.get("username") != user or state.get("sentinel_username") != user
+            or state.get("password_file") != "/run/secrets/eudi-wallet/redis-password"
+            or state.get("ca_file") != "/run/secrets/eudi-wallet/redis-state-ca.crt"):
+        print(f"{key}: the state endpoint is wrong: {state}")
+    if (cache.get("address") != "cache.example.org:6380" or cache.get("username") != user or "sentinel_username" in cache
+            or "ca_file" in cache or "sentinels" in cache):
+        print(f"{key}: the cache endpoint is wrong: {cache}")
+if files < 5:
+    print(f"only {files} wallet files have a redis section")
+def items(doc):
+    spec = doc["spec"]["template"]["spec"]
+    return [(source["secret"]["name"], item["key"], item["path"]) for volume in spec.get("volumes", []) if "projected" in volume
+            for source in volume["projected"]["sources"] if "secret" in source for item in source["secret"].get("items", [])]
+wallet = [d for d in docs if d["kind"] == "Deployment" and d["metadata"]["name"].startswith("t-wallet-") and d["metadata"]["name"] != "t-wallet-signer-manager"]
+if len(wallet) < 5:
+    print(f"only {len(wallet)} wallet Deployments")
+for doc in wallet:
+    if ("state-ca", "ca.crt", "redis-state-ca.crt") not in items(doc):
+        print(f"{doc['metadata']['name']} does not mount the CA of the state group")
+if any(path == "redis-state-ca.crt" for _, _, path in items(find("Deployment", "t-gateway"))):
+    print("the gateway mounts the CA of the state group")
+def egress_cidrs(role):
+    doc = find("NetworkPolicy", f"t-netpol-egress-{role}")
+    return {peer["ipBlock"]["cidr"] for rule in (doc or {}).get("spec", {}).get("egress", []) for peer in rule.get("to", []) if "ipBlock" in peer}
+for role in ("wallet-service", "wallet-config", "wallet-worker", "wallet-clock", "wallet-scheduler"):
+    if "198.51.100.0/24" not in egress_cidrs(role):
+        print(f"the role {role} does not reach the separate groups")
+for role in ("gateway", "redis"):
+    if "198.51.100.0/24" in egress_cidrs(role):
+        print(f"the role {role} reaches the separate groups of the wallet")
+PY
+)" && [ -z "$problems" ]; then
+  ok "Valkey groups: the state and cache endpoints, their CA, the egress of the wallet roles"
+else
+  bad "Valkey groups"
+  printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+fi
+lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}"
 
 # --- 6. Install and upgrade --------------------------------------------------------
 # The order of the hooks (tests/check_hook_order.py, no cluster): the Jobs

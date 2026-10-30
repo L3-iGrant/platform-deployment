@@ -60,6 +60,25 @@ The pods show `2/2` and `Running`. The second command shows the DNS name of the 
 
 Each site has its own Valkey group: the chart does not replicate Valkey to the standby site. After a failover to the standby site, the queue messages, the nonces and the caches of the primary site are lost. This is safe: the jobs find their work in the database again, a wallet unit asks for a new nonce, and the replay check of the proofs refuses a proof from before the new start of Valkey.
 
+### Metrics
+
+`redis.metrics.enabled: true` adds the container `metrics` to each Valkey pod: the Prometheus exporter of its data server ([redis_exporter](https://github.com/oliver006/redis_exporter), port 9121, `/metrics`). It connects with TLS to `127.0.0.1:6379` (a name of the certificate) and logs in with the ACL user `metrics` (see [ACL users](#acl-users)). The user reads `INFO` and the lengths of the slow log and of the latency events. It cannot read a key, the arguments of the slow log or the configuration, so the exporter runs with `--config-command=-`.
+
+| Metric | Use |
+| --- | --- |
+| `redis_up` | The exporter can read the server. |
+| `redis_memory_used_bytes`, `redis_memory_max_bytes` | The memory for the data and `redis.maxmemory`. With `noeviction`, a write fails when the memory is full: alert well before. |
+| `redis_instance_info{role}`, `redis_connected_slaves`, `redis_master_link_up` | The role of each server and the replication. A primary without a replica in sync refuses the writes (`min-replicas-to-write 1`). |
+| `redis_connected_clients`, `redis_rejected_connections_total` | The connections of the processes. |
+| `redis_aof_last_bgrewrite_status`, `redis_aof_last_write_status` | The AOF of each server. |
+| `redis_slowlog_length`, `redis_latency_spike_duration_seconds` | The slow commands and the latency events. |
+
+The exporter does not read the Sentinels. The data servers show the failover in their role and their replication. The length of each queue is a metric of the workers (`ows_worker_queue_messages`, see [Workers and clock](workers.md#probes-and-metrics)).
+
+`redis.metrics.serviceMonitor.enabled: true` creates the headless Service `<release>-redis-metrics` of the exporters (also the pods that are not ready) and the ServiceMonitor `<release>-redis-metrics` (the CRD of the Prometheus Operator must exist). `interval` and `labels` are the values of the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches the port 9121. With your own Valkey or Redis (`redis.mode: external`), use your own exporter: the chart refuses `redis.metrics` then.
+
+The image `redis.metrics.image` is `docker.io/oliver006/redis_exporter` (MIT License, see [Images](images.md)). The exporter reads its password from the environment variable `REDIS_PASSWORD` (from the Secret `<release>-redis-users`, key `metrics`): it reads a password only from a variable or from a JSON file.
+
 ## ACL users
 
 The wallet roles and the gateway log in with their own user. `redis.users.<key>.username` sets the name; the password is in the Secret `<release>-redis-users` of the chart (random, kept across upgrades), or in your Secret (`redis.users.<key>.passwordSecret`, `.passwordKey`). A password has only letters, digits and `. _ ~ + / = -`.
@@ -76,13 +95,14 @@ The bundled Valkey also has these users, with the passwords of the Secret `<rele
 | `replication` | `-@all +psync +replconf +ping` (the replicas) | none |
 | `sentinel` | `allchannels -@all +multi +slaveof +replicaof +ping +exec +subscribe +config\|rewrite +role +publish +info +client\|setname +client\|kill +script\|kill` | `resetchannels &__sentinel__:hello -@all +auth +ping +publish +client\|setname +sentinel\|is-master-down-by-addr +sentinel\|get-master-addr-by-name +sentinel\|failover` (the other Sentinels, and the start and stop scripts of the pods) |
 | `probe` | `-@all +ping +info` | `-@all +ping` |
+| `metrics` (only with `redis.metrics.enabled`) | `-@all +info +client\|setname +slowlog\|len +latency\|latest +latency\|histogram` (the exporter) | none |
 | `default` | off | off |
 
 The wallet needs `INFO`: at its start it reads `INFO` and refuses a server that is a Redis Cluster, a version before 7.2, or a server of the queue with an eviction policy other than `noeviction`. It needs `KEYS` and the scripts for the queue (the broker script calls `KEYS`). A change of a password: change the Secret, then restart the Valkey pods (`kubectl -n ows rollout restart statefulset/ows-redis`) and the processes of the user.
 
 ## The settings of the wallet
 
-The chart writes the `redis` section of each wallet role (`service`, `config`, each worker group, `clock`, `scheduler`): the Sentinels, the primary name, the user of the role, its password file and the CA. The wallet uses this one server also for the single-use values (`state`) and the caches (`cache`).
+The chart writes the `redis` section of each wallet role (`service`, `config`, each worker group, `clock`, `scheduler`): the Sentinels, the primary name, the user of the role, its password file and the CA. Without separate groups, the wallet uses this one server also for the single-use values (`state`) and the caches (`cache`). With `redis.state` or `redis.cache`, the section also has the endpoint `state` or `cache`, with the same keys (see [Separate groups](#separate-groups-for-the-single-use-values-and-the-caches)).
 
 ```yaml
 redis:
@@ -127,3 +147,26 @@ The values (see `examples/redis-external.yaml`):
 | `networkPolicy.externalRedis` | With network policies: the CIDRs and the ports of your servers and Sentinels (required) |
 
 When the wallet starts, it reads `INFO` of the primary. It refuses to start when the server is a Redis Cluster, when the version is too old, or when the eviction policy is not `noeviction`. It writes a warning when AOF is off or when the primary has no replica.
+
+## Separate groups for the single-use values and the caches
+
+By default, one group (the group of `redis.mode`, the queue) keeps the work queue, the single-use values and the caches. You can give the single-use values (`redis.state`) and the caches (`redis.cache`) a group of their own: your own Valkey or Redis, with Sentinel or one primary address. For example, a cache group can evict keys when its memory is full (`maxmemory-policy allkeys-lru`), and the queue and the single-use values stay on a group with `noeviction`. The wallet needs no change of its code.
+
+| Group | Requirements |
+| --- | --- |
+| `redis.state` | The requirements of [External Valkey or Redis](#external-valkey-or-redis): `noeviction`, AOF `everysec`, a replica and `min-replicas-to-write 1`. The wallet refuses a state server with another eviction policy. |
+| `redis.cache` | Redis or Valkey 7.2 or later (not Redis Cluster), TLS, and the ACL users of the wallet. Any eviction policy; AOF and replicas are not necessary: the wallet fills the caches again after a loss. |
+
+The values of each group:
+
+| Value | Description |
+| --- | --- |
+| `redis.state.enabled`, `redis.cache.enabled` | `true`: the wallet uses the group |
+| `.sentinels`, `.masterName` | The Sentinels (`host:port`) of the group and the name of the primary that they monitor |
+| `.address` | Without Sentinel: the address (`host:port`) of the primary. Set `sentinels` or `address`. |
+| `.sentinelAuth` | `true` (default): the processes log in to the Sentinels with their user |
+| `.caSecret`, `.caKey` | The CA of the group. Empty: the system CAs. |
+
+The wallet processes log in to each group with their ACL users of `redis.users` and the same passwords (from `redis.users.<key>.passwordSecret`, or from the Secret `<release>-redis-users` of the bundled Valkey). Create these users on the group with the rights of the wallet users (see [ACL users](#acl-users)): `walletService`, `walletConfig`, `walletWorker`, `walletClock` and `walletScheduler`. The gateway and KEDA use only the queue group.
+
+Each wallet file then has the endpoints `state` and `cache` (see [The settings of the wallet](#the-settings-of-the-wallet)), and the wallet pods mount the CA of each group (`redis-state-ca.crt`, `redis-cache-ca.crt`). With network policies, add the addresses of the groups to `networkPolicy.externalRedis`: the chart gives them only to the wallet roles when Valkey is bundled. The render stops when a group has no `sentinels` and no `address`, both, a Sentinel group without `masterName`, or no `networkPolicy.externalRedis` with network policies.

@@ -440,8 +440,14 @@ user of its role. */ -}}
 {{- end -}}
 {{- end -}}
 {{- /* The Valkey user of the role (redis): its password and the CA of the
-servers. */ -}}
+servers (also of the separate groups). */ -}}
 {{- $files = merge $files (include "ow.redis.secretFiles" (list $root (include "ow.wallet.redisUser" $role)) | fromJson) -}}
+{{- /* The CA of each separate group (redis.state, redis.cache). */ -}}
+{{- range $name, $group := include "ow.redis.groups" $root | fromJson -}}
+{{- if and (ne $name "queue") $group.caFile -}}
+{{- $_ := set $files $group.caFile $group.ca -}}
+{{- end -}}
+{{- end -}}
 {{- /* The clock gets no more files: it makes no OpenBao call and signs no
 NATS event (it only sends the messages of the cron actors). */ -}}
 {{- if ne $role "clock" -}}

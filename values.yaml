@@ -363,7 +363,8 @@ redis:
   # digits, . _ -).
   masterName: ows
   # -- The ACL users of the processes: one user for each wallet process kind
-  # and one for the gateway. username: the ACL user. passwordSecret,
+  # and one for the gateway (the bundled Valkey keeps the names default,
+  # replication, sentinel, probe and metrics for itself). username: the ACL user. passwordSecret,
   # passwordKey: an existing Secret with its password (letters, digits and
   # . _ ~ + / = -). Empty passwordSecret: bundled: the Secret
   # <fullname>-redis-users of the chart (key: the values key, for example
@@ -408,6 +409,49 @@ redis:
     # the Sentinels. Empty: the system CAs. The certificates must name the
     # hosts that the clients connect to (the Sentinels, and the primary
     # that the Sentinels give).
+    caSecret: ""
+    caKey: ca.crt
+  # Separate groups of your own Valkey or Redis for the single-use values
+  # of the wallet (state: the nonces and the proof ids) and for its caches
+  # (cache). Not enabled (default): the group of redis.mode (the queue)
+  # keeps them. A group has the requirements of redis.external; a cache
+  # group can evict keys (maxmemory-policy allkeys-lru) and needs no AOF
+  # and no replica (docs/redis.md). The wallet processes log in with their
+  # ACL users of redis.users and the same passwords.
+  state:
+    # -- true: the wallet keeps its single-use values on this group.
+    enabled: false
+    # -- The Sentinels of the group (host:port; an IPv6 address in
+    # brackets). They monitor the primary state.masterName.
+    sentinels: []
+    # -- Without Sentinel: the address (host:port) of the primary. Set
+    # sentinels or address.
+    address: ""
+    # -- The name of the primary that the Sentinels of the group monitor
+    # (1 to 64 letters, digits, . _ -). Required with sentinels.
+    masterName: ""
+    # -- true: the processes log in to the Sentinels with their ACL user.
+    sentinelAuth: true
+    # -- Existing Secret with the CA certificate (PEM) of the group. Empty:
+    # the system CAs.
+    caSecret: ""
+    caKey: ca.crt
+  cache:
+    # -- true: the wallet keeps its caches on this group.
+    enabled: false
+    # -- The Sentinels of the group (host:port; an IPv6 address in
+    # brackets). They monitor the primary cache.masterName.
+    sentinels: []
+    # -- Without Sentinel: the address (host:port) of the primary. Set
+    # sentinels or address.
+    address: ""
+    # -- The name of the primary that the Sentinels of the group monitor
+    # (1 to 64 letters, digits, . _ -). Required with sentinels.
+    masterName: ""
+    # -- true: the processes log in to the Sentinels with their ACL user.
+    sentinelAuth: true
+    # -- Existing Secret with the CA certificate (PEM) of the group. Empty:
+    # the system CAs.
     caSecret: ""
     caKey: ca.crt
   # The bundled Valkey (mode bundled). Settings: AOF everysec, noeviction,
@@ -457,6 +501,33 @@ redis:
       memory: 256Mi
     limits:
       memory: 1Gi
+  metrics:
+    # -- true: each Valkey pod gets the container metrics, the Prometheus
+    # exporter of its data server (port 9121, /metrics). It logs in with
+    # the ACL user metrics, which reads only INFO and the lengths of the
+    # slow log and of the latency events, never a key and never the
+    # configuration (docs/redis.md#metrics).
+    enabled: false
+    image:
+      registry: docker.io
+      repository: oliver006/redis_exporter
+      tag: v1.94.0
+      # -- The digest of the tag. With a digest, the image reference is
+      # <repository>@<digest> (your mirror keeps it).
+      digest: sha256:0842ef7110e62b40bbde2d5c11f38c6fbd99f7100c75e3866637c1b335a1eff7
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        memory: 128Mi
+    # -- The ServiceMonitor <fullname>-redis-metrics of the Prometheus
+    # Operator (its CRD must exist) and a headless Service of the
+    # exporters. Needs redis.metrics.enabled.
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      labels: {}
   # -- The image runs as the user 999 (valkey) and the group 1000.
   # fsGroup: the group of the data volume and of the secret files (mode
   # 0440).

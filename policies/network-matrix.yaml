@@ -25,7 +25,7 @@ roles:
   db: {ports: {database: 5432}}          # the port of database.engine (5432)
   nats: {ports: {client: 4222, cluster: 6222, monitor: 8222}}
   openbao: {ports: {https: 8200, cluster: 8201}}   # the bundled OpenBao (openbao.mode bundled)
-  redis: {ports: {redis: 6379, sentinel: 26379}}   # the bundled Valkey (redis.mode bundled): a data server and a Sentinel in each pod
+  redis: {ports: {redis: 6379, sentinel: 26379, metrics: 9121}}   # the bundled Valkey (redis.mode bundled): a data server and a Sentinel in each pod, and the exporter (redis.metrics)
   job: {ports: {}}                        # every Job and hook
 
 # Sources outside the roles: their selectors are platform values
@@ -58,6 +58,7 @@ connections:
   - {to: redis, port: redis, from: [gateway, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, redis]}
   - {to: redis, port: sentinel, from: [gateway, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, redis]}
   # the metrics of the workers and of the clock (the ServiceMonitor)
+  - {to: redis, port: metrics, from: [monitoring]}
   - {to: wallet-worker, port: health, from: [monitoring]}
   - {to: wallet-clock, port: health, from: [monitoring]}
 

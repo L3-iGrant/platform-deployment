@@ -5,7 +5,7 @@
 {{- range $key := include "ow.redis.processUsers" . | splitList "," }}
 {{- $users = append $users (merge (dict "path" $key) (include "ow.redis.user" (list $ $key) | fromJson)) }}
 {{- end }}
-{{- range $user := list "replication" "sentinel" "probe" }}
+{{- range $user := include "ow.redis.serverUsers" . | splitList "," }}
 {{- $users = append $users (dict "path" $user "secret" (include "ow.redis.usersSecretName" $) "key" $user) }}
 {{- end }}
 {{- $env := list
@@ -135,6 +135,48 @@ spec:
             failureThreshold: 6
           volumeMounts:
             {{- toYaml $mounts | nindent 12 }}
+        {{- if $r.metrics.enabled }}
+        # The Prometheus exporter of the data server of the pod
+        # (redis.metrics). It logs in with the ACL user metrics, over TLS to
+        # 127.0.0.1 (a name of the certificate).
+        - name: metrics
+          image: {{ include "ow.image" (list . $r.metrics.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $r.metrics.image) }}
+          args:
+            - --redis.addr=rediss://127.0.0.1:6379
+            - --redis.user=metrics
+            - --tls-ca-cert-file=/etc/valkey-metrics/ca.crt
+            - --web.listen-address=:9121
+            # No CONFIG GET: the user metrics cannot read the configuration.
+            - --config-command=-
+          env:
+            # The exporter reads a password only from an environment
+            # variable or from a JSON file.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "ow.redis.usersSecretName" . }}
+                  key: metrics
+          ports:
+            - name: metrics
+              containerPort: 9121
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          {{- include "ow.containerSecurityContext" (list . $r) | nindent 10 }}
+          {{- with $r.metrics.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: metrics-ca
+              mountPath: /etc/valkey-metrics
+              readOnly: true
+        {{- end }}
       volumes:
         - name: config
           configMap:
@@ -150,6 +192,16 @@ spec:
                 path: tls.key
               - key: ca.crt
                 path: ca.crt
+        {{- if $r.metrics.enabled }}
+        # Only the CA of the TLS Secret for the exporter.
+        - name: metrics-ca
+          secret:
+            secretName: {{ include "ow.redis.tlsSecretName" . }}
+            defaultMode: 0440
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
         # One password file for each ACL user (the file name is the user
         # key of the templates: {password:<key>}, {hash:<key>}).
         - name: users

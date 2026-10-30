@@ -70,6 +70,16 @@ probe (the probes), with the passwords of the Secret of the chart.
 walletService,walletConfig,walletWorker,walletClock,walletScheduler,gateway
 {{- end }}
 
+{{/*
+The users of the bundled Valkey itself: replication (the replicas),
+sentinel (the Sentinels), probe (the probes) and, with redis.metrics, metrics
+(the exporter of each pod). Their passwords are in the Secret of the chart
+<fullname>-redis-users (key: the user name).
+*/}}
+{{- define "ow.redis.serverUsers" -}}
+replication,sentinel,probe{{- if .Values.redis.metrics.enabled -}},metrics{{- end -}}
+{{- end }}
+
 {{/* The values key of the ACL user of one wallet role (service, config, worker, clock, scheduler). */}}
 {{- define "ow.wallet.redisUser" -}}
 {{- get (dict "service" "walletService" "config" "walletConfig" "worker" "walletWorker" "clock" "walletClock" "scheduler" "walletScheduler") . -}}
@@ -83,7 +93,9 @@ connection commands without the dangerous ones, and INFO (the server check
 of the wallet) and KEYS (the Dramatiq broker script) again. The gateway:
 its key namespace gw:*. The discovery: the commands of the clients on the
 Sentinels. replication, sentinel: the commands of the replicas and of the
-Sentinels on the data servers. sentinelPeer: the commands of a Sentinel on
+Sentinels on the data servers. metrics: the commands of the exporter of a
+pod (redis.metrics): INFO, the lengths of the slow log and the latency
+events, and its client name; no key and no CONFIG. sentinelPeer: the commands of a Sentinel on
 the other Sentinels, and the start and stop scripts of the pods. probe: the
 probes. Output: JSON.
 */}}
@@ -96,6 +108,7 @@ probes. Output: JSON.
   "sentinel" "allchannels -@all +multi +slaveof +replicaof +ping +exec +subscribe +config|rewrite +role +publish +info +client|setname +client|kill +script|kill"
   "sentinelPeer" "resetchannels &__sentinel__:hello -@all +auth +ping +publish +client|setname +sentinel|is-master-down-by-addr +sentinel|get-master-addr-by-name +sentinel|failover"
   "probe" "-@all +ping +info"
+  "metrics" "-@all +info +client|setname +slowlog|len +latency|latest +latency|histogram"
   "probeSentinel" "-@all +ping") -}}
 {{- end }}
 
@@ -134,46 +147,75 @@ Secret of the chart <fullname>-redis-users (key: the values key).
 {{- end }}
 
 {{/*
+The Valkey groups of the wallet: queue (the group of redis.mode: the work
+queue, and also the single-use values and the caches without a group of
+their own), and the enabled groups state and cache (redis.state,
+redis.cache: your own Valkey or Redis). Output: JSON name -> {sentinels,
+address, masterName, sentinelAuth, ca ({secret, key} or {}), caFile (the
+file of the CA in ow.wallet.secretDir, or "")}.
+*/}}
+{{- define "ow.redis.groups" -}}
+{{- $r := .Values.redis -}}
+{{- $ca := include "ow.redis.ca" . | fromJson -}}
+{{- $queue := dict "masterName" $r.masterName "ca" $ca "caFile" (ternary "redis-ca.crt" "" (not (empty $ca.secret))) -}}
+{{- if include "ow.redis.bundled" . -}}
+{{- $sentinels := list -}}
+{{- range $host := include "ow.redis.podHosts" . | fromJsonArray -}}
+{{- $sentinels = append $sentinels (printf "%s:26379" $host) -}}
+{{- end -}}
+{{- $queue = merge $queue (dict "sentinels" $sentinels "address" "" "sentinelAuth" true) -}}
+{{- else -}}
+{{- $queue = merge $queue (dict "sentinels" ($r.external.sentinels | default list) "address" ($r.external.address | default "") "sentinelAuth" $r.external.sentinelAuth) -}}
+{{- end -}}
+{{- $groups := dict "queue" $queue -}}
+{{- range $name := list "state" "cache" -}}
+{{- $g := index $r $name -}}
+{{- if $g.enabled -}}
+{{- $groupCa := dict -}}
+{{- if $g.caSecret -}}{{- $groupCa = dict "secret" $g.caSecret "key" ($g.caKey | default "ca.crt") -}}{{- end -}}
+{{- $_ := set $groups $name (dict "sentinels" ($g.sentinels | default list) "address" ($g.address | default "") "masterName" $g.masterName "sentinelAuth" $g.sentinelAuth "ca" $groupCa "caFile" (ternary (printf "redis-%s-ca.crt" $name) "" (not (empty $g.caSecret)))) -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $groups -}}
+{{- end }}
+
+{{/*
 The redis section of one wallet role (the keys of the wallet settings,
-docs/redis.md). One endpoint (queue): the wallet uses it also for the
-single-use values (state) and the caches (cache). The password and the CA
-are files in ow.wallet.secretDir (ow.wallet.secretFiles). Call with (list $
-"<role>"). Output: JSON.
+docs/redis.md): one endpoint for each group of ow.redis.groups. Without a
+group state or cache, the wallet uses the endpoint queue for them. The
+role logs in to each group with its ACL user and the same password. The
+password and the CA files are in ow.wallet.secretDir
+(ow.wallet.secretFiles). Call with (list $ "<role>"). Output: JSON.
 */}}
 {{- define "ow.wallet.redis" -}}
 {{- $root := index . 0 -}}
 {{- $r := $root.Values.redis -}}
 {{- $dir := include "ow.wallet.secretDir" $root -}}
 {{- $user := include "ow.redis.user" (list $root (include "ow.wallet.redisUser" (index . 1))) | fromJson -}}
+{{- $section := dict "replica_wait_milliseconds" ($r.client.replicaWaitMilliseconds | int) -}}
+{{- range $name, $group := include "ow.redis.groups" $root | fromJson -}}
 {{- $endpoint := dict
     "username" $user.username
     "password_file" (printf "%s/redis-password" $dir)
     "tls" true
     "connect_timeout_seconds" $r.client.connectTimeoutSeconds
     "timeout_seconds" $r.client.timeoutSeconds -}}
-{{- if include "ow.redis.bundled" $root -}}
-{{- $sentinels := list -}}
-{{- range $host := include "ow.redis.podHosts" $root | fromJsonArray -}}
-{{- $sentinels = append $sentinels (printf "%s:26379" $host) -}}
-{{- end -}}
-{{- $_ := set $endpoint "sentinels" $sentinels -}}
-{{- $_ := set $endpoint "master_name" $r.masterName -}}
-{{- $_ := set $endpoint "sentinel_username" $user.username -}}
-{{- $_ := set $endpoint "sentinel_password_file" (printf "%s/redis-password" $dir) -}}
-{{- else if $r.external.sentinels -}}
-{{- $_ := set $endpoint "sentinels" $r.external.sentinels -}}
-{{- $_ := set $endpoint "master_name" $r.masterName -}}
-{{- if $r.external.sentinelAuth -}}
+{{- if $group.sentinels -}}
+{{- $_ := set $endpoint "sentinels" $group.sentinels -}}
+{{- $_ := set $endpoint "master_name" $group.masterName -}}
+{{- if $group.sentinelAuth -}}
 {{- $_ := set $endpoint "sentinel_username" $user.username -}}
 {{- $_ := set $endpoint "sentinel_password_file" (printf "%s/redis-password" $dir) -}}
 {{- end -}}
 {{- else -}}
-{{- $_ := set $endpoint "address" $r.external.address -}}
+{{- $_ := set $endpoint "address" $group.address -}}
 {{- end -}}
-{{- if (include "ow.redis.ca" $root | fromJson).secret -}}
-{{- $_ := set $endpoint "ca_file" (printf "%s/redis-ca.crt" $dir) -}}
+{{- with $group.caFile -}}
+{{- $_ := set $endpoint "ca_file" (printf "%s/%s" $dir .) -}}
 {{- end -}}
-{{- toJson (dict "queue" $endpoint "replica_wait_milliseconds" ($r.client.replicaWaitMilliseconds | int)) -}}
+{{- $_ := set $section $name $endpoint -}}
+{{- end -}}
+{{- toJson $section -}}
 {{- end }}
 
 {{/*
@@ -210,8 +252,8 @@ characters. Output: nothing.
 {{- if has $user.username $names -}}
 {{- fail (printf "redis.users.%s.username %q is the user of another process: each process kind has its own ACL user" $key $user.username) -}}
 {{- end -}}
-{{- if and $bundled (has $user.username (list "default" "replication" "sentinel" "probe")) -}}
-{{- fail (printf "redis.users.%s.username %q is a user of the bundled Valkey itself (default, replication, sentinel, probe): choose another name" $key $user.username) -}}
+{{- if and $bundled (has $user.username (list "default" "replication" "sentinel" "probe" "metrics")) -}}
+{{- fail (printf "redis.users.%s.username %q is a user of the bundled Valkey itself (default, replication, sentinel, probe, metrics): choose another name" $key $user.username) -}}
 {{- end -}}
 {{- $names = append $names $user.username -}}
 {{- end -}}
@@ -226,6 +268,9 @@ characters. Output: nothing.
 {{- end -}}
 {{- if not (regexMatch "^[1-9][0-9]*([kKmMgG][bB]?)?$" ($r.maxmemory | toString)) -}}
 {{- fail (printf "redis.maxmemory %q is not a size: a number with an optional unit kb, mb or gb (for example 512mb)" ($r.maxmemory | toString)) -}}
+{{- end -}}
+{{- if and $r.metrics.serviceMonitor.enabled (not $r.metrics.enabled) -}}
+{{- fail "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled: the ServiceMonitor scrapes the exporters of the pods" -}}
 {{- end -}}
 {{- else if include "ow.redis.enabled" . -}}
 {{- $external := $r.external -}}
@@ -242,6 +287,35 @@ characters. Output: nothing.
 {{- end -}}
 {{- if and $v.networkPolicy.enabled (not $v.networkPolicy.externalRedis) -}}
 {{- fail "networkPolicy.externalRedis needs the addresses of your Valkey or Redis (cidrs, and ports such as [6379, 26379]) when networkPolicy.enabled and redis.mode external: else the default deny blocks it" -}}
+{{- end -}}
+{{- if or $r.metrics.enabled $r.metrics.serviceMonitor.enabled -}}
+{{- fail "redis.metrics is for the bundled Valkey (redis.mode bundled): monitor your own Valkey or Redis with your own exporter" -}}
+{{- end -}}
+{{- end -}}
+{{- /* The separate groups of the wallet (redis.state, redis.cache). */ -}}
+{{- if $v.organisationWallet.enabled -}}
+{{- range $name := list "state" "cache" -}}
+{{- $g := index $r $name -}}
+{{- if $g.enabled -}}
+{{- $key := printf "redis.%s" $name -}}
+{{- if and (not $g.sentinels) (not $g.address) -}}
+{{- fail (printf "%s.sentinels or %s.address is required with %s.enabled: the Sentinels (host:port) of the group, or the address of its primary" $key $key $key) -}}
+{{- end -}}
+{{- if and $g.sentinels $g.address -}}
+{{- fail (printf "set %s.sentinels or %s.address, not both" $key $key) -}}
+{{- end -}}
+{{- range $entry := concat ($g.sentinels | default list) (ternary (list $g.address) list (not (empty $g.address))) -}}
+{{- if not (regexMatch "^(\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9.-]+):([1-9][0-9]{0,4})$" $entry) -}}
+{{- fail (printf "%s: %q is not host:port (an IPv6 address in brackets)" $key $entry) -}}
+{{- end -}}
+{{- end -}}
+{{- if and $g.sentinels (not (regexMatch "^[A-Za-z0-9._-]{1,64}$" ($g.masterName | default ""))) -}}
+{{- fail (printf "%s.masterName %q is not a name: the name of the primary that the Sentinels of the group monitor (1 to 64 letters, digits, . _ -)" $key ($g.masterName | default "")) -}}
+{{- end -}}
+{{- if and $v.networkPolicy.enabled (not $v.networkPolicy.externalRedis) -}}
+{{- fail (printf "networkPolicy.externalRedis needs the addresses of the group %s (cidrs, and ports such as [6379, 26379]) when networkPolicy.enabled and %s.enabled: else the default deny blocks it" $key $key) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -299,6 +373,9 @@ user {{ (index $.Values.redis.users $key).username }} on {hash:{{ $key }}} {{ te
 user replication on {hash:replication} {{ $rights.replication }}
 user sentinel on {hash:sentinel} {{ $rights.sentinel }}
 user probe on {hash:probe} {{ $rights.probe }}
+{{- if .Values.redis.metrics.enabled }}
+user metrics on {hash:metrics} {{ $rights.metrics }}
+{{- end }}
 {{- end }}
 
 {{/*

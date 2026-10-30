@@ -14,8 +14,8 @@
 #    settings (AOF, noeviction, min-replicas-to-write); the files with the
 #    passwords have the mode 600 and no field is left.
 # 2. The ACL users: the rights of the wallet (also the key ows-wallet of the
-#    broker script), of the gateway and of the probe; no login without a
-#    user.
+#    broker script), of the gateway, of the exporter (metrics) and of the
+#    probe; no login without a user.
 # 3. A planned stop of the primary (prestop.sh): a replica becomes the
 #    primary, and a new pod 0 joins as a replica.
 # 4. An unplanned stop of the primary (docker pause): the Sentinels promote a
@@ -65,9 +65,10 @@ trap cleanup EXIT
 
 docker image inspect "$image" > /dev/null 2>&1 || { echo "the image $image is not local: the test never pulls" >&2; exit 2; }
 
-# The files of the pods from a render of the chart (release t, namespace ow).
+# The files of the pods from a render of the chart (release t, namespace ow),
+# with the exporter (the ACL user metrics).
 helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
-  -f "$examples/exposure-none.yaml" > "$work/render.yaml"
+  -f "$examples/exposure-none.yaml" --set redis.metrics.enabled=true > "$work/render.yaml"
 python3 - "$work/render.yaml" "$work" <<'PY'
 import base64, os, sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
@@ -189,6 +190,15 @@ wallet "SENTINEL FAILOVER ows" 26379 | grep -q NOPERM && ok "wallet: no SENTINEL
 [ "$(gateway "EXPIRE gw:authfail:x 60 NX")" = 1 ] && ok "gateway: EXPIRE NX" || bad "gateway: EXPIRE NX"
 gateway "SET ows:n:wp:o1:h2 1" | grep -q NOPERM && ok "gateway: no key of the wallet" || bad "gateway: a key of the wallet"
 gateway "SENTINEL get-master-addr-by-name ows" 26379 | grep -q "^$primary$" && ok "gateway: the Sentinel gives the primary" || bad "gateway: Sentinel discovery"
+metrics() { as_user 2 metrics metrics "$primary" 6379 "$1"; }
+metrics "INFO ALL" | grep -q -E "^(redis|valkey)_version" && ok "metrics: INFO ALL (the exporter)" || bad "metrics: INFO ALL"
+metrics "SLOWLOG LEN" | grep -q -E "^[0-9]+$" && ok "metrics: SLOWLOG LEN" || bad "metrics: SLOWLOG LEN"
+for command in "LATENCY LATEST" "LATENCY HISTOGRAM SET" "CLIENT SETNAME redis_exporter"; do
+  metrics "$command" | grep -q -E "NOPERM|ERR" && bad "metrics: $command" || ok "metrics: $command"
+done
+for command in "GET ows:test:persist" "CONFIG GET maxmemory" "SLOWLOG GET 1" "CLIENT LIST" "KEYS ows:x"; do
+  metrics "$command" | grep -q NOPERM && ok "metrics: no $command" || bad "metrics: $command"
+done
 q 2 "cli $primary 6379 probe GET ows:test:persist" | grep -q NOPERM && ok "probe: no GET" || bad "probe: GET"
 q 2 "REDISCLI_AUTH=x valkey-cli --tls --cacert /etc/valkey-tls/ca.crt -h $primary -p 6379 -t 2 PING" | grep -q -E "NOAUTH|WRONGPASS|AUTH" \
   && ok "default: no login without a user" || bad "default: a login without a user"
