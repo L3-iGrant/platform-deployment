@@ -23,10 +23,11 @@ The objects of the bundled Valkey (`redis.mode: bundled`, see [Redis](redis.md))
 
 | Object | Function |
 | --- | --- |
-| `<release>-redis` (StatefulSet, ConfigMap) | The pods (in each pod the containers `valkey` and `sentinel`), the templates of the configuration files and the scripts of the pods: the start of the data server and of the Sentinel, the probes, and the failover before the primary stops |
+| `<release>-redis` (StatefulSet, ConfigMap) | The pods (in each pod the containers `valkey` and `sentinel`, and `metrics` with `redis.metrics.enabled`), the templates of the configuration files and the scripts of the pods: the start of the data server and of the Sentinel, the probes, and the failover before the primary stops |
 | `<release>-redis-headless` (Service) | The pod DNS names (ports 6379 and 26379), also before the pods are ready |
 | `<release>-redis-sentinel` (Service) | The Sentinels of the ready pods (port 26379) |
-| `<release>-redis-users` (Secret) | The passwords of the ACL users (random, kept across upgrades): the users of the processes without their own Secret, and `replication`, `sentinel` and `probe` |
+| `<release>-redis-users` (Secret) | The passwords of the ACL users (random, kept across upgrades): the users of the processes without their own Secret, and `replication`, `sentinel`, `probe` and (with `redis.metrics.enabled`) `metrics` |
+| `<release>-redis-metrics` (Service, ServiceMonitor) | Only with `redis.metrics.serviceMonitor.enabled`: the exporters of the pods (port 9121, also before the pods are ready) and the scrape of `/metrics` |
 | `<release>-redis-tls` (Secret) | The CA and the certificate of the servers and the Sentinels (10 years). To use your own certificate, set `redis.tls.existingSecret`. |
 | `data-<release>-redis-<n>` (PersistentVolumeClaim) | The data of each pod (the AOF files) |
 

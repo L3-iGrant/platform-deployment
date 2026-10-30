@@ -18,6 +18,7 @@ The images of iGrant.io come from the registry of iGrant.io (`global.imageRegist
 | `nats.image` | `docker.io/library/nats` | `2.12.3-alpine` | `nats.enabled` |
 | `nats.reloader.image` | `docker.io/natsio/nats-server-config-reloader` | `0.21.1` | `nats.reloader.enabled` |
 | `redis.image` | `docker.io/valkey/valkey` | `8.1.10-alpine`, with its digest | `redis.mode: bundled` |
+| `redis.metrics.image` | `docker.io/oliver006/redis_exporter` | `v1.94.0`, with its digest | `redis.metrics.enabled` |
 
 With your own mirror:
 
@@ -29,5 +30,5 @@ With your own mirror:
    ```
 
    Keep the licence text of each image of another project with the image (see [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md)).
-2. Set `global.imageRegistry` for the images of iGrant.io, and `<values key>.registry` for each image of another project (for example `redis.image.registry: registry.example.org`). The image `redis.image` has a digest: the chart uses `<repository>@<digest>`, so the copy must keep the digest (`skopeo copy --all` copies the image index as it is).
+2. Set `global.imageRegistry` for the images of iGrant.io, and `<values key>.registry` for each image of another project (for example `redis.image.registry: registry.example.org`). The images `redis.image` and `redis.metrics.image` have a digest: the chart uses `<repository>@<digest>`, so the copy must keep the digest (`skopeo copy --all` copies the image index as it is).
 3. Set `global.imagePullSecrets` for your registry.

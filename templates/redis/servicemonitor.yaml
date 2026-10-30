@@ -1,0 +1,44 @@
+{{- /*
+The ServiceMonitor of the exporters of the bundled Valkey
+(redis.metrics.serviceMonitor; the CRD of the Prometheus Operator must
+exist; docs/redis.md#metrics). A headless Service gives the pods as the
+targets, also the pods that are not ready.
+*/}}
+{{- if and (include "ow.redis.bundled" .) .Values.redis.metrics.enabled .Values.redis.metrics.serviceMonitor.enabled }}
+{{- $m := .Values.redis.metrics }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.name" (list . "redis-metrics") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "redis-metrics") | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: metrics
+      port: 9121
+      targetPort: metrics
+  selector:
+    {{- include "ow.selectorLabels" (list . "redis") | nindent 4 }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ow.name" (list . "redis-metrics") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "redis-metrics") | nindent 4 }}
+    {{- with $m.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . "redis-metrics") | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ $m.serviceMonitor.interval }}
+{{- end }}
