@@ -85,9 +85,11 @@ find_primary() {
 # password), {hash:<user>} ("#" and the SHA-256 of the password, the ACL
 # file syntax), {self} (the DNS name of this pod) and {primary} (the DNS
 # name of the primary). A password has only letters, digits and . _ ~ + /
-# = -, so that it is safe in the configuration files.
+# = -, so that it is safe in the configuration files. The sed script of a
+# render has the name of its output: the data server and the Sentinel of a
+# pod share run_dir and can render at the same time.
 render() {
-  _script="$run_dir/render.sed"
+  _script="$2.sed"
   : > "$_script"
   for _file in "$users_dir"/*; do
     _user=${_file##*/}
