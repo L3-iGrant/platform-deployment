@@ -224,6 +224,9 @@ the read-only users of the wallet (read_access, the shape of database). */ -}}
     "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) | fromJson) -}}
 {{- end -}}
 {{- $_ := set $config "read_access" $readAccess -}}
+{{- /* The life of a stored command reply: the same in every config pod
+(each sets the time to live of the reply bucket at its start). */ -}}
+{{- $_ := set $config.nats "command_reply_seconds" ($w.nats.commandReplySeconds | int) -}}
 {{- /* The server-sent event streams of the config routes: the
 notifications stream and its replay, the presentation-status stream. The
 keep-alive must stay well below the SSE idle cut of the gateway, else the

@@ -599,6 +599,11 @@ renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --s
 lacks "external NATS: no TLS Secret of the chart" "t-nats-tls" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
 lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]}"
 
+# The life of a stored command reply (organisationWallet.nats.commandReplySeconds):
+# only in the file of the config role.
+renders "command reply life of the config role" "command_reply_seconds: 900" "${shamir[@]}" --set organisationWallet.nats.commandReplySeconds=900
+guard "command reply life" "organisationWallet.nats.commandReplySeconds" "${shamir[@]}" --set organisationWallet.nats.commandReplySeconds=119
+
 # The pools of the wallet and of the readers of the api (database.pools).
 guard "wallet pool size" "database.pools.walletService.poolSize" "${shamir[@]}" --set database.pools.walletService.poolSize=0
 guard "worker pool overflow" "database.pools.walletWorker.maxOverflow" "${shamir[@]}" --set database.pools.walletWorker.maxOverflow=-1
