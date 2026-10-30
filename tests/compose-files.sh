@@ -11,6 +11,13 @@
 #   - the DDL and connection logs of the database server, and
 #     database-init sets the passwords with psql \password (no password in
 #     a statement, so the DDL log does not show one);
+#   - Valkey: the services valkey, valkey-replica and valkey-sentinel (the
+#     image, the start script, the order, the healthchecks with the user
+#     probe, the tmpfs, the password files), the settings of the templates
+#     of config/valkey/, the ACL users and their rights, the passwords of
+#     make secrets, and the redis section and the password file of each
+#     wallet role and of the gateway (tests/compose-valkey.sh runs the
+#     services against a real server);
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -386,11 +393,114 @@ PY
     done
   fi
 
+  # Valkey: the three services, the templates of config/valkey/, the ACL
+  # users of make secrets and the redis section of each wallet role.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local output project_file
+    if ! json="$(docker compose config --format json 2>&1)"; then
+      bad "Valkey: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" "$(sed -n 's/^VALKEY_IMAGE=//p' .env.example)" 2>&1 <<'PY'
+import json
+import re
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+image = sys.argv[2]
+services = project["services"]
+problems = []
+users = ["wallet-config", "wallet-service", "wallet-scheduler", "gateway", "replication", "sentinel", "probe"]
+wallet_rights = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
+gateway_rights = "resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous"
+order = {"valkey": (None, "primary"), "valkey-replica": ("valkey", "replica"), "valkey-sentinel": ("valkey-replica", "sentinel")}
+for name, (before, role) in order.items():
+    service = services.get(name)
+    if service is None:
+        problems.append(f"no service {name}")
+        continue
+    if service.get("image") != image:
+        problems.append(f"{name}: image {service.get('image')!r}, not VALKEY_IMAGE of .env.example")
+    if service.get("user") != "valkey" or service.get("entrypoint") != ["/bin/sh", "/etc/valkey/start.sh"] or service.get("command") != [role]:
+        problems.append(f"{name}: not start.sh {role} as the user valkey")
+    if before and (service.get("depends_on") or {}).get(before, {}).get("condition") != "service_healthy":
+        problems.append(f"{name} does not wait for {before} (service_healthy)")
+    if "--user probe" not in " ".join(service.get("healthcheck", {}).get("test", [])):
+        problems.append(f"{name}: the healthcheck does not log in as probe")
+    if not any(t.startswith("/run/valkey:") for t in service.get("tmpfs", [])):
+        problems.append(f"{name}: /run/valkey is not a tmpfs")
+    mounted = {s["target"]: project["secrets"][s["source"]]["file"] for s in service.get("secrets", [])}
+    for user in users:
+        if not mounted.get(f"/run/secrets/valkey/{user}", "").endswith(f"/secrets/valkey/{user}-password"):
+            problems.append(f"{name}: no password file of {user}")
+    targets = {c["target"]: project["configs"][c["source"]]["file"] for c in service.get("configs", [])}
+    for target in ("start.sh", "valkey.conf", "users.acl", "sentinel.conf"):
+        if not targets.get(f"/etc/valkey/{target}", "").endswith(f"/config/valkey/{target}"):
+            problems.append(f"{name}: no /etc/valkey/{target}")
+for name in ("valkey", "valkey-replica"):
+    if not any(v.get("target") == "/data" for v in services.get(name, {}).get("volumes", [])):
+        problems.append(f"{name}: no volume at /data")
+server = open("config/valkey/valkey.conf", encoding="utf-8").read().splitlines()
+for setting in ("appendonly yes", "appendfsync everysec", "maxmemory-policy noeviction", "min-replicas-to-write 1",
+                "min-replicas-max-lag 10", "masteruser replication", "masterauth {password:replication}",
+                "aclfile /run/valkey/users.acl", "replica-announce-ip {self}"):
+    if setting not in server:
+        problems.append(f"valkey.conf has not {setting!r}")
+acl = open("config/valkey/users.acl", encoding="utf-8").read().splitlines()
+expected_acl = ["user default off"] + [f"user {u} on {{hash:{u}}} {wallet_rights}" for u in users[:3]] + [f"user gateway on {{hash:gateway}} {gateway_rights}"]
+for line in expected_acl:
+    if line not in acl:
+        problems.append(f"users.acl has not {line!r}")
+if sorted(re.findall(r"^user (\S+)", "\n".join(acl), re.M)) != sorted(["default"] + users):
+    problems.append("users.acl has other users than default and the users of make secrets")
+sentinel = open("config/valkey/sentinel.conf", encoding="utf-8").read().splitlines()
+for setting in ("sentinel monitor ows {primary} 6379 1", "sentinel resolve-hostnames yes", "sentinel announce-hostnames yes",
+                "sentinel auth-user ows sentinel", "user default off"):
+    if setting not in sentinel:
+        problems.append(f"sentinel.conf has not {setting!r}")
+made = re.search(r"for name in ([a-z -]+); do\n  password \"valkey/", open("secrets.sh", encoding="utf-8").read())
+if not made or sorted(made.group(1).split()) != sorted(users):
+    problems.append("make secrets does not make the password of each Valkey user")
+for role in ("config", "service", "scheduler"):
+    user = f"wallet-{role}"
+    redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"]).get("redis")
+    expected = {"queue": {"sentinels": ["valkey-sentinel:26379"], "master_name": "ows", "username": user,
+                          "password_file": "/run/secrets/eudi-wallet/redis-password", "sentinel_username": user,
+                          "sentinel_password_file": "/run/secrets/eudi-wallet/redis-password", "tls": False}}
+    if redis != expected:
+        problems.append(f"wallet-{role}: redis {redis!r}")
+    mounted = {s["target"]: s["source"] for s in services[f"wallet-{role}"].get("secrets", [])}
+    if mounted.get("/run/secrets/eudi-wallet/redis-password") != f"valkey-{user}-password":
+        problems.append(f"wallet-{role} does not mount the password of {user}")
+mounted = {s["target"]: s["source"] for s in services["gateway"].get("secrets", [])}
+if mounted.get("/run/secrets/igrant-gateway/redis-password") != "valkey-gateway-password":
+    problems.append("the gateway does not mount the password of its Valkey user")
+if "redis" in project["configs"]["gateway-config"]["content"].lower():
+    problems.append("the gateway configuration has a Valkey key (the gateway refuses an unknown key)")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print("the services, the templates, the ACL users and the redis section of each wallet role")
+PY
+)"; then
+        ok "Valkey: $output"
+      else
+        bad "Valkey: $output"
+      fi
+      rm -f "$project_file"
+    fi
+  fi
+
   local script
   for script in secrets.sh check.sh config/database/create-databases.sh; do
     if bash -n "$script"; then ok "bash -n $script"; else bad "bash -n $script"; fi
   done
   if sh -n config/openbao/bootstrap.sh; then ok "sh -n config/openbao/bootstrap.sh"; else bad "sh -n config/openbao/bootstrap.sh"; fi
+  if sh -n config/valkey/start.sh; then ok "sh -n config/valkey/start.sh"; else bad "sh -n config/valkey/start.sh"; fi
 
   if command -v nats-server > /dev/null; then
     local dir

@@ -19,4 +19,16 @@ This page describes the tests of the chart. They run without a cluster.
 tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/renders
 ```
 
-`tests/compose-files.sh` checks the files of `docker-compose/` without a container: `docker compose config` for the engine, the configuration files of the components, the DDL and connection logs of the database server, the passwords of `database-init` (psql `\password`), the scripts, the NATS configuration, the same text rules and the relative links of its README.
+`tests/compose-files.sh` checks the files of `docker-compose/` without a container: `docker compose config` for the engine, the configuration files of the components, the DDL and connection logs of the database server, the passwords of `database-init` (psql `\password`), the scripts, the NATS configuration, the Valkey services with their templates and ACL users and the `redis` section of each wallet file, the same text rules and the relative links of its README.
+
+Two tests run Valkey against a real server, in containers of a local image (they never pull; the containers have unique names, and the scripts remove them at the end). They take the image as an argument, for example the image of `redis.image`:
+
+```bash
+tests/valkey-pods.sh valkey/valkey:8.1.10-alpine     # the pods of the bundled Valkey
+tests/compose-valkey.sh valkey/valkey:8.1.10-alpine  # the Valkey services of docker-compose/
+```
+
+- `tests/valkey-pods.sh` renders the chart and runs three containers as the three pods of `<release>-redis`, with the files of the render (the ConfigMap, the TLS Secret, the users Secret) and the pod DNS names: the first start (one primary, the replicas in sync, the Sentinels log in to each other, the settings), the ACL rights of each user, a planned stop of the primary (`prestop.sh`), an unplanned stop, a new start of all Sentinels, and a new start of all pods with the data kept.
+- `tests/compose-valkey.sh` reads the services `valkey`, `valkey-replica` and `valkey-sentinel` from `docker compose config` and runs them with test passwords: the start in the order of `depends_on` with their healthchecks, the ACL rights, the `redis` section of each wallet role, a failover, and a new start of the old primary as a replica.
+
+This repository has no CI workflow: run both scripts before a release (on a shared Docker host, inside your lock of the Docker tests).

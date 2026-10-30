@@ -128,7 +128,7 @@ check_installation() {
   fi
 
   local name
-  for name in IMAGE_REGISTRY PLATFORM_TAG POSTGRES_IMAGE NATS_IMAGE OPENBAO_IMAGE STORAGE_IMAGE; do
+  for name in IMAGE_REGISTRY PLATFORM_TAG POSTGRES_IMAGE NATS_IMAGE OPENBAO_IMAGE STORAGE_IMAGE VALKEY_IMAGE; do
     [ -n "$(setting "$name")" ] || bad "$name is not set"
   done
   local tag

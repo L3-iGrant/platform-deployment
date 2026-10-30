@@ -17,6 +17,7 @@ check: do the next step only when you see the result of the check.
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
 - [Audit log](#audit-log)
+- [Valkey](#valkey)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
 - [Privacy dashboard](#privacy-dashboard)
@@ -36,6 +37,7 @@ check: do the next step only when you see the result of the check.
 | Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
 | NATS (`nats`) | The messages between the components. | none |
 | OpenBao (`openbao`) | Keeps the signing keys of your organisations. | none |
+| Valkey (`valkey`, `valkey-replica`, `valkey-sentinel`) | The work queue, the single-use values and the caches of the wallet: a primary, a replica and a Sentinel. See [Valkey](#valkey). | none |
 | File store (`storage`) | Keeps the PDF documents of the verifier (the uploaded and the signed documents). | none |
 
 Some services run one time at each start and then stop:
@@ -266,7 +268,7 @@ your shell has priority over the value in `.env`.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. Empty `SMTP_HOST`: no e-mail. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the default of the Helm chart). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
 | `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
-| `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE` | see `.env.example` | The images of the dependencies. |
+| `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
 
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
 `igrant_wallet`, each with its own owner user. The wallet keeps its tables
@@ -394,6 +396,45 @@ rows 30 days after their delete, a deleted organisation 30 days and a
 deleted sandbox 7 days after its deactivation, dead letters after 30 days
 (the `retention` settings of the wallet, with their defaults).
 
+## Valkey
+
+The wallet uses Valkey (a Redis-compatible server) for the work queue of
+its background jobs, the short-lived single-use values (the nonces and the
+proof ids that a replay check refuses the second time) and the caches.
+Valkey is never a record: the evidence stays in the database. The
+platform runs it in the same shape as the Helm chart, on one host:
+
+| Service | Function |
+| --- | --- |
+| `valkey` | The data server that is the primary at the first start (volume `valkey-data`). |
+| `valkey-replica` | Its replica (volume `valkey-replica-data`). The primary refuses writes without a replica in sync (`min-replicas-to-write 1`): the wallet accepts a single-use value only when the replica has it. |
+| `valkey-sentinel` | The Sentinel. It gives the primary to the wallet, and it makes the replica the primary when the primary does not answer for 5 seconds. |
+
+The settings of the data servers are those of the chart (AOF `everysec`,
+`maxmemory-policy noeviction`, `maxmemory 256mb`), with one difference: the
+Compose network has no Valkey TLS, as for the other services of this
+folder. The templates are in `config/valkey/`; `config/valkey/start.sh`
+writes the configuration with the passwords to a tmpfs at the start of
+each service, and finds the primary: the one that the Sentinel gives, else
+a data server with the role master, else `valkey`.
+
+Each wallet role and the gateway log in with their own ACL user (no
+`default` user). The passwords are in `secrets/valkey/` (`make secrets`):
+
+| User | Process | Rights |
+| --- | --- | --- |
+| `wallet-config`, `wallet-service`, `wallet-scheduler` | the roles of the wallet | the keys `ows:*`, `ows-wallet` and `ows-wallet:*`; read, write, scripts, `INFO` and `KEYS`; on the Sentinel, the discovery of the primary |
+| `gateway` | the gateway | the keys `gw:*`; read and write |
+| `replication`, `sentinel`, `probe` | the replica, the Sentinel, the healthchecks | the commands of each |
+
+The rights are the rights of the Helm chart (`docs/redis.md` of the chart:
+[Redis](../docs/redis.md#acl-users)). The redis section of each wallet file
+names the Sentinel `valkey-sentinel:26379`, the primary name `ows`, the
+user of the role and its password file.
+
+Check: `docker compose exec valkey-sentinel sh -c 'REDISCLI_AUTH="$(cat /run/secrets/valkey/sentinel)" valkey-cli -p 26379 --user sentinel SENTINEL get-master-addr-by-name ows'`
+shows the primary (`valkey` at the first start) and `6379`.
+
 ## Secrets
 
 `make secrets` writes these files. It keeps a file that exists. To create a
@@ -414,6 +455,7 @@ installation with data, do not delete these files:
 | `secrets/gateway/` | The key that the gateway uses to sign its requests to the other components. |
 | `secrets/consent/`, `secrets/wallet/` | The keys that sign the NATS messages of consent and of the wallet, and their NATS seeds. |
 | `secrets/openbao/` | The seal key of OpenBao, the password of the OpenBao user of the wallet, and `init.json` (created at the first start). |
+| `secrets/valkey/` | The passwords of the ACL users of Valkey (see [Valkey](#valkey)). |
 | `secrets/public/` | The public keys that the components use to verify each other (no secret). |
 
 The folders are `0700`: only your user can open them. The files are
