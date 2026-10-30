@@ -10,6 +10,19 @@ the clock is one Deployment of start-clock.
 realtime,attestation,status,kms,maintenance
 {{- end }}
 
+{{/* The port of the Prometheus metrics of a server pod (server.metrics_port): /metrics only. */}}
+{{- define "ow.wallet.serverMetricsPort" -}}
+9190
+{{- end }}
+
+{{/*
+The folder of the metrics files of the processes of a server pod
+(server.metrics_directory): an emptyDir in memory.
+*/}}
+{{- define "ow.wallet.serverMetricsDir" -}}
+/run/ows-server
+{{- end }}
+
 {{/* The port of the health server of a worker pod (worker.health_port): /healthz, /readyz and /metrics. */}}
 {{- define "ow.wallet.workerHealthPort" -}}
 9191

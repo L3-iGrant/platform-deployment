@@ -204,6 +204,28 @@ def main() -> int:
         get = ((container.get(name) or {}).get("httpGet") or {})
         return get.get("path"), get.get("port")
 
+    # The metrics of the servers (eudi-wallet OBS): server.metrics_port 9190
+    # (/metrics only) and server.metrics_directory on an emptyDir in memory;
+    # the probes stay on the port of the routes.
+    for server_role in ("service", "config"):
+        server_file = (config_map_file(f"{RELEASE}-wallet", f"{server_role}.yaml") or {}).get("server") or {}
+        check((server_file.get("metrics_port"), server_file.get("metrics_directory")) == (9190, "/run/ows-server"),
+              f"wallet {server_role}.yaml has the metrics {server_file.get('metrics_port')!r} {server_file.get('metrics_directory')!r}")
+        server_deploy = find("Deployment", f"{RELEASE}-wallet-{server_role}")
+        if server_deploy:
+            server_pod = server_deploy["spec"]["template"]["spec"]
+            server_container = server_pod["containers"][0]
+            check({"name": "metrics", "containerPort": 9190} in server_container.get("ports", []), f"the {server_role} pods have no port metrics 9190")
+            check({"name": "server-metrics", "mountPath": "/run/ows-server"} in server_container.get("volumeMounts", []),
+                  f"the {server_role} pods do not mount the metrics folder")
+            check({"name": "server-metrics", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}} in server_pod.get("volumes", []),
+                  f"the {server_role} pods have no emptyDir of the metrics folder")
+            check(probe(server_container, "readinessProbe") == ("/readyz", "http"), f"the {server_role} readiness probe is not /readyz of the port http")
+        route_service = find("Service", f"{RELEASE}-wallet-{server_role}")
+        if route_service:
+            check(all(port.get("port") != 9190 and port.get("targetPort") != "metrics" for port in route_service["spec"]["ports"]),
+                  f"the Service of the {server_role} routes has the metrics port")
+
     for name, (queues, replicas, processes, threads, shutdown, grace) in WORKER_GROUPS.items():
         component = f"wallet-worker-{name}"
         deploy = find("Deployment", f"{RELEASE}-{component}")

@@ -182,7 +182,9 @@ state_directory (an emptyDir). */ -}}
     "max_large_request_body_bytes" ($w.server.maxLargeRequestBodyBytes | int64)
     "graceful_shutdown_seconds" ($w.server.gracefulShutdownSeconds | int)
     "background_shutdown_seconds" ($w.server.backgroundShutdownSeconds | int)
-    "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int) -}}
+    "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int)
+    "metrics_port" (include "ow.wallet.serverMetricsPort" $root | int)
+    "metrics_directory" (include "ow.wallet.serverMetricsDir" $root) -}}
 {{- /* The service pods are behind your ingress controller or Gateway. The
 auth gateway calls the config pods directly, so they keep the wallet default
 (127.0.0.1). */ -}}

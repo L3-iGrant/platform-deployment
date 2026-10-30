@@ -104,7 +104,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.{service,config}.replicas` | Replicas of the service and config roles | `1` |
 | `organisationWallet.workers.groups` | The worker groups: name, queues, replicas, processes, threads, `shutdownTimeoutSeconds`, `terminationGracePeriodSeconds`, resources (see [Workers and clock](workers.md)) | `main` (`realtime`, `attestation`, `status`, `kms`), `maintenance` |
 | `organisationWallet.clock.replicas`, `.resources` | The clock (only the leader sends) | `2` |
-| `organisationWallet.serviceMonitor.enabled`, `.interval`, `.labels` | A ServiceMonitor of `/metrics` of the workers and the clock | off |
+| `organisationWallet.serviceMonitor.enabled`, `.interval`, `.labels` | A ServiceMonitor of `/metrics` of the servers (port 9190), the workers and the clock | off, `15s` |
 | `organisationWallet.keyStores.types`, `.providers.*`, `.allowPrivateAddresses` | The key store types and providers that admins may add (see [Key stores](key-stores.md)) | `[vault, csc, gcp-kms, aws-kms, azure-key-vault]` |
 | `enterpriseDashboard.replicas`, `.configuration.*` | The dashboard | `1` |
 
