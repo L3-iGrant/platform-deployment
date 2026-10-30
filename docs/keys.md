@@ -28,5 +28,6 @@ The chart creates these Secrets itself (random values, kept across upgrades):
 | `<release>-api` | `api-secret-key`, and the SMTP and Twilio values when you set them as values |
 | `<release>-openbao-wallet`, `<release>-openbao-tls` | see [OpenBao](openbao.md) |
 | `<release>-redis-users`, `<release>-redis-tls` | the passwords of the ACL users and the certificates of the bundled Valkey; see [Redis](redis.md#acl-users) |
+| `<release>-nats-tls` | `tls.crt`, `tls.key`, `ca.crt` of the bundled NATS; see [NATS users](nats-users.md#tls) |
 
 `helm template` cannot read the cluster, so it shows new random values. A tool that only renders the templates (for example a GitOps tool that renders) makes new values at each render: with such a tool, set the passwords in values or use the `existingSecret` values.

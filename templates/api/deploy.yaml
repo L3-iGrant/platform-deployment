@@ -25,7 +25,7 @@ spec:
       annotations:
         {{- include "ow.checksum" (list "config" (include "ow.api.config" (dict "root" $ "role" $role))) | nindent 8 }}
         {{- include "ow.checksum" (list "secrets" (list (include "ow.api.secretFiles" $) (pick $api "apiSecretKey" "smtp" "twilio") $.Values.database.databases)) | nindent 8 }}
-        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $api.serviceEnvelope (index $.Values.nats.auth.users (include "ow.api.natsUser" $role)) $.Values.nats.tlsCa $.Values.readAccess.api)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $api.serviceEnvelope (index $.Values.nats.auth.users (include "ow.api.natsUser" $role)) (include "ow.nats.ca" $) $.Values.readAccess.api)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list $ $api) | nindent 6 }}
       {{- if and (eq $role "api") $.Values.privacyDashboard.enabled }}

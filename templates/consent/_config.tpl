@@ -57,7 +57,7 @@ own read-only users (ReadAccess; readAccess.consent.*).
     "caFile" (printf "%s/%s" (include "ow.consent.secretDir" $) (include "ow.db.caFileName" $))) | fromJson) -}}
 {{- end -}}
 {{- $_ := set $config "ReadAccess" $readAccess -}}
-{{- with .Values.nats.tlsCa.existingSecret -}}
+{{- if (include "ow.nats.ca" . | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" "/run/secrets/consent/nats-ca.crt" -}}
 {{- end -}}
 {{- mustMergeOverwrite $config (deepCopy ($c.extraConfig | default dict)) | toYaml }}

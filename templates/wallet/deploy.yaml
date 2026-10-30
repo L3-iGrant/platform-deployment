@@ -40,7 +40,7 @@ spec:
       annotations:
         {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" $ "role" $role))) | nindent 8 }}
         {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list $ $role)) $.Values.openbao.wallet $.Values.openbao.external $.Values.database.databases.wallet)) | nindent 8 }}
-        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $w.serviceEnvelope (index $.Values.nats.auth.users (include "ow.wallet.natsUser" $role)) $.Values.nats.tlsCa (ternary $.Values.readAccess.wallet dict (eq $role "config")))) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $w.serviceEnvelope (index $.Values.nats.auth.users (include "ow.wallet.natsUser" $role)) (include "ow.nats.ca" $) (ternary $.Values.readAccess.wallet dict (eq $role "config")))) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
       {{- /* The service and config pods: the stop budget of

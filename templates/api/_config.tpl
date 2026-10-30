@@ -88,7 +88,7 @@ sign with the api key. */ -}}
     "lifetimeSeconds" ($api.serviceEnvelope.lifetimeSeconds | int)
     "clockSkewSeconds" ($api.serviceEnvelope.clockSkewSeconds | int)
     "trustedIssuers" (include "ow.serviceKeys.trusted" (list $root "igrant-api" "igrant-consent-management" "eudi-wallet") | fromJsonArray)) -}}
-{{- with $v.nats.tlsCa.existingSecret -}}
+{{- if (include "ow.nats.ca" $root | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
 {{- end -}}
 {{- /* Every api process reads the views of the wallet database with the

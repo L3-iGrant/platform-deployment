@@ -530,6 +530,25 @@ def main() -> int:
             check(owner_password not in secret_refs(pod_of(doc)) and (server, None) not in secret_refs(pod_of(doc)),
                   f"{doc['kind']} {doc['metadata']['name']} mounts the password of the database owner user")
 
+    # --- Replicas (H2; the placement belongs to the scaled deployment) --------
+    # The processes of the wallet have a CPU request and a memory limit; no
+    # PodDisruptionBudget, no default anti-affinity or zone spread and no
+    # HorizontalPodAutoscaler (docs/scaled-deployments.md).
+    for component, replicas in {"api": 1, "webhook": 1, "wallet-service": 1, "wallet-config": 1, "wallet-clock": 2,
+                                **{f"wallet-worker-{n}": g[1] for n, g in WORKER_GROUPS.items()}}.items():
+        deploy = find("Deployment", f"{RELEASE}-{component}")
+        if deploy is None:
+            continue
+        pod = pod_of(deploy)
+        check(deploy["spec"].get("replicas") == replicas, f"the {component} Deployment has {deploy['spec'].get('replicas')} replicas, not {replicas}")
+        check(not (pod.get("affinity") or {}).get("podAntiAffinity") and not pod.get("topologySpreadConstraints"),
+              f"the {component} pods have a default anti-affinity or spread")
+        resources = pod["containers"][0].get("resources") or {}
+        check(bool((resources.get("requests") or {}).get("cpu")) and bool((resources.get("limits") or {}).get("memory")),
+              f"the {component} pods have no CPU request or no memory limit")
+    check(not [d for d in docs if d.get("kind") in ("HorizontalPodAutoscaler", "PodDisruptionBudget")],
+          "a HorizontalPodAutoscaler or a PodDisruptionBudget is rendered")
+
     # --- Exposure ------------------------------------------------------------
     ingresses = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Ingress"}
     routes = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "HTTPRoute"}
@@ -593,6 +612,36 @@ def main() -> int:
     nats = find("StatefulSet", f"{RELEASE}-nats")
     check(nats is not None and len(nats["spec"]["template"]["spec"]["containers"]) == 2, "NATS has no reloader sidecar")
     nats_conf = config_map_file(f"{RELEASE}-nats", "nats.conf", raw=True) or ""
+    # NATS (H5): TLS for the clients and mutual TLS for the routes with the
+    # TLS Secret of the chart; each process of the chart trusts its CA.
+    if nats:
+        pod = pod_of(nats)
+        tls_volume = next((v for v in pod["volumes"] if v["name"] == "tls"), {})
+        check((tls_volume.get("secret") or {}).get("secretName") == f"{RELEASE}-nats-tls", "the NATS pods do not mount the TLS Secret of the chart")
+    files = {"cert_file": '"/etc/nats-tls/tls.crt"', "key_file": '"/etc/nats-tls/tls.key"', "ca_file": '"/etc/nats-tls/ca.crt"'}
+    blocks = re.findall(r"^(\s*)tls \{\n(.*?)^\1\}", nats_conf, re.M | re.S)
+    settings = [dict(line.strip().split(": ", 1) for line in body.strip().splitlines()) for _, body in blocks]
+    check(len(settings) == 2 and all(files.items() <= block.items() for block in settings),
+          "nats.conf has not the TLS of the clients and of the routes with the files of the TLS Secret")
+    check(len(settings) == 2 and settings[1].get("verify") == "true" and "verify" not in settings[0],
+          "the routes of NATS have no mutual TLS (verify), or the clients must give a certificate")
+    tls_secret = find("Secret", f"{RELEASE}-nats-tls") or {}
+    check(tls_secret.get("type") == "kubernetes.io/tls" and set(tls_secret.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"}
+          and annotations(tls_secret).get("helm.sh/resource-policy") == "keep" and "helm.sh/hook" not in annotations(tls_secret),
+          "the NATS TLS Secret is missing, is not kept, or is a hook")
+    for doc in docs:
+        if doc.get("kind") not in ("Deployment", "StatefulSet", "Job") or doc["metadata"].get("namespace", NAMESPACE) != NAMESPACE:
+            continue
+        mounted = projected_files(pod_of(doc))
+        if "nats-seed" in mounted:
+            check(mounted.get("nats-ca.crt") == (f"{RELEASE}-nats-tls", "ca.crt"), f"{doc['kind']} {doc['metadata']['name']} has a NATS user but not the NATS CA")
+    for name, key, path in ((f"{RELEASE}-api", "api.yaml", ("Nats", "tlsCaFile")), (f"{RELEASE}-api", "webhook.yaml", ("Nats", "tlsCaFile")),
+                            (f"{RELEASE}-consent", "config.yaml", ("Nats", "tlsCaFile"))):
+        section = (config_map_file(name, key) or {}).get(path[0]) or {}
+        check(str(section.get(path[1], "")).endswith("/nats-ca.crt"), f"{name} {key} has no {'.'.join(path)}")
+    for file in KMS_FILES:
+        section = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("nats") or {}
+        check(section.get("tls_ca_file") == "/run/secrets/eudi-wallet/nats-ca.crt", f"wallet {file} has no nats.tls_ca_file")
     users = re.findall(r"^\s*# (\S+)$", nats_conf, re.M)
     # The clock connects to no NATS: it has no user.
     check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-scheduler", "wallet-worker"],

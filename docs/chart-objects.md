@@ -46,3 +46,9 @@ The objects of the background work of the wallet (see [Workers and clock](worker
 | `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `organisationWallet.serviceMonitor.enabled`: the scrape of `/metrics` |
 
 The worker and clock pods mount no service account token.
+
+## NATS
+
+| Object | Function |
+| --- | --- |
+| `<release>-nats-tls` (Secret) | The CA and the certificate of the bundled NATS (10 years): the TLS of the clients and the mutual TLS of the routes. To use your own certificate, set `nats.tls.existingSecret` |

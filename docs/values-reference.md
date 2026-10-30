@@ -113,6 +113,8 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | --- | --- | --- |
 | `nats.enabled`, `.external.url` | The bundled NATS or yours | `true` |
 | `nats.replicas`, `.reloader.enabled` | The bundled NATS | `3`, `true` |
+| `nats.tls.existingSecret` | The certificate of the bundled NATS (TLS of the clients and mutual TLS of the routes, always on). Empty: the chart makes it (see [NATS users](nats-users.md#tls)) | `""` |
+| `nats.tlsCa.*` | The CA of an external NATS with TLS | `""` |
 | `nats.auth.users.<user>` | The NATS users (`scripts/make-keys.sh`) | `""` |
 | `serviceKeys.publicJwks.*` | The public keys of the NATS messages (`scripts/make-keys.sh`) | `""` |
 | `readAccess.*` | The read-only users (see [Read access](read-access.md)) | see values |
