@@ -762,6 +762,272 @@
         }
       }
     },
+    "redis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "external"
+          ]
+        },
+        "masterName": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]{1,64}$"
+        },
+        "users": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "walletService": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "walletConfig": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "walletScheduler": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "gateway": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            }
+          }
+        },
+        "client": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "connectTimeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 60
+            },
+            "timeoutSeconds": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 60
+            },
+            "replicaWaitMilliseconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          }
+        },
+        "external": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sentinels": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^(\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9.-]+):([1-9][0-9]{0,4})$"
+              }
+            },
+            "address": {
+              "type": "string",
+              "pattern": "^$|^(\\[[0-9A-Fa-f:.]+\\]|[A-Za-z0-9.-]+):([1-9][0-9]{0,4})$"
+            },
+            "sentinelAuth": {
+              "type": "boolean"
+            },
+            "caSecret": {
+              "type": "string",
+              "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+            },
+            "caKey": {
+              "type": "string",
+              "pattern": "^[-._a-zA-Z0-9]+$"
+            }
+          }
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "registry": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string",
+              "minLength": 1
+            },
+            "tag": {
+              "type": [
+                "string",
+                "integer",
+                "number"
+              ]
+            },
+            "digest": {
+              "type": "string",
+              "pattern": "^(sha256:[0-9a-f]{64})?$"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "",
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "replicas": {
+          "type": "integer",
+          "minimum": 3,
+          "not": {
+            "multipleOf": 2
+          }
+        },
+        "sentinel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "quorum": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "downAfterMilliseconds": {
+              "type": "integer",
+              "minimum": 1000
+            },
+            "failoverTimeoutMilliseconds": {
+              "type": "integer",
+              "minimum": 1000
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "maxmemory": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*([kKmMgG][bB]?)?$"
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string",
+              "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+            }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "size": {
+              "type": [
+                "string",
+                "integer"
+              ]
+            },
+            "storageClass": {
+              "type": "string"
+            }
+          }
+        },
+        "podAntiAffinity": {
+          "type": "string",
+          "enum": [
+            "required",
+            "preferred"
+          ]
+        },
+        "resources": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "containerSecurityContext": {
+          "type": "object"
+        },
+        "priorityClassName": {
+          "type": "string"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "imagePullSecrets": {
+          "type": "array"
+        }
+      }
+    },
     "api": {
       "type": "object",
       "additionalProperties": false,
@@ -1649,6 +1915,23 @@
           }
         },
         "externalNats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "hosts": {
+                "type": "array"
+              },
+              "cidrs": {
+                "type": "array"
+              },
+              "ports": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        "externalRedis": {
           "type": "array",
           "items": {
             "type": "object",
@@ -3297,6 +3580,107 @@
                 "properties": {
                   "existingSecret": {
                     "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "redis": {
+            "properties": {
+              "mode": {
+                "const": "external"
+              }
+            },
+            "required": [
+              "mode"
+            ]
+          }
+        },
+        "required": [
+          "redis"
+        ]
+      },
+      "then": {
+        "properties": {
+          "redis": {
+            "properties": {
+              "external": {
+                "oneOf": [
+                  {
+                    "properties": {
+                      "sentinels": {
+                        "minItems": 1
+                      },
+                      "address": {
+                        "maxLength": 0
+                      }
+                    },
+                    "required": [
+                      "sentinels"
+                    ]
+                  },
+                  {
+                    "properties": {
+                      "sentinels": {
+                        "maxItems": 0
+                      },
+                      "address": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "address"
+                    ]
+                  }
+                ]
+              },
+              "users": {
+                "properties": {
+                  "walletService": {
+                    "properties": {
+                      "passwordSecret": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "passwordSecret"
+                    ]
+                  },
+                  "walletConfig": {
+                    "properties": {
+                      "passwordSecret": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "passwordSecret"
+                    ]
+                  },
+                  "walletScheduler": {
+                    "properties": {
+                      "passwordSecret": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "passwordSecret"
+                    ]
+                  },
+                  "gateway": {
+                    "properties": {
+                      "passwordSecret": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "passwordSecret"
+                    ]
                   }
                 }
               }

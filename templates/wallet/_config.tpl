@@ -139,6 +139,8 @@ in the config role writes its purge date, the scheduler purges. */ -}}
   "wallet_unit" $walletUnit
   "audit" $audit
   "retention" $retention -}}
+{{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
+{{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
 {{- if has $role (list "service" "config") -}}
 {{- include "ow.wallet.checkServer" $root -}}
 {{- $server := dict

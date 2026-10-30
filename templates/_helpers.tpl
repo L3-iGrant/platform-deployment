@@ -408,6 +408,9 @@ the database owner user. */ -}}
 {{- with $root.Values.nats.tlsCa.existingSecret -}}
 {{- $_ := set $files "nats-ca.crt" (dict "secret" . "key" $root.Values.nats.tlsCa.key) -}}
 {{- end -}}
+{{- /* The Valkey user of the role (redis): its password and the CA of the
+servers. */ -}}
+{{- $files = merge $files (include "ow.redis.secretFiles" (list $root (include "ow.wallet.redisUser" $role)) | fromJson) -}}
 {{- /* The OpenBao login of the wallet KMS (password) and the OpenBao CA. */ -}}
 {{- $_ := set $files "openbao-password" (include "ow.openbao.walletSecret" $root | fromJson) -}}
 {{- with include "ow.openbao.ca" $root | fromJson -}}
@@ -524,8 +527,10 @@ ConfigMap of the chart (next to config.yaml).
 Secret files of the gateway. All are files in one read-only folder
 (ow.gateway.secretDir), a projected volume of these Secret keys: the API
 secret key, the api database password and CA, the token hash secret (the same
-Secrets as the api), and the private JWKS of the internal token (its own
-Secret). The gateway gets no token signing key of the api.
+Secrets as the api), the private JWKS of the internal token (its own
+Secret), and the password of its Valkey user and the CA of the servers
+(redis-password, redis-ca.crt). The gateway gets no token signing key of the
+api.
 Output: JSON object "<file name>" -> {secret, key}.
 */}}
 {{- define "ow.gateway.secretFiles" -}}
@@ -536,6 +541,7 @@ Output: JSON object "<file name>" -> {secret, key}.
   "api-secret-key" (get $api "api-secret-key")
   "token-hash-secret.json" (get $api "token-hash-secret.json")
   "internal-token-jwks.json" (dict "secret" ($signing.existingSecret | default (include "ow.name" (list . "gateway-internal-token"))) "key" $signing.key)) -}}
+{{- $files = merge $files (include "ow.redis.secretFiles" (list . "gateway") | fromJson) -}}
 {{- toJson $files -}}
 {{- end }}
 

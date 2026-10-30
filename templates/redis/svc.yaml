@@ -1,0 +1,41 @@
+{{- if include "ow.redis.bundled" . }}
+# The pod DNS names (<fullname>-redis-<n>.<fullname>-redis-headless): the
+# Sentinels give them to the clients, the replicas use them for the
+# primary. Also before the pods are ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.redis.headlessName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "redis") | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+    - name: sentinel
+      port: 26379
+      targetPort: sentinel
+  selector:
+    {{- include "ow.selectorLabels" (list . "redis") | nindent 4 }}
+---
+# The Sentinels of the ready pods: one address for a client that asks a
+# Sentinel for the primary. The wallet gets the pod names of all Sentinels.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.redis.sentinelName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "redis") | nindent 4 }}
+spec:
+  ports:
+    - name: sentinel
+      port: 26379
+      targetPort: sentinel
+  selector:
+    {{- include "ow.selectorLabels" (list . "redis") | nindent 4 }}
+{{- end }}
