@@ -709,6 +709,7 @@ for database in postgresql-bundled postgresql-external; do
     --set gateway.upstreams.walletConfig.url=http://wallet.example.org
   upgrade_order "that turns consent on" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
   upgrade_order "that turns the api on" "$database" --set api.enabled=false
+  upgrade_order "that turns the database TLS on" "$database" --set database.tls.enabled=false
   # The first upgrade from a release in which the database Secret, the read
   # access Secret and the init Job were resources, not hooks: the earlier
   # release is the render of the new release without their hook annotations
@@ -719,7 +720,7 @@ for database in postgresql-bundled postgresql-external; do
 import sys, yaml
 docs = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
 for doc in docs:
-    if (doc["kind"], doc["metadata"]["name"]) in (("Secret", "t-postgres"), ("Secret", "t-read-access"), ("ConfigMap", "t-db-init"), ("Job", "t-db-init")):
+    if (doc["kind"], doc["metadata"]["name"]) in (("Secret", "t-postgres"), ("Secret", "t-postgres-tls"), ("Secret", "t-read-access"), ("ConfigMap", "t-db-init"), ("Job", "t-db-init")):
         for name in ("helm.sh/hook", "helm.sh/hook-weight", "helm.sh/hook-delete-policy"):
             doc["metadata"]["annotations"].pop(name)
         if doc["kind"] == "Job":
@@ -758,7 +759,7 @@ else
 import base64, json, sys, yaml
 earlier = {}
 for doc in yaml.safe_load_all(open(sys.argv[1])):
-    if doc and doc["metadata"]["name"] in ("t-postgres", "t-read-access", "t-wallet-database-roles"):
+    if doc and doc["metadata"]["name"] in ("t-postgres", "t-postgres-tls", "t-read-access", "t-wallet-database-roles"):
         name = doc["metadata"]["name"]
         earlier[name] = {"data": {key: base64.b64encode(f"earlier-{name}-{key}".encode()).decode()
                                   for key in doc["data"] if (name, key) != ("t-postgres", "igrant_consent")}}

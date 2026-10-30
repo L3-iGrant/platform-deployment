@@ -15,6 +15,8 @@ The whole platform uses one database engine: `database.engine` is `postgresql`, 
 
 All components verify the server with its CA (`sslmode=verify-full`). An external PostgreSQL without `database.tls.caSecret` gets `require` (encryption without verification). With `database.tls.enabled: false`, the connections are not encrypted.
 
+The bundled server always serves TLS, also with `database.tls.enabled: false`: that value only sets the connections of the components. Its certificate is in the Secret `<release>-postgres-tls` (made by the chart, kept across upgrades) or in your Secret `database.tls.existingSecret`. The chart makes `<release>-postgres-tls` as a hook, before the other hooks, so an upgrade can turn `database.tls.enabled` on: the hooks get the CA, and the server already serves TLS (see [Upgrade](upgrade.md#the-tls-of-the-database)).
+
 ## Size of the bundled PostgreSQL
 
 The memory (`database.resources`, default 1536Mi) holds `shared_buffers`, about 5 MB for each connection up to `max_connections` (`database.postgresql.parameters`, default 150) and autovacuum (3 x `maintenance_work_mem`). The pools of all processes must fit in `max_connections` (see [Connection budget](#connection-budget)). When you raise `max_connections`, raise the memory too: at the memory limit Kubernetes stops the server, and all components lose their connections.
@@ -106,7 +108,7 @@ The hooks of the databases run in this order:
 
 | Order | Hook | Connects as | What it does |
 | --- | --- | --- | --- |
-| 1 | The Secrets `<release>-postgres` (the passwords of the database users), `<release>-read-access` (the passwords of the read-only users) and `<release>-wallet-database-roles` (the passwords of the database roles of the wallet) | | Created before the other hooks, with the passwords of the earlier release |
+| 1 | The Secrets `<release>-postgres` (the passwords of the database users), `<release>-read-access` (the passwords of the read-only users), `<release>-wallet-database-roles` (the passwords of the database roles of the wallet) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks, with the passwords and the certificate of the earlier release |
 | 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the passwords of the owner users |
 | 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the objects of the wallet database, creates the missing data scope schemas and gives the grants |
 | 4 | `<release>-wallet-migrate`; on an upgrade also `<release>-api-migrate` and `<release>-consent-migrate` | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then makes the monthly partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
