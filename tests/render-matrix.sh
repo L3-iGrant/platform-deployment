@@ -316,7 +316,7 @@ notes() {
   local text
   if ! text="$(helm template ows "$notes_chart" --namespace ows -f "$keys" -f "$examples/site.yaml" "$@" --show-only templates/zz-test-notes.yaml 2>&1)"; then
     bad "notes $name: $(printf '%s' "$text" | head -c 200)"
-  elif printf '%s' "$text" | grep -q -F -- "$expect"; then
+  elif grep -q -F -- "$expect" <<< "$text"; then
     ok "notes $name"
   else
     bad "notes $name: no \"$expect\""
@@ -334,7 +334,9 @@ guard() {
   local err
   if err="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" 2>&1 >/dev/null)"; then
     bad "guard $name: the render did not stop"
-  elif printf '%s' "$err" | grep -q -F -- "$expect"; then
+  elif grep -q -F -- "$expect" <<< "$err"; then
+    # A here-string, as in renders: with pipefail, "printf | grep -q"
+    # fails when grep stops before printf has written all (SIGPIPE).
     ok "guard $name"
   else
     bad "guard $name: the message has not \"$expect\""
