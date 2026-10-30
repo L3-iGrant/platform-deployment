@@ -1482,6 +1482,14 @@ organisationWallet:
     # (store apps). false: the development environment and no Play Integrity
     # check (development builds of the wallet apps).
     productionChecksEnabled: false
+    # -- SHA-256 (hex, ":" separators allowed) of the signing certificates
+    # of the Android wallet app: the app signing key certificate of the
+    # Play Console (wallet_unit.android_signing_certificate_digests of the
+    # service pods). The Play Integrity check (at least one is required
+    # with playIntegrity.existingSecret), the Android Key Attestation chain
+    # of the registration of a wallet unit and the key attestations check
+    # them. Empty: the chains are checked for the package name only.
+    androidSigningCertificateDigests: []
     # -- The Play Integrity check of the Android wallet units
     # (wallet_unit.play_integrity). The wallet decrypts and verifies the
     # integrity token of a classic Play Integrity request with the response
@@ -1501,10 +1509,6 @@ organisationWallet:
       verificationKeyKey: verification-key
       # -- The package name of the Android wallet app.
       packageName: io.igrant.mobileagent
-      # -- SHA-256 (hex, ":" separators allowed) of the app signing key
-      # certificate of the app in the Play Console. At least one is
-      # required with existingSecret.
-      certificateSha256Digests: []
       # -- The lowest versionCode of the app that gets a WIA. 0: every
       # version.
       minVersionCode: 0

@@ -2992,6 +2992,13 @@
             "productionChecksEnabled": {
               "type": "boolean"
             },
+            "androidSigningCertificateDigests": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$"
+              }
+            },
             "playIntegrity": {
               "type": "object",
               "additionalProperties": false,
@@ -3010,13 +3017,6 @@
                 "packageName": {
                   "type": "string",
                   "minLength": 1
-                },
-                "certificateSha256Digests": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$"
-                  }
                 },
                 "minVersionCode": {
                   "type": "integer",
