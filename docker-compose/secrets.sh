@@ -17,6 +17,8 @@
 # - secrets/openbao/: the seal key of OpenBao and the password of the
 #   OpenBao user of the wallet (the openbao-init service writes init.json
 #   there at the first start);
+# - secrets/valkey/: the passwords of the ACL users of Valkey (the wallet
+#   roles, the gateway, and replication, sentinel and probe);
 # - secrets/public/: the public keys (no secret) that the services use to
 #   verify each other, and the public nkeys of the NATS users.
 #
@@ -58,7 +60,7 @@ SMTP_USERNAME="${smtp_username_shell:-${SMTP_USERNAME:-}}"
 # as a non-root user in their containers must read the mounted files; on
 # this computer only your user can open the folders.
 umask 077
-mkdir -p "$SECRETS"/{database,api,gateway,consent,wallet,openbao,public/service-jwks}
+mkdir -p "$SECRETS"/{database,api,gateway,consent,wallet,openbao,valkey,public/service-jwks}
 
 made=0
 kept=0
@@ -180,7 +182,13 @@ if [ -s "${SECRETS}/openbao/static-seal.key" ]; then count kept; else
   count made
 fi
 
-# 7. The SMTP password. With SMTP_USERNAME: the password of that login
+# 7. Valkey: the password of each ACL user (hexadecimal: the start script of
+# the Valkey services accepts it).
+for name in wallet-config wallet-service wallet-scheduler gateway replication sentinel probe; do
+  password "valkey/${name}-password"
+done
+
+# 8. The SMTP password. With SMTP_USERNAME: the password of that login
 # (asked one time; it is not shown). Without: an empty file (no SMTP
 # authentication).
 smtp_file="${SECRETS}/api/smtp-password"
@@ -198,7 +206,7 @@ elif [ ! -e "$smtp_file" ]; then
   : > "$smtp_file"
 fi
 
-# 8. The public files.
+# 9. The public files.
 public_jwks api/token-signing-jwks.json public/token-verification-jwks.json token
 public_jwks gateway/internal-token-jwks.json public/gateway-jwks.json token
 public_jwks api/service-envelope-jwks.json public/service-jwks/igrant-api.json service

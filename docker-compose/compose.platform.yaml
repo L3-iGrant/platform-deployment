@@ -156,6 +156,63 @@ services:
     depends_on:
       openbao: {condition: service_started}
 
+  # --- Valkey: the work queue, the single-use values and the caches of the wallet
+  # A primary (valkey), a replica (valkey-replica) and a Sentinel
+  # (valkey-sentinel), with ACL users and no default user (README.md,
+  # "Valkey"). config/valkey/start.sh writes the configuration of each from
+  # the templates of config/valkey/ and the passwords of secrets/valkey/.
+
+  valkey:
+    <<: &valkey
+      image: ${VALKEY_IMAGE:?set VALKEY_IMAGE in .env}
+      user: valkey
+      entrypoint: ["/bin/sh", "/etc/valkey/start.sh"]
+      configs:
+        - {source: valkey-start, target: /etc/valkey/start.sh}
+        - {source: valkey-conf, target: /etc/valkey/valkey.conf}
+        - {source: valkey-users, target: /etc/valkey/users.acl}
+        - {source: valkey-sentinel-conf, target: /etc/valkey/sentinel.conf}
+      secrets:
+        - {source: valkey-wallet-config-password, target: /run/secrets/valkey/wallet-config}
+        - {source: valkey-wallet-service-password, target: /run/secrets/valkey/wallet-service}
+        - {source: valkey-wallet-scheduler-password, target: /run/secrets/valkey/wallet-scheduler}
+        - {source: valkey-gateway-password, target: /run/secrets/valkey/gateway}
+        - {source: valkey-replication-password, target: /run/secrets/valkey/replication}
+        - {source: valkey-sentinel-password, target: /run/secrets/valkey/sentinel}
+        - {source: valkey-probe-password, target: /run/secrets/valkey/probe}
+      # The configuration with the passwords: in memory, never on a volume.
+      tmpfs:
+        - /run/valkey:uid=999,gid=1000,mode=0700
+      restart: unless-stopped
+    command: ["primary"]
+    volumes:
+      - valkey-data:/data
+    healthcheck: &valkey-healthcheck
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/valkey/probe)\" valkey-cli -p 6379 --user probe ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  valkey-replica:
+    <<: *valkey
+    command: ["replica"]
+    volumes:
+      - valkey-replica-data:/data
+    healthcheck:
+      <<: *valkey-healthcheck
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/valkey/probe)\" valkey-cli -p 6379 --user probe info replication | grep -q -E 'role:master|master_link_status:up'"]
+    depends_on:
+      valkey: {condition: service_healthy}
+
+  valkey-sentinel:
+    <<: *valkey
+    command: ["sentinel"]
+    healthcheck:
+      <<: *valkey-healthcheck
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$(cat /run/secrets/valkey/probe)\" valkey-cli -p 26379 --user probe ping | grep -q PONG"]
+    depends_on:
+      valkey-replica: {condition: service_healthy}
+
   # --- Migrations and read access (one-shot) -----------------------------------
 
   api-migrate:
@@ -329,8 +386,12 @@ services:
       - {source: db-igrant-api-password, target: /run/secrets/igrant-gateway/db-password}
       - {source: api-token-hash-secret, target: /run/secrets/igrant-gateway/token-hash-secret.json}
       - {source: gateway-internal-token-jwks, target: /run/secrets/igrant-gateway/internal-token-jwks.json}
+      # The password of its Valkey user (the failure counters of unknown API
+      # keys).
+      - {source: valkey-gateway-password, target: /run/secrets/igrant-gateway/redis-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
+      valkey-sentinel: {condition: service_started}
 
   api:
     <<: *server
@@ -427,6 +488,7 @@ services:
       - {source: db-igrant-wallet-launcher-app-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-config, target: /run/secrets/eudi-wallet/nats-seed}
+      - {source: valkey-wallet-config-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
       - {source: reader-wallet-api-password, target: /run/secrets/eudi-wallet/read-access-api-password}
       - {source: reader-wallet-consent-password, target: /run/secrets/eudi-wallet/read-access-consent-password}
@@ -443,6 +505,7 @@ services:
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
       storage: {condition: service_started}
+      valkey-sentinel: {condition: service_started}
 
   # The public routes of the wallet (OpenID4VCI, OpenID4VP, wallet units).
   wallet-service:
@@ -455,6 +518,7 @@ services:
       - {source: db-igrant-wallet-launcher-app-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-service, target: /run/secrets/eudi-wallet/nats-seed}
+      - {source: valkey-wallet-service-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
     healthcheck: *wallet-healthcheck
     depends_on: &wallet-role-depends
@@ -462,6 +526,7 @@ services:
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
       storage: {condition: service_started}
+      valkey-sentinel: {condition: service_started}
 
   # The background jobs (no HTTP server).
   wallet-scheduler:
@@ -473,6 +538,7 @@ services:
       - {source: db-igrant-wallet-jobs-password, target: /run/secrets/eudi-wallet/database-password}
       - {source: wallet-service-key, target: /run/secrets/eudi-wallet/service-envelope-jwks.json}
       - {source: nats-seed-wallet-scheduler, target: /run/secrets/eudi-wallet/nats-seed}
+      - {source: valkey-wallet-scheduler-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
     depends_on: *wallet-role-depends
 
@@ -504,6 +570,9 @@ volumes:
   nats-data:
   openbao-data:
   storage-data:
+  # The AOF files of the Valkey primary and replica.
+  valkey-data:
+  valkey-replica-data:
 
 # The secret files of make secrets. A file that is missing stops "docker
 # compose up" (run make secrets; make check finds it first).
@@ -548,6 +617,15 @@ secrets:
   nats-seed-wallet-scheduler: {file: ./secrets/wallet/nats-wallet-scheduler.nk}
   openbao-wallet-password: {file: ./secrets/openbao/wallet-password}
   openbao-static-seal-key: {file: ./secrets/openbao/static-seal.key}
+  # The passwords of the ACL users of Valkey: the wallet roles, the gateway,
+  # and the users of the Valkey services (replication, sentinel, probe).
+  valkey-wallet-config-password: {file: ./secrets/valkey/wallet-config-password}
+  valkey-wallet-service-password: {file: ./secrets/valkey/wallet-service-password}
+  valkey-wallet-scheduler-password: {file: ./secrets/valkey/wallet-scheduler-password}
+  valkey-gateway-password: {file: ./secrets/valkey/gateway-password}
+  valkey-replication-password: {file: ./secrets/valkey/replication-password}
+  valkey-sentinel-password: {file: ./secrets/valkey/sentinel-password}
+  valkey-probe-password: {file: ./secrets/valkey/probe-password}
 
 configs:
   # --- Files of this folder and public keys of make secrets --------------------
@@ -556,6 +634,10 @@ configs:
   nats-users: {file: ./config/nats/users.conf}
   openbao-config: {file: ./config/openbao/openbao.hcl}
   openbao-bootstrap: {file: ./config/openbao/bootstrap.sh}
+  valkey-start: {file: ./config/valkey/start.sh}
+  valkey-conf: {file: ./config/valkey/valkey.conf}
+  valkey-users: {file: ./config/valkey/users.acl}
+  valkey-sentinel-conf: {file: ./config/valkey/sentinel.conf}
   # The public nkeys of the NATS users (make secrets writes them from the seeds).
   nats-nkeys: {file: ./secrets/public/nats-nkeys.conf}
   # The public keys of the gateway (the api, consent and the wallet verify
@@ -960,6 +1042,18 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
+      # Valkey (README.md, "Valkey"): the work queue, the single-use values
+      # and the caches, through the Sentinel. The Compose network has no
+      # Valkey TLS.
+      redis:
+        queue:
+          sentinels: ["valkey-sentinel:26379"]
+          master_name: ows
+          username: wallet-config
+          password_file: /run/secrets/eudi-wallet/redis-password
+          sentinel_username: wallet-config
+          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
+          tls: false
       # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
       # the name of the section in the wallet code; the server is OpenBao.
       kms:
@@ -1046,6 +1140,18 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
+      # Valkey (README.md, "Valkey"): the work queue, the single-use values
+      # and the caches, through the Sentinel. The Compose network has no
+      # Valkey TLS.
+      redis:
+        queue:
+          sentinels: ["valkey-sentinel:26379"]
+          master_name: ows
+          username: wallet-service
+          password_file: /run/secrets/eudi-wallet/redis-password
+          sentinel_username: wallet-service
+          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
+          tls: false
       # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
       # the name of the section in the wallet code; the server is OpenBao.
       kms:
@@ -1098,6 +1204,18 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
+      # Valkey (README.md, "Valkey"): the work queue, the single-use values
+      # and the caches, through the Sentinel. The Compose network has no
+      # Valkey TLS.
+      redis:
+        queue:
+          sentinels: ["valkey-sentinel:26379"]
+          master_name: ows
+          username: wallet-scheduler
+          password_file: /run/secrets/eudi-wallet/redis-password
+          sentinel_username: wallet-scheduler
+          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
+          tls: false
       # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
       # the name of the section in the wallet code; the server is OpenBao.
       kms:
