@@ -7,7 +7,6 @@ and labels: an upgrade must keep the volume.
 {{- include "ow.db.check" . }}
 {{- $db := .Values.database }}
 {{- $pg := $db.postgresql }}
-{{- $tls := include "ow.db.tls" . }}
 {{- /*
 The server parameters: database.postgresql.parameters, and the DDL and
 connection logs (database.postgresql.logDdlAndConnections). A parameter of
@@ -49,14 +48,15 @@ spec:
             - -c
             - {{ printf "%s=%v" $name $value | quote }}
             {{- end }}
-            {{- if $tls }}
+            # The server always serves TLS (database.tls.enabled: the
+            # components use it), so an upgrade that turns the TLS of the
+            # components on finds a server with TLS.
             - -c
             - ssl=on
             - -c
             - ssl_cert_file=/etc/pg-tls/tls.crt
             - -c
             - ssl_key_file=/etc/pg-tls/tls.key
-            {{- end }}
           env:
             - name: POSTGRES_USER
               value: postgres
@@ -89,12 +89,9 @@ spec:
             # PostgreSQL 18 images keep the data in /var/lib/postgresql/18/docker.
             - name: data
               mountPath: /var/lib/postgresql
-            {{- if $tls }}
             - name: tls
               mountPath: /etc/pg-tls
               readOnly: true
-            {{- end }}
-      {{- if $tls }}
       volumes:
         # PostgreSQL accepts a key file with mode 0640 that root owns.
         - name: tls
@@ -106,7 +103,6 @@ spec:
                 path: tls.crt
               - key: tls.key
                 path: tls.key
-      {{- end }}
   volumeClaimTemplates:
     - metadata:
         name: data

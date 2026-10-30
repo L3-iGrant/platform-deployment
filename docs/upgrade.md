@@ -126,3 +126,12 @@ Check after step 3: the Deployments `ows-wallet-worker-main`, `ows-wallet-worker
 From the release with the TLS of NATS, the bundled NATS uses TLS for the clients and mutual TLS for the routes (see [NATS users](nats-users.md#tls)). The upgrade restarts the NATS pods one at a time. A server with TLS does not accept a route without TLS: until the third server has restarted, the cluster can lose its majority, and JetStream does not answer for some minutes. The processes connect again with TLS. The outbox of each service sends the events again; an API call that sends a NATS command in that time gets an error. Do this upgrade in a maintenance window.
 
 The service and config pods of the wallet get a memory limit of 1 GiB (`organisationWallet.service.resources`, `.config.resources`).
+
+## The TLS of the database
+
+The bundled PostgreSQL always serves TLS from this release, also with `database.tls.enabled: false`. A release before it served TLS only with `database.tls.enabled: true`. To turn the TLS of the components on for a bundled server that runs without TLS:
+
+1. Upgrade to this release with your values (`database.tls.enabled: false`). The upgrade makes the Secret `<release>-postgres-tls` and restarts the server with TLS.
+2. Upgrade again with `database.tls.enabled: true`. The hooks and the pods connect with TLS and verify the server with its CA.
+
+Do not do the two steps in one upgrade: the hooks of that upgrade connect with TLS to the server of the earlier release, which does not serve TLS yet, and they stop.

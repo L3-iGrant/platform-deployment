@@ -194,9 +194,10 @@ database:
     # thread of its group (database.pool_size), and maxOverflow more.
     walletWorker: {maxOverflow: 2, allocationPoolSize: 2}
   tls:
-    # -- TLS between the components and the server. bundled: the server
-    # gets a certificate and the components verify it with its CA.
-    # external: the server has TLS.
+    # -- TLS between the components and the server. bundled: the components
+    # verify the server with its CA (the bundled server always serves TLS,
+    # also with false, so an upgrade can turn this on). external: the server
+    # has TLS.
     enabled: true
     # -- bundled: an existing kubernetes.io/tls Secret with tls.crt, tls.key
     # and ca.crt. The certificate must have the name

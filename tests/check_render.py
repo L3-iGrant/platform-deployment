@@ -318,6 +318,8 @@ def main() -> int:
         sts = find("StatefulSet", server)
         if sts:
             args = sts["spec"]["template"]["spec"]["containers"][0].get("args", [])
+            check({"ssl=on", "ssl_cert_file=/etc/pg-tls/tls.crt", "ssl_key_file=/etc/pg-tls/tls.key"} <= set(args),
+                  "the bundled server does not always serve TLS")
             parameters = [arg.split("=", 1) for option, arg in zip(args, args[1:]) if option == "-c"]
             names = [name for name, _ in parameters]
             check(len(names) == len(set(names)), f"a server parameter is set twice: {sorted(names)}")
@@ -413,7 +415,11 @@ def main() -> int:
           f"the role Secret {roles_secret} is missing or has the keys {sorted((secret or {}).get('data', {}))}")
     # The Secrets that the hooks read: hooks before every other hook (Helm
     # makes the resources only after the pre-upgrade hooks), and kept.
-    for name in (server, f"{RELEASE}-read-access", roles_secret):
+    # The TLS Secret of the bundled server is a hook too: an upgrade that
+    # turns database.tls.enabled on gives the CA to the hooks, and the
+    # server always serves TLS.
+    server_tls = [f"{server}-tls"] if mode == "bundled" else []
+    for name in [server, f"{RELEASE}-read-access", roles_secret, *server_tls]:
         doc = find("Secret", name)
         check(doc is not None and annotations(doc).get("helm.sh/resource-policy") == "keep",
               f"the Secret {name} is missing or not kept (resource-policy keep)")
@@ -425,6 +431,7 @@ def main() -> int:
         ("Secret", server, "pre-install,pre-upgrade", "-30"),
         ("Secret", f"{RELEASE}-read-access", "pre-install,pre-upgrade", "-30"),
         ("Secret", roles_secret, "pre-install,pre-upgrade", "-30"),
+        *[("Secret", name, "pre-install,pre-upgrade", "-30") for name in server_tls],
         ("ConfigMap", f"{RELEASE}-db-init", install_upgrade, "-28"),
         ("Job", f"{RELEASE}-db-init", install_upgrade, "-27"),
         ("ConfigMap", f"{RELEASE}-wallet-database-roles", install_upgrade, "-25"),
