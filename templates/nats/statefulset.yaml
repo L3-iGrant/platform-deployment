@@ -102,11 +102,17 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          # The reloader reads nats.conf and watches each file that it names
+          # (the TLS certificate, key and CA): it stops when one is missing,
+          # and a renewed certificate reloads the server.
           volumeMounts:
             - name: config
               mountPath: /etc/nats-config
             - name: pid
               mountPath: /var/run/nats
+            - name: tls
+              mountPath: /etc/nats-tls
+              readOnly: true
         {{- end }}
       volumes:
         - name: config
