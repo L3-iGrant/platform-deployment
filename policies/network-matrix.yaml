@@ -23,6 +23,7 @@ roles:
   db: {ports: {database: 5432}}          # the port of database.engine (5432)
   nats: {ports: {client: 4222, cluster: 6222, monitor: 8222}}
   openbao: {ports: {https: 8200, cluster: 8201}}   # the bundled OpenBao (openbao.mode bundled)
+  redis: {ports: {redis: 6379, sentinel: 26379}}   # the bundled Valkey (redis.mode bundled): a data server and a Sentinel in each pod
   job: {ports: {}}                        # every Job and hook
 
 # Sources outside the roles: their selectors are platform values
@@ -48,20 +49,26 @@ connections:
   # request forwarding on https, raft and cluster traffic on cluster)
   - {to: openbao, port: https, from: [wallet-service, wallet-config, wallet-scheduler, openbao]}
   - {to: openbao, port: cluster, from: [openbao]}
+  # Valkey: the wallet roles and the gateway (the primary and the Sentinels
+  # that give it); the other Valkey pods (the replication, the Sentinels on
+  # the data servers and on each other, the start and stop scripts)
+  - {to: redis, port: redis, from: [gateway, wallet-service, wallet-config, wallet-scheduler, redis]}
+  - {to: redis, port: sentinel, from: [gateway, wallet-service, wallet-config, wallet-scheduler, redis]}
 
 # Connections that must be denied (the check proves it).
 forbidden:
-  - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-scheduler, db, nats, openbao]}
+  - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-scheduler, db, nats, openbao, redis]}
   - {from: gateway, to: [webhook, wallet-service, nats, openbao]}
-  - {from: api, to: [consent, wallet-config, wallet-service, webhook, gateway, openbao]}
-  - {from: webhook, to: [api, consent, wallet-config, wallet-service, gateway, openbao]}
-  - {from: consent, to: [api, wallet-config, wallet-service, webhook, gateway, openbao]}
+  - {from: api, to: [consent, wallet-config, wallet-service, webhook, gateway, openbao, redis]}
+  - {from: webhook, to: [api, consent, wallet-config, wallet-service, gateway, openbao, redis]}
+  - {from: consent, to: [api, wallet-config, wallet-service, webhook, gateway, openbao, redis]}
   - {from: wallet-service, to: [api, consent, wallet-config, webhook, gateway]}
   - {from: wallet-config, to: [api, consent, wallet-service, webhook, gateway]}
   - {from: wallet-scheduler, to: [api, consent, wallet-config, wallet-service, webhook, gateway]}
-  - {from: dashboard, to: [gateway, api, webhook, consent, wallet-service, wallet-config, db, nats, openbao]}
-  - {from: job, to: [gateway, api, webhook, consent, wallet-service, wallet-config, dashboard, openbao]}
-  - {from: openbao, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats]}
+  - {from: dashboard, to: [gateway, api, webhook, consent, wallet-service, wallet-config, db, nats, openbao, redis]}
+  - {from: job, to: [gateway, api, webhook, consent, wallet-service, wallet-config, dashboard, openbao, redis]}
+  - {from: openbao, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats, redis]}
+  - {from: redis, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats, openbao]}
 
 # External egress profiles and the roles that may use them. The targets
 # (CIDRs or namespace/pod selectors) and the default profiles of each role

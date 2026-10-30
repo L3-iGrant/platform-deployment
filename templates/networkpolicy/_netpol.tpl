@@ -55,6 +55,7 @@ list.
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}
 {{- if $v.nats.enabled -}}{{- $roles = append $roles "nats" -}}{{- end -}}
 {{- if include "ow.openbao.bundled" . -}}{{- $roles = append $roles "openbao" -}}{{- end -}}
+{{- if include "ow.redis.bundled" . -}}{{- $roles = append $roles "redis" -}}{{- end -}}
 {{- toJson $roles -}}
 {{- end }}
 

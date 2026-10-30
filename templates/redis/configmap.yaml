@@ -1,0 +1,23 @@
+{{- if include "ow.redis.enabled" . }}
+{{- include "ow.redis.check" . }}
+{{- end }}
+{{- if include "ow.redis.bundled" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ow.redis.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "redis") | nindent 4 }}
+data:
+  # The templates of the configuration files (no secret: the scripts put in
+  # the passwords and the hashes from the Secret volume at the start) and
+  # the scripts of the pods.
+  valkey.conf: |
+    {{- include "ow.redis.serverConfig" . | nindent 4 }}
+  users.acl: |
+    {{- include "ow.redis.serverAcl" . | nindent 4 }}
+  sentinel.conf: |
+    {{- include "ow.redis.sentinelConfig" . | nindent 4 }}
+  {{- (.Files.Glob "files/redis/*.sh").AsConfig | nindent 2 }}
+{{- end }}

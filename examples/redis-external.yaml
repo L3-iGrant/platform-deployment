@@ -1,0 +1,38 @@
+# Your Valkey or Redis (redis.mode external), in place of the bundled
+# Valkey. It must meet the requirements of docs/redis.md: Valkey or Redis
+# 7.2 or later, Sentinel or one primary with replicas (not Redis Cluster),
+# TLS, maxmemory-policy noeviction, AOF everysec, min-replicas-to-write 1,
+# and the four ACL users below with the rights of docs/redis.md.
+#
+# Before the install, create one Secret for each user with its password
+# (letters, digits and . _ ~ + / = -), and the Secret with the CA of your
+# servers, for example:
+#   kubectl -n ows create secret generic ows-redis-wallet-service --from-file=password=./wallet-service-password
+#   kubectl -n ows create secret generic ows-redis-ca --from-file=ca.crt=./redis-ca.crt
+redis:
+  mode: external
+  masterName: ows
+  external:
+    # The Sentinels of your group (or "address" for one primary without
+    # Sentinel). The certificates must name these hosts and the hosts of
+    # the primary and the replicas that the Sentinels give.
+    sentinels:
+      - redis-1.example.org:26379
+      - redis-2.example.org:26379
+      - redis-3.example.org:26379
+    # true: the processes log in to the Sentinels with their ACL user.
+    sentinelAuth: true
+    caSecret: ows-redis-ca
+    caKey: ca.crt
+  users:
+    walletService: {username: wallet-service, passwordSecret: ows-redis-wallet-service, passwordKey: password}
+    walletConfig: {username: wallet-config, passwordSecret: ows-redis-wallet-config, passwordKey: password}
+    walletScheduler: {username: wallet-scheduler, passwordSecret: ows-redis-wallet-scheduler, passwordKey: password}
+    gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
+# With network policies (examples/networkpolicy.yaml): the addresses of your
+# servers and Sentinels.
+networkPolicy:
+  externalRedis:
+    - hosts: [redis-1.example.org, redis-2.example.org, redis-3.example.org]
+      cidrs: [192.0.2.50/32, 192.0.2.51/32, 192.0.2.52/32]
+      ports: [6379, 26379]

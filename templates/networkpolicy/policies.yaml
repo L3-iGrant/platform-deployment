@@ -65,7 +65,7 @@ spec:
 {{- $port = ternary ($port | int) $port (regexMatch "^[0-9]+$" $port) }}
 {{- $rules = append $rules (dict "to" (list (dict "podSelector" (dict "matchLabels" (merge (dict "netpol.igrant.io/role" $c.to) $instance)))) "ports" (list (dict "port" $port "protocol" "TCP"))) }}
 {{- end }}
-{{- /* A database or NATS outside the chart. */}}
+{{- /* A database, NATS or Valkey outside the chart. */}}
 {{- if eq $c.to "db" }}
 {{- range $db := $np.externalDatabases }}
 {{- $peers := list }}{{- range $cidr := $db.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
@@ -80,6 +80,15 @@ spec:
 {{- range $n := $np.externalNats }}
 {{- $peers := list }}{{- range $cidr := $n.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
 {{- $ports := list }}{{- range $p := ($n.ports | default (list 4222)) }}{{- $ports = append $ports (dict "port" $p "protocol" "TCP") }}{{- end }}
+{{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
+{{- end }}
+{{- end }}
+{{- /* A Valkey or Redis outside the chart (redis.mode external): the data
+port and the Sentinel port, one rule for each entry. */}}
+{{- if and (eq $c.to "redis") (eq $c.port "redis") (include "ow.redis.enabled" $root) (not (include "ow.redis.bundled" $root)) }}
+{{- range $r := $np.externalRedis }}
+{{- $peers := list }}{{- range $cidr := $r.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
+{{- $ports := list }}{{- range $p := ($r.ports | default (list 6379 26379)) }}{{- $ports = append $ports (dict "port" $p "protocol" "TCP") }}{{- end }}
 {{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
 {{- end }}
 {{- end }}

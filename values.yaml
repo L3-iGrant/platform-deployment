@@ -4,8 +4,9 @@
 # provider) and its webhook handler, consent management, the organisation
 # wallet (service, config and scheduler), the enterprise dashboard, and the
 # dependencies of the platform: NATS with JetStream, one database server
-# (or an external server) and OpenBao (the key management service of the
-# wallet; or an external OpenBao). The cluster must already have an ingress
+# (or an external server), OpenBao (the key management service of the
+# wallet; or an external OpenBao) and Valkey with Sentinel (or your Valkey
+# or Redis). The cluster must already have an ingress
 # controller or a Gateway API implementation (see
 # docs/prerequisites.md).
 #
@@ -26,7 +27,10 @@
 #   openbao.wallet.existingSecret;
 # - an external database (database.mode external) needs
 #   database.external.host, and an admin user or
-#   database.auth.existingSecret.
+#   database.auth.existingSecret;
+# - an external Valkey or Redis (redis.mode external) needs
+#   redis.external.sentinels or .address, and the password Secret of each
+#   user in redis.users.
 #
 # The chart makes the passwords that you do not set (a random value at the
 # first installation; "helm upgrade" keeps the value from the Secret).
@@ -316,6 +320,136 @@ nats:
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
+  affinity: {}
+  imagePullSecrets: []
+
+# Valkey with Sentinel (docs/redis.md): the work queue, the single-use
+# values (nonces and proof ids) and the shared caches of the organisation
+# wallet, and the failure counters of the gateway. Valkey is never a record:
+# the evidence stays in the database. The wallet roles and the gateway each
+# log in with their own ACL user.
+redis:
+  # -- "bundled": the chart runs Valkey with Sentinel (StatefulSet
+  # <fullname>-redis: each pod has a data container and a Sentinel
+  # container). "external": your Valkey or Redis (redis.external; its
+  # requirements are in docs/redis.md).
+  mode: bundled
+  # -- The name of the primary that the Sentinels monitor (1 to 64 letters,
+  # digits, . _ -).
+  masterName: ows
+  # -- The ACL users of the processes: one user for each wallet process kind
+  # and one for the gateway. username: the ACL user. passwordSecret,
+  # passwordKey: an existing Secret with its password (letters, digits and
+  # . _ ~ + / = -). Empty passwordSecret: bundled: the Secret
+  # <fullname>-redis-users of the chart (key: the values key, for example
+  # walletService; random, kept across upgrades); external: required.
+  users:
+    walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
+    walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
+    walletScheduler: {username: wallet-scheduler, passwordSecret: "", passwordKey: password}
+    gateway: {username: gateway, passwordSecret: "", passwordKey: password}
+  # The client settings of the wallet (the keys of its redis section).
+  client:
+    # -- The longest wait for a new connection and for each answer, in
+    # seconds (more than 0, at most 60). A route that needs Valkey answers
+    # 503 after them.
+    connectTimeoutSeconds: 2
+    timeoutSeconds: 2
+    # -- The longest wait, in milliseconds (1 to 10000), for a replica to
+    # confirm a single-use value (WAIT 1). Without the confirmation the
+    # wallet refuses the value with 503.
+    replicaWaitMilliseconds: 100
+  # Your Valkey or Redis (mode external). It must meet the requirements of
+  # docs/redis.md: version 7.2 or later, Sentinel or one primary with
+  # replicas (not Redis Cluster), TLS, maxmemory-policy noeviction, AOF,
+  # min-replicas-to-write 1, and the ACL users of redis.users with their
+  # rights.
+  external:
+    # -- The Sentinels (host:port; an IPv6 address in brackets), for
+    # example ["redis-1.example.org:26379", "redis-2.example.org:26379",
+    # "redis-3.example.org:26379"]. They monitor the primary
+    # redis.masterName.
+    sentinels: []
+    # -- Without Sentinel: the address (host:port) of the primary of a
+    # single-shard server that keeps its address over a failover (for
+    # example a Redis Enterprise database). Set sentinels or address.
+    address: ""
+    # -- true: the processes log in to the Sentinels with their ACL user.
+    # false: the Sentinels accept clients without a login.
+    sentinelAuth: true
+    # -- Existing Secret with the CA certificate (PEM) of the servers and
+    # the Sentinels. Empty: the system CAs. The certificates must name the
+    # hosts that the clients connect to (the Sentinels, and the primary
+    # that the Sentinels give).
+    caSecret: ""
+    caKey: ca.crt
+  # The bundled Valkey (mode bundled). Settings: AOF everysec, noeviction,
+  # min-replicas-to-write 1, min-replicas-max-lag 10, TLS also for the
+  # replication, no default user.
+  image:
+    registry: docker.io
+    repository: valkey/valkey
+    tag: 8.1.10-alpine
+    # -- The digest of the tag. With a digest, the image reference is
+    # <repository>@<digest> (your mirror keeps it).
+    digest: sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+  # -- The pods: an odd number of 3 or more. Each pod has a data server and
+  # a Sentinel.
+  replicas: 3
+  sentinel:
+    # -- The number of Sentinels that must agree that the primary is down
+    # (1 to redis.replicas). A failover also needs a majority of the
+    # Sentinels.
+    quorum: 2
+    downAfterMilliseconds: 5000
+    failoverTimeoutMilliseconds: 60000
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi
+  # -- The memory for the data of each server (a number with kb, mb or gb).
+  # Keep it well below the memory limit: the server needs more for the
+  # AOF rewrite and the replication.
+  maxmemory: 512mb
+  tls:
+    # -- Existing kubernetes.io/tls Secret with tls.crt, tls.key and ca.crt.
+    # The certificate must have the names
+    # *.<fullname>-redis-headless.<namespace>.svc,
+    # <fullname>-redis-sentinel.<namespace>.svc and 127.0.0.1, and the
+    # client and server use. Empty: the chart makes a CA and a certificate
+    # (10 years, kept across upgrades).
+    existingSecret: ""
+  persistence:
+    size: 8Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+  # -- The image runs as the user 999 (valkey) and the group 1000.
+  # fsGroup: the group of the data volume and of the secret files (mode
+  # 0440).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  # -- For example a pod anti-affinity on the host name, so that each pod
+  # runs on its own node (docs/redis.md).
   affinity: {}
   imagePullSecrets: []
 
@@ -861,6 +995,10 @@ networkPolicy:
   externalDatabases: []
   # -- A NATS outside the cluster: [{hosts: [...], cidrs: [...], ports: [4222]}].
   externalNats: []
+  # -- Your Valkey or Redis (redis.mode external): its CIDRs and ports.
+  # Required with redis.mode external. Empty ports: 6379 and 26379.
+  # Example: [{hosts: ["redis-1.example.org"], cidrs: ["192.0.2.50/32"], ports: [6379, 26379]}]
+  externalRedis: []
   # -- Pod and Service CIDRs of the cluster, excluded from the internet
   # profiles.
   clusterCidrs: []

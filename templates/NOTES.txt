@@ -18,6 +18,11 @@ Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names p
 {{- end }}
 
 Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
+{{- if include "ow.redis.bundled" . }}
+Valkey: bundled, {{ .Values.redis.replicas }} pods {{ include "ow.redis.name" . }}-<n> (a data server and a Sentinel in each; docs/redis.md).
+{{- else if include "ow.redis.enabled" . }}
+Valkey or Redis: external, {{ .Values.redis.external.sentinels | default (list .Values.redis.external.address) | join ", " }} (docs/redis.md).
+{{- end }}
 
 Next steps (docs/install.md has each step with its check):
 {{- $step := 1 }}
