@@ -153,3 +153,7 @@ From the release without the scheduler, the workers run all the background work 
 Check: no pod `ows-wallet-scheduler`, the workers and the clocks are ready, and exactly one clock leads (see [Workers and clock](workers.md#check)).
 
 A rollback to a release with the scheduler needs the job store table again: the downgrade of the migration to `287d66228c5a` with the image of this release, then the earlier release (see [Rollback](#rollback)).
+
+## The size of the bundled database server
+
+From the release with the connection budget, the bundled PostgreSQL has `max_connections` 250 and the memory 2048Mi (requests and limits of `database.resources`), so that the pools of the default values fit (see [Database](database.md#connection-budget)). The upgrade restarts the server once: the components lose their connections for some seconds and connect again. If your values set `database.postgresql.parameters.max_connections` or `database.resources`, check them with the rule: the render stops when the pools of your release need more.

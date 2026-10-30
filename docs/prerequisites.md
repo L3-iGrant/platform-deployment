@@ -18,7 +18,7 @@ This page lists what your cluster, your network and your workstation need before
 
 ## Resources
 
-The images are for Linux x86-64. With the default values, the platform requests about 1.4 vCPU and 4.8 GiB of memory in total, and 134 GiB of volumes: the database 50 GiB, NATS 3 × 10 GiB, OpenBao 3 × 10 GiB and Valkey 3 × 8 GiB.
+The images are for Linux x86-64. With the default values, the platform requests about 1.6 vCPU and 6.5 GiB of memory in total, and 134 GiB of volumes: the database 50 GiB, NATS 3 × 10 GiB, OpenBao 3 × 10 GiB and Valkey 3 × 8 GiB.
 
 The minimum for tests, pilots and small installations:
 

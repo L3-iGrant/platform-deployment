@@ -131,8 +131,8 @@ writes its purge date, the workers purge. */ -}}
 {{- /* The pools of the process (database.pools.wallet*; docs/database.md,
 "Connection budget"): the session pool and the allocation pool of a
 service, config or worker process. A worker process has one session
-connection for each thread of its group. The clock keeps the defaults of
-the wallet. */ -}}
+connection for each thread of its group. The clock opens no session (its
+leader connection and its health check). */ -}}
 {{- $pools := $v.database.pools -}}
 {{- $pool := dict -}}
 {{- if eq $role "service" -}}
@@ -144,6 +144,13 @@ the wallet. */ -}}
 {{- end -}}
 {{- range $key, $value := $pool -}}
 {{- $_ := set $config.database $key ($value | int) -}}
+{{- end -}}
+{{- /* The pooler (database.pooler): the engines of the sessions of the
+processes with sessions connect to it; the clock has none. */ -}}
+{{- with $v.database.pooler.host -}}
+{{- if has $role (list "service" "config" "worker") -}}
+{{- $_ := set $config.database "pooler" (dict "host" . "port" ($v.database.pooler.port | int)) -}}
+{{- end -}}
 {{- end -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
@@ -174,7 +181,8 @@ state_directory (an emptyDir). */ -}}
     "max_batch_request_body_bytes" ($w.server.maxBatchRequestBodyBytes | int64)
     "max_large_request_body_bytes" ($w.server.maxLargeRequestBodyBytes | int64)
     "graceful_shutdown_seconds" ($w.server.gracefulShutdownSeconds | int)
-    "background_shutdown_seconds" ($w.server.backgroundShutdownSeconds | int) -}}
+    "background_shutdown_seconds" ($w.server.backgroundShutdownSeconds | int)
+    "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int) -}}
 {{- /* The service pods are behind your ingress controller or Gateway. The
 auth gateway calls the config pods directly, so they keep the wallet default
 (127.0.0.1). */ -}}
