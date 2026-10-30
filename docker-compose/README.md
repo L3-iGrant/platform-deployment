@@ -38,7 +38,6 @@ check: do the next step only when you see the result of the check.
 | NATS (`nats`) | The messages between the components. | none |
 | OpenBao (`openbao`) | Keeps the signing keys of your organisations. | none |
 | Valkey (`valkey`, `valkey-replica`, `valkey-sentinel`) | The work queue, the single-use values and the caches of the wallet: a primary, a replica and a Sentinel. See [Valkey](#valkey). | none |
-| File store (`storage`) | Keeps the PDF documents of the verifier (the uploaded and the signed documents). | none |
 
 Some services run one time at each start and then stop:
 `database-init`, `wallet-database-roles`, `api-migrate`,
@@ -163,9 +162,9 @@ make status
 Check: you see one line for each service.
 
 - `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
-  `wallet-service`, `wallet-scheduler`, `dashboard`, `nats`, `openbao`,
-  `storage` and `postgres`: `running`. The services with a
-  health check also show `(healthy)`.
+  `wallet-service`, `wallet-scheduler`, `dashboard`, `nats`, `openbao`
+  and `postgres`: `running`. The services with a health check also
+  show `(healthy)`.
 - `database-init`, `wallet-database-roles`, the three `*-migrate`
   services, the three `*-read-access` services and `openbao-init`:
   `exited`, with the status `Exited (0)`.
@@ -268,7 +267,7 @@ your shell has priority over the value in `.env`.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. Empty `SMTP_HOST`: no e-mail. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the default of the Helm chart). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
 | `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
-| `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `STORAGE_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
+| `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
 
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
 `igrant_wallet`, each with its own owner user. The wallet keeps its tables

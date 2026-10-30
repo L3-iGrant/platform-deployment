@@ -13,7 +13,6 @@ This page lists what your cluster, your network and your workstation need before
 | TLS | Certificates for the three host names: TLS Secrets in the release namespace, or TLS at your Gateway or load balancer. cert-manager is optional (see `examples/exposure-ingress-nginx-cert-manager.yaml`). |
 | Storage | A default StorageClass for ReadWriteOnce volumes, or the value `global.storageClass`. The database server, NATS, OpenBao and Valkey use volumes. |
 | Image registry | Access to the iGrant.io registry for customers (`europe-docker.pkg.dev/jenkins-189019/igrantio`, with a service account key from iGrant.io) and the release tag of your version, or your own mirror. |
-| File store | A Google Cloud Storage bucket for the files of the organisation wallet (not public), or a server with the Google Cloud Storage API (`organisationWallet.storage.emulatorHost`). Create the bucket before the install. The service account of the wallet needs the roles `roles/storage.objectAdmin` and `roles/storage.legacyBucketReader` on this bucket only: the wallet reads the bucket before each upload. |
 | OpenBao | Operators who unseal the bundled OpenBao after each restart (the Shamir seal), or your own OpenBao. See [OpenBao](openbao.md). |
 | Workstation | `kubectl`, `helm`, `bash`, and `docker` to run `scripts/make-keys.sh` (it runs the api image). |
 

@@ -57,18 +57,6 @@ OpenBao. */ -}}
 {{- if hasKey $files "trust-list-lookup-token" -}}
 {{- $_ := set $trustList "lookup_token_file" (printf "%s/trust-list-lookup-token" $dir) -}}
 {{- end -}}
-{{- /* The file store of the wallet: Google Cloud Storage (or a server with
-its API, emulator_host). The bucket and the project are required: the wallet
-code has defaults that are not the bucket of this installation. */ -}}
-{{- $storage := dict
-    "gcs_bucket" (required "organisationWallet.storage.gcsBucket is required: the Google Cloud Storage bucket of the verifier files and the signed PDFs" $w.storage.gcsBucket)
-    "gcs_project" (required "organisationWallet.storage.gcsProject is required: the Google Cloud project of the bucket" $w.storage.gcsProject) -}}
-{{- if hasKey $files "storage-service-account.json" -}}
-{{- $_ := set $storage "credentials_file" (printf "%s/storage-service-account.json" $dir) -}}
-{{- end -}}
-{{- with $w.storage.emulatorHost -}}
-{{- $_ := set $storage "emulator_host" . -}}
-{{- end -}}
 {{- /* The audit log (audit.*): the retention in the file of every role,
 so that each process and the migration hook have the same values; the
 bucket of the anchor copies and of the monthly exports only in the
@@ -135,7 +123,6 @@ in the config role writes its purge date, the scheduler purges. */ -}}
     "clock_skew_seconds" ($w.serviceEnvelope.clockSkewSeconds | int))
   "kms" $kms
   "trust_list" $trustList
-  "storage" $storage
   "wallet_unit" $walletUnit
   "audit" $audit
   "retention" $retention -}}

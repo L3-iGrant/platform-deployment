@@ -17,8 +17,6 @@
 #   placeholder: the render does not stop, but the pods cannot pull);
 # - the public host names: api.host, organisationWallet.host,
 #   enterpriseDashboard.host, and the exposure of each (exposure.*);
-# - the Google Cloud Storage bucket of the wallet:
-#   organisationWallet.storage.gcsBucket, .gcsProject;
 # - the keys (scripts/make-keys.sh): api.keyStorage.tokenSigning.activeKid,
 #   gateway.internalToken.activeKid, gateway.publicKeys.*,
 #   serviceKeys.publicJwks.*, <service>.serviceEnvelope.activeKid,
@@ -1016,7 +1014,7 @@ networkPolicy:
         except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
         ports: []
       # -- The metadata server of a cloud (for example the default
-      # credentials of the Google Cloud Storage client of the wallet).
+      # credentials of the client of a cloud service).
       metadata:
         cidrs: ["169.254.169.254/32"]
         ports: [80]
@@ -1369,20 +1367,6 @@ organisationWallet:
     playIntegrity:
       existingSecret: ""
       key: service_account.json
-  # -- The file store of the wallet (the verifier files and the signed
-  # PDFs): Google Cloud Storage. gcsBucket and gcsProject are required.
-  storage:
-    gcsBucket: ""
-    gcsProject: ""
-    # -- Existing Secret with the service account JSON
-    # (storage.credentials_file). Empty: the Google default credentials.
-    credentials:
-      existingSecret: ""
-      key: service-account.json
-    # -- The URL of a server with the Google Cloud Storage API in place of
-    # Google (storage.emulator_host), for example a fake-gcs-server for
-    # tests. Empty: Google Cloud Storage.
-    emulatorHost: ""
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
   # hourly anchor of each scope signed with an installation key (the

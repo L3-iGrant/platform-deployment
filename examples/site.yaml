@@ -1,4 +1,4 @@
-# Your installation: the public host names and the file store of the wallet.
+# Your installation: the public host names.
 # Copy this file and change the values. Use it with one file of each group
 # (database, OpenBao, exposure) and the keys file of scripts/make-keys.sh:
 #   helm install ows <chart> -n ows -f values-keys.yaml -f site.yaml \
@@ -13,18 +13,6 @@ api:
 organisationWallet:
   # The public host of the organisation wallet.
   host: wallet.example.org
-  # The Google Cloud Storage bucket of the verifier files and the signed
-  # PDFs (the roles of its service account: docs/prerequisites.md). Empty
-  # credentials: the Google default credentials of the pod. Else a Secret
-  # with the key file of the service account, made before the install:
-  #   kubectl -n ows create secret generic ows-wallet-files \
-  #     --from-file=service-account.json=wallet-files-key.json
-  # and existingSecret: ows-wallet-files.
-  storage:
-    gcsBucket: example-wallet-files
-    gcsProject: example-project
-    credentials:
-      existingSecret: ""
 enterpriseDashboard:
   # The public host of the enterprise dashboard. It must have the same
   # registrable domain as the api host (the login cookie).

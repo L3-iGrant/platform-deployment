@@ -419,9 +419,6 @@ servers. */ -}}
 {{- with $w.walletUnit.playIntegrity.existingSecret -}}
 {{- $_ := set $files "play-integrity-service-account.json" (dict "secret" . "key" $w.walletUnit.playIntegrity.key) -}}
 {{- end -}}
-{{- with $w.storage.credentials.existingSecret -}}
-{{- $_ := set $files "storage-service-account.json" (dict "secret" . "key" $w.storage.credentials.key) -}}
-{{- end -}}
 {{- with $w.trustList.lookupToken.existingSecret -}}
 {{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
 {{- end -}}
