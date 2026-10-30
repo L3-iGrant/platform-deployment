@@ -99,7 +99,8 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.server.nonceRequestsPerMinute` | The nonce requests of one client address (an IPv6 /64 network) in 60 s at the anonymous nonce routes of the wallet; more get 429 (see [Exposure](exposure.md)) | `300` |
 | `organisationWallet.walletUnit.productionChecksEnabled` | The device checks of the wallet apps (App Attest and Play Integrity) | `false` |
 | `organisationWallet.walletUnit.playIntegrity.existingSecret`, `.decryptionKeyKey`, `.verificationKeyKey` | The Secret with the decryption key and the verification key of the Play Console; only the service pods mount them | no Secret; `decryption-key`, `verification-key` |
-| `organisationWallet.walletUnit.playIntegrity.certificateSha256Digests`, `.packageName`, `.minVersionCode` | The SHA-256 of the app signing key certificate (required with the Secret), the package and the lowest version code of the Android app | `[]`, `io.igrant.mobileagent`, `0` |
+| `organisationWallet.walletUnit.androidSigningCertificateDigests` | The SHA-256 of the app signing key certificate of the Android app: the Play Integrity check (required with the Secret), the device key of the registration and the key attestations | `[]` |
+| `organisationWallet.walletUnit.playIntegrity.packageName`, `.minVersionCode` | The package and the lowest version code of the Android app | `io.igrant.mobileagent`, `0` |
 | `organisationWallet.trustList.*` | The trust list lookup service | the NXD Foundation service |
 | `organisationWallet.serviceEnvelope.activeKid` | The key id of the NATS message key of the wallet | `""` |
 | `organisationWallet.nats.commandReplySeconds` | How long the config role keeps the reply of a NATS command of the api for a retry (120 to 3600; the same for all config pods) | `300` |

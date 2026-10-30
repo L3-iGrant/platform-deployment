@@ -103,15 +103,20 @@ writes its purge date, the workers purge. */ -}}
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- $p := $w.walletUnit.playIntegrity -}}
-{{- if and $p.existingSecret (not $p.certificateSha256Digests) -}}
-{{- fail "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
+{{- $digests := $w.walletUnit.androidSigningCertificateDigests -}}
+{{- if and $p.existingSecret (not $digests) -}}
+{{- fail "organisationWallet.walletUnit.androidSigningCertificateDigests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
+{{- end -}}
+{{- /* The service pods answer the WIA and key attestation requests of the
+wallet units: only their file has the digests of the Android app. */ -}}
+{{- if and $digests (eq $role "service") -}}
+{{- $_ := set $walletUnit "android_signing_certificate_digests" $digests -}}
 {{- end -}}
 {{- if hasKey $files "play-integrity-decryption-key" -}}
 {{- $_ := set $walletUnit "play_integrity" (dict
     "decryption_key_file" (printf "%s/play-integrity-decryption-key" $dir)
     "verification_key_file" (printf "%s/play-integrity-verification-key" $dir)
     "package_name" $p.packageName
-    "certificate_sha256_digests" $p.certificateSha256Digests
     "min_version_code" ($p.minVersionCode | int)) -}}
 {{- end -}}
 {{- $config := dict

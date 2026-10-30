@@ -178,9 +178,12 @@ before step 2:
 2. Put the decryption key and the verification key (the base64 text of
    each) in a Secret, with the keys `decryption-key` and
    `verification-key` (or set `decryptionKeyKey` and `verificationKeyKey`).
-3. Set `playIntegrity.existingSecret` and `playIntegrity.certificateSha256Digests`
-   (the SHA-256 of the app signing key certificate, from "App signing" in
-   the Play Console). Without the digest the render stops.
+3. Set `playIntegrity.existingSecret` and
+   `organisationWallet.walletUnit.androidSigningCertificateDigests` (the
+   SHA-256 of the app signing key certificate, from "App signing" in the
+   Play Console). Without the digest the render stops. The key
+   attestations and the registration of an Android wallet unit check the
+   same digests.
 
 The apps of the same release make classic Play Integrity requests. An
 installation with the production checks off changes nothing.

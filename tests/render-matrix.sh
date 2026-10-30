@@ -530,6 +530,9 @@ for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
     want = expected["play_integrity"] if role == "service" else None
     if unit.get("play_integrity") != want:
         print(f"{role}.yaml wallet_unit.play_integrity is {unit.get('play_integrity')!r}")
+    want = expected["digests"] if role == "service" else None
+    if unit.get("android_signing_certificate_digests") != want:
+        print(f"{role}.yaml wallet_unit.android_signing_certificate_digests is {unit.get('android_signing_certificate_digests')!r}")
     if "play_integrity_credentials_file" in unit:
         print(f"{role}.yaml names the service account of Play Integrity")
     pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
@@ -546,12 +549,15 @@ PY
   fi
 }
 digest=ed5ed923ed30fab5ef5721931f43d1270b13340045bbbef31e0a9927a57e4142
-play_integrity "no keys by default" '{"play_integrity": null, "secrets": {}}' "${shamir[@]}"
-play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"certificate_sha256_digests\": [\"$digest\"], \"min_version_code\": 42}, \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" "${shamir[@]}" \
-  --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}" \
+play_integrity "no keys by default" '{"play_integrity": null, "digests": null, "secrets": {}}' "${shamir[@]}"
+play_integrity "digests without keys" "{\"play_integrity\": null, \"digests\": [\"$digest\"], \"secrets\": {}}" "${shamir[@]}" \
+  --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}"
+play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"min_version_code\": 42}, \"digests\": [\"$digest\"], \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}" \
   --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
-guard "Play Integrity keys without the certificate digest" "playIntegrity.certificateSha256Digests needs the SHA-256" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
-guard "Play Integrity certificate digest not hex" "certificateSha256Digests" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={not-a-digest}"
+guard "Play Integrity keys without the certificate digest" "androidSigningCertificateDigests needs the SHA-256" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
+guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" "${shamir[@]}" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
+guard "the Play Integrity digest value is gone" "certificateSha256Digests" "${shamir[@]}" --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}"
 guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
