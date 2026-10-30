@@ -509,6 +509,50 @@ PY
     bad "audit $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
+# The Play Integrity keys of the wallet (wallet_unit.play_integrity): only
+# the service file names them and only the service pods mount them; the
+# service account of the earlier releases is gone.
+play_integrity() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  # Only stdout is YAML (helm writes its warnings to stderr).
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
+    bad "play integrity $name: $(head -c 200 "$out/play.err")"
+  elif problems="$(python3 - "$out/play.yaml" "$expect" <<'PY' 2>&1
+import json, sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = json.loads(sys.argv[2])
+def find(kind, name):
+    return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
+files = find("ConfigMap", "t-wallet")["data"]
+for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
+    unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
+    want = expected["play_integrity"] if role == "service" else None
+    if unit.get("play_integrity") != want:
+        print(f"{role}.yaml wallet_unit.play_integrity is {unit.get('play_integrity')!r}")
+    if "play_integrity_credentials_file" in unit:
+        print(f"{role}.yaml names the service account of Play Integrity")
+    pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
+    mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
+               for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
+    secrets = {path: secret for path, secret in mounted.items() if path.startswith("play-integrity")}
+    if secrets != (expected["secrets"] if role == "service" else {}):
+        print(f"the {role} pods mount {secrets!r} as the Play Integrity keys")
+PY
+)" && [ -z "$problems" ]; then
+    ok "play integrity $name"
+  else
+    bad "play integrity $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+}
+digest=ed5ed923ed30fab5ef5721931f43d1270b13340045bbbef31e0a9927a57e4142
+play_integrity "no keys by default" '{"play_integrity": null, "secrets": {}}' "${shamir[@]}"
+play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"certificate_sha256_digests\": [\"$digest\"], \"min_version_code\": 42}, \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}" \
+  --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
+guard "Play Integrity keys without the certificate digest" "playIntegrity.certificateSha256Digests needs the SHA-256" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
+guard "Play Integrity certificate digest not hex" "certificateSha256Digests" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={not-a-digest}"
+guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)

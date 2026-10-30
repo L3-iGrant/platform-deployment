@@ -2999,8 +2999,28 @@
                 "existingSecret": {
                   "type": "string"
                 },
-                "key": {
-                  "type": "string"
+                "decryptionKeyKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "verificationKeyKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "packageName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "certificateSha256Digests": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$"
+                  }
+                },
+                "minVersionCode": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               }
             }
