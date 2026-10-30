@@ -49,7 +49,7 @@ REDIS_WALLET_USERS = {"service": "walletService", "config": "walletConfig", "sch
 REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replication yes", "appendonly yes", "appendfsync everysec",
                   "maxmemory-policy noeviction", "min-replicas-to-write 1", "min-replicas-max-lag 10", "masteruser replication",
                   "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
-REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
+REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
 REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507"
 # The values of examples/redis-external.yaml.
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]

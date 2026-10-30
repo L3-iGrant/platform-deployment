@@ -76,8 +76,9 @@ walletService,walletConfig,walletScheduler,gateway
 {{- end }}
 
 {{/*
-The ACL rights (the ACL file syntax). The wallet: its key namespaces (ows:*
-and the Dramatiq namespace ows-wallet:*), the read, write, script and
+The ACL rights (the ACL file syntax). The wallet: its key namespaces (ows:*,
+and the Dramatiq namespace: the key ows-wallet, which the broker script gets
+as KEYS[1], and ows-wallet:*), the read, write, script and
 connection commands without the dangerous ones, and INFO (the server check
 of the wallet) and KEYS (the Dramatiq broker script) again. The gateway:
 its key namespace gw:*. The discovery: the commands of the clients on the
@@ -88,7 +89,7 @@ probes. Output: JSON.
 */}}
 {{- define "ow.redis.rights" -}}
 {{- toJson (dict
-  "wallet" "resetchannels ~ows:* ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
+  "wallet" "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
   "gateway" "resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous"
   "discovery" "-@all +ping +auth +hello +client|setinfo +client|setname +sentinel|masters +sentinel|master +sentinel|get-master-addr-by-name +sentinel|replicas +sentinel|slaves +sentinel|sentinels"
   "replication" "-@all +psync +replconf +ping"
