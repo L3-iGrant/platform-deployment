@@ -19,7 +19,7 @@ spec:
         {{- include "ow.netpol.labels" (list . "consent" list) | nindent 8 }}
       annotations:
         {{- include "ow.checksum" (list "config" (include "ow.consent.config" .)) | nindent 8 }}
-        {{- include "ow.checksum" (list "keys" (list .Values.gateway.publicKeys .Values.serviceKeys .Values.consent.serviceEnvelope .Values.nats.auth.users.consent .Values.nats.tlsCa .Values.readAccess.consent)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list .Values.gateway.publicKeys .Values.serviceKeys .Values.consent.serviceEnvelope .Values.nats.auth.users.consent (include "ow.nats.ca" .) .Values.readAccess.consent)) | nindent 8 }}
         {{- include "ow.checksum" (list "secrets" (list (include "ow.db.secretFiles" (list . "consent" "database-password")) .Values.database.databases.consent)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $c) | nindent 6 }}

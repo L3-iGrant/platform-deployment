@@ -53,6 +53,30 @@ an earlier release, else a new random value. Call with
 {{- end }}
 
 {{/* NATS URL that the services use. */}}
+{{/* Name of the TLS Secret (tls.crt, tls.key, ca.crt) of the bundled NATS. */}}
+{{- define "ow.nats.tlsSecretName" -}}
+{{- .Values.nats.tls.existingSecret | default (include "ow.name" (list . "nats-tls")) -}}
+{{- end }}
+
+{{/*
+The CA of the NATS server that the processes trust: ca.crt of the TLS
+Secret of the bundled NATS (it always has TLS), or nats.tlsCa of an
+external NATS with TLS. Output: JSON {secret, key}, or {} without a CA.
+*/}}
+{{- define "ow.nats.ca" -}}
+{{- $nats := .Values.nats -}}
+{{- if $nats.enabled -}}
+{{- if $nats.tlsCa.existingSecret -}}
+{{- fail "nats.tlsCa is the CA of an external NATS (nats.enabled false): the bundled NATS has its own TLS (nats.tls)" -}}
+{{- end -}}
+{{- toJson (dict "secret" (include "ow.nats.tlsSecretName" .) "key" "ca.crt") -}}
+{{- else if $nats.tlsCa.existingSecret -}}
+{{- toJson (dict "secret" $nats.tlsCa.existingSecret "key" $nats.tlsCa.key) -}}
+{{- else -}}
+{{- toJson dict -}}
+{{- end -}}
+{{- end }}
+
 {{- define "ow.nats.url" -}}
 {{- if .Values.nats.enabled -}}
 nats://{{ include "ow.name" (list . "nats") }}.{{ .Release.Namespace }}.svc:4222
@@ -119,8 +143,8 @@ Output: JSON object "<file name>" -> {secret, key}.
 {{- $_ := set $files "read-access-wallet-password" (dict "secret" $reader.secret "key" $reader.key) -}}
 {{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
-{{- with $root.Values.nats.tlsCa.existingSecret -}}
-{{- $_ := set $files "nats-ca.crt" (dict "secret" . "key" $root.Values.nats.tlsCa.key) -}}
+{{- with include "ow.nats.ca" $root | fromJson -}}
+{{- $_ := set $files "nats-ca.crt" . -}}
 {{- end -}}
 {{- if $api.smtp.host -}}
 {{- if $api.smtp.existingSecret -}}
@@ -287,11 +311,11 @@ and the optional NATS CA (mode 0440). Output: a list at column 0.
           items:
             - key: {{ $signing.key }}
               path: service-envelope-jwks.json
-      {{- with $root.Values.nats.tlsCa.existingSecret }}
+      {{- with include "ow.nats.ca" $root | fromJson }}
       - secret:
-          name: {{ . }}
+          name: {{ .secret }}
           items:
-            - key: {{ $root.Values.nats.tlsCa.key }}
+            - key: {{ .key }}
               path: nats-ca.crt
       {{- end }}
 {{ include "ow.gateway.keysVolume" $root }}
@@ -411,8 +435,8 @@ user of its role. */ -}}
 {{- if $client.seed -}}
 {{- $_ := set $files "nats-seed" $client.seed -}}
 {{- end -}}
-{{- with $root.Values.nats.tlsCa.existingSecret -}}
-{{- $_ := set $files "nats-ca.crt" (dict "secret" . "key" $root.Values.nats.tlsCa.key) -}}
+{{- with include "ow.nats.ca" $root | fromJson -}}
+{{- $_ := set $files "nats-ca.crt" . -}}
 {{- end -}}
 {{- end -}}
 {{- /* The Valkey user of the role (redis): its password and the CA of the

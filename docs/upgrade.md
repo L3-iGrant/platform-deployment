@@ -120,3 +120,9 @@ From the release that runs the background work of the wallet on the queues of Va
 The roles hook makes the new database role `<prefix>_clock` (a new key `clock` of the Secret `<release>-wallet-database-roles`, with a random value). With an audit bucket, the workers write the anchor copies and the exports: the scheduler no longer mounts the credentials of the bucket.
 
 Check after step 3: the Deployments `ows-wallet-worker-main`, `ows-wallet-worker-maintenance` and `ows-wallet-clock` are ready, and exactly one clock leads (see [Workers and clock](workers.md#check)).
+
+## The TLS of NATS
+
+From the release with the TLS of NATS, the bundled NATS uses TLS for the clients and mutual TLS for the routes (see [NATS users](nats-users.md#tls)). The upgrade restarts the NATS pods one at a time. A server with TLS does not accept a route without TLS: until the third server has restarted, the cluster can lose its majority, and JetStream does not answer for some minutes. The processes connect again with TLS. The outbox of each service sends the events again; an API call that sends a NATS command in that time gets an error. Do this upgrade in a maintenance window.
+
+The service and config pods of the wallet get a memory limit of 1 GiB (`organisationWallet.service.resources`, `.config.resources`).

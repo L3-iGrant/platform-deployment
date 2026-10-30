@@ -41,7 +41,7 @@ spec:
       annotations:
         {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" $ "role" "worker" "group" $g))) | nindent 8 }}
         {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list $ "worker")) $.Values.openbao.wallet $.Values.openbao.external $.Values.database.databases.wallet)) | nindent 8 }}
-        {{- include "ow.checksum" (list "keys" (list $w.serviceEnvelope $.Values.nats.auth.users.walletWorker $.Values.nats.tlsCa)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $w.serviceEnvelope $.Values.nats.auth.users.walletWorker (include "ow.nats.ca" $))) | nindent 8 }}
     spec:
       # The worker does not call the Kubernetes API.
       automountServiceAccountToken: false

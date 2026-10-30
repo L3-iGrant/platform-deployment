@@ -265,6 +265,39 @@ else
   bad "Valkey certificate: the names of the certificate"
 fi
 
+# The bundled NATS: the certificate (the client Service, the pod names of the
+# routes, 127.0.0.1; server and client use) and the configuration
+# (nats-server -t, when nats-server is on this computer).
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
+    > "$out/nats-tls.yaml" 2> "$out/nats-tls.err"; then
+  bad "NATS certificate: $(head -c 200 "$out/nats-tls.err")"
+else
+  if names="$(python3 -c '
+import base64, sys, yaml
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["kind"] == "Secret" and doc["metadata"]["name"] == "t-nats-tls":
+        sys.stdout.write(base64.b64decode(doc["data"]["tls.crt"]).decode())
+' "$out/nats-tls.yaml" | openssl x509 -noout -text 2>&1)" \
+      && grep -q -F "DNS:t-nats.ow.svc," <<< "$names" && grep -q -F "DNS:*.t-nats-headless," <<< "$names" \
+      && grep -q -F "IP Address:127.0.0.1" <<< "$names" && grep -q -F "TLS Web Client Authentication" <<< "$names"; then
+    ok "NATS certificate: the client Service, the pod names of the routes and 127.0.0.1, server and client use"
+  else
+    bad "NATS certificate: the names of the certificate"
+  fi
+  if command -v nats-server > /dev/null; then
+    rm -rf "$out/nats-conf"
+    if python3 "$here/write_nats_conf.py" "$out/nats-tls.yaml" "$out/nats-conf" \
+        && conf="$(SERVER_NAME=t-nats-0 nats-server -t -c "$out/nats-conf/nats.conf" 2>&1)"; then
+      ok "NATS configuration: nats-server -t (TLS of the clients and of the routes)"
+    else
+      bad "NATS configuration: nats-server -t: $(printf '%s' "${conf:-}" | head -c 300)"
+    fi
+    rm -rf "$out/nats-conf"
+  else
+    echo "nats-server is not installed: the check of the NATS configuration is skipped"
+  fi
+fi
+
 # --- 3. The next steps (NOTES.txt) --------------------------------------------
 # helm template does not render NOTES.txt: a copy of the chart renders it as
 # a ConfigMap.
@@ -557,6 +590,15 @@ renders "scrape of the workers and the clock with network policies" "port: healt
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --show-only templates/networkpolicy/policies.yaml
 
+# The bundled NATS (nats.tls, nats.tlsCa).
+guard "NATS CA of an external NATS with the bundled NATS" "nats.tlsCa is the CA of an external NATS" "${shamir[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
+renders "NATS with own certificate" "secretName: my-nats-tls" "${shamir[@]}" --set nats.tls.existingSecret=my-nats-tls --show-only templates/nats/statefulset.yaml
+lacks "the NATS TLS Secret of the chart with own certificate" "name: t-nats-tls" "${shamir[@]}" --set nats.tls.existingSecret=my-nats-tls
+external_nats=("${shamir[@]}" --set nats.enabled=false --set nats.external.url=tls://nats.example.org:4222)
+renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
+lacks "external NATS: no TLS Secret of the chart" "t-nats-tls" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
+lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]}"
+
 # Valkey (redis.*): the schema and the template guards.
 redis_sts() {
   local name="$1" expect="$2"; shift 2
@@ -737,11 +779,11 @@ if "igrant_consent" not in rendered.get("t-postgres", {}).get("data", {}):
     bad "upgrade keeps the values of the Secrets: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 fi
-# The Secrets of the bundled Valkey are normal resources (no hook), and they
-# keep the passwords of the users and the certificate of the earlier release
-# (the copy of the chart reads them from earlier-secrets.json). The earlier
-# Secret of the users has no password of the gateway: the render gives a
-# new one.
+# The Secrets of the bundled Valkey and the TLS Secret of the bundled NATS
+# are normal resources (no hook), and they keep the passwords of the users
+# and the certificates of the earlier release (the copy of the chart reads
+# them from earlier-secrets.json). The earlier Secret of the users has no
+# password of the gateway: the render gives a new one.
 if [ "$(grep -c -F -- "$stub_line" "$lookup_chart/templates/_helpers.tpl")" != 1 ]; then
   bad "upgrade keeps the Valkey Secrets: the copy of the chart has not the lookup stub"
 else
@@ -749,7 +791,7 @@ else
 import base64, json, sys, yaml
 earlier = {}
 for doc in yaml.safe_load_all(open(sys.argv[1])):
-    if doc and doc["metadata"]["name"] in ("t-redis-users", "t-redis-tls"):
+    if doc and doc["metadata"]["name"] in ("t-redis-users", "t-redis-tls", "t-nats-tls"):
         name = doc["metadata"]["name"]
         earlier[name] = {"data": {key: base64.b64encode(f"earlier-{name}-{key}".encode()).decode()
                                   for key in doc["data"] if (name, key) != ("t-redis-users", "gateway")}}
@@ -772,9 +814,9 @@ gateway = rendered.get("t-redis-users", {}).get("data", {}).get("gateway")
 if not gateway or gateway in earlier["t-redis-users"]["data"].values():
     print("the Secret t-redis-users has no new password of the gateway")
 ' "$lookup_chart/earlier-secrets.json" "$out/redis-kept.yaml" 2>&1)" && [ -z "$problems" ]; then
-    ok "upgrade keeps the Valkey Secrets"
+    ok "upgrade keeps the Valkey Secrets and the NATS TLS Secret"
   else
-    bad "upgrade keeps the Valkey Secrets: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+    bad "upgrade keeps the Valkey Secrets and the NATS TLS Secret: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 fi
 

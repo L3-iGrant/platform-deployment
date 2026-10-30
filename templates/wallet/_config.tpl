@@ -172,7 +172,7 @@ auth gateway calls the config pods directly, so they keep the wallet default
 {{- end -}}
 {{- $_ := set $config "server" $server -}}
 {{- end -}}
-{{- if and $root.Values.nats.tlsCa.existingSecret (ne $role "clock") -}}
+{{- if and (include "ow.nats.ca" $root | fromJson).secret (ne $role "clock") -}}
 {{- $_ := set $config.nats "tls_ca_file" (printf "%s/nats-ca.crt" $dir) -}}
 {{- end -}}
 {{- /* The config role always checks the internal token of the gateway

@@ -285,11 +285,22 @@ nats:
   # external NATS needs the same value (ConfigMap
   # <fullname>-nats-authorization).
   maxPayload: 4MB
-  # -- Existing Secret with the CA certificate (PEM) of the NATS server, for
-  # a NATS with TLS. The services read it as a file. Empty: no TLS CA.
+  # -- An external NATS with TLS (nats.enabled false): an existing Secret
+  # with the CA certificate (PEM) of the server. The services read it as a
+  # file. Empty: no TLS CA.
   tlsCa:
     existingSecret: ""
     key: ca.crt
+  # The bundled NATS always has TLS: for the clients (port 4222) and, with
+  # mutual TLS, for the routes between the servers (port 6222: a server
+  # accepts a route only with a certificate of the CA).
+  tls:
+    # -- Existing kubernetes.io/tls Secret with tls.crt, tls.key and
+    # ca.crt. The certificate must have the names <fullname>-nats.<namespace>.svc
+    # and *.<fullname>-nats-headless (also with .<namespace>.svc), and the
+    # server and client use. Empty: the chart makes a CA and a certificate
+    # (10 years, kept across upgrades).
+    existingSecret: ""
   # -- Number of NATS servers. More than 1 makes a cluster.
   replicas: 3
   jetstream:
@@ -1628,12 +1639,16 @@ organisationWallet:
       requests:
         cpu: 25m
         memory: 352Mi
+      limits:
+        memory: 1Gi
   config:
     replicas: 1
     resources:
       requests:
         cpu: 15m
         memory: 352Mi
+      limits:
+        memory: 1Gi
   scheduler:
     # -- The scheduler has no leader lock: keep 1 replica (strategy Recreate).
     replicas: 1

@@ -22,7 +22,7 @@ spec:
       annotations:
         {{- /* The reloader applies a change of the users and of max_payload
         without a restart; without it the pods restart. */}}
-        {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream") (pick $nats "replicas" "jetstream" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
+        {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream" "tls") (pick $nats "replicas" "jetstream" "tls" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $nats) | nindent 6 }}
       # NATS does not call the Kubernetes API.
@@ -87,6 +87,9 @@ spec:
               mountPath: /etc/nats-config
             - name: pid
               mountPath: /var/run/nats
+            - name: tls
+              mountPath: /etc/nats-tls
+              readOnly: true
             - name: data
               mountPath: /data
         {{- if $nats.reloader.enabled }}
@@ -111,6 +114,16 @@ spec:
             name: {{ include "ow.name" (list . "nats") }}
         - name: pid
           emptyDir: {}
+        - name: tls
+          secret:
+            secretName: {{ include "ow.nats.tlsSecretName" . }}
+            items:
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+              - key: ca.crt
+                path: ca.crt
   volumeClaimTemplates:
     - metadata:
         name: data
