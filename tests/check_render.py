@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Checks the key facts of one "helm template" output of the chart.
 
-Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs>]
+Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs> [<redis>]]
   engine: postgresql; mode: bundled | external;
   openbao: shamir | external;
   exposure: ingress | gatewayAPI | none; networkpolicy: off | on;
   database-logs: on (default) | off (database.postgresql.logDdlAndConnections
-    false).
+    false);
+  redis: bundled (default) | external (examples/redis-external.yaml).
 
 The values are tests/values/keys.yaml, examples/site.yaml and one example
 file of each group (see tests/render-matrix.sh). The script writes one line
@@ -14,6 +15,8 @@ per failed check and exits 1 when a check fails. It never prints a Secret
 value: it reads only the names and the keys of the Secrets.
 """
 
+import base64
+import json
 import re
 import sys
 
@@ -37,6 +40,20 @@ DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnec
 AUDIT = {"retention_years": 7}
 RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deactivated_sandbox_days": 7,
              "dead_letter_days": 30, "login_code_days": 1, "verifier_response_key_days": 1, "batch_size": 500}
+# Valkey: the ACL user of each process (the values key and the user name),
+# the settings of the data servers (WORKERS-AND-REDIS-PLAN.md section 2.7)
+# and the rights of the wallet users (the rights of the wallet tests,
+# eudi-wallet ows/testing/redis_servers.py).
+REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletScheduler": "wallet-scheduler", "gateway": "gateway"}
+REDIS_WALLET_USERS = {"service": "walletService", "config": "walletConfig", "scheduler": "walletScheduler"}
+REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replication yes", "appendonly yes", "appendfsync everysec",
+                  "maxmemory-policy noeviction", "min-replicas-to-write 1", "min-replicas-max-lag 10", "masteruser replication",
+                  "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
+REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
+REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507"
+# The values of examples/redis-external.yaml.
+REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
+REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
 
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
@@ -58,6 +75,7 @@ FORBIDDEN = [
 def main() -> int:
     path, engine, mode, openbao, exposure, netpol = sys.argv[1:7]
     database_logs = sys.argv[7] if len(sys.argv) > 7 else "on"
+    redis = sys.argv[8] if len(sys.argv) > 8 else "bundled"
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
     docs = [d for d in yaml.safe_load_all(text) if d]
@@ -506,6 +524,113 @@ def main() -> int:
     check(f'"{refill}"' not in scheduler_line.split("subscribe:")[0], "the wallet scheduler role can publish the WIA pool refill event")
     others = [line for line in nats_conf.splitlines() if refill in line and not any(n in line for n in ("UTESTWALLETCONFIG", "UTESTWALLETSERVICE", "UTESTWALLETSCHEDULER"))]
     check(not others, "a NATS user other than the wallet roles has the WIA pool refill event")
+
+    # --- Valkey ---------------------------------------------------------------
+    # The bundled Valkey: normal resources, no hook (the processes need it only
+    # after the install): the StatefulSet (3 pods, each with a data container
+    # and a Sentinel container),
+    # the headless Service, the Service of the Sentinels, the ConfigMap and
+    # the two kept Secrets (no PodDisruptionBudget and no anti-affinity: the
+    # scaled deployment). Each wallet role has the redis section with its own
+    # ACL user; the gateway mounts the password of its user (no key in its
+    # configuration).
+    redis_objects = {(d["kind"], d["metadata"]["name"]) for d in docs if d["metadata"]["name"].startswith(f"{RELEASE}-redis")}
+    users_secret, tls_secret = f"{RELEASE}-redis-users", f"{RELEASE}-redis-tls"
+    if redis == "bundled":
+        expected = {("StatefulSet", f"{RELEASE}-redis"), ("Service", f"{RELEASE}-redis-headless"), ("Service", f"{RELEASE}-redis-sentinel"),
+                    ("ConfigMap", f"{RELEASE}-redis"), ("Secret", users_secret), ("Secret", tls_secret)}
+        check(redis_objects == expected, f"the Valkey objects are {sorted(redis_objects)}")
+        for kind, name in redis_objects:
+            doc = find(kind, name)
+            check("helm.sh/hook" not in annotations(doc), f"the Valkey object {kind} {name} is a hook")
+        secret = find("Secret", users_secret) or {}
+        check(set(secret.get("data", {})) == set(REDIS_USERS) | {"replication", "sentinel", "probe"}, f"the Secret {users_secret} has the keys {sorted(secret.get('data', {}))}")
+        tls = find("Secret", tls_secret) or {}
+        check(tls.get("type") == "kubernetes.io/tls" and set(tls.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"}, f"the Secret {tls_secret} is not a TLS Secret with ca.crt")
+        for doc in (secret, tls):
+            check(annotations(doc).get("helm.sh/resource-policy") == "keep" if doc else False, f"the Secret {(doc.get('metadata') or {}).get('name')} is not kept")
+        sts = find("StatefulSet", f"{RELEASE}-redis")
+        if sts:
+            pod = pod_of(sts)
+            check(sts["spec"]["replicas"] == 3 and sts["spec"].get("podManagementPolicy") == "Parallel", "the Valkey StatefulSet has not 3 replicas with Parallel")
+            check([c["name"] for c in pod["containers"]] == ["valkey", "sentinel"], "the Valkey pods have not the containers valkey and sentinel")
+            check(all(c["image"] == REDIS_IMAGE for c in pod["containers"]), f"the Valkey image is {pod['containers'][0]['image']}")
+            check("affinity" not in pod, "the Valkey pods have an affinity without redis.affinity")
+            check(sts["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "redis", "the Valkey pods have not the network role redis")
+            check(pod.get("automountServiceAccountToken") is False, "the Valkey pods mount a service account token")
+            check((pod.get("securityContext") or {}).get("runAsNonRoot") is True, "the Valkey pods are not non-root")
+            check(pod["containers"][0]["lifecycle"]["preStop"]["exec"]["command"] == ["/bin/sh", "/etc/valkey/prestop.sh"], "the data container has not the preStop failover")
+            for container in pod["containers"]:
+                for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
+                    command = ((container.get(probe) or {}).get("exec") or {}).get("command") or []
+                    check(command[:2] == ["/bin/sh", "/etc/valkey/probe.sh"], f"the {probe} of the container {container['name']} is not probe.sh")
+            users = next((v for v in pod["volumes"] if v["name"] == "users"), {})
+            items = {(source["secret"]["name"], item["key"], item["path"]) for source in (users.get("projected") or {}).get("sources", [])
+                     for item in source["secret"]["items"]}
+            check(items == {(users_secret, key, key) for key in list(REDIS_USERS) + ["replication", "sentinel", "probe"]},
+                  "the Valkey pods do not mount the password of each ACL user")
+            run = next((v for v in pod["volumes"] if v["name"] == "run"), {})
+            check((run.get("emptyDir") or {}).get("medium") == "Memory", "the files with the passwords are not in memory")
+            check([c["metadata"]["name"] for c in sts["spec"].get("volumeClaimTemplates", [])] == ["data"], "the Valkey pods have no data volume")
+        headless = find("Service", f"{RELEASE}-redis-headless") or {"spec": {}}
+        check(headless["spec"].get("clusterIP") == "None" and headless["spec"].get("publishNotReadyAddresses") is True
+              and {p["port"] for p in headless["spec"].get("ports", [])} == {6379, 26379}, "the headless Service of Valkey is not right")
+        sentinel_svc = find("Service", f"{RELEASE}-redis-sentinel") or {"spec": {}}
+        check({p["port"] for p in sentinel_svc["spec"].get("ports", [])} == {26379}, "the Service of the Sentinels has not only the port 26379")
+        server = config_map_file(f"{RELEASE}-redis", "valkey.conf", raw=True) or ""
+        lines = server.splitlines()
+        for setting in REDIS_SETTINGS:
+            check(setting in lines, f"valkey.conf has not \"{setting}\"")
+        acl = (config_map_file(f"{RELEASE}-redis", "users.acl", raw=True) or "").splitlines()
+        check("user default off" in acl, "the ACL file does not turn the default user off")
+        for key, user in REDIS_USERS.items():
+            rights = REDIS_WALLET_RIGHTS if key != "gateway" else "resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous"
+            check(f"user {user} on {{hash:{key}}} {rights}" in acl, f"the ACL file has not the user {user} with its rights")
+        sentinel = (config_map_file(f"{RELEASE}-redis", "sentinel.conf", raw=True) or "").splitlines()
+        for setting in ("sentinel monitor ows {primary} 6379 2", "sentinel resolve-hostnames yes", "sentinel announce-hostnames yes",
+                        "sentinel auth-user ows sentinel", "user default off", "tls-replication yes"):
+            check(setting in sentinel, f"sentinel.conf has not \"{setting}\"")
+        scripts = set((find("ConfigMap", f"{RELEASE}-redis") or {}).get("data", {}))
+        check({"common.sh", "valkey.sh", "sentinel.sh", "probe.sh", "prestop.sh"} <= scripts, f"the Valkey ConfigMap has the keys {sorted(scripts)}")
+        # No password in the ConfigMap: only the fields of the templates.
+        values = {base64.b64decode(v).decode() for v in secret.get("data", {}).values()}
+        check(not any(value in json.dumps(find("ConfigMap", f"{RELEASE}-redis") or {}) for value in values), "the Valkey ConfigMap has a password")
+        ca = (tls_secret, "ca.crt")
+        endpoint = {"sentinels": [f"{RELEASE}-redis-{i}.{RELEASE}-redis-headless.{NAMESPACE}.svc:26379" for i in range(3)], "master_name": "ows"}
+        password_of = {key: (users_secret, key) for key in REDIS_USERS}
+    else:
+        check(not redis_objects, f"Valkey objects with redis.mode external: {sorted(redis_objects)}")
+        ca = ("ows-redis-ca", "ca.crt")
+        endpoint = {"sentinels": REDIS_EXTERNAL_SENTINELS, "master_name": "ows"}
+        password_of = {key: (f"ows-redis-{user}", "password") for key, user in REDIS_USERS.items()}
+    for role, key in REDIS_WALLET_USERS.items():
+        user = REDIS_USERS[key]
+        wallet = config_map_file(f"{RELEASE}-wallet", f"{role}.yaml") or {}
+        files = f"{secret_dir}/redis-password"
+        expected = {"queue": dict(endpoint, username=user, password_file=files, sentinel_username=user, sentinel_password_file=files,
+                                  tls=True, ca_file=f"{secret_dir}/redis-ca.crt", connect_timeout_seconds=2, timeout_seconds=2),
+                    "replica_wait_milliseconds": 100}
+        check(wallet.get("redis") == expected, f"wallet {role}.yaml redis is {wallet.get('redis')!r}")
+        deploy = find("Deployment", f"{RELEASE}-wallet-{role}")
+        if deploy:
+            mounted = projected_files(pod_of(deploy))
+            check(mounted.get("redis-password") == password_of[key] and mounted.get("redis-ca.crt") == ca,
+                  f"the wallet {role} pods mount {mounted.get('redis-password')} and {mounted.get('redis-ca.crt')} as the Valkey files")
+    gateway_deploy = find("Deployment", f"{RELEASE}-gateway")
+    if gateway_deploy:
+        mounted = projected_files(pod_of(gateway_deploy))
+        check(mounted.get("redis-password") == password_of["gateway"] and mounted.get("redis-ca.crt") == ca,
+              f"the gateway pods mount {mounted.get('redis-password')} and {mounted.get('redis-ca.crt')} as the Valkey files")
+        check("redis" not in json.dumps(gateway).lower(), "the gateway configuration has a Valkey key (the gateway refuses an unknown key)")
+    if netpol == "on":
+        if redis == "bundled":
+            check(find("NetworkPolicy", f"{RELEASE}-netpol-ingress-redis") is not None, "no ingress policy of Valkey")
+        else:
+            reach = {d["metadata"]["name"] for d in policies for rule in d["spec"].get("egress", [])
+                     if {(t.get("ipBlock") or {}).get("cidr") for t in rule.get("to", [])} == REDIS_EXTERNAL_CIDRS
+                     and {p["port"] for p in rule.get("ports", [])} == {6379, 26379}}
+            want = {f"{RELEASE}-netpol-egress-{role}" for role in ("gateway", "wallet-service", "wallet-config", "wallet-scheduler")}
+            check(reach == want, f"the policies to the external Valkey are {sorted(reach)}, not {sorted(want)}")
 
     # --- Words that must not be in the render ------------------------------
     lowered = text.lower()

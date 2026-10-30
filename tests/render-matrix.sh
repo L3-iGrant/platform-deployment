@@ -8,7 +8,9 @@
 #    "external-vault" and "azure-key-vault", and the product name Azure Key
 #    Vault), no database KMS, no backup content, no Keycloak, no Aries or SSI
 #    name. The relative links of README.md and docs/ resolve
-#    (tests/check_links.py).
+#    (tests/check_links.py). Each image of values.yaml is in docs/images.md,
+#    each image of another project (registry docker.io) is in
+#    THIRD-PARTY-NOTICES.md, and the licence text of Valkey is in licenses/.
 # 2. The matrix of the examples (examples/): every combination of one file of
 #    each group, with examples/site.yaml and tests/values/keys.yaml:
 #      database   postgresql-bundled, postgresql-external
@@ -20,7 +22,11 @@
 #    HTTPRoute schema of the Gateway API from the CRDs catalog) and
 #    tests/check_render.py. helm lint runs once per database and OpenBao
 #    pair. One more render of the bundled server has the DDL and connection
-#    logs off.
+#    logs off. Each render with network policies:
+#    tests/check_network_matrix.py (the policies against
+#    policies/network-matrix.yaml). Your own Valkey or Redis (redis-external)
+#    with two database files, with and without network policies. The
+#    certificate of the bundled Valkey.
 # 3. The next steps (NOTES.txt).
 # 4. The render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
@@ -57,7 +63,7 @@ bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
 # --- 1. The text of the chart files ------------------------------------------
 files=("$chart/README.md" "$chart/values.yaml" "$chart/values.schema.json" "$chart/Chart.yaml"
-  "$chart/policies/network-matrix.yaml" "$chart/scripts/make-keys.sh")
+  "$chart/policies/network-matrix.yaml" "$chart/scripts/make-keys.sh" "$chart/THIRD-PARTY-NOTICES.md")
 while IFS= read -r -d '' file; do files+=("$file"); done < <(find "$chart/templates" "$chart/files" "$chart/examples" "$chart/docs" "$here" -type f -print0)
 text_check() {
   local what="$1" pattern="$2"; shift 2
@@ -105,6 +111,32 @@ else
   bad "text: relative links of README.md and docs/"
   printf '%s\n' "$links" | sed "s|$chart/||; s/^/  /" | head -10
 fi
+# The images of values.yaml: each in docs/images.md, each image of another
+# project in THIRD-PARTY-NOTICES.md; the licence text of Valkey.
+if problems="$(python3 - "$chart" <<'PY' 2>&1
+import sys, yaml
+chart = sys.argv[1]
+images, notices = open(f"{chart}/docs/images.md").read(), open(f"{chart}/THIRD-PARTY-NOTICES.md").read()
+def walk(node, path):
+    if isinstance(node, dict):
+        if node.get("repository") and "tag" in node:
+            name = f"{node['registry']}/{node['repository']}" if node.get("registry") else node["repository"]
+            if f"`{path}`" not in images or f"`{name}`" not in images and f"`{name}` (" not in images:
+                print(f"docs/images.md has not {path} ({name})")
+            if node.get("registry") and f"`{name}`" not in notices:
+                print(f"THIRD-PARTY-NOTICES.md has not {name}")
+        for key, value in node.items():
+            walk(value, f"{path}.{key}" if path else key)
+walk(yaml.safe_load(open(f"{chart}/values.yaml")), "")
+if "Copyright (c) 2024-present, Valkey contributors" not in open(f"{chart}/licenses/valkey/COPYING").read():
+    print("licenses/valkey/COPYING is not the licence of Valkey")
+PY
+)" && [ -z "$problems" ]; then
+  ok "text: images in docs/images.md and THIRD-PARTY-NOTICES.md"
+else
+  bad "text: images in docs/images.md and THIRD-PARTY-NOTICES.md"
+  printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+fi
 
 # --- 2. The matrix of the examples --------------------------------------------
 kubeconform_bin="$(command -v kubeconform || true)"
@@ -151,6 +183,9 @@ for database in postgresql-bundled postgresql-external; do
         if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
           good=0
         fi
+        if [ "$policies" = networkpolicy ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+          good=0
+        fi
         if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
       done
     done
@@ -168,6 +203,66 @@ elif python3 "$here/check_render.py" "$out/$name.yaml" postgresql bundled shamir
   ok "$name"
 else
   bad "$name"
+fi
+
+# Your own Valkey or Redis (redis.mode external, examples/redis-external.yaml):
+# no Valkey of the chart, the redis section of the wallet roles, the egress
+# to your servers.
+if helm lint "$chart" --quiet -f "$keys" -f "$examples/site.yaml" -f "$examples/postgresql-bundled.yaml" \
+    -f "$examples/openbao-shamir.yaml" -f "$examples/redis-external.yaml" > "$out/lint.txt" 2>&1; then
+  ok "lint redis-external"
+else
+  bad "lint redis-external"
+  sed 's/^/  /' "$out/lint.txt" | head -10
+fi
+for database in postgresql-bundled postgresql-external; do
+  for policies in none networkpolicy; do
+    name="redis-external-$database-$policies"
+    args=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/openbao-shamir.yaml"
+      -f "$examples/exposure-ingress-nginx.yaml" -f "$examples/redis-external.yaml")
+    [ "$policies" = networkpolicy ] && args+=(-f "$examples/networkpolicy.yaml")
+    if ! helm template t "$chart" --namespace ow "${args[@]}" > "$out/$name.yaml" 2> "$out/$name.err"; then
+      bad "$name: helm template"
+      sed 's/^/  /' "$out/$name.err" | head -10
+      continue
+    fi
+    good=1
+    if [ -n "$kubeconform_bin" ] && ! "$kubeconform_bin" -strict -summary -kubernetes-version 1.30.0 -cache "$kubeconform_cache" \
+        -schema-location default \
+        -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+        "$out/$name.yaml" > "$out/$name.kubeconform" 2>&1; then
+      echo "  kubeconform:"; grep -v '^Summary' "$out/$name.kubeconform" | sed 's/^/  /' | head -10
+      good=0
+    fi
+    netpol="$([ "$policies" = networkpolicy ] && echo on || echo off)"
+    if ! python3 "$here/check_render.py" "$out/$name.yaml" "$(engine_of "$database")" "$(mode_of "$database")" shamir ingress "$netpol" on external; then
+      good=0
+    fi
+    if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
+      good=0
+    fi
+    if [ "$policies" = networkpolicy ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+      good=0
+    fi
+    if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
+  done
+done
+# The certificate of the bundled Valkey: the pod names, the Service of the
+# Sentinels and 127.0.0.1 (the clients check the host name).
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
+    --show-only templates/secrets.yaml > "$out/redis-tls.yaml" 2> "$out/redis-tls.err"; then
+  bad "Valkey certificate: $(head -c 200 "$out/redis-tls.err")"
+elif names="$(python3 -c '
+import base64, sys, yaml
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["metadata"]["name"] == "t-redis-tls":
+        sys.stdout.write(base64.b64decode(doc["data"]["tls.crt"]).decode())
+' "$out/redis-tls.yaml" | openssl x509 -noout -text 2>&1)" \
+    && grep -q -F "DNS:*.t-redis-headless.ow.svc," <<< "$names" && grep -q -F "DNS:t-redis-sentinel.ow.svc," <<< "$names" \
+    && grep -q -F "IP Address:127.0.0.1" <<< "$names" && grep -q -F "TLS Web Client Authentication" <<< "$names"; then
+  ok "Valkey certificate: the pod names, the Sentinel Service and 127.0.0.1, server and client use"
+else
+  bad "Valkey certificate: the names of the certificate"
 fi
 
 # --- 3. The next steps (NOTES.txt) --------------------------------------------
@@ -423,6 +518,57 @@ renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
 lacks "database log parameter under a server parameter" '"log_statement=ddl"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
+
+# Valkey (redis.*): the schema and the template guards.
+redis_sts() {
+  local name="$1" expect="$2"; shift 2
+  local text
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "$@" --show-only templates/redis/statefulset.yaml 2>&1)"; then
+    bad "Valkey pods $name: $(printf '%s' "$text" | head -c 200)"
+  elif grep -q -F -- "$expect" <<< "$text"; then
+    ok "Valkey pods $name"
+  else
+    bad "Valkey pods $name: no \"$expect\""
+  fi
+}
+guard "redis mode" "redis.mode" "${shamir[@]}" --set redis.mode=cluster
+guard "redis mode without the schema" 'redis.mode "cluster" is not supported' "${shamir[@]}" --skip-schema-validation --set redis.mode=cluster
+guard "redis even replicas" "redis.replicas" "${shamir[@]}" --set redis.replicas=4
+guard "redis even replicas without the schema" "redis.replicas (4) must be an odd number of 3 or more" "${shamir[@]}" --skip-schema-validation --set redis.replicas=4
+guard "redis one replica" "redis.replicas" "${shamir[@]}" --set redis.replicas=1
+guard "redis quorum above the replicas" "redis.sentinel.quorum (4) must be 1 to redis.replicas (3)" "${shamir[@]}" --set redis.sentinel.quorum=4
+guard "redis maxmemory" "redis.maxmemory" "${shamir[@]}" --set redis.maxmemory=lots
+guard "redis maxmemory without the schema" 'redis.maxmemory "lots" is not a size' "${shamir[@]}" --skip-schema-validation --set redis.maxmemory=lots
+guard "redis master name" "redis.masterName" "${shamir[@]}" --set 'redis.masterName=my primary'
+guard "redis user name" "redis.users.gateway.username" "${shamir[@]}" --set redis.users.gateway.username=-gw
+guard "redis user of two processes" 'redis.users.walletConfig.username "wallet-service" is the user of another process' "${shamir[@]}" --set redis.users.walletConfig.username=wallet-service
+guard "redis user name of the bundled Valkey" 'redis.users.gateway.username "sentinel" is a user of the bundled Valkey' "${shamir[@]}" --set redis.users.gateway.username=sentinel
+guard "redis unknown value" "Additional property" "${shamir[@]}" --set redis.cluster=true
+guard "redis client timeout" "redis.client.timeoutSeconds" "${shamir[@]}" --set redis.client.timeoutSeconds=0
+guard "redis replica wait" "redis.client.replicaWaitMilliseconds" "${shamir[@]}" --set redis.client.replicaWaitMilliseconds=20000
+external_redis=("${shamir[@]}" -f "$examples/redis-external.yaml")
+guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
+guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
+guard "external redis with sentinels and address" "redis.external" "${external_redis[@]}" --set redis.external.address=redis.example.org:6379
+guard "external redis with sentinels and address without the schema" "set redis.external.sentinels or redis.external.address, not both" "${external_redis[@]}" --skip-schema-validation --set redis.external.address=redis.example.org:6379
+guard "external redis user without password Secret" "redis.users.gateway" "${external_redis[@]}" --set redis.users.gateway.passwordSecret=
+guard "external redis user without password Secret without the schema" "redis.users.gateway.passwordSecret is required with redis.mode external" "${external_redis[@]}" --skip-schema-validation --set redis.users.gateway.passwordSecret=
+guard "external redis Sentinel without port" "redis.external.sentinels" "${external_redis[@]}" --set-json 'redis.external.sentinels=["redis-1.example.org"]'
+guard "external redis Sentinel without port without the schema" '"redis-1.example.org" is not host:port' "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=["redis-1.example.org"]'
+guard "external redis with network policies without addresses" "networkPolicy.externalRedis needs the addresses" "${external_redis[@]}" -f "$examples/networkpolicy.yaml" --set-json 'networkPolicy.externalRedis=[]'
+redis_sts "with redis.affinity" "requiredDuringSchedulingIgnoredDuringExecution" \
+  --set-json 'redis.affinity={"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"topologyKey":"kubernetes.io/hostname","labelSelector":{"matchLabels":{"app.kubernetes.io/component":"redis"}}}]}}'
+redis_sts "with the password Secret of a user" "name: my-redis-wallet-service" --set redis.users.walletService.passwordSecret=my-redis-wallet-service
+redis_sts "with own certificate" "secretName: my-redis-tls" --set redis.tls.existingSecret=my-redis-tls
+redis_sts "with 5 pods" "t-redis-4.t-redis-headless.ow.svc" --set redis.replicas=5 --set redis.sentinel.quorum=3
+lacks "the TLS Secret of the chart with own certificate" "name: t-redis-tls" "${shamir[@]}" --set redis.tls.existingSecret=my-redis-tls
+renders "redis maxmemory" "maxmemory 1gb" "${shamir[@]}" --set redis.maxmemory=1gb
+renders "redis 5 Sentinels in the wallet file" "- t-redis-4.t-redis-headless.ow.svc:26379" "${shamir[@]}" --set redis.replicas=5 --set redis.sentinel.quorum=3
+renders "external redis address" "address: redis.example.org:6379" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
+lacks "external redis address without the Sentinel login" "sentinel_username" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
+lacks "external redis Sentinels without a login" "sentinel_username" "${external_redis[@]}" --set redis.external.sentinelAuth=false
+lacks "external redis without CA (the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.caSecret=
+lacks "no Valkey without the wallet and the api" "t-redis" "${shamir[@]}" --set organisationWallet.enabled=false --set api.enabled=false
 
 # --- 6. Install and upgrade --------------------------------------------------------
 # The order of the hooks (tests/check_hook_order.py, no cluster): the Jobs
