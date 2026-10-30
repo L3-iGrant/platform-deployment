@@ -21,20 +21,69 @@ The scheduler makes the anchor keys at its start: Transit keys of OpenBao, not e
 | --- | --- | --- |
 | `organisationWallet.audit.retentionYears` | `audit.retention_years`: the years that the events of a data scope stay in the database (at least 1) | `7` |
 | `organisationWallet.audit.scopeRetentionYears` | `audit.scope_retention_years`: another period for some data scopes, for example `{kms: 10}` | `{}` |
-| `organisationWallet.audit.bucket.name`, `.project`, `.prefix` | `audit.bucket`: the audit bucket, its project (empty: the project of the credentials) and the folder of the objects (for example `audit/production/`). Empty name: no bucket | `""` |
-| `organisationWallet.audit.bucket.credentials.existingSecret`, `.key` | `audit.bucket.credentials_file`: the Secret with the service account JSON of the bucket. Empty: the Google default credentials | `""`, `service-account.json` |
+| `organisationWallet.audit.bucket.type` | `audit.bucket.type`: `s3` (an S3 store with Object Lock) or `gcs` (Google Cloud Storage through the Google client) | `s3` |
+| `organisationWallet.audit.bucket.name`, `.prefix` | `audit.bucket.name`, `.prefix`: the audit bucket and the folder of the objects (for example `audit/production/`). Empty name: no bucket | `""` |
+| `organisationWallet.audit.bucket.endpoint`, `.region` | Type `s3`: `audit.bucket.endpoint`, `.region`: the S3 API of the store (`https://host` or `https://host:port`) and the region of the signatures. Required with a name | `""` |
+| `organisationWallet.audit.bucket.accessKey.existingSecret`, `.idKey`, `.secretKey` | Type `s3`: `audit.bucket.access_key_id_file`, `.secret_access_key_file`: the Secret with the access key of the wallet. Required with a name | `""`, `access-key-id`, `secret-access-key` |
+| `organisationWallet.audit.bucket.ca.existingSecret`, `.key` | Type `s3`: `audit.bucket.ca_file`: the Secret with a PEM CA bundle of the TLS certificate of the store. Empty: the CA bundle of the client | `""`, `ca.crt` |
+| `organisationWallet.audit.bucket.project` | Type `gcs`: `audit.bucket.project`: the project of the bucket. Empty: the project of the credentials | `""` |
+| `organisationWallet.audit.bucket.credentials.existingSecret`, `.key` | Type `gcs`: `audit.bucket.credentials_file`: the Secret with the service account JSON of the bucket. Empty: the Google default credentials | `""`, `service-account.json` |
 
-The chart writes the retention to the configuration of each wallet role and of the migration hook, and the bucket only to the configuration of the scheduler, the only pod that mounts the service account of the bucket. Seven years is the period of EN 319 411-1 for the records of the key life cycle. Set a longer period when your practice statement or your certification asks for one.
+The chart writes the retention to the configuration of each wallet role and of the migration hook, and the bucket only to the configuration of the scheduler, the only pod that mounts the credentials of the bucket. The values of one type do not mix with the values of the other type: the render stops. Seven years is the period of EN 319 411-1 for the records of the key life cycle. Set a longer period when your practice statement or your certification asks for one.
 
 ## Audit bucket
 
 The audit bucket keeps a copy of each hourly anchor and the monthly exports out of the reach of a database owner. A person who can change the wallet database cannot then rewrite the log without a trace: `audit verify` compares the anchors with their copies, and the exports keep the months that the migration hook drops.
 
+The wallet writes each object once with a create-only write (it never overwrites an object), reads it back, and never deletes an object or makes a bucket. Each object must stay unchanged for at least `organisationWallet.audit.retentionYears`: set a retention period of at least that value.
+
+### Type s3: an S3 store with Object Lock
+
+The bucket must be a bucket of an S3 store with Object Lock and a default retention in compliance mode. With compliance mode, no user of the store can delete a version of an object or shorten its retention before the retention ends. Object Lock can only be turned on when the bucket is made. At its start, the sink of the wallet reads the lock configuration of the bucket and refuses a bucket without a default retention in compliance mode: the anchors then stay in the database, and the scheduler logs the refusal and records the event `audit_anchor.failed` each hour until the bucket has one.
+
+Use a store that a team outside the platform operates, for example a Ceph RGW of your storage team: a store in the same cluster is weaker evidence, because an administrator of the cluster can delete its disks. Not Garage (no Object Lock) and not MinIO (no longer maintained).
+
+For example, with the AWS CLI and the administrator key of your store:
+
+```bash
+BUCKET=example-ows-audit
+aws s3api create-bucket --bucket "$BUCKET" --object-lock-enabled-for-bucket --endpoint-url https://s3.example.org
+aws s3api put-object-lock-configuration --bucket "$BUCKET" --endpoint-url https://s3.example.org \
+  --object-lock-configuration '{"ObjectLockEnabled":"Enabled","Rule":{"DefaultRetention":{"Mode":"COMPLIANCE","Years":7}}}'
+```
+
+Give the wallet an access key with only these rights on the bucket: `s3:PutObject`, `s3:GetObject`, `s3:GetObjectVersion`, `s3:ListBucketVersions` and `s3:GetBucketObjectLockConfiguration`. No delete right. Give the key as a Secret:
+
+```bash
+kubectl -n ows create secret generic ows-audit-bucket \
+  --from-file=access-key-id=<file> --from-file=secret-access-key=<file>
+```
+
+```yaml
+organisationWallet:
+  audit:
+    bucket:
+      type: s3
+      name: example-ows-audit
+      endpoint: https://s3.example.org
+      region: eu-west-1
+      accessKey:
+        existingSecret: ows-audit-bucket
+      # ca:
+      #   existingSecret: ows-audit-bucket-ca   # the CA of a store with a private certificate
+```
+
+With network policies, the scheduler reaches a store with a public address through the egress profile `internet` (port 443). For a store in your network, set the egress profile `auditBucket` (`networkPolicy.egress.profiles.auditBucket.cidrs` and `.ports`; see [Network policies](network-policies.md)).
+
+### Type gcs: Google Cloud Storage
+
 The bucket must be a Google Cloud Storage bucket with:
 
 - a retention policy of at least `organisationWallet.audit.retentionYears`, locked. With a locked retention policy, an object cannot be changed or deleted before its retention period ends, and the policy cannot be removed or shortened. A bucket with a locked policy cannot be deleted while it holds objects: check the name, the location and the period before you lock the policy;
 - uniform bucket-level access and public access prevention;
-- a service account for the wallet with object create and read only, on this bucket and not on the project: the roles `roles/storage.objectCreator` and `roles/storage.objectViewer`. Do not give `roles/storage.objectAdmin` or a bucket role. The wallet writes each object once (it never overwrites an object), reads it back, and never deletes an object or makes a bucket.
+- a service account for the wallet with object create and read only, on this bucket and not on the project: the roles `roles/storage.objectCreator` and `roles/storage.objectViewer`. Do not give `roles/storage.objectAdmin` or a bucket role.
+
+The wallet does not check that the policy is locked: check it after the install (`gcloud storage buckets describe gs://<bucket>`). This type stays until the conformance test of the S3 API of Google Cloud Storage decides: when that test passes, a release replaces it with type `s3` (endpoint `https://storage.googleapis.com`, region `auto`, the HMAC key of the service account).
 
 For example, with your project, location and names:
 
@@ -60,6 +109,7 @@ kubectl -n ows create secret generic ows-audit-bucket --from-file=service-accoun
 organisationWallet:
   audit:
     bucket:
+      type: gcs
       name: example-ows-audit
       project: <project>
       credentials:
@@ -67,6 +117,8 @@ organisationWallet:
 ```
 
 With network policies, the scheduler reaches Google Cloud Storage through the egress profile `internet` (port 443). With Workload Identity, also add the profile `metadata` to the role `wallet-scheduler` (see [Network policies](network-policies.md)).
+
+### Without a bucket
 
 Without a bucket (the default), the anchors stay in the database only, no month is exported, the migration hook drops no partition, and `audit verify` reports the check of the bucket copies (C9) as skipped.
 

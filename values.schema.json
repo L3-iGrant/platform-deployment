@@ -2517,16 +2517,60 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "type": {
+                  "enum": [
+                    "s3",
+                    "gcs"
+                  ]
+                },
                 "name": {
                   "type": "string",
                   "pattern": "^$|^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$"
                 },
-                "project": {
-                  "type": "string"
-                },
                 "prefix": {
                   "type": "string",
                   "pattern": "^([A-Za-z0-9_-][A-Za-z0-9._-]*/)*$"
+                },
+                "endpoint": {
+                  "type": "string",
+                  "pattern": "^$|^https?://[^/?#@]+/?$"
+                },
+                "region": {
+                  "type": "string",
+                  "pattern": "^$|^[a-z0-9][a-z0-9-]{0,62}$"
+                },
+                "accessKey": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string"
+                    },
+                    "idKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "ca": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                },
+                "project": {
+                  "type": "string"
                 },
                 "credentials": {
                   "type": "object",

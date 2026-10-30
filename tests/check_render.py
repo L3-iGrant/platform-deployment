@@ -414,7 +414,7 @@ def main() -> int:
         user = ((file or {}).get("database") or {}).get("user")
         check(user == f"igrant_wallet_{role}", f"the {component} pods connect as {user!r}, not igrant_wallet_{role}")
         check(admin_password not in secret_refs(pod), f"the {component} pods mount the password of the administrator")
-        check("audit-bucket-service-account.json" not in files, f"the {component} pods mount the service account of an audit bucket")
+        check(not [name for name in files if name.startswith("audit-bucket-")], f"the {component} pods mount the credentials of an audit bucket")
         if component != "wallet-scheduler":
             # The server waits up to 600 s for the schema head before it
             # answers /healthz: the startup probe covers the wait.

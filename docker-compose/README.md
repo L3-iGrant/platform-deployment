@@ -372,10 +372,10 @@ with the Transit key
 | Audit bucket | None. The anchors stay in the database only, no month is exported, and `wallet-migrate` drops no partition |
 
 An installation of the Helm chart can copy the anchors and the monthly
-exports to a write-once Google Cloud Storage bucket (a locked retention
-policy; see [Audit log](../docs/audit-log.md)). Compose has no such
-bucket: its storage server is not write-once, so it is not a place for
-evidence.
+exports to a write-once bucket: an S3 store with Object Lock in
+compliance mode, or Google Cloud Storage with a locked retention policy
+(see [Audit log](../docs/audit-log.md)). Compose has no such bucket: a
+store on the same host is not a place for evidence.
 
 Check the chains and the anchors (exit code 0: verified; 1: evidence of
 change, with the first bad row of each chain; 2: an input or connection

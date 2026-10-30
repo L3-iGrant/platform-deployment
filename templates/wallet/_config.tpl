@@ -72,20 +72,31 @@ code has defaults that are not the bucket of this installation. */ -}}
 {{- /* The audit log (audit.*): the retention in the file of every role,
 so that each process and the migration hook have the same values; the
 bucket of the anchor copies and of the monthly exports only in the
-scheduler, which writes them and mounts the service account of the bucket
+scheduler, which writes them and mounts the credentials of the bucket
 (ow.wallet.secretFiles). */ -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- $audit := include "ow.wallet.auditRetention" $root | fromJson -}}
-{{- if and (eq $role "scheduler") $w.audit.bucket.name -}}
-{{- $bucket := dict "name" $w.audit.bucket.name -}}
-{{- with $w.audit.bucket.project -}}
+{{- $b := $w.audit.bucket -}}
+{{- if and (eq $role "scheduler") $b.name -}}
+{{- $bucket := dict "type" $b.type "name" $b.name -}}
+{{- with $b.prefix -}}
+{{- $_ := set $bucket "prefix" . -}}
+{{- end -}}
+{{- if eq $b.type "s3" -}}
+{{- $_ := set $bucket "endpoint" $b.endpoint -}}
+{{- $_ := set $bucket "region" $b.region -}}
+{{- $_ := set $bucket "access_key_id_file" (printf "%s/audit-bucket-access-key-id" $dir) -}}
+{{- $_ := set $bucket "secret_access_key_file" (printf "%s/audit-bucket-secret-access-key" $dir) -}}
+{{- if hasKey $files "audit-bucket-ca.crt" -}}
+{{- $_ := set $bucket "ca_file" (printf "%s/audit-bucket-ca.crt" $dir) -}}
+{{- end -}}
+{{- else -}}
+{{- with $b.project -}}
 {{- $_ := set $bucket "project" . -}}
 {{- end -}}
 {{- if hasKey $files "audit-bucket-service-account.json" -}}
 {{- $_ := set $bucket "credentials_file" (printf "%s/audit-bucket-service-account.json" $dir) -}}
 {{- end -}}
-{{- with $w.audit.bucket.prefix -}}
-{{- $_ := set $bucket "prefix" . -}}
 {{- end -}}
 {{- $_ := set $audit "bucket" $bucket -}}
 {{- end -}}
@@ -301,12 +312,37 @@ Call with the root context. Output: JSON.
 {{- end }}
 
 {{/*
-Render guards of the audit log: the service account of the bucket needs the
-bucket. Call with the root context.
+Render guards of the audit log: the credentials of the bucket need the
+bucket; the values of type s3 and of type gcs do not mix; type s3 needs its
+endpoint, its region and the Secret of its access key. Call with the root
+context.
 */}}
 {{- define "ow.wallet.checkAudit" -}}
-{{- $a := .Values.organisationWallet.audit -}}
-{{- if and $a.bucket.credentials.existingSecret (not $a.bucket.name) -}}
-{{- fail "organisationWallet.audit.bucket.credentials.existingSecret needs organisationWallet.audit.bucket.name: the service account is the one of the audit bucket" -}}
+{{- $b := .Values.organisationWallet.audit.bucket -}}
+{{- $p := "organisationWallet.audit.bucket" -}}
+{{- if not $b.name -}}
+{{- range $value := list "credentials" "accessKey" "ca" -}}
+{{- if (index $b $value).existingSecret -}}
+{{- fail (printf "%s.%s.existingSecret needs %s.name: the Secret is the one of the audit bucket" $p $value $p) -}}
+{{- end -}}
+{{- end -}}
+{{- else if eq $b.type "s3" -}}
+{{- if not $b.endpoint -}}
+{{- fail (printf "%s.endpoint is required with type s3 (the default): the S3 API of the store. For a Google Cloud Storage bucket through the Google client, set %s.type: gcs" $p $p) -}}
+{{- end -}}
+{{- if not $b.region -}}
+{{- fail (printf "%s.region is required with type s3: the region of the signatures" $p) -}}
+{{- end -}}
+{{- if not $b.accessKey.existingSecret -}}
+{{- fail (printf "%s.accessKey.existingSecret is required with type s3: the Secret with the access key of the wallet" $p) -}}
+{{- end -}}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $b.name) -}}
+{{- fail (printf "%s.name %q is not an S3 bucket name (3 to 63 lower-case letters, digits, dots and hyphens)" $p $b.name) -}}
+{{- end -}}
+{{- if or $b.project $b.credentials.existingSecret -}}
+{{- fail (printf "%s.project and .credentials are values of type gcs, not of type s3" $p) -}}
+{{- end -}}
+{{- else if or $b.endpoint $b.region $b.accessKey.existingSecret $b.ca.existingSecret -}}
+{{- fail (printf "%s.endpoint, .region, .accessKey and .ca are values of type s3, not of type gcs" $p) -}}
 {{- end -}}
 {{- end }}
