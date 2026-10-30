@@ -711,10 +711,10 @@ The JetStream consumers of a process (pull, and push with a deliver subject
 from its inbox prefix) get their messages on its inbox, so a process
 subscribes only to its inbox, to the requests that it serves (api.v1.rpc.>,
 ows.cmd.*.>) and to the events of its core subscriptions (start-api: the
-passwordless status waits; start-scheduler: ows.wia_pool.refill_requested,
-the WIA pool refill event of the config and service roles and of the
-workers, which run their actors). The workers publish the events of the
-outbox relay and of their actors. The clock connects to no NATS. The
+passwordless status waits). The scheduler subscribes only to its inbox.
+The workers publish the events of the outbox relay and of their actors.
+The WIA pool refill is an actor of the workers, not a NATS event. The
+clock connects to no NATS. The
 JetStream API rights are the exact subjects
 of each process (ow.nats.jetStreamRights): the services ensure their
 streams, durables and KV buckets at start, and nobody can delete or purge
@@ -737,16 +737,16 @@ the stream or the consumers of another service. Output: JSON list.
     "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" "consent" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.wia_pool.refill_requested") (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
+    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
     "subscribe" (list "ows.cmd.*.>" "ows.*.notification" "ows.*.webhook.present_proof"))
   (dict "name" "wallet-service" "key" "walletService" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.wia_pool.refill_requested") (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
+    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-scheduler" "key" "walletScheduler" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletScheduler" | fromJsonArray))
-    "subscribe" (list "ows.wia_pool.refill_requested"))
+    "subscribe" (list))
   (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.wia_pool.refill_requested") (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
+    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
     "subscribe" (list)) -}}
 {{- $out := list -}}
 {{- range $user := $table -}}
