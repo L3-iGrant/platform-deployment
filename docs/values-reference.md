@@ -86,7 +86,6 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | --- | --- | --- |
 | `consent.replicas` | Consent management | `2` |
 | `consent.serviceEnvelope.activeKid` | The key id of the NATS message key of consent | `""` |
-| `organisationWallet.storage.gcsBucket`, `.gcsProject`, `.credentials.*`, `.emulatorHost` | The file store of the wallet (bucket and project required) | `""` |
 | `organisationWallet.audit.retentionYears`, `.scopeRetentionYears` | The audit log of the wallet (see [Audit log](audit-log.md)) | `7`, `{}` |
 | `organisationWallet.audit.bucket.*` | The write-once bucket of the audit anchors and exports (see [Audit log](audit-log.md#audit-bucket)) | no bucket |
 | `organisationWallet.retention.*` | The retention purge of the wallet data (see [Audit log](audit-log.md#retention-purge)) | 30 days, sandboxes 7 days |

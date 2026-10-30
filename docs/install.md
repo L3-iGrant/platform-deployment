@@ -37,7 +37,7 @@ Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernet
 
 ## Step 3: the values of your installation
 
-Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.imageTag`), your host names and the bucket of the wallet. Then choose one file from each group of `examples/`:
+Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.imageTag`) and your host names. Then choose one file from each group of `examples/`:
 
 | Group | Files | Read first |
 | --- | --- | --- |

@@ -504,7 +504,6 @@ services:
       consent-read-access: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
-      storage: {condition: service_started}
       valkey-sentinel: {condition: service_started}
 
   # The public routes of the wallet (OpenID4VCI, OpenID4VP, wallet units).
@@ -525,7 +524,6 @@ services:
       wallet-migrate: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
-      storage: {condition: service_started}
       valkey-sentinel: {condition: service_started}
 
   # The background jobs (no HTTP server).
@@ -541,17 +539,6 @@ services:
       - {source: valkey-wallet-scheduler-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
     depends_on: *wallet-role-depends
-
-  # The file store of the wallet: the PDF documents of the verifier (the
-  # uploaded and the signed documents), in the volume storage-data. The wallet talks to it with the
-  # Google Cloud Storage API (its only file store interface); this local
-  # server (fake-gcs-server) gives that API on the Compose network.
-  storage:
-    image: ${STORAGE_IMAGE:?set STORAGE_IMAGE in .env}
-    command: ["-scheme", "http", "-host", "0.0.0.0", "-port", "4443", "-backend", "filesystem", "-filesystem-root", "/storage", "-public-host", "storage:4443"]
-    volumes:
-      - storage-data:/storage
-    restart: unless-stopped
 
   # --- Dashboard ----------------------------------------------------------------
 
@@ -569,7 +556,6 @@ volumes:
   postgres-data:
   nats-data:
   openbao-data:
-  storage-data:
   # The AOF files of the Valkey primary and replica.
   valkey-data:
   valkey-replica-data:
@@ -1073,10 +1059,6 @@ configs:
           transit_mount: transit
       trust_list:
         lookup_url: https://trustlist.nxd.foundation/trust-list/lookup
-      storage:
-        gcs_bucket: igrant-wallet-files
-        gcs_project: igrant-compose
-        emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
       # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
@@ -1171,10 +1153,6 @@ configs:
           transit_mount: transit
       trust_list:
         lookup_url: https://trustlist.nxd.foundation/trust-list/lookup
-      storage:
-        gcs_bucket: igrant-wallet-files
-        gcs_project: igrant-compose
-        emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
       # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
@@ -1235,17 +1213,13 @@ configs:
           transit_mount: transit
       trust_list:
         lookup_url: https://trustlist.nxd.foundation/trust-list/lookup
-      storage:
-        gcs_bucket: igrant-wallet-files
-        gcs_project: igrant-compose
-        emulator_host: http://storage:4443
       wallet_unit:
         production_checks_enabled: false
       # The audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
       # scheduler signs the hourly anchors with the Transit keys of OpenBao.
-      # There is no audit bucket: the storage server of Compose is not
-      # write-once. The anchors stay in the database only, no month is
-      # exported, and no partition is dropped.
+      # There is no audit bucket: Compose has no write-once store. The
+      # anchors stay in the database only, no month is exported, and no
+      # partition is dropped.
       audit:
         retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:

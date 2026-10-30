@@ -334,7 +334,7 @@ guard "external OpenBao without password" "openbao.wallet.existingSecret" --set 
 guard "exposure type" "exposure.type" "${shamir[@]}" --set exposure.type=route
 guard "gatewayAPI without parentRefs" "parentRefs" "${shamir[@]}" --set exposure.type=gatewayAPI
 guard "host" "api.host" "${shamir[@]}" --set api.host=
-guard "storage bucket" "gcsBucket" "${shamir[@]}" --set organisationWallet.storage.gcsBucket=
+guard "removed file store value" "Additional property storage" "${shamir[@]}" --set organisationWallet.storage.gcsBucket=files
 guard "client address" "clientAddress" "${shamir[@]}" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
 guard "unknown value" "Additional property" "${shamir[@]}" --set postgres.enabled=true
 guard "privacy dashboard network policy without Kubernetes API address" "networkPolicy.egress.profiles.kubeApi" "${shamir[@]}" --set networkPolicy.enabled=true --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards

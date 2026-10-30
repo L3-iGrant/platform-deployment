@@ -2742,33 +2742,6 @@
             }
           }
         },
-        "storage": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "gcsBucket": {
-              "type": "string"
-            },
-            "gcsProject": {
-              "type": "string"
-            },
-            "credentials": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
-            "emulatorHost": {
-              "type": "string"
-            }
-          }
-        },
         "audit": {
           "type": "object",
           "additionalProperties": false,
@@ -3339,16 +3312,6 @@
         "properties": {
           "host": {
             "minLength": 1
-          },
-          "storage": {
-            "properties": {
-              "gcsBucket": {
-                "minLength": 1
-              },
-              "gcsProject": {
-                "minLength": 1
-              }
-            }
           }
         }
       }

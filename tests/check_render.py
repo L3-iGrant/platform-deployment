@@ -164,8 +164,7 @@ def main() -> int:
         check(login.get("addr") == openbao_address, f"wallet {role}.yaml OpenBao address is {login.get('addr')!r}")
         check(login.get("user") == "wallet" and bool(login.get("password_file")), f"wallet {role}.yaml has no OpenBao login")
         check(bool(login.get("ca_cert_file")), f"wallet {role}.yaml has no OpenBao CA")
-        storage = wallet.get("storage", {})
-        check(bool(storage.get("gcs_bucket")) and bool(storage.get("gcs_project")), f"wallet {role}.yaml has no storage bucket")
+        check("storage" not in wallet, f"wallet {role}.yaml has a storage section (the PDF files are in the database)")
         if role == "config":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])

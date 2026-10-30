@@ -78,3 +78,18 @@ The supported ways back:
 ## The type of the audit bucket
 
 The audit bucket of the wallet has a type (`organisationWallet.audit.bucket.type`, see [Audit log](audit-log.md#audit-bucket)). The default is `s3`: an S3 store with Object Lock and a default retention in compliance mode, with the values `endpoint`, `region` and `accessKey`. An installation whose bucket is a Google Cloud Storage bucket (the values `name`, `project` and `credentials` of the earlier releases) sets `type: gcs` before the upgrade: without it, the render stops with "organisationWallet.audit.bucket.endpoint is required with type s3". An installation without a bucket changes nothing.
+
+## The PDF files of the wallet in the database
+
+From the release that keeps the PDF files of the wallet in its database
+(the files that a verifier uploads and the signed PDFs of the QES
+presentations), the wallet has no file store: the values
+`organisationWallet.storage.*` are gone. Remove the block `storage` of
+`organisationWallet` from your values files before step 2: the schema of
+the chart refuses it (`Additional property storage is not allowed`). The
+Secret of the service account of the bucket is no longer mounted.
+
+The wallet does not read the bucket: the files in it stay there. The PDF
+files now have the backups and the replication of the wallet database.
+The wallet keeps a signed PDF 30 days after the signature, only to give
+it to the relying party, which keeps its own copy.
