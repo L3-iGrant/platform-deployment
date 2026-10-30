@@ -1572,9 +1572,14 @@ organisationWallet:
     lifetimeSeconds: 60
     clockSkewSeconds: 60
   # -- nats.connect_retry_seconds: the wait after a failed first connect (it
-  # doubles up to 60 s).
+  # doubles up to 60 s). nats.command_reply_seconds of the config role (120
+  # to 3600): how long the wallet keeps the reply of a NATS command of the
+  # api, so that a retry of the api gets the same reply. One value for all
+  # config pods: each pod sets the time to live of the reply bucket at its
+  # start.
   nats:
     connectRetrySeconds: 5
+    commandReplySeconds: 300
   # -- The server-sent event streams of the config role (sse.*):
   # keepAliveSeconds: the interval of the keep-alive comments (below the
   # idle limit of the gateway); retryMilliseconds: the reconnect delay that

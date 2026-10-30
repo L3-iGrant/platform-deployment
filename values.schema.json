@@ -3293,6 +3293,11 @@
           "properties": {
             "connectRetrySeconds": {
               "type": "integer"
+            },
+            "commandReplySeconds": {
+              "type": "integer",
+              "minimum": 120,
+              "maximum": 3600
             }
           }
         },

@@ -186,6 +186,8 @@ def main() -> int:
         check(login.get("user") == "wallet" and bool(login.get("password_file")), f"wallet {role}.yaml has no OpenBao login")
         check(bool(login.get("ca_cert_file")), f"wallet {role}.yaml has no OpenBao CA")
         check("storage" not in wallet, f"wallet {role}.yaml has a storage section (the PDF files are in the database)")
+        check((wallet.get("nats") or {}).get("command_reply_seconds") == (300 if file == "config.yaml" else None),
+              f"wallet {file} has nats.command_reply_seconds {(wallet.get('nats') or {}).get('command_reply_seconds')!r}")
         if file == "config.yaml":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])

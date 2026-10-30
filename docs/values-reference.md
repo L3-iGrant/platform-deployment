@@ -96,6 +96,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.walletUnit.productionChecksEnabled`, `.playIntegrity.*` | The checks of the wallet apps | `false` |
 | `organisationWallet.trustList.*` | The trust list lookup service | the NXD Foundation service |
 | `organisationWallet.serviceEnvelope.activeKid` | The key id of the NATS message key of the wallet | `""` |
+| `organisationWallet.nats.commandReplySeconds` | How long the config role keeps the reply of a NATS command of the api for a retry (120 to 3600; the same for all config pods) | `300` |
 | `organisationWallet.{service,config,scheduler}.replicas` | Replicas (keep the scheduler at 1) | `1` |
 | `organisationWallet.workers.groups` | The worker groups: name, queues, replicas, processes, threads, `shutdownTimeoutSeconds`, `terminationGracePeriodSeconds`, resources (see [Workers and clock](workers.md)) | `main` (`realtime`, `attestation`, `status`, `kms`), `maintenance` |
 | `organisationWallet.clock.replicas`, `.resources` | The clock (only the leader sends) | `2` |
