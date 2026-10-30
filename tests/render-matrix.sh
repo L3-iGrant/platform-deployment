@@ -699,6 +699,46 @@ if "igrant_consent" not in rendered.get("t-postgres", {}).get("data", {}):
     bad "upgrade keeps the values of the Secrets: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 fi
+# The Secrets of the bundled Valkey are normal resources (no hook), and they
+# keep the passwords of the users and the certificate of the earlier release
+# (the copy of the chart reads them from earlier-secrets.json). The earlier
+# Secret of the users has no password of the gateway: the render gives a
+# new one.
+if [ "$(grep -c -F -- "$stub_line" "$lookup_chart/templates/_helpers.tpl")" != 1 ]; then
+  bad "upgrade keeps the Valkey Secrets: the copy of the chart has not the lookup stub"
+else
+  python3 -c '
+import base64, json, sys, yaml
+earlier = {}
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["metadata"]["name"] in ("t-redis-users", "t-redis-tls"):
+        name = doc["metadata"]["name"]
+        earlier[name] = {"data": {key: base64.b64encode(f"earlier-{name}-{key}".encode()).decode()
+                                  for key in doc["data"] if (name, key) != ("t-redis-users", "gateway")}}
+json.dump(earlier, open(sys.argv[2], "w"))
+' "$out/secrets-new.yaml" "$lookup_chart/earlier-secrets.json"
+  if ! helm template t "$lookup_chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/redis-kept.yaml" 2> "$out/secrets.err"; then
+    bad "upgrade keeps the Valkey Secrets: $(head -c 200 "$out/secrets.err")"
+  elif problems="$(python3 -c '
+import json, sys, yaml
+earlier = json.load(open(sys.argv[1]))
+rendered = {doc["metadata"]["name"]: doc for doc in yaml.safe_load_all(open(sys.argv[2])) if doc}
+for name, secret in sorted(earlier.items()):
+    doc = rendered.get(name, {"metadata": {}, "data": {}})
+    if "helm.sh/hook" in (doc["metadata"].get("annotations") or {}):
+        print(f"the Secret {name} is a hook")
+    for key, value in sorted(secret["data"].items()):
+        if doc["data"].get(key) != value:
+            print(f"the Secret {name} has not the earlier value of {key}")
+gateway = rendered.get("t-redis-users", {}).get("data", {}).get("gateway")
+if not gateway or gateway in earlier["t-redis-users"]["data"].values():
+    print("the Secret t-redis-users has no new password of the gateway")
+' "$lookup_chart/earlier-secrets.json" "$out/redis-kept.yaml" 2>&1)" && [ -z "$problems" ]; then
+    ok "upgrade keeps the Valkey Secrets"
+  else
+    bad "upgrade keeps the Valkey Secrets: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+fi
 
 echo "result: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]
