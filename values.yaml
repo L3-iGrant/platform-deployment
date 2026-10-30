@@ -895,6 +895,12 @@ networkPolicy:
       cloudKms:
         cidrs: []
         ports: [443]
+      # -- The S3 store of the audit bucket
+      # (organisationWallet.audit.bucket, type s3) on an address that the
+      # internet profile excludes, for example a store in your network.
+      auditBucket:
+        cidrs: []
+        ports: [443]
       smtp:
         cidrs: []
         ports: [587]
@@ -911,7 +917,7 @@ networkPolicy:
       consent: [internet]
       wallet-service: [internet, kms, cloudKms]
       wallet-config: [internet, kms, cloudKms]
-      wallet-scheduler: [internet, kms, cloudKms]
+      wallet-scheduler: [internet, kms, cloudKms, auditBucket]
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
   monitoring:
     enabled: false
@@ -1253,24 +1259,47 @@ organisationWallet:
     # (platform, kms, trust, issuer, authorisation_server, relying_party,
     # business_wallet, wallet_provider), for example {kms: 10}.
     scopeRetentionYears: {}
-    # -- audit.bucket: the write-once Google Cloud Storage bucket of the
-    # copies of the anchors and of the monthly exports. The bucket must have
-    # a locked retention policy, and its service account may only create
-    # and read objects (docs/audit-log.md). Empty name: no bucket; the
+    # -- audit.bucket: the write-once bucket of the copies of the anchors
+    # and of the monthly exports (docs/audit-log.md). Only the scheduler
+    # writes it and mounts its credentials. Empty name: no bucket; the
     # anchors stay in the database only, no month is exported, and no
     # partition is dropped.
     bucket:
+      # -- s3: a bucket of an S3 store with Object Lock and a default
+      # retention in compliance mode; the wallet refuses a bucket without
+      # it. gcs: Google Cloud Storage with a locked retention policy,
+      # through the Google client (until the conformance test of the XML
+      # API of Google decides; docs/audit-log.md).
+      type: s3
       name: ""
-      # -- Empty: the project of the credentials.
-      project: ""
       # -- The folder of the objects in the bucket, for example
       # audit/production/ (it ends with /). Empty: the top of the bucket.
       prefix: ""
-      # -- Existing Secret with the service account JSON of the bucket
-      # (audit.bucket.credentials_file); only the scheduler mounts it.
-      # Empty: the Google default credentials, for example Workload
-      # Identity (with network policies, add the egress profile metadata to
-      # the scheduler).
+      # -- type s3: the S3 API of the store (https://host or
+      # https://host:port), for example the store of a team outside the
+      # platform. Required with a name.
+      endpoint: ""
+      # -- type s3: the region of the signatures, for example eu-west-1.
+      # Required with a name.
+      region: ""
+      # -- type s3: existing Secret with the access key of the wallet (the
+      # rights of docs/audit-log.md, no delete). Required with a name.
+      accessKey:
+        existingSecret: ""
+        idKey: access-key-id
+        secretKey: secret-access-key
+      # -- type s3: existing Secret with a PEM CA bundle of the TLS
+      # certificate of the store. Empty: the CA bundle of the client.
+      ca:
+        existingSecret: ""
+        key: ca.crt
+      # -- type gcs: the project of the bucket. Empty: the project of the
+      # credentials.
+      project: ""
+      # -- type gcs: existing Secret with the service account JSON of the
+      # bucket (audit.bucket.credentials_file). Empty: the Google default
+      # credentials, for example Workload Identity (with network policies,
+      # add the egress profile metadata to the scheduler).
       credentials:
         existingSecret: ""
         key: service-account.json

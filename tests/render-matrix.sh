@@ -331,8 +331,9 @@ test_ca "on by default" '{"enabled": true, "leaf_validity_days": 365}' "${shamir
 test_ca "off, 90 days" '{"enabled": false, "leaf_validity_days": 90}' "${shamir[@]}" --set organisationWallet.keyStores.testCa.enabled=false --set organisationWallet.keyStores.testCa.leafValidityDays=90
 guard "test CA validity" "organisationWallet.keyStores.testCa.leafValidityDays" "${shamir[@]}" --set organisationWallet.keyStores.testCa.leafValidityDays=3651
 # The audit log: audit.* of every wallet role file and of the migration
-# hook; the bucket only in the scheduler file, and the Secret of its service
-# account only in the scheduler pods.
+# hook; the bucket only in the scheduler file, and the Secrets of its
+# credentials (the access key and the CA of type s3, the service account
+# of type gcs) only in the scheduler pods.
 audit() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -354,9 +355,9 @@ for role in ("service", "config", "scheduler"):
     pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
     mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
                for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
-    secret = mounted.get("audit-bucket-service-account.json")
-    if secret != (expected["secret"] if role == "scheduler" else None):
-        print(f"the {role} pods mount {secret!r} as the service account of the audit bucket")
+    secrets = {path: secret for path, secret in mounted.items() if path.startswith("audit-bucket-")}
+    if secrets != (expected["secrets"] if role == "scheduler" else {}):
+        print(f"the {role} pods mount {secrets!r} as the credentials of the audit bucket")
 retention = {key: value for key, value in expected["audit"].items() if key != "anchor_key_store"}
 migrate = yaml.safe_load(find("ConfigMap", "t-wallet-migrate")["data"]["config.yaml"]).get("audit")
 if migrate != retention:
@@ -368,19 +369,46 @@ PY
     bad "audit $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
-audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secret": null}' "${shamir[@]}"
-audit "bucket with its service account" \
-  '{"audit": {"retention_years": 10, "scope_retention_years": {"kms": 12}}, "bucket": {"name": "example-audit", "project": "example-project", "prefix": "audit/production/", "credentials_file": "/run/secrets/eudi-wallet/audit-bucket-service-account.json"}, "secret": ["audit-bucket", "sa.json"]}' \
-  "${shamir[@]}" --set organisationWallet.audit.retentionYears=10 --set organisationWallet.audit.scopeRetentionYears.kms=12 \
-  --set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.project=example-project \
+audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
+s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
+    --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
+audit "s3 bucket with its access key" \
+  '{"audit": {"retention_years": 7}, "bucket": {"type": "s3", "name": "example-audit", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "access-key-id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret-access-key"]}}' \
+  "${shamir[@]}" "${s3[@]}"
+audit "s3 bucket with a prefix and the CA of the store" \
+  '{"audit": {"retention_years": 10, "scope_retention_years": {"kms": 12}}, "bucket": {"type": "s3", "name": "example-audit", "prefix": "audit/production/", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key", "ca_file": "/run/secrets/eudi-wallet/audit-bucket-ca.crt"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret"], "audit-bucket-ca.crt": ["store-ca", "ca.pem"]}}' \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.retentionYears=10 --set organisationWallet.audit.scopeRetentionYears.kms=12 \
+  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.accessKey.idKey=id \
+  --set organisationWallet.audit.bucket.accessKey.secretKey=secret --set organisationWallet.audit.bucket.ca.existingSecret=store-ca \
+  --set organisationWallet.audit.bucket.ca.key=ca.pem
+audit "gcs bucket with its service account" \
+  '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example_audit", "project": "example-project", "prefix": "audit/production/", "credentials_file": "/run/secrets/eudi-wallet/audit-bucket-service-account.json"}, "secrets": {"audit-bucket-service-account.json": ["audit-bucket", "sa.json"]}}' \
+  "${shamir[@]}" --set organisationWallet.audit.bucket.type=gcs \
+  --set organisationWallet.audit.bucket.name=example_audit --set organisationWallet.audit.bucket.project=example-project \
   --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.credentials.existingSecret=audit-bucket \
   --set organisationWallet.audit.bucket.credentials.key=sa.json
-audit "bucket with the Google default credentials" '{"audit": {"retention_years": 7}, "bucket": {"name": "example-audit"}, "secret": null}' \
+audit "gcs bucket with the Google default credentials" '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example-audit"}, "secrets": {}}' \
+  "${shamir[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.name=example-audit
+for value in credentials accessKey ca; do
+  guard "audit bucket $value without bucket" "organisationWallet.audit.bucket.$value.existingSecret needs organisationWallet.audit.bucket.name" \
+    "${shamir[@]}" --set "organisationWallet.audit.bucket.$value.existingSecret=audit-bucket"
+done
+guard "audit bucket of type s3 without endpoint" "set organisationWallet.audit.bucket.type: gcs" \
   "${shamir[@]}" --set organisationWallet.audit.bucket.name=example-audit
-guard "audit bucket service account without bucket" "organisationWallet.audit.bucket.credentials.existingSecret needs organisationWallet.audit.bucket.name" \
-  "${shamir[@]}" --set organisationWallet.audit.bucket.credentials.existingSecret=audit-bucket
+guard "audit bucket of type s3 without region" "organisationWallet.audit.bucket.region is required" \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.region=
+guard "audit bucket of type s3 without access key" "organisationWallet.audit.bucket.accessKey.existingSecret is required" \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.accessKey.existingSecret=
+guard "audit bucket of type s3 with an S3 bucket name" "is not an S3 bucket name" \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.name=example_audit
+guard "audit bucket of type s3 with gcs values" "are values of type gcs" \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.project=example-project
+guard "audit bucket of type gcs with s3 values" "are values of type s3" \
+  "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.accessKey.existingSecret=
+guard "audit bucket type" "organisationWallet.audit.bucket.type" "${shamir[@]}" --set organisationWallet.audit.bucket.type=minio
+guard "audit bucket endpoint" "organisationWallet.audit.bucket.endpoint" "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.endpoint=https://s3.example.org/audit
 guard "audit bucket name" "organisationWallet.audit.bucket.name" "${shamir[@]}" --set organisationWallet.audit.bucket.name=Audit_Bucket
-guard "audit bucket prefix" "organisationWallet.audit.bucket.prefix" "${shamir[@]}" --set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.prefix=/audit
+guard "audit bucket prefix" "organisationWallet.audit.bucket.prefix" "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.prefix=/audit
 guard "audit retention of at least one year" "organisationWallet.audit.retentionYears" "${shamir[@]}" --set organisationWallet.audit.retentionYears=0
 guard "audit retention of a scope without an audit log" "organisationWallet.audit.scopeRetentionYears" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.events=3
 guard "retention purge batch size" "organisationWallet.retention.batchSize" "${shamir[@]}" --set organisationWallet.retention.batchSize=20000

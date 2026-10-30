@@ -72,3 +72,7 @@ The supported ways back:
 
 - Run the upgrade of step 3 with this chart version and your earlier values files, for example to turn a component off again.
 - To go back to an earlier release of the platform, install that release again as its release notes say.
+
+## The type of the audit bucket
+
+The audit bucket of the wallet has a type (`organisationWallet.audit.bucket.type`, see [Audit log](audit-log.md#audit-bucket)). The default is `s3`: an S3 store with Object Lock and a default retention in compliance mode, with the values `endpoint`, `region` and `accessKey`. An installation whose bucket is a Google Cloud Storage bucket (the values `name`, `project` and `credentials` of the earlier releases) sets `type: gcs` before the upgrade: without it, the render stops with "organisationWallet.audit.bucket.endpoint is required with type s3". An installation without a bucket changes nothing.

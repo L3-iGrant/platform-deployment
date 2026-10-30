@@ -72,5 +72,6 @@ profiles:
   metadata: {roles: [api, webhook, wallet-service, wallet-config, wallet-scheduler, job]}
   kms: {roles: [wallet-service, wallet-config, wallet-scheduler, job]}
   cloudKms: {roles: [wallet-service, wallet-config, wallet-scheduler]}   # a private endpoint of a cloud KMS (the key store types gcp-kms, aws-kms, azure-key-vault)
+  auditBucket: {roles: [wallet-scheduler]}   # the S3 store of the audit bucket on a private address (organisationWallet.audit.bucket, type s3)
   smtp: {roles: [api]}
   kubeApi: {roles: [api]}

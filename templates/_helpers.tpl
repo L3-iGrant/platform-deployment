@@ -423,9 +423,20 @@ the database owner user. */ -}}
 {{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
 {{- end -}}
 {{- /* The scheduler writes the copies of the audit anchors and the monthly
-exports to the audit bucket with its service account. */ -}}
-{{- if and (eq $role "scheduler") $w.audit.bucket.name $w.audit.bucket.credentials.existingSecret -}}
-{{- $_ := set $files "audit-bucket-service-account.json" (dict "secret" $w.audit.bucket.credentials.existingSecret "key" $w.audit.bucket.credentials.key) -}}
+exports to the audit bucket: with the access key of the wallet (type s3)
+or with its service account (type gcs). */ -}}
+{{- $b := $w.audit.bucket -}}
+{{- if and (eq $role "scheduler") $b.name -}}
+{{- include "ow.wallet.checkAudit" $root -}}
+{{- if eq $b.type "s3" -}}
+{{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.idKey) -}}
+{{- $_ := set $files "audit-bucket-secret-access-key" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.secretKey) -}}
+{{- with $b.ca.existingSecret -}}
+{{- $_ := set $files "audit-bucket-ca.crt" (dict "secret" . "key" $b.ca.key) -}}
+{{- end -}}
+{{- else if $b.credentials.existingSecret -}}
+{{- $_ := set $files "audit-bucket-service-account.json" (dict "secret" $b.credentials.existingSecret "key" $b.credentials.key) -}}
+{{- end -}}
 {{- end -}}
 {{- /* The config role reads the views of the api and consent databases with
 the read-only users of the wallet (read_access). */ -}}

@@ -11,7 +11,7 @@ This page explains the NetworkPolicy objects of the chart and their values.
 | `networkPolicy.ingressController` | The pods of your ingress controller or of your Gateway (namespace and pod selectors) |
 | `networkPolicy.dns` | The DNS pods and ports |
 | `networkPolicy.externalDatabases`, `.externalNats` | The addresses (CIDR) of an external database or NATS |
-| `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `smtp`, `kubeApi` (required with the privacy dashboards) |
+| `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `auditBucket` (the S3 store of the audit bucket on a private address; scheduler only), `smtp`, `kubeApi` (required with the privacy dashboards) |
 | `networkPolicy.egress.roles` | The profiles of each component |
 
 
