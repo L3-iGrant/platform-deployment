@@ -27,5 +27,6 @@ The chart creates these Secrets itself (random values, kept across upgrades):
 | `<release>-wallet-database-roles` | the passwords of the database roles of the wallet, one key for each role without the prefix (for example `launcher_app`, `jobs`, `migrator`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#database-roles-of-the-wallet)) |
 | `<release>-api` | `api-secret-key`, and the SMTP and Twilio values when you set them as values |
 | `<release>-openbao-wallet`, `<release>-openbao-tls` | see [OpenBao](openbao.md) |
+| `<release>-redis-users`, `<release>-redis-tls` | the passwords of the ACL users and the certificates of the bundled Valkey; see [Redis](redis.md#acl-users) |
 
 `helm template` cannot read the cluster, so it shows new random values. A tool that only renders the templates (for example a GitOps tool that renders) makes new values at each render: with such a tool, set the passwords in values or use the `existingSecret` values.

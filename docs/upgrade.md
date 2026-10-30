@@ -22,6 +22,8 @@ This page upgrades an installation to a new release of the platform.
    3. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the migrator role of the wallet; after the grants, it makes the partitions of the audit log and drops the months that are older than its retention (see [Audit log](audit-log.md#partitions)).
    4. The read access hooks of the wallet (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`) update the read-only users with which the api and consent read the wallet database.
 
+   Valkey is not a hook: it changes with the other resources. Its pods restart one at a time; before the primary stops, a Sentinel moves the primary to a replica (see [Redis](redis.md#bundled-valkey)). The first upgrade to a release with Valkey creates the Valkey pods and their volumes; the wallet pods then get their `redis` section.
+
    When a hook fails, the upgrade stops and the old pods stay. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`. After the upgrade, the hook `ows-consent-migrate-after` completes the data of consent: it needs `--wait`. The new wallet pods start their work only when the database schema is at the head of their release: they wait up to 600 seconds, then stop, and Kubernetes starts them again. See [Database](database.md#hooks-of-the-databases).
 
    An upgrade can turn a component on, for example `organisationWallet.enabled: true`: the hooks create its passwords, its database and its users before its migration hook runs. With `database.auth.existingSecret`, first add the password of the new database to your Secret (the key is the database name, for example `igrant_wallet`).

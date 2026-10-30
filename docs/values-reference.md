@@ -50,6 +50,21 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `openbao.replicas`, `.persistence.*`, `.tls.existingSecret`, `.logLevel`, `.audit.stdout`, `.extraConfig`, `.extraEnv` | The bundled OpenBao | `3`, `10Gi` |
 | `openbao.updateStrategy` | `OnDelete` or `RollingUpdate` (see [Upgrade](upgrade.md)) | `""`: `OnDelete` |
 
+## Redis
+
+| Value | Description | Default |
+| --- | --- | --- |
+| `redis.mode` | `bundled` (Valkey with Sentinel) or `external` (your Valkey or Redis; see [Redis](redis.md)) | `bundled` |
+| `redis.masterName` | The name of the primary that the Sentinels monitor | `ows` |
+| `redis.users.<process>.username`, `.passwordSecret`, `.passwordKey` | The ACL user of `walletService`, `walletConfig`, `walletScheduler` and `gateway`, and an existing Secret with its password (required for external) | `wallet-service`, ..., `gateway`; the Secret of the chart |
+| `redis.client.connectTimeoutSeconds`, `.timeoutSeconds`, `.replicaWaitMilliseconds` | The timeouts of the wallet and its wait for a replica of a single-use value | `2`, `2`, `100` |
+| `redis.external.sentinels` or `.address`, `.sentinelAuth`, `.caSecret`, `.caKey` | Your Valkey or Redis | `[]`, `""`, `true`, `""` |
+| `redis.image` | The Valkey image | `valkey/valkey:8.1.10-alpine` (with its digest) |
+| `redis.replicas`, `.sentinel.quorum`, `.sentinel.downAfterMilliseconds`, `.sentinel.failoverTimeoutMilliseconds` | The pods (odd, 3 or more) and the Sentinels | `3`, `2`, `5000`, `60000` |
+| `redis.maxmemory`, `.persistence.*`, `.resources`, `.sentinel.resources` | The memory for the data, the volume and the resources of each pod | `512mb`, `8Gi`, 100m/256Mi (limit 1Gi) |
+| `redis.tls.existingSecret` | Your certificate of the bundled Valkey | `""`: the chart makes one |
+| `redis.affinity` | For example a pod anti-affinity on the host name (see [Redis](redis.md#bundled-valkey)) | `{}` |
+
 ## API and gateway
 
 | Value | Description | Default |
@@ -99,5 +114,5 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `nats.auth.users.<user>` | The NATS users (`scripts/make-keys.sh`) | `""` |
 | `serviceKeys.publicJwks.*` | The public keys of the NATS messages (`scripts/make-keys.sh`) | `""` |
 | `readAccess.*` | The read-only users (see [Read access](read-access.md)) | see values |
-| `networkPolicy.*` | See [Network policies](network-policies.md) | off |
+| `networkPolicy.*` | See [Network policies](network-policies.md) (`networkPolicy.externalRedis` for your Valkey or Redis) | off |
 | `privacyDashboard.enabled`, `.namespace` | See [Privacy dashboard](privacy-dashboard.md) | `false`, `""` |

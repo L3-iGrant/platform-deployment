@@ -44,6 +44,7 @@ Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.ima
 | Database | `postgresql-bundled.yaml`, `postgresql-external.yaml` | [Database](database.md) |
 | OpenBao | `openbao-shamir.yaml` (the bundled OpenBao, manual unseal), `openbao-external.yaml` (your OpenBao) | [OpenBao](openbao.md) |
 | Exposure | `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-envoy-gateway.yaml`, `exposure-kgateway.yaml`, `exposure-none.yaml` | [Exposure](exposure.md) |
+| Redis (optional) | `redis-external.yaml` (your Valkey or Redis). Without it, the chart runs Valkey with Sentinel | [Redis](redis.md) |
 | Network policies (optional) | `networkpolicy.yaml` | [Network policies](network-policies.md) |
 
 Copy the files that you use (for example to `my-database.yaml`, `my-openbao.yaml` and `my-exposure.yaml`) and adapt their values (for example the Gateway name or the TLS Secret names). Each file names the Secrets to create before the install, for example the database admin password. Create these Secrets now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
@@ -107,7 +108,7 @@ Check: `kubectl -n ows exec ows-openbao-0 -- bao status` shows `Initialized true
 kubectl -n ows get pods,jobs
 ```
 
-Check: after some minutes, all pods are `Running` and `READY`, and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
+Check: after some minutes, all pods are `Running` and `READY` (the Valkey pods `ows-redis-0`, `ows-redis-1` and `ows-redis-2` show `2/2`), and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
 
 Some restarts are usual at the first start (`RESTARTS` 3 to 5). The Jobs try again while the database starts, the wallet pods wait until the migration hook has created the schema of the wallet database, and a service that reads the views of another service (the API, consent and the wallet config role) is ready only when its read-only database user exists. Until then, a process stops when the database, its read-only user or the OpenBao login of the wallet (step 5) is not ready yet, and its log shows the reason. When a pod still restarts after 10 minutes, read its log (`kubectl -n ows logs <pod> --previous`).
 

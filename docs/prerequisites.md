@@ -11,7 +11,7 @@ This page lists what your cluster, your network and your workstation need before
 | Ingress | An ingress controller (for example ingress-nginx or Traefik) or a Gateway API implementation (for example Envoy Gateway, kgateway or Istio). The chart does not install one. With the Gateway API, your Gateway has an HTTPS listener and a policy that passes the client address (see [Exposure](exposure.md)). |
 | DNS | Three host names that point to your ingress controller or Gateway: the API, the organisation wallet and the dashboard (for example `api.example.org`, `wallet.example.org` and `dashboard.example.org`). The API and the dashboard must have the same registrable domain. |
 | TLS | Certificates for the three host names: TLS Secrets in the release namespace, or TLS at your Gateway or load balancer. cert-manager is optional (see `examples/exposure-ingress-nginx-cert-manager.yaml`). |
-| Storage | A default StorageClass for ReadWriteOnce volumes, or the value `global.storageClass`. The database server, NATS and OpenBao use volumes. |
+| Storage | A default StorageClass for ReadWriteOnce volumes, or the value `global.storageClass`. The database server, NATS, OpenBao and Valkey use volumes. |
 | Image registry | Access to the iGrant.io registry for customers (`europe-docker.pkg.dev/jenkins-189019/igrantio`, with a service account key from iGrant.io) and the release tag of your version, or your own mirror. |
 | File store | A Google Cloud Storage bucket for the files of the organisation wallet (not public), or a server with the Google Cloud Storage API (`organisationWallet.storage.emulatorHost`). Create the bucket before the install. The service account of the wallet needs the roles `roles/storage.objectAdmin` and `roles/storage.legacyBucketReader` on this bucket only: the wallet reads the bucket before each upload. |
 | OpenBao | Operators who unseal the bundled OpenBao after each restart (the Shamir seal), or your own OpenBao. See [OpenBao](openbao.md). |
@@ -19,7 +19,7 @@ This page lists what your cluster, your network and your workstation need before
 
 ## Resources
 
-The images are for Linux x86-64. With the default values, the platform requests about 1 vCPU and 4 GiB of memory in total, and 110 GiB of volumes: the database 50 GiB, NATS 3 × 10 GiB and OpenBao 3 × 10 GiB.
+The images are for Linux x86-64. With the default values, the platform requests about 1.4 vCPU and 4.8 GiB of memory in total, and 134 GiB of volumes: the database 50 GiB, NATS 3 × 10 GiB, OpenBao 3 × 10 GiB and Valkey 3 × 8 GiB.
 
 The minimum for tests, pilots and small installations:
 

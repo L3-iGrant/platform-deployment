@@ -12,7 +12,7 @@ Helm keeps the data of the platform and the objects that belong to it:
 
 | What stays | Why |
 | --- | --- |
-| The volumes (PersistentVolumeClaims) of the database server, NATS and OpenBao, and the Secrets that the chart created for them (the passwords of the database users, the OpenBao login of the wallet, the TLS certificates of the database server and OpenBao) | They hold the data of the platform (`helm.sh/resource-policy: keep`). |
+| The volumes (PersistentVolumeClaims) of the database server, NATS, OpenBao and Valkey, and the Secrets that the chart created for them (the passwords of the database users, the OpenBao login of the wallet, the passwords of the Valkey users, the TLS certificates of the database server, OpenBao and Valkey) | They hold the data of the platform (`helm.sh/resource-policy: keep`). |
 | The Jobs and ConfigMaps of the hooks, and the Secret `<release>-wallet-database-roles` (the passwords of the database roles of the wallet) | Helm does not delete hooks. |
 | Your Secrets: registry access ([install step 1](install.md#step-1-the-namespace-and-the-registry-access)), keys ([install step 2](install.md#step-2-the-keys)) and the Secrets of [install step 3](install.md#step-3-the-values-of-your-installation) | You created them. Delete a remaining `ows-first-admin` Secret before you do [install step 7](install.md#step-7-the-first-admin-and-the-organisation) again (`kubectl create secret` refuses an existing Secret). |
 
