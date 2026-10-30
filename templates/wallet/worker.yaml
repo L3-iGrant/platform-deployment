@@ -1,0 +1,124 @@
+{{- /*
+The workers of the organisation wallet (docs/workers.md): one Deployment
+for each group of organisationWallet.workers.groups. A worker runs the
+actors of the queues of its group: "dramatiq ows.worker.run:start" with
+--processes worker processes of --threads threads each. It connects as the
+jobs role, with the NATS user walletWorker and the Valkey user
+walletWorker, and reads the configuration key worker-<group>.yaml.
+*/}}
+{{- if .Values.organisationWallet.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- include "ow.wallet.checkWorkers" . }}
+{{- $port := include "ow.wallet.workerHealthPort" . | int }}
+{{- range $g := $w.workers.groups }}
+{{- $component := include "ow.wallet.workerComponent" $g }}
+{{- $configKey := printf "worker-%s.yaml" $g.name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list $ $component) }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $component) | nindent 4 }}
+spec:
+  replicas: {{ $g.replicas }}
+  # The new pod starts first. The old pod stops its consumers, then waits
+  # for its running actors.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list $ $component) | nindent 8 }}
+        {{- include "ow.netpol.labels" (list $ "wallet-worker" list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" $ "role" "worker" "group" $g))) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list $ "worker")) $.Values.openbao.wallet $.Values.openbao.external $.Values.database.databases.wallet)) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $w.serviceEnvelope $.Values.nats.auth.users.walletWorker $.Values.nats.tlsCa)) | nindent 8 }}
+    spec:
+      # The worker does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
+      # A stop: Dramatiq stops the consumers of the queues, then waits at
+      # most shutdownTimeoutSeconds for the running actors. An actor that
+      # does not end in that time runs again from its message (each actor is
+      # idempotent).
+      terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "ow.image" (list $ $w.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
+          # The program of the worker (the image starts the server). The
+          # Dramatiq main process is process 1 and gets SIGTERM.
+          command:
+            {{- toYaml (concat (list "/app/.venv/bin/dramatiq" "ows.worker.run:start"
+                "--processes" ($g.processes | toString) "--threads" ($g.threads | toString)
+                "--worker-shutdown-timeout" (mul ($g.shutdownTimeoutSeconds | int64) 1000 | toString)
+                "--queues") $g.queues) | nindent 12 }}
+          env:
+            # The only environment variable of the wallet configuration: the
+            # path of the file (the image has the same default).
+            - name: EUDI_WALLET_CONFIG
+              value: {{ include "ow.wallet.configPath" $ | quote }}
+            {{- with $w.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: {{ $port }}
+          # The health server starts after the worker processes boot, and
+          # each worker process waits up to 600 s for the database schema
+          # at the head of its code (on a new installation the post-install
+          # hooks migrate while the pods start): 5 s x 130 = 650 s.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 130
+          # Liveness: /healthz, the heartbeat of the event loop of each
+          # worker process, never Valkey (a failover of Valkey must not
+          # restart the workers). Readiness: /readyz, Valkey and the
+          # database (no Service sends traffic to a worker; the rollout waits
+          # for a ready pod).
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- include "ow.containerSecurityContext" (list $ $w) | nindent 10 }}
+          {{- with $g.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.wallet.volumeMounts" $ | nindent 12 }}
+            - name: worker-state
+              mountPath: {{ include "ow.wallet.workerStateDir" $ }}
+      volumes:
+        {{- include "ow.wallet.volumes" (list $ "worker" $configKey) | nindent 8 }}
+        # The heartbeat and metric files of the worker processes
+        # (worker.state_directory).
+        - name: worker-state
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+{{- end }}
+{{- end }}

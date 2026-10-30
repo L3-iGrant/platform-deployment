@@ -25,6 +25,7 @@ This documentation is for the developers and IT operations teams who install and
 - [Exposure](docs/exposure.md): the three public hosts, and the settings of your ingress controller or Gateway.
 - [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, the database roles and hooks of the wallet, and the logs of the server.
 - [Audit log](docs/audit-log.md): the audit log of the wallet, its write-once bucket, the check of the log, and the retention purge of the wallet data.
+- [Workers and clock](docs/workers.md): the background work of the wallet: the worker groups and their queues, the clock, the stops, the probes and the metrics.
 - [OpenBao](docs/openbao.md): the bundled OpenBao and its Shamir seal, or your own OpenBao.
 - [Redis](docs/redis.md): Valkey with Sentinel for the work queue, the single-use values and the caches of the wallet, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.

@@ -66,7 +66,7 @@ The wallet roles and the gateway log in with their own user. `redis.users.<key>.
 
 | User (`redis.users.<key>`) | Process | Rights on the data servers | Rights on the Sentinels |
 | --- | --- | --- | --- |
-| `walletService` (`wallet-service`), `walletConfig` (`wallet-config`), `walletScheduler` (`wallet-scheduler`) | the roles of the wallet | `resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys` | `-@all +ping +auth +hello +client\|setinfo +client\|setname +sentinel\|masters +sentinel\|master +sentinel\|get-master-addr-by-name +sentinel\|replicas +sentinel\|slaves +sentinel\|sentinels` |
+| `walletService` (`wallet-service`), `walletConfig` (`wallet-config`), `walletWorker` (`wallet-worker`), `walletClock` (`wallet-clock`), `walletScheduler` (`wallet-scheduler`) | the roles of the wallet (`walletWorker`: all worker groups) | `resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys` | `-@all +ping +auth +hello +client\|setinfo +client\|setname +sentinel\|masters +sentinel\|master +sentinel\|get-master-addr-by-name +sentinel\|replicas +sentinel\|slaves +sentinel\|sentinels` |
 | `gateway` (`gateway`) | the gateway | `resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous` | the same as the wallet |
 
 The bundled Valkey also has these users, with the passwords of the Secret `<release>-redis-users`:
@@ -82,7 +82,7 @@ The wallet needs `INFO`: at its start it reads `INFO` and refuses a server that 
 
 ## The settings of the wallet
 
-The chart writes the `redis` section of each wallet role (`service`, `config`, `scheduler`): the Sentinels, the primary name, the user of the role, its password file and the CA. The wallet uses this one server also for the single-use values (`state`) and the caches (`cache`).
+The chart writes the `redis` section of each wallet role (`service`, `config`, each worker group, `clock`, `scheduler`): the Sentinels, the primary name, the user of the role, its password file and the CA. The wallet uses this one server also for the single-use values (`state`) and the caches (`cache`).
 
 ```yaml
 redis:

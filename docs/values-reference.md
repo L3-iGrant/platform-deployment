@@ -56,7 +56,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | --- | --- | --- |
 | `redis.mode` | `bundled` (Valkey with Sentinel) or `external` (your Valkey or Redis; see [Redis](redis.md)) | `bundled` |
 | `redis.masterName` | The name of the primary that the Sentinels monitor | `ows` |
-| `redis.users.<process>.username`, `.passwordSecret`, `.passwordKey` | The ACL user of `walletService`, `walletConfig`, `walletScheduler` and `gateway`, and an existing Secret with its password (required for external) | `wallet-service`, ..., `gateway`; the Secret of the chart |
+| `redis.users.<process>.username`, `.passwordSecret`, `.passwordKey` | The ACL user of `walletService`, `walletConfig`, `walletWorker`, `walletClock`, `walletScheduler` and `gateway`, and an existing Secret with its password (required for external) | `wallet-service`, ..., `gateway`; the Secret of the chart |
 | `redis.client.connectTimeoutSeconds`, `.timeoutSeconds`, `.replicaWaitMilliseconds` | The timeouts of the wallet and its wait for a replica of a single-use value | `2`, `2`, `100` |
 | `redis.external.sentinels` or `.address`, `.sentinelAuth`, `.caSecret`, `.caKey` | Your Valkey or Redis | `[]`, `""`, `true`, `""` |
 | `redis.image` | The Valkey image | `valkey/valkey:8.1.10-alpine` (with its digest) |
@@ -94,6 +94,9 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.trustList.*` | The trust list lookup service | the NXD Foundation service |
 | `organisationWallet.serviceEnvelope.activeKid` | The key id of the NATS message key of the wallet | `""` |
 | `organisationWallet.{service,config,scheduler}.replicas` | Replicas (keep the scheduler at 1) | `1` |
+| `organisationWallet.workers.groups` | The worker groups: name, queues, replicas, processes, threads, `shutdownTimeoutSeconds`, `terminationGracePeriodSeconds`, resources (see [Workers and clock](workers.md)) | `main` (`realtime`, `attestation`, `status`, `kms`), `maintenance` |
+| `organisationWallet.clock.replicas`, `.resources` | The clock (only the leader sends) | `2` |
+| `organisationWallet.serviceMonitor.enabled`, `.interval`, `.labels` | A ServiceMonitor of `/metrics` of the workers and the clock | off |
 | `organisationWallet.keyStores.types`, `.providers.*`, `.allowPrivateAddresses` | The key store types and providers that admins may add (see [Key stores](key-stores.md)) | `[vault, csc, gcp-kms, aws-kms, azure-key-vault]` |
 | `enterpriseDashboard.replicas`, `.configuration.*` | The dashboard | `1` |
 

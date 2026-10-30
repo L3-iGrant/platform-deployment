@@ -1,0 +1,98 @@
+{{- /*
+The clock of the organisation wallet (start-clock; docs/workers.md): it
+sends the messages of the cron actors to the queues when their time comes.
+Only the clock that holds the leader lock of the database (a session
+advisory lock on a direct connection) sends, and a clock on a database in
+recovery never leads, so two replicas are safe and the second takes over
+within seconds. It connects as the clock role (CONNECT only) and with the
+Valkey user walletClock; it connects to no NATS and to no key store.
+*/}}
+{{- if .Values.organisationWallet.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- $component := "wallet-clock" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ow.name" (list . $component) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . $component) | nindent 4 }}
+spec:
+  replicas: {{ $w.clock.replicas }}
+  # A third clock during a rollout is safe: only the leader sends.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "ow.selectorLabels" (list . $component) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "ow.labels" (list . $component) | nindent 8 }}
+        {{- include "ow.netpol.labels" (list . $component list) | nindent 8 }}
+      annotations:
+        {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" . "role" "clock"))) | nindent 8 }}
+        {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list . "clock")) .Values.database.databases.wallet)) | nindent 8 }}
+    spec:
+      # The clock does not call the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- include "ow.podSpecCommon" (list . $w) | nindent 6 }}
+      # SIGTERM stops the scheduler and closes the leader connection: the
+      # database frees the lock at once.
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ $component }}
+          image: {{ include "ow.image" (list . $w.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $w.image) }}
+          # The program of the clock (the image starts the server). Python is
+          # process 1 and gets SIGTERM.
+          command: ["/app/.venv/bin/start-clock"]
+          env:
+            # The only environment variable of the wallet configuration: the
+            # path of the file (the image has the same default).
+            - name: EUDI_WALLET_CONFIG
+              value: {{ include "ow.wallet.configPath" . | quote }}
+            {{- with $w.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: {{ include "ow.wallet.clockHealthPort" . }}
+          # The clock checks Valkey, then starts its health server; it does
+          # not wait for the database schema.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 24
+          # Liveness: /healthz, the heartbeat of each wake-up (stale after
+          # 60 s), never Valkey. Readiness: /readyz, Valkey and the database.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- include "ow.containerSecurityContext" (list . $w) | nindent 10 }}
+          {{- with $w.clock.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- include "ow.wallet.volumeMounts" . | nindent 12 }}
+      volumes:
+        {{- include "ow.wallet.volumes" (list . "clock") | nindent 8 }}
+{{- end }}

@@ -10,7 +10,7 @@ This page lists the components that the chart installs, and how your values file
 | API | Organisations, admins, credential definitions, webhooks and the OpenID provider. | Through the gateway |
 | Webhook handler | Sends the webhook events of your organisations. | None |
 | Consent management | Data agreements and consent records. | Through the gateway |
-| Organisation wallet | Issues, holds and verifies credentials (OpenID4VCI, OpenID4VP) and acts as the wallet provider. It runs as three roles of one image: service (public routes), config (configuration routes) and scheduler (background tasks). | The wallet host |
+| Organisation wallet | Issues, holds and verifies credentials (OpenID4VCI, OpenID4VP) and acts as the wallet provider. It runs as roles of one image: service (public routes), config (configuration routes), the workers (the background work, in groups of queues), the clock (it sends the scheduled work to the queues) and the scheduler (the background tasks that are not on the queues yet). See [Workers and clock](workers.md). | The wallet host |
 | Enterprise dashboard | The web interface of the organisation admins. | The dashboard host |
 | Database | One PostgreSQL server for all components, or your own server. | None |
 | NATS | The messages between the services. | None |

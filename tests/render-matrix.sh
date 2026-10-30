@@ -401,7 +401,8 @@ guard "key store provider category" "category" "${shamir[@]}" --set-json 'organi
 guard "key store provider type of the category" "add.0.type" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"x","category":"qtsp","type":"vault","name":"X","protection":"provider"}]'
 guard "unknown key store type" "organisationWallet.keyStores.types" "${shamir[@]}" --set 'organisationWallet.keyStores.types={vault,example}'
 renders "cloud KMS types by default" "- azure-key-vault" "${shamir[@]}"
-# The built-in test CA: kms.test_ca of every wallet role file.
+# The built-in test CA: kms.test_ca of every wallet role file (the clock
+# file names kms too: the schema of the wallet needs it).
 test_ca() {
   local name="$1" expect="$2"; shift 2
   local text problems
@@ -412,10 +413,10 @@ test_ca() {
 import json, sys, yaml
 data = yaml.safe_load(sys.stdin)["data"]
 expected = json.loads(sys.argv[1])
-for role in ("service", "config", "scheduler"):
-    test_ca = yaml.safe_load(data[f"{role}.yaml"])["kms"].get("test_ca")
+for file in ("service.yaml", "config.yaml", "worker-main.yaml", "worker-maintenance.yaml", "clock.yaml", "scheduler.yaml"):
+    test_ca = yaml.safe_load(data[file])["kms"].get("test_ca")
     if test_ca != expected:
-        print(f"{role}.yaml kms.test_ca is {test_ca!r}")
+        print(f"{file} kms.test_ca is {test_ca!r}")
 ' "$expect" <<< "$text" 2>&1)" && [ -z "$problems" ]; then
     ok "test CA $name"
   else
@@ -425,10 +426,11 @@ for role in ("service", "config", "scheduler"):
 test_ca "on by default" '{"enabled": true, "leaf_validity_days": 365}' "${shamir[@]}"
 test_ca "off, 90 days" '{"enabled": false, "leaf_validity_days": 90}' "${shamir[@]}" --set organisationWallet.keyStores.testCa.enabled=false --set organisationWallet.keyStores.testCa.leafValidityDays=90
 guard "test CA validity" "organisationWallet.keyStores.testCa.leafValidityDays" "${shamir[@]}" --set organisationWallet.keyStores.testCa.leafValidityDays=3651
-# The audit log: audit.* of every wallet role file and of the migration
-# hook; the bucket only in the scheduler file, and the Secrets of its
-# credentials (the access key and the CA of type s3, the service account
-# of type gcs) only in the scheduler pods.
+# The audit log: audit.* of every wallet role file (not of the clock, which
+# writes no audit event) and of the migration hook; the bucket only in the
+# files of the worker groups, and the Secrets of its credentials (the
+# access key and the CA of type s3, the service account of type gcs) only
+# in the worker pods (the actors audit.anchor and audit.export).
 audit() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -442,16 +444,17 @@ expected = json.loads(sys.argv[2])
 def find(kind, name):
     return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
 files = find("ConfigMap", "t-wallet")["data"]
-for role in ("service", "config", "scheduler"):
+for role in ("service", "config", "worker-main", "worker-maintenance", "clock", "scheduler"):
+    worker = role.startswith("worker-")
     audit = yaml.safe_load(files[f"{role}.yaml"]).get("audit")
-    want = dict(expected["audit"], **({"bucket": expected["bucket"]} if role == "scheduler" and expected["bucket"] else {}))
+    want = None if role == "clock" else dict(expected["audit"], **({"bucket": expected["bucket"]} if worker and expected["bucket"] else {}))
     if audit != want:
         print(f"{role}.yaml audit is {audit!r}")
     pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
     mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
                for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
     secrets = {path: secret for path, secret in mounted.items() if path.startswith("audit-bucket-")}
-    if secrets != (expected["secrets"] if role == "scheduler" else {}):
+    if secrets != (expected["secrets"] if worker else {}):
         print(f"the {role} pods mount {secrets!r} as the credentials of the audit bucket")
 retention = {key: value for key, value in expected["audit"].items() if key != "anchor_key_store"}
 migrate = yaml.safe_load(find("ConfigMap", "t-wallet-migrate")["data"]["config.yaml"]).get("audit")
@@ -518,6 +521,41 @@ renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
 lacks "database log parameter under a server parameter" '"log_statement=ddl"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
+
+# The workers and the clock (organisationWallet.workers, .clock,
+# .serviceMonitor; docs/workers.md). A case gives the whole list of the
+# groups (a list value replaces the default list).
+main_group='{"name":"main","queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600,"terminationGracePeriodSeconds":630}'
+maintenance_group='{"name":"maintenance","queues":["maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}'
+workers() { printf 'organisationWallet.workers.groups=[%s]' "$(IFS=,; printf '%s' "$*")"; }
+guard "worker group name" "organisationWallet.workers.groups.0.name" "${shamir[@]}" --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
+guard "worker group name without the schema" 'organisationWallet.workers.groups[0].name "Main" is not a name' "${shamir[@]}" --skip-schema-validation --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
+guard "worker group name two times" 'organisationWallet.workers.groups[1].name "main" is the name of another group' "${shamir[@]}" --set-json "$(workers "$main_group" "${maintenance_group/\"name\":\"maintenance\"/\"name\":\"main\"}")"
+guard "worker Deployment name too long" "gives the Deployment name" "${shamir[@]}" --set fullnameOverride=ows-installation-of-the-production-site
+guard "worker queue" "organisationWallet.workers.groups.1.queues.0" "${shamir[@]}" --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queue without the schema" '"default" is not a queue of the wallet' "${shamir[@]}" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queues empty without the schema" "organisationWallet.workers.groups[1].queues is empty" "${shamir[@]}" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[]}")"
+guard "worker queue two times without the schema" "organisationWallet.workers.groups[1].queues names a queue two times" "${shamir[@]}" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"maintenance\",\"maintenance\"]}")"
+guard "worker queue that no group runs" "no group runs the queue maintenance" "${shamir[@]}" --set-json "$(workers "$main_group")"
+guard "worker grace period below the shutdown timeout" "terminationGracePeriodSeconds (14400) must be at least shutdownTimeoutSeconds (14400) + 30" "${shamir[@]}" --set-json "$(workers "$main_group" "${maintenance_group/14430/14400}")"
+guard "worker replicas" "organisationWallet.workers.groups.0.replicas" "${shamir[@]}" --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
+guard "worker replicas without the schema" "organisationWallet.workers.groups[0].replicas (0) must be 1 or more" "${shamir[@]}" --skip-schema-validation --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
+guard "worker group without threads" "threads" "${shamir[@]}" --set-json "$(workers "${main_group/\"threads\":8,/}" "$maintenance_group")"
+guard "clock replicas" "organisationWallet.clock.replicas" "${shamir[@]}" --set organisationWallet.clock.replicas=0
+one_group='organisationWallet.workers.groups=[{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":2,"threads":4,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}]'
+renders "one worker group for every queue" "name: t-wallet-worker-all" "${shamir[@]}" --set-json "$one_group"
+renders "one worker group: its configuration key" "worker-all.yaml: |" "${shamir[@]}" --set-json "$one_group"
+lacks "one worker group: no Deployment of the default groups" "name: t-wallet-worker-main" "${shamir[@]}" --set-json "$one_group"
+renders "clock replicas" "replicas: 3" "${shamir[@]}" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
+renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+renders "metrics Service of a worker group (also the pods that are not ready)" "publishNotReadyAddresses: true" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+# The health port of the workers and of the clock (the scrape of
+# /metrics): open only to the monitoring namespace (networkPolicy.monitoring).
+renders "scrape of the workers and the clock with network policies" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --show-only templates/networkpolicy/policies.yaml
+lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+  --show-only templates/networkpolicy/policies.yaml
 
 # Valkey (redis.*): the schema and the template guards.
 redis_sts() {

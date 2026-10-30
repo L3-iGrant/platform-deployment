@@ -9,11 +9,11 @@ The wallet records the actions of the platform in an audit log in its database: 
 | Part | Where | Written by |
 | --- | --- | --- |
 | The audit events and the chain heads | The wallet database: `<scope>.audit_event` and `<scope>.audit_chain` | The wallet pods, only through the append routine of the database. No wallet pod can change or delete an event. |
-| An anchor of each scope every hour | `platform.audit_anchor`, signed with the key `audit-anchor-<scope>` of the Transit engine of OpenBao | The scheduler |
-| The copies of the anchors and the monthly exports | The audit bucket | The scheduler |
+| An anchor of each scope every hour | `platform.audit_anchor`, signed with the key `audit-anchor-<scope>` of the Transit engine of OpenBao | The workers (the actors `audit.anchor_dispatch` and `audit.anchor` of the queue `realtime`) |
+| The copies of the anchors and the monthly exports | The audit bucket | The workers (the actors of the anchors, and `audit.export` of the queue `maintenance`) |
 | The monthly partitions | The wallet database | The migration hook: it makes the partitions of the next 24 months and drops the months that are older than the retention, only after a verified export |
 
-The scheduler makes the anchor keys at its start: Transit keys of OpenBao, not exportable (the policy of the wallet in OpenBao allows them, see [OpenBao](openbao.md)). A rotation of a key adds a version; each anchor names the version that signed it.
+The workers make the anchor keys at their start: Transit keys of OpenBao, not exportable (the policy of the wallet in OpenBao allows them, see [OpenBao](openbao.md)). A rotation of a key adds a version; each anchor names the version that signed it.
 
 ## Settings
 
@@ -29,7 +29,7 @@ The scheduler makes the anchor keys at its start: Transit keys of OpenBao, not e
 | `organisationWallet.audit.bucket.project` | Type `gcs`: `audit.bucket.project`: the project of the bucket. Empty: the project of the credentials | `""` |
 | `organisationWallet.audit.bucket.credentials.existingSecret`, `.key` | Type `gcs`: `audit.bucket.credentials_file`: the Secret with the service account JSON of the bucket. Empty: the Google default credentials | `""`, `service-account.json` |
 
-The chart writes the retention to the configuration of each wallet role and of the migration hook, and the bucket only to the configuration of the scheduler, the only pod that mounts the credentials of the bucket. The values of one type do not mix with the values of the other type: the render stops. Seven years is the period of EN 319 411-1 for the records of the key life cycle. Set a longer period when your practice statement or your certification asks for one.
+The chart writes the retention to the configuration of each wallet role (not of the clock) and of the migration hook, and the bucket only to the configuration of the worker groups, the only pods that mount the credentials of the bucket. The values of one type do not mix with the values of the other type: the render stops. Seven years is the period of EN 319 411-1 for the records of the key life cycle. Set a longer period when your practice statement or your certification asks for one.
 
 ## Audit bucket
 
@@ -39,7 +39,7 @@ The wallet writes each object once with a create-only write (it never overwrites
 
 ### Type s3: an S3 store with Object Lock
 
-The bucket must be a bucket of an S3 store with Object Lock and a default retention in compliance mode. With compliance mode, no user of the store can delete a version of an object or shorten its retention before the retention ends. Object Lock can only be turned on when the bucket is made. At its start, the sink of the wallet reads the lock configuration of the bucket and refuses a bucket without a default retention in compliance mode: the anchors then stay in the database, and the scheduler logs the refusal and records the event `audit_anchor.failed` each hour until the bucket has one.
+The bucket must be a bucket of an S3 store with Object Lock and a default retention in compliance mode. With compliance mode, no user of the store can delete a version of an object or shorten its retention before the retention ends. Object Lock can only be turned on when the bucket is made. At its start, the sink of the wallet reads the lock configuration of the bucket and refuses a bucket without a default retention in compliance mode: the anchors then stay in the database, and the workers log the refusal and record the event `audit_anchor.failed` for each anchor until the bucket has one.
 
 Use a store that a team outside the platform operates, for example a Ceph RGW of your storage team: a store in the same cluster is weaker evidence, because an administrator of the cluster can delete its disks. Not Garage (no Object Lock) and not MinIO (no longer maintained).
 
@@ -73,7 +73,7 @@ organisationWallet:
       #   existingSecret: ows-audit-bucket-ca   # the CA of a store with a private certificate
 ```
 
-With network policies, the scheduler reaches a store with a public address through the egress profile `internet` (port 443). For a store in your network, set the egress profile `auditBucket` (`networkPolicy.egress.profiles.auditBucket.cidrs` and `.ports`; see [Network policies](network-policies.md)).
+With network policies, the workers reach a store with a public address through the egress profile `internet` (port 443). For a store in your network, set the egress profile `auditBucket` (`networkPolicy.egress.profiles.auditBucket.cidrs` and `.ports`; see [Network policies](network-policies.md)).
 
 ### Type gcs: Google Cloud Storage
 
@@ -99,7 +99,7 @@ for role in roles/storage.objectCreator roles/storage.objectViewer; do
 done
 ```
 
-Give a key of the service account as a Secret, or use Workload Identity for the scheduler (no Secret: the Google default credentials):
+Give a key of the service account as a Secret, or use Workload Identity for the workers (no Secret: the Google default credentials):
 
 ```bash
 kubectl -n ows create secret generic ows-audit-bucket --from-file=service-account.json=<key file>
@@ -116,7 +116,7 @@ organisationWallet:
         existingSecret: ows-audit-bucket
 ```
 
-With network policies, the scheduler reaches Google Cloud Storage through the egress profile `internet` (port 443). With Workload Identity, also add the profile `metadata` to the role `wallet-scheduler` (see [Network policies](network-policies.md)).
+With network policies, the workers reach Google Cloud Storage through the egress profile `internet` (port 443). With Workload Identity, also add the profile `metadata` to the role `wallet-worker` (see [Network policies](network-policies.md)).
 
 ### Without a bucket
 
@@ -124,10 +124,10 @@ Without a bucket (the default), the anchors stay in the database only, no month 
 
 ## Check the audit log
 
-`audit verify` reads every chain and every anchor and checks the sequence numbers, the hashes, the chain heads, the anchor signatures, the gaps of more than 2 hours between anchors and the bucket copies. Run it in the scheduler pod, with the configuration of the scheduler (its database role reads the audit tables for the exports, and it has the key store and the bucket):
+`audit verify` reads every chain and every anchor and checks the sequence numbers, the hashes, the chain heads, the anchor signatures, the gaps of more than 2 hours between anchors and the bucket copies. Run it in a worker pod, with the configuration of the worker (its database role reads the audit tables for the exports, and it has the key store and the bucket):
 
 ```bash
-kubectl -n ows exec deploy/ows-wallet-scheduler -- /app/.venv/bin/audit verify
+kubectl -n ows exec deploy/ows-wallet-worker-maintenance -- /app/.venv/bin/audit verify
 ```
 
 Exit code 0: the log is verified. Exit code 1: evidence of change; the output names the first bad row of each chain and the first bad anchor of each scope. Exit code 2: an input, configuration or connection error. For support, `audit timeline --request-id <id>` (or `--object <type>:<id>`, or `--organisation <id> --from <time> --to <time>`) gives the events in time order.
@@ -136,7 +136,7 @@ The roles hook also makes the audit reader `<prefix>_audit_reader`: it can read 
 
 ## Retention purge
 
-The daily job `retention_purge` of the scheduler deletes the rows below, in batches. The deactivation of an organisation or a sandbox (its delete in the dashboard or the API) is in the config pods: they write the purge date. The chart writes the same values to both.
+Each day the actor `retention.dispatch` of the workers (queue `maintenance`) starts the purge of the rows below, in batches. The deactivation of an organisation or a sandbox (its delete in the dashboard or the API) writes the purge date. The chart writes the same values to all wallet files (not to the clock).
 
 | Value | Wallet setting | Default | Rows |
 | --- | --- | --- | --- |

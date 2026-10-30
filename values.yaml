@@ -2,13 +2,12 @@
 #
 # The chart installs the platform: the auth gateway, the API (with the OIDC
 # provider) and its webhook handler, consent management, the organisation
-# wallet (service, config and scheduler), the enterprise dashboard, and the
-# dependencies of the platform: NATS with JetStream, one database server
-# (or an external server), OpenBao (the key management service of the
-# wallet; or an external OpenBao) and Valkey with Sentinel (or your Valkey
-# or Redis). The cluster must already have an ingress
-# controller or a Gateway API implementation (see
-# docs/prerequisites.md).
+# wallet (service, config, workers, clock and scheduler), the enterprise
+# dashboard, and the dependencies of the platform: NATS with JetStream, one
+# database server (or an external server), OpenBao (the key management
+# service of the wallet; or an external OpenBao) and Valkey with Sentinel
+# (or your Valkey or Redis). The cluster must already have an ingress
+# controller or a Gateway API implementation (see docs/prerequisites.md).
 #
 # REQUIRED VALUES (the render stops, with a message, while one is missing;
 # the examples/ folder has one values file per scenario, and
@@ -273,6 +272,9 @@ nats:
       walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
       walletService: {nkey: "", seedSecret: "", seedKey: seed}
       walletScheduler: {nkey: "", seedSecret: "", seedKey: seed}
+      # -- The workers of the wallet (all groups). The clock connects to no
+      # NATS.
+      walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
   # -- Replicas of the JetStream streams and KV buckets that the services
   # make, with file storage. ONE value for all services: two services that
   # ensure the same stream must use the same replicas. Empty: nats.replicas
@@ -344,6 +346,8 @@ redis:
   users:
     walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
     walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
+    walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
+    walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
     walletScheduler: {username: wallet-scheduler, passwordSecret: "", passwordKey: password}
     gateway: {username: gateway, passwordSecret: "", passwordKey: password}
   # The client settings of the wallet (the keys of its redis section).
@@ -1053,7 +1057,9 @@ networkPolicy:
       consent: [internet]
       wallet-service: [internet, kms, cloudKms]
       wallet-config: [internet, kms, cloudKms]
-      wallet-scheduler: [internet, kms, cloudKms, auditBucket]
+      wallet-scheduler: [internet, kms, cloudKms]
+      wallet-worker: [internet, kms, cloudKms, auditBucket]
+      wallet-clock: []
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
   monitoring:
     enabled: false
@@ -1329,8 +1335,10 @@ openbao:
   imagePullSecrets: []
 
 # Organisation wallet (OpenID4VCI issuer, OpenID4VP verifier, holder and
-# wallet provider). Three deployments of one image: service (public
-# routes), config (configuration routes, behind the gateway) and scheduler.
+# wallet provider). Deployments of one image: service (public routes),
+# config (configuration routes, behind the gateway), the workers (the
+# actors of the queues), the clock (it sends the cron actors) and the
+# scheduler (docs/workers.md).
 organisationWallet:
   enabled: true
   image:
@@ -1382,8 +1390,8 @@ organisationWallet:
     # business_wallet, wallet_provider), for example {kms: 10}.
     scopeRetentionYears: {}
     # -- audit.bucket: the write-once bucket of the copies of the anchors
-    # and of the monthly exports (docs/audit-log.md). Only the scheduler
-    # writes it and mounts its credentials. Empty name: no bucket; the
+    # and of the monthly exports (docs/audit-log.md). Only the workers
+    # write it and mount its credentials. Empty name: no bucket; the
     # anchors stay in the database only, no month is exported, and no
     # partition is dropped.
     bucket:
@@ -1421,12 +1429,12 @@ organisationWallet:
       # -- type gcs: existing Secret with the service account JSON of the
       # bucket (audit.bucket.credentials_file). Empty: the Google default
       # credentials, for example Workload Identity (with network policies,
-      # add the egress profile metadata to the scheduler).
+      # add the egress profile metadata to the role wallet-worker).
       credentials:
         existingSecret: ""
         key: service-account.json
-  # -- The retention purge of the scheduler (retention.*;
-  # docs/audit-log.md): the days after which the daily job deletes the
+  # -- The retention purge of the workers (retention.*;
+  # docs/audit-log.md): the days after which the daily purge deletes the
   # rows.
   retention:
     # -- Soft-deleted history rows, after their delete.
@@ -1633,6 +1641,72 @@ organisationWallet:
       requests:
         cpu: 10m
         memory: 192Mi
+  # -- The clock (start-clock; docs/workers.md): it sends the messages of
+  # the cron actors to the queues when their time comes. Only the clock
+  # that holds the leader lock of the database sends, and a clock on a
+  # standby database never leads: two replicas give a take-over within
+  # seconds.
+  clock:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 20m
+        memory: 128Mi
+      limits:
+        memory: 384Mi
+  # The workers (dramatiq ows.worker.run:start; docs/workers.md): they run
+  # the actors of the queues realtime, attestation, status, kms and
+  # maintenance. Each group is one Deployment <fullname>-wallet-worker-<name>
+  # for some of the queues; together the groups must run every queue. A
+  # list: your list replaces the whole default list.
+  workers:
+    groups:
+      # name: lower-case letters, digits and -; the Deployment name has at
+      #   most 63 characters.
+      # queues: the queues of the group.
+      # processes, threads: the worker processes of a pod and the threads
+      #   of each process (one thread runs one actor at a time).
+      # shutdownTimeoutSeconds: at a stop, the longest wait for the running
+      #   actors (--worker-shutdown-timeout): at least the longest time
+      #   limit of the actors of the queues, else an actor stops before its
+      #   end and runs again from its message.
+      # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
+      - name: main
+        queues: [realtime, attestation, status, kms]
+        replicas: 2
+        processes: 1
+        threads: 8
+        # The longest time limit of these queues: 600 s (kms.orphan_check,
+        # held_credential.refresh_statuses).
+        shutdownTimeoutSeconds: 600
+        terminationGracePeriodSeconds: 630
+        resources:
+          requests:
+            cpu: 100m
+            memory: 384Mi
+          limits:
+            memory: 1536Mi
+      - name: maintenance
+        queues: [maintenance]
+        replicas: 1
+        processes: 1
+        threads: 2
+        # The longest time limit of the queue: audit.export (one month of
+        # one scope), 4 hours. A stop of a pod can take this long.
+        shutdownTimeoutSeconds: 14400
+        terminationGracePeriodSeconds: 14430
+        resources:
+          requests:
+            cpu: 50m
+            memory: 384Mi
+          limits:
+            memory: 1536Mi
+  # -- A ServiceMonitor of /metrics of the workers and the clock (the CRD
+  # of the Prometheus Operator must exist; docs/workers.md).
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
   # -- The wallet image runs as root. When you set a non-root runAsUser,
   # also set fsGroup: the secret files have mode 0440.
   podSecurityContext: {}

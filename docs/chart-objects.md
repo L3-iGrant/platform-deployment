@@ -1,6 +1,6 @@
 # Chart objects
 
-This page lists the objects that the chart creates for OpenBao and for Valkey. For the Secrets of the keys and the passwords, see [Keys](keys.md).
+This page lists the objects that the chart creates for OpenBao, for Valkey and for the workers and the clock of the wallet. For the Secrets of the keys and the passwords, see [Keys](keys.md).
 
 [Back to the contents](../README.md#contents)
 
@@ -33,3 +33,16 @@ The objects of the bundled Valkey (`redis.mode: bundled`, see [Redis](redis.md))
 The configuration files with the passwords are in memory in each pod (an `emptyDir` with the medium `Memory`), never in the ConfigMap or on the data volume.
 
 New certificates: delete the Secret `<release>-redis-tls`, run `helm upgrade`, then restart the Valkey pods (`kubectl -n ows rollout restart statefulset/ows-redis`), the wallet pods and the gateway pods.
+
+## Workers and clock
+
+The objects of the background work of the wallet (see [Workers and clock](workers.md)):
+
+| Object | Function |
+| --- | --- |
+| `<release>-wallet-worker-<group>` (Deployment) | The workers of one group of `organisationWallet.workers.groups`: `dramatiq ows.worker.run:start` with the queues of the group, the port 9191 and an `emptyDir` in memory for the heartbeat and metric files of its worker processes |
+| `<release>-wallet-clock` (Deployment) | The clock: `start-clock` in 2 replicas, the port 9192 |
+| The keys `worker-<group>.yaml` and `clock.yaml` of the ConfigMap `<release>-wallet` | The configuration of each worker group and of the clock |
+| `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `organisationWallet.serviceMonitor.enabled`: the scrape of `/metrics` |
+
+The worker and clock pods mount no service account token.

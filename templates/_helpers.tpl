@@ -311,9 +311,9 @@ users (read_access).
 api,consent
 {{- end }}
 
-{{/* The NATS user (values key) of one wallet role. */}}
+{{/* The NATS user (values key) of one wallet role; "" for the clock, which connects to no NATS. */}}
 {{- define "ow.wallet.natsUser" -}}
-{{- $users := dict "config" "walletConfig" "service" "walletService" "scheduler" "walletScheduler" -}}
+{{- $users := dict "config" "walletConfig" "service" "walletService" "scheduler" "walletScheduler" "worker" "walletWorker" -}}
 {{- get $users . -}}
 {{- end }}
 
@@ -332,11 +332,12 @@ The login database roles of the wallet, comma-separated: the names without
 the prefix (ow.wallet.databaseUser). "database-roles apply" (the roles hook)
 makes them with the passwords of the role Secret
 (ow.wallet.databaseRolesSecretName), one key per name: the migrator, the
-launcher, the jobs role, the audit reader and one role per role
-application.
+launcher, the jobs role, the clock, the audit reader and one role per role
+application. "database-roles apply" stops when a login role has no
+password file.
 */}}
 {{- define "ow.wallet.databaseLogins" -}}
-migrator,launcher_app,jobs,audit_reader,issuer_app,relying_party_app,business_wallet_app,individual_wp_app,business_wp_app,admin_app
+migrator,launcher_app,jobs,clock,audit_reader,issuer_app,relying_party_app,business_wallet_app,individual_wp_app,business_wp_app,admin_app
 {{- end }}
 
 {{/* Name of the Secret with the passwords of the database roles of the wallet (ow.wallet.databaseLogins). */}}
@@ -346,12 +347,14 @@ migrator,launcher_app,jobs,audit_reader,issuer_app,relying_party_app,business_wa
 
 {{/*
 The database role of one wallet role (docs/database.md): the service and
-config roles connect as the launcher role, the scheduler as the jobs role.
+config roles connect as the launcher role, the workers and the scheduler as
+the jobs role, the clock as the clock role (CONNECT only: its leader lock
+and pg_is_in_recovery()).
 Output: the name without the prefix, also the key of its password in the
 role Secret.
 */}}
 {{- define "ow.wallet.databaseRole" -}}
-{{- $roles := dict "service" "launcher_app" "config" "launcher_app" "scheduler" "jobs" -}}
+{{- $roles := dict "service" "launcher_app" "config" "launcher_app" "worker" "jobs" "clock" "clock" "scheduler" "jobs" -}}
 {{- get $roles . -}}
 {{- end }}
 
@@ -387,7 +390,8 @@ and the CA of the server. Call with (list $ "<password file name>"
 {{- end }}
 
 {{/*
-Secret files of one wallet role ("service", "config" or "scheduler").
+Secret files of one wallet role ("service", "config", "worker", "clock" or
+"scheduler").
 All are files in one read-only folder (ow.wallet.secretDir), a
 projected volume of these Secret keys. Call with (list $ "<role>").
 Output: JSON object "<file name>" -> {secret, key}.
@@ -400,7 +404,9 @@ Output: JSON object "<file name>" -> {secret, key}.
 the database owner user. */ -}}
 {{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" $root) "key" (include "ow.wallet.databaseRole" $role) -}}
 {{- $files := include "ow.wallet.databaseFiles" (list $root "database-password" $password) | fromJson -}}
-{{- /* Every wallet process connects to NATS with the nkey user of its role. */ -}}
+{{- /* Every wallet process but the clock connects to NATS with the nkey
+user of its role. */ -}}
+{{- if ne $role "clock" -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.wallet.natsUser" $role)) | fromJson -}}
 {{- if $client.seed -}}
 {{- $_ := set $files "nats-seed" $client.seed -}}
@@ -408,9 +414,13 @@ the database owner user. */ -}}
 {{- with $root.Values.nats.tlsCa.existingSecret -}}
 {{- $_ := set $files "nats-ca.crt" (dict "secret" . "key" $root.Values.nats.tlsCa.key) -}}
 {{- end -}}
+{{- end -}}
 {{- /* The Valkey user of the role (redis): its password and the CA of the
 servers. */ -}}
 {{- $files = merge $files (include "ow.redis.secretFiles" (list $root (include "ow.wallet.redisUser" $role)) | fromJson) -}}
+{{- /* The clock gets no more files: it makes no OpenBao call and signs no
+NATS event (it only sends the messages of the cron actors). */ -}}
+{{- if ne $role "clock" -}}
 {{- /* The OpenBao login of the wallet KMS (password) and the OpenBao CA. */ -}}
 {{- $_ := set $files "openbao-password" (include "ow.openbao.walletSecret" $root | fromJson) -}}
 {{- with include "ow.openbao.ca" $root | fromJson -}}
@@ -422,11 +432,12 @@ servers. */ -}}
 {{- with $w.trustList.lookupToken.existingSecret -}}
 {{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
 {{- end -}}
-{{- /* The scheduler writes the copies of the audit anchors and the monthly
-exports to the audit bucket: with the access key of the wallet (type s3)
-or with its service account (type gcs). */ -}}
+{{- /* The workers write the copies of the audit anchors and the monthly
+exports to the audit bucket (the actors audit.anchor and audit.export):
+with the access key of the wallet (type s3) or with its service account
+(type gcs). */ -}}
 {{- $b := $w.audit.bucket -}}
-{{- if and (eq $role "scheduler") $b.name -}}
+{{- if and (eq $role "worker") $b.name -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- if eq $b.type "s3" -}}
 {{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.idKey) -}}
@@ -450,27 +461,32 @@ the read-only users of the wallet (read_access). */ -}}
 the wallet. */ -}}
 {{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
+{{- end -}}
 {{- toJson $files -}}
 {{- end }}
 
 {{/*
-Volumes of one wallet role: the configuration (ConfigMap key <role>.yaml as
-config.yaml) and the secret files (mode 0440). Call with (list $ "<role>").
+Volumes of one wallet role: the configuration (ConfigMap key <role>.yaml,
+or the key of the call, as config.yaml) and the secret files (mode 0440).
+Call with (list $ "<role>") or (list $ "<role>" "<ConfigMap key>").
 Output: a list at column 0.
 */}}
 {{- define "ow.wallet.volumes" -}}
 {{- $root := index . 0 -}}
+{{- $role := index . 1 -}}
+{{- $key := printf "%s.yaml" $role -}}
+{{- if gt (len .) 2 -}}{{- $key = index . 2 -}}{{- end -}}
 - name: config
   configMap:
     name: {{ include "ow.name" (list $root "wallet") }}
     items:
-      - key: {{ index . 1 }}.yaml
+      - key: {{ $key }}
         path: {{ include "ow.wallet.configPath" $root | base }}
 - name: secrets
   projected:
     defaultMode: 0440
     sources:
-      {{- range $path, $file := include "ow.wallet.secretFiles" . | fromJson }}
+      {{- range $path, $file := include "ow.wallet.secretFiles" (list $root $role) | fromJson }}
       - secret:
           name: {{ $file.secret }}
           items:
@@ -627,6 +643,8 @@ key of the user. Output: JSON list.
     "streams" (list "OWS_MICROSERVICE")
     "retired" (list "OWS_MICROSERVICE/credential-definition-worker" "OWS_MICROSERVICE/presentation-definition-worker"))
   "walletScheduler" (dict
+    "streams" (list "OWS_MICROSERVICE"))
+  "walletWorker" (dict
     "streams" (list "OWS_MICROSERVICE"))) -}}
 {{- $out := list -}}
 {{- range $stream := concat ($spec.streams | default list) (list) -}}
@@ -670,8 +688,10 @@ from its inbox prefix) get their messages on its inbox, so a process
 subscribes only to its inbox, to the requests that it serves (api.v1.rpc.>,
 ows.cmd.*.>) and to the events of its core subscriptions (start-api: the
 passwordless status waits; start-scheduler: ows.wia_pool.refill_requested,
-the WIA pool refill event of the config and service roles). The JetStream
-API rights are the exact subjects
+the WIA pool refill event of the config and service roles and of the
+workers, which run their actors). The workers publish the events of the
+outbox relay and of their actors. The clock connects to no NATS. The
+JetStream API rights are the exact subjects
 of each process (ow.nats.jetStreamRights): the services ensure their
 streams, durables and KV buckets at start, and nobody can delete or purge
 the stream or the consumers of another service. Output: JSON list.
@@ -700,7 +720,10 @@ the stream or the consumers of another service. Output: JSON list.
     "subscribe" (list))
   (dict "name" "wallet-scheduler" "key" "walletScheduler" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletScheduler" | fromJsonArray))
-    "subscribe" (list "ows.wia_pool.refill_requested")) -}}
+    "subscribe" (list "ows.wia_pool.refill_requested"))
+  (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
+    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.wia_pool.refill_requested") (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
+    "subscribe" (list)) -}}
 {{- $out := list -}}
 {{- range $user := $table -}}
 {{- $values := index $users $user.key | default dict -}}
