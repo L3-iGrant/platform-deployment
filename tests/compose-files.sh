@@ -18,6 +18,9 @@
 #     make secrets, and the redis section and the password file of each
 #     wallet role and of the gateway (tests/compose-valkey.sh runs the
 #     services against a real server);
+#   - the worker and the clock: their commands, the health port of each
+#     healthcheck, the state folder of the worker, and the files of the
+#     clock (no NATS seed, no OpenBao password);
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -197,7 +200,7 @@ services = project["services"]
 problems = []
 # The login database roles of database-roles, by the name without the
 # prefix igrant_wallet (the name of the wallet database).
-roles = ["migrator", "launcher_app", "jobs", "audit_reader", "issuer_app", "relying_party_app",
+roles = ["migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_app", "relying_party_app",
          "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"]
 # Each service of the wallet image: its database user and the service that
 # it waits for.
@@ -207,6 +210,8 @@ wallet = {
     "wallet-read-access": (admin, "wallet-migrate"),
     "wallet-config": ("igrant_wallet_launcher_app", "wallet-migrate"),
     "wallet-service": ("igrant_wallet_launcher_app", "wallet-migrate"),
+    "wallet-worker": ("igrant_wallet_jobs", "wallet-migrate"),
+    "wallet-clock": ("igrant_wallet_clock", "wallet-migrate"),
     "wallet-scheduler": ("igrant_wallet_jobs", "wallet-migrate"),
 }
 
@@ -342,7 +347,7 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as project_file:
     project = json.load(project_file)
 expected = {"enabled": sys.argv[2] == "true", "leaf_validity_days": int(sys.argv[3])}
-for role in ("config", "service", "scheduler"):
+for role in ("config", "service", "worker", "scheduler"):
     test_ca = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"])["kms"].get("test_ca")
     if test_ca != expected:
         sys.exit(f"wallet-{role}: kms.test_ca {test_ca!r}, not {expected!r}")
@@ -378,10 +383,12 @@ import yaml
 with open(sys.argv[1], encoding="utf-8") as project_file:
     project = json.load(project_file)
 expected = {"retention_years": int(sys.argv[2])}
-for name in ("config", "service", "scheduler", "migrate"):
+for name in ("config", "service", "worker", "scheduler", "migrate"):
     audit = yaml.safe_load(project["configs"][f"wallet-{name}-config"]["content"]).get("audit")
     if audit != expected:
         sys.exit(f"wallet-{name}: audit {audit!r}, not {expected!r}")
+if "audit" in yaml.safe_load(project["configs"]["wallet-clock-config"]["content"]):
+    sys.exit("wallet-clock: an audit section (the clock writes no audit event)")
 print(f"audit {expected}, no bucket")
 PY
 )"; then
@@ -414,7 +421,7 @@ with open(sys.argv[1], encoding="utf-8") as project_file:
 image = sys.argv[2]
 services = project["services"]
 problems = []
-users = ["wallet-config", "wallet-service", "wallet-scheduler", "gateway", "replication", "sentinel", "probe"]
+users = ["wallet-config", "wallet-service", "wallet-worker", "wallet-clock", "wallet-scheduler", "gateway", "replication", "sentinel", "probe"]
 wallet_rights = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
 gateway_rights = "resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous"
 order = {"valkey": (None, "primary"), "valkey-replica": ("valkey", "replica"), "valkey-sentinel": ("valkey-replica", "sentinel")}
@@ -451,7 +458,7 @@ for setting in ("appendonly yes", "appendfsync everysec", "maxmemory-policy noev
     if setting not in server:
         problems.append(f"valkey.conf has not {setting!r}")
 acl = open("config/valkey/users.acl", encoding="utf-8").read().splitlines()
-expected_acl = ["user default off"] + [f"user {u} on {{hash:{u}}} {wallet_rights}" for u in users[:3]] + [f"user gateway on {{hash:gateway}} {gateway_rights}"]
+expected_acl = ["user default off"] + [f"user {u} on {{hash:{u}}} {wallet_rights}" for u in users[:5]] + [f"user gateway on {{hash:gateway}} {gateway_rights}"]
 for line in expected_acl:
     if line not in acl:
         problems.append(f"users.acl has not {line!r}")
@@ -465,7 +472,7 @@ for setting in ("sentinel monitor ows {primary} 6379 1", "sentinel resolve-hostn
 made = re.search(r"for name in ([a-z -]+); do\n  password \"valkey/", open("secrets.sh", encoding="utf-8").read())
 if not made or sorted(made.group(1).split()) != sorted(users):
     problems.append("make secrets does not make the password of each Valkey user")
-for role in ("config", "service", "scheduler"):
+for role in ("config", "service", "worker", "clock", "scheduler"):
     user = f"wallet-{role}"
     redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"]).get("redis")
     expected = {"queue": {"sentinels": ["valkey-sentinel:26379"], "master_name": "ows", "username": user,
@@ -495,6 +502,67 @@ PY
     fi
   fi
 
+  # The worker and the clock: the command of each (the worker with all
+  # queues), the health port of the healthcheck, the state folder of the
+  # worker, the worker and clock sections, and the files of the clock (only
+  # the password of its database role and of its Valkey user: no NATS seed,
+  # no OpenBao password).
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local output project_file
+    if ! json="$(docker compose config --format json 2>&1)"; then
+      bad "worker and clock: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+services = project["services"]
+problems = []
+worker, clock = services.get("wallet-worker", {}), services.get("wallet-clock", {})
+command = ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", "1", "--threads", "8",
+           "--worker-shutdown-timeout", "3600000", "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
+if worker.get("command") != command:
+    problems.append(f"wallet-worker: command {worker.get('command')}")
+if clock.get("command") != ["/app/.venv/bin/start-clock"]:
+    problems.append(f"wallet-clock: command {clock.get('command')}")
+for name, service, port in (("wallet-worker", worker, 9191), ("wallet-clock", clock, 9192)):
+    if f"http://127.0.0.1:{port}/readyz" not in " ".join(service.get("healthcheck", {}).get("test", [])):
+        problems.append(f"{name}: the healthcheck is not /readyz of the port {port}")
+if not any(t == "/run/ows-worker" or t.startswith("/run/ows-worker:") for t in worker.get("tmpfs", [])):
+    problems.append("wallet-worker: /run/ows-worker is not a tmpfs")
+worker_file = yaml.safe_load(project["configs"]["wallet-worker-config"]["content"])
+if worker_file.get("worker") != {"health_port": 9191, "state_directory": "/run/ows-worker"}:
+    problems.append(f"wallet-worker: worker {worker_file.get('worker')!r}")
+clock_file = yaml.safe_load(project["configs"]["wallet-clock-config"]["content"])
+if set(clock_file) != {"domain", "log_level", "database", "nats", "redis", "clock", "kms"}:
+    problems.append(f"wallet-clock: the keys {sorted(clock_file)}")
+if clock_file.get("nats") != {"url": "nats://nats:4222"} or clock_file.get("clock") != {"health_port": 9192}:
+    problems.append("wallet-clock: nats is not only the address, or the health port is not 9192")
+targets = sorted(s["target"] for s in clock.get("secrets", []))
+if targets != ["/run/secrets/eudi-wallet/database-password", "/run/secrets/eudi-wallet/redis-password"]:
+    problems.append(f"wallet-clock mounts {targets}")
+if "nats" in (clock.get("depends_on") or {}) or "openbao-init" in (clock.get("depends_on") or {}):
+    problems.append("wallet-clock waits for NATS or OpenBao")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print("the commands, the health ports, the state folder and the files of the clock")
+PY
+)"; then
+        ok "worker and clock: $output"
+      else
+        bad "worker and clock: $output"
+      fi
+      rm -f "$project_file"
+    fi
+  fi
+
   local script
   for script in secrets.sh check.sh config/database/create-databases.sh; do
     if bash -n "$script"; then ok "bash -n $script"; else bad "bash -n $script"; fi
@@ -515,6 +583,7 @@ NATS_NKEY_CONSENT: "UB7OGI7MLCXOD6X65KXC22DH3QBKBJOOXNM5ASKTGOT6TGRLN7H2DRV3"
 NATS_NKEY_WALLET_CONFIG: "UCUBGBWEFKGAAPHRHLNTDDL53F7QVKXLIXWDMA5EYCEFGEZ7TERRRJTD"
 NATS_NKEY_WALLET_SERVICE: "UC3VBAJ2Y63SP755G2QEVR6HVKGIPTLNSJT74N53PLM6UQN466BGAB2K"
 NATS_NKEY_WALLET_SCHEDULER: "UDHIVILUSG2WUL3E4IBGURECA4QSRCENVF6WQYYK5LIDDJ7ENFXRFB7Z"
+NATS_NKEY_WALLET_WORKER: "UAGXS2RAA3KKGT722PQLZPXUOGC2GM7UEOFHE4RVSFPEHPDKA3IDT7VY"
 NKEYS
     local output
     if output="$(nats-server -t -c "$dir/nats.conf" 2>&1)"; then

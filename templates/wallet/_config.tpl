@@ -4,8 +4,11 @@ keys; an unknown key stops the wallet). The wallet reads the file of
 EUDI_WALLET_CONFIG. The file has no secret: each <key>_file names a file in
 ow.wallet.secretDir (see ow.wallet.secretFiles).
 Roles: "service" (public routes), "config" (internal configuration
-routes) and "scheduler" (no HTTP server).
-Call with (dict "root" $ "role" "<role>").
+routes), "worker" (a group of organisationWallet.workers.groups: the
+actors of its queues), "clock" (it sends the cron actors) and "scheduler"
+(no HTTP server).
+Call with (dict "root" $ "role" "<role>"), for a worker with (dict "root"
+$ "role" "worker" "group" <group>).
 */}}
 {{- define "ow.wallet.config" -}}
 {{- $root := .root -}}
@@ -60,12 +63,12 @@ OpenBao. */ -}}
 {{- /* The audit log (audit.*): the retention in the file of every role,
 so that each process and the migration hook have the same values; the
 bucket of the anchor copies and of the monthly exports only in the
-scheduler, which writes them and mounts the credentials of the bucket
-(ow.wallet.secretFiles). */ -}}
+workers, which write them (the actors audit.anchor and audit.export) and
+mount the credentials of the bucket (ow.wallet.secretFiles). */ -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- $audit := include "ow.wallet.auditRetention" $root | fromJson -}}
 {{- $b := $w.audit.bucket -}}
-{{- if and (eq $role "scheduler") $b.name -}}
+{{- if and (eq $role "worker") $b.name -}}
 {{- $bucket := dict "type" $b.type "name" $b.name -}}
 {{- with $b.prefix -}}
 {{- $_ := set $bucket "prefix" . -}}
@@ -89,7 +92,7 @@ scheduler, which writes them and mounts the credentials of the bucket
 {{- $_ := set $audit "bucket" $bucket -}}
 {{- end -}}
 {{- /* The retention purge (retention.*): the deactivation of an organisation
-in the config role writes its purge date, the scheduler purges. */ -}}
+writes its purge date, the workers purge. */ -}}
 {{- $r := $w.retention -}}
 {{- $retention := dict
     "soft_deleted_days" ($r.softDeletedDays | int)
@@ -128,6 +131,26 @@ in the config role writes its purge date, the scheduler purges. */ -}}
   "retention" $retention -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
+{{- /* The clock reads only the database and Valkey: no service envelope (it
+publishes nothing), no trust list, wallet unit, audit log or retention
+settings. The clock connects to no NATS and starts no KMS, but the file of
+every wallet process names the NATS address and kms.vault; the clock
+mounts no NATS seed and no OpenBao password. */ -}}
+{{- if eq $role "clock" -}}
+{{- range $key := list "service_envelope" "trust_list" "wallet_unit" "audit" "retention" -}}
+{{- $_ := unset $config $key -}}
+{{- end -}}
+{{- end -}}
+{{- /* The health server of the workers and of the clock: /healthz (the
+heartbeat), /readyz (Valkey and the database) and /metrics. The worker
+processes of a pod share their heartbeat and metric files in
+state_directory (an emptyDir). */ -}}
+{{- if eq $role "worker" -}}
+{{- $_ := set $config "worker" (dict "health_port" (include "ow.wallet.workerHealthPort" $root | int) "state_directory" (include "ow.wallet.workerStateDir" $root)) -}}
+{{- else if eq $role "clock" -}}
+{{- $_ := set $config "nats" (dict "url" (include "ow.nats.url" $root)) -}}
+{{- $_ := set $config "clock" (dict "health_port" (include "ow.wallet.clockHealthPort" $root | int)) -}}
+{{- end -}}
 {{- if has $role (list "service" "config") -}}
 {{- include "ow.wallet.checkServer" $root -}}
 {{- $server := dict
@@ -149,7 +172,7 @@ auth gateway calls the config pods directly, so they keep the wallet default
 {{- end -}}
 {{- $_ := set $config "server" $server -}}
 {{- end -}}
-{{- with $root.Values.nats.tlsCa.existingSecret -}}
+{{- if and $root.Values.nats.tlsCa.existingSecret (ne $role "clock") -}}
 {{- $_ := set $config.nats "tls_ca_file" (printf "%s/nats-ca.crt" $dir) -}}
 {{- end -}}
 {{- /* The config role always checks the internal token of the gateway

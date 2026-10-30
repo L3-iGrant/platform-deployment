@@ -17,6 +17,7 @@ check: do the next step only when you see the result of the check.
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
 - [Audit log](#audit-log)
+- [Worker and clock](#worker-and-clock)
 - [Valkey](#valkey)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
@@ -32,7 +33,7 @@ check: do the next step only when you see the result of the check.
 | Gateway (`gateway`) | The entry point of all API calls of your systems and of the dashboard. It checks each request (API keys, logins, rate limits). | `API_PORT` (8080) |
 | API (`api`) and webhook handler (`webhook`) | The organisations, the admins, the API keys, the webhooks to your systems. | none |
 | Consent management (`consent`) | The data agreements and the consent records. | none |
-| Organisation wallet (`wallet-service`, `wallet-config`, `wallet-scheduler`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. | `WALLET_PORT` (8090) |
+| Organisation wallet (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`, `wallet-scheduler`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. The worker runs the background work, the clock sends the scheduled work (see [Worker and clock](#worker-and-clock)). | `WALLET_PORT` (8090) |
 | Enterprise dashboard (`dashboard`) | The web application of the admins of your organisations. | `DASHBOARD_PORT` (3000) |
 | Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
 | NATS (`nats`) | The messages between the components. | none |
@@ -162,8 +163,8 @@ make status
 Check: you see one line for each service.
 
 - `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
-  `wallet-service`, `wallet-scheduler`, `dashboard`, `nats`, `openbao`
-  and `postgres`: `running`. The services with a health check also
+  `wallet-service`, `wallet-worker`, `wallet-clock`, `wallet-scheduler`,
+  `dashboard`, `nats`, `openbao` and `postgres`: `running`. The services with a health check also
   show `(healthy)`.
 - `database-init`, `wallet-database-roles`, the three `*-migrate`
   services, the three `*-read-access` services and `openbao-init`:
@@ -308,11 +309,12 @@ each one starts only when the one before it stopped with exit code 0:
 | Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
 | Read access | `wallet-read-access` | The admin user (`DB_ADMIN_USER`) |
 | Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
-| Background jobs | `wallet-scheduler` | `igrant_wallet_jobs` |
+| Background work | `wallet-worker`, `wallet-scheduler` | `igrant_wallet_jobs` |
+| Clock | `wallet-clock` | `igrant_wallet_clock` (it can only connect) |
 
 The database roles of the wallet processes read and write the data, but
-cannot change the schema. A wallet process waits until the schema is at
-the head of its code. When the schema does not get there in time, the
+cannot change the schema. A wallet process (but the clock) waits until
+the schema is at the head of its code. When the schema does not get there in time, the
 process stops and Compose starts it again.
 
 The other login database roles (`igrant_wallet_audit_reader` and one
@@ -362,9 +364,9 @@ daemon (the options `max-size` and `max-file` of the log driver
 The wallet records the actions of the platform in an audit log in its
 database: for example a configuration change, a key retirement, an issued
 credential or a refused request. Each data scope of the wallet has its own
-hash chains. Every hour, `wallet-scheduler` signs an anchor of each scope
-with the Transit key
-`audit-anchor-<scope>` of OpenBao; the scheduler makes the keys at its start.
+hash chains. Every hour, `wallet-worker` signs an anchor of each scope
+with the Transit key `audit-anchor-<scope>` of OpenBao; the worker makes the
+keys at its start.
 
 | Part | Compose |
 | --- | --- |
@@ -383,17 +385,40 @@ change, with the first bad row of each chain; 2: an input or connection
 error):
 
 ```bash
-docker compose exec wallet-scheduler /app/.venv/bin/audit verify
+docker compose exec wallet-worker /app/.venv/bin/audit verify
 ```
 
 The check of the bucket copies (C9) is skipped. For support,
 `audit timeline --request-id <id>` gives the events of one request in time
 order.
 
-The scheduler also purges the wallet data every day: soft-deleted history
+The worker also purges the wallet data every day: soft-deleted history
 rows 30 days after their delete, a deleted organisation 30 days and a
 deleted sandbox 7 days after its deactivation, dead letters after 30 days
 (the `retention` settings of the wallet, with their defaults).
+
+## Worker and clock
+
+The wallet runs its background work as actors on the queues of Valkey:
+
+| Service | Function |
+| --- | --- |
+| `wallet-worker` | Runs the actors of all queues (`realtime`, `attestation`, `status`, `kms`, `maintenance`): one worker process with 8 threads. A stop waits at most one hour for the running actors (`stop_grace_period`); an actor that does not end in that time runs again from its message. |
+| `wallet-clock` | Sends the messages of the cron actors to the queues when their time comes. It holds the leader lock of the database while it sends. It connects to no NATS and to no key store. |
+| `wallet-scheduler` | Runs the jobs of the wallet that are not actors in this release. A later release removes it. |
+
+The worker and the clock have a health port (9191 and 9192, only on the
+Compose network): `/healthz` (the heartbeat), `/readyz` (Valkey and the
+database, the healthcheck of the service) and `/metrics` (Prometheus).
+Check that the clock leads:
+
+```bash
+docker compose exec wallet-clock /app/.venv/bin/python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:9192/metrics').read().decode())" | grep '^ows_clock_leader '
+```
+
+You see `ows_clock_leader 1.0`. The Helm chart runs the workers in groups
+of queues and two clocks: see [Workers and clock](../docs/workers.md).
 
 ## Valkey
 
@@ -422,7 +447,7 @@ Each wallet role and the gateway log in with their own ACL user (no
 
 | User | Process | Rights |
 | --- | --- | --- |
-| `wallet-config`, `wallet-service`, `wallet-scheduler` | the roles of the wallet | the keys `ows:*`, `ows-wallet` and `ows-wallet:*`; read, write, scripts, `INFO` and `KEYS`; on the Sentinel, the discovery of the primary |
+| `wallet-config`, `wallet-service`, `wallet-worker`, `wallet-clock`, `wallet-scheduler` | the roles of the wallet | the keys `ows:*`, `ows-wallet` and `ows-wallet:*`; read, write, scripts, `INFO` and `KEYS`; on the Sentinel, the discovery of the primary |
 | `gateway` | the gateway | the keys `gw:*`; read and write |
 | `replication`, `sentinel`, `probe` | the replica, the Sentinel, the healthchecks | the commands of each |
 

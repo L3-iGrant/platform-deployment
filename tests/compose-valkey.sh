@@ -161,7 +161,7 @@ as valkey-sentinel gateway valkey 6379 SET ows:n:wp:o1:h2 1 | grep -q NOPERM && 
 if problems="$(python3 - "$work/project.json" <<'PY' 2>&1
 import json, sys, yaml
 project = json.load(open(sys.argv[1]))
-for role in ("config", "service", "scheduler"):
+for role in ("config", "service", "worker", "clock", "scheduler"):
     redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"])["redis"]
     user = f"wallet-{role}"
     expected = {"queue": {"sentinels": ["valkey-sentinel:26379"], "master_name": "ows", "username": user,

@@ -629,6 +629,22 @@
                       "type": "string"
                     }
                   }
+                },
+                "walletWorker": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "nkey": {
+                      "type": "string",
+                      "pattern": "^(U[A-Z0-9_]+)?$"
+                    },
+                    "seedSecret": {
+                      "type": "string"
+                    },
+                    "seedKey": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -800,6 +816,42 @@
               }
             },
             "walletConfig": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "walletWorker": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+                },
+                "passwordSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "passwordKey": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "walletClock": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
@@ -3275,6 +3327,104 @@
               "type": "integer"
             },
             "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "clock": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "replicas": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
+        "workers": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "groups": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "queues",
+                  "replicas",
+                  "processes",
+                  "threads",
+                  "shutdownTimeoutSeconds",
+                  "terminationGracePeriodSeconds"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                  },
+                  "queues": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "realtime",
+                        "attestation",
+                        "status",
+                        "kms",
+                        "maintenance"
+                      ]
+                    }
+                  },
+                  "replicas": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "processes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 64
+                  },
+                  "threads": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 256
+                  },
+                  "shutdownTimeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "terminationGracePeriodSeconds": {
+                    "type": "integer",
+                    "minimum": 31
+                  },
+                  "resources": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$"
+            },
+            "labels": {
               "type": "object"
             }
           }

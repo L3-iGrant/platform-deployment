@@ -1,0 +1,60 @@
+{{- /*
+The ServiceMonitor of /metrics of the workers and of the clock
+(organisationWallet.serviceMonitor.enabled; the CRD of the Prometheus
+Operator must exist; docs/workers.md). A headless Service for each worker
+group and for the clock gives the pods as the targets, also the pods that
+are not ready (a worker is not ready while Valkey does not answer, and its
+metrics show it).
+*/}}
+{{- if and .Values.organisationWallet.enabled .Values.organisationWallet.serviceMonitor.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- $targets := list (dict "component" "wallet-clock" "port" (include "ow.wallet.clockHealthPort" . | int)) }}
+{{- range $g := $w.workers.groups }}
+{{- $targets = append $targets (dict "component" (include "ow.wallet.workerComponent" $g) "port" (include "ow.wallet.workerHealthPort" $ | int)) }}
+{{- end }}
+{{- range $target := $targets }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ow.name" (list $ $target.component) }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list $ $target.component) | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  ports:
+    - name: health
+      port: {{ $target.port }}
+      targetPort: health
+  selector:
+    {{- include "ow.selectorLabels" (list $ $target.component) | nindent 4 }}
+---
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "ow.name" (list . "wallet-metrics") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "wallet-metrics") | nindent 4 }}
+    {{- with $w.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          {{- range $target := $targets }}
+          - {{ $target.component }}
+          {{- end }}
+  endpoints:
+    - port: health
+      path: /metrics
+      interval: {{ $w.serviceMonitor.interval }}
+{{- end }}

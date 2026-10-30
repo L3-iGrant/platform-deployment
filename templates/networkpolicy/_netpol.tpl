@@ -50,7 +50,7 @@ list.
 {{- $roles := list "job" -}}
 {{- if $v.api.enabled -}}{{- $roles = concat $roles (list "gateway" "api" "webhook") -}}{{- end -}}
 {{- if $v.consent.enabled -}}{{- $roles = append $roles "consent" -}}{{- end -}}
-{{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-scheduler") -}}{{- end -}}
+{{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-worker" "wallet-clock" "wallet-scheduler") -}}{{- end -}}
 {{- if $v.enterpriseDashboard.enabled -}}{{- $roles = append $roles "dashboard" -}}{{- end -}}
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}
 {{- if $v.nats.enabled -}}{{- $roles = append $roles "nats" -}}{{- end -}}

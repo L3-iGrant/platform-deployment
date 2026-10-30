@@ -44,8 +44,28 @@ RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deac
 # the settings of the data servers (WORKERS-AND-REDIS-PLAN.md section 2.7)
 # and the rights of the wallet users (the rights of the wallet tests,
 # eudi-wallet ows/testing/redis_servers.py).
-REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletScheduler": "wallet-scheduler", "gateway": "gateway"}
-REDIS_WALLET_USERS = {"service": "walletService", "config": "walletConfig", "scheduler": "walletScheduler"}
+REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletWorker": "wallet-worker", "walletClock": "wallet-clock",
+               "walletScheduler": "wallet-scheduler", "gateway": "gateway"}
+# The wallet processes with the defaults of the values: the configuration
+# key of each (ConfigMap <release>-wallet), its Deployment, its Valkey
+# user and its database role. The worker groups of
+# organisationWallet.workers.groups: their queues, replicas, processes,
+# threads, shutdown timeout and grace period.
+WORKER_GROUPS = {
+    "main": (["realtime", "attestation", "status", "kms"], 2, 1, 8, 600, 630),
+    "maintenance": (["maintenance"], 1, 1, 2, 14400, 14430),
+}
+WALLET_PROCESSES = {
+    "service.yaml": ("wallet-service", "walletService", "launcher_app"),
+    "config.yaml": ("wallet-config", "walletConfig", "launcher_app"),
+    **{f"worker-{name}.yaml": (f"wallet-worker-{name}", "walletWorker", "jobs") for name in WORKER_GROUPS},
+    "clock.yaml": ("wallet-clock", "walletClock", "clock"),
+    "scheduler.yaml": ("wallet-scheduler", "walletScheduler", "jobs"),
+}
+# The files of the processes with the KMS, the trust list and the audit
+# log (all but the clock, which only sends the cron actors).
+KMS_FILES = [key for key in WALLET_PROCESSES if key != "clock.yaml"]
+WORKER_FILES = [f"worker-{name}.yaml" for name in WORKER_GROUPS]
 REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replication yes", "appendonly yes", "appendfsync everysec",
                   "maxmemory-policy noeviction", "min-replicas-to-write 1", "min-replicas-max-lag 10", "masteruser replication",
                   "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
@@ -142,8 +162,9 @@ def main() -> int:
     if consent_migrate:
         go_section("consent migrate.yaml DataBase", consent_migrate["DataBase"])
     openbao_address = EXTERNAL_OPENBAO if openbao == "external" else f"https://{RELEASE}-openbao.{NAMESPACE}.svc:8200"
-    for role in ("service", "config", "scheduler"):
-        wallet = config_map_file(f"{RELEASE}-wallet", f"{role}.yaml")
+    for file in KMS_FILES:
+        role = file.removesuffix(".yaml")
+        wallet = config_map_file(f"{RELEASE}-wallet", file)
         if not wallet:
             continue
         wallet_section(f"wallet {role}.yaml database", wallet["database"])
@@ -165,11 +186,77 @@ def main() -> int:
         check(login.get("user") == "wallet" and bool(login.get("password_file")), f"wallet {role}.yaml has no OpenBao login")
         check(bool(login.get("ca_cert_file")), f"wallet {role}.yaml has no OpenBao CA")
         check("storage" not in wallet, f"wallet {role}.yaml has a storage section (the PDF files are in the database)")
-        if role == "config":
+        if file == "config.yaml":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
+
+    # The workers and the clock (docs/workers.md): one Deployment for each
+    # worker group (dramatiq with the queues of the group) and the clock
+    # (start-clock); the health port (the probes and /metrics), the stop,
+    # the state folder of the worker processes, no service account token.
+    # The clock file has only the database, the NATS address (the clock
+    # connects to no NATS), kms (the schema of every wallet file names it;
+    # the clock mounts none of its files), Valkey and the health port.
+    def probe(container: dict, name: str) -> tuple:
+        get = ((container.get(name) or {}).get("httpGet") or {})
+        return get.get("path"), get.get("port")
+
+    for name, (queues, replicas, processes, threads, shutdown, grace) in WORKER_GROUPS.items():
+        component = f"wallet-worker-{name}"
+        deploy = find("Deployment", f"{RELEASE}-{component}")
+        if deploy is None:
+            failures.append(f"the Deployment {RELEASE}-{component} is missing")
+            continue
+        pod = deploy["spec"]["template"]["spec"]
+        container = pod["containers"][0]
+        command = ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", str(processes), "--threads", str(threads),
+                   "--worker-shutdown-timeout", str(shutdown * 1000), "--queues", *queues]
+        check(container.get("command") == command, f"the {component} pods have the command {container.get('command')}")
+        check(deploy["spec"]["replicas"] == replicas, f"the {component} Deployment has {deploy['spec']['replicas']} replicas, not {replicas}")
+        check(pod.get("terminationGracePeriodSeconds") == grace, f"the {component} pods have the grace period {pod.get('terminationGracePeriodSeconds')}, not {grace}")
+        check(pod.get("automountServiceAccountToken") is False, f"the {component} pods mount a service account token")
+        check(deploy["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-worker", f"the {component} pods have not the network role wallet-worker")
+        check(container.get("ports") == [{"name": "health", "containerPort": 9191}], f"the {component} pods have the ports {container.get('ports')}")
+        check(probe(container, "livenessProbe") == ("/healthz", "health") and probe(container, "readinessProbe") == ("/readyz", "health")
+              and probe(container, "startupProbe") == ("/healthz", "health"), f"the {component} probes are not /healthz and /readyz of the health port")
+        startup = container.get("startupProbe") or {}
+        check(startup.get("periodSeconds", 10) * startup.get("failureThreshold", 3) >= 630,
+              f"the startup probe of the {component} pods ends before the wait for the schema head (630 s)")
+        state = next((v for v in pod["volumes"] if v["name"] == "worker-state"), {})
+        mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
+        check((state.get("emptyDir") or {}).get("medium") == "Memory" and mounts.get("worker-state") == "/run/ows-worker",
+              f"the {component} pods have no emptyDir at the state folder /run/ows-worker")
+        check(pod["volumes"][0]["configMap"]["items"][0]["key"] == f"worker-{name}.yaml", f"the {component} pods do not mount worker-{name}.yaml")
+        worker = config_map_file(f"{RELEASE}-wallet", f"worker-{name}.yaml") or {}
+        check(worker.get("worker") == {"health_port": 9191, "state_directory": "/run/ows-worker"}, f"wallet worker-{name}.yaml worker is {worker.get('worker')!r}")
+        check("server" not in worker and "clock" not in worker, f"wallet worker-{name}.yaml has a server or a clock section")
+    clock = find("Deployment", f"{RELEASE}-wallet-clock")
+    if clock is None:
+        failures.append(f"the Deployment {RELEASE}-wallet-clock is missing")
+    else:
+        pod = clock["spec"]["template"]["spec"]
+        container = pod["containers"][0]
+        check(container.get("command") == ["/app/.venv/bin/start-clock"], f"the clock pods have the command {container.get('command')}")
+        check(clock["spec"]["replicas"] == 2, "the clock has not 2 replicas")
+        check(pod.get("terminationGracePeriodSeconds") == 30 and pod.get("automountServiceAccountToken") is False,
+              "the clock pods have not the grace period 30 without a service account token")
+        check(clock["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-clock", "the clock pods have not the network role wallet-clock")
+        check(container.get("ports") == [{"name": "health", "containerPort": 9192}], f"the clock pods have the ports {container.get('ports')}")
+        check(probe(container, "livenessProbe") == ("/healthz", "health") and probe(container, "readinessProbe") == ("/readyz", "health"),
+              "the clock probes are not /healthz and /readyz of the health port")
+        paths = {item["path"] for source in pod["volumes"][1]["projected"]["sources"] for item in source["secret"]["items"]}
+        check({"database-password", "redis-password"} <= paths <= {"database-password", "database-ca.crt", "redis-password", "redis-ca.crt"},
+              f"the clock pods mount {sorted(paths)}, not only the files of the database and of Valkey")
+    clock_file = config_map_file(f"{RELEASE}-wallet", "clock.yaml") or {}
+    check(set(clock_file) == {"domain", "log_level", "database", "nats", "kms", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")
+    check(clock_file.get("nats") == {"url": f"nats://{RELEASE}-nats.{NAMESPACE}.svc:4222"}, f"the clock file has nats {clock_file.get('nats')!r}")
+    check(clock_file.get("clock") == {"health_port": 9192}, f"the clock file has clock {clock_file.get('clock')!r}")
+    if clock_file:
+        wallet_section("wallet clock.yaml database", clock_file["database"])
+    check(not [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"] == f"{RELEASE}-wallet-metrics"],
+          "the ServiceMonitor of the wallet is rendered without organisationWallet.serviceMonitor.enabled")
 
     # The migration hooks and the other hooks of the wallet (their own
     # ConfigMaps).
@@ -299,7 +386,7 @@ def main() -> int:
 
     owner_password = (server, "igrant_wallet")
     admin_password = (admin_secret, admin_key)
-    logins = {"migrator", "launcher_app", "jobs", "audit_reader", "issuer_app", "relying_party_app",
+    logins = {"migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_app", "relying_party_app",
               "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"}
 
     # The role Secret: one key per login role.
@@ -415,8 +502,7 @@ def main() -> int:
               f"the read access hook of {reader} has not the password of the administrator as database-admin-password")
 
     # The Deployments: the user and the Secret key of each process.
-    processes = {"wallet-service": "launcher_app", "wallet-config": "launcher_app", "wallet-scheduler": "jobs"}
-    for component, role in processes.items():
+    for file, (component, _, role) in WALLET_PROCESSES.items():
         deploy = find("Deployment", f"{RELEASE}-{component}")
         if deploy is None:
             failures.append(f"the Deployment {RELEASE}-{component} is missing")
@@ -427,12 +513,11 @@ def main() -> int:
               f"the {component} pods mount {files.get('database-password')} as database-password, not ({roles_secret}, {role})")
         check({ref for ref in secret_refs(pod) if ref[0] == roles_secret} == {(roles_secret, role)},
               f"the {component} pods mount other keys of the role Secret than {role}")
-        file = config_map_file(f"{RELEASE}-wallet", f"{component.removeprefix('wallet-')}.yaml")
-        user = ((file or {}).get("database") or {}).get("user")
+        user = ((config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}).get("user")
         check(user == f"igrant_wallet_{role}", f"the {component} pods connect as {user!r}, not igrant_wallet_{role}")
         check(admin_password not in secret_refs(pod), f"the {component} pods mount the password of the administrator")
         check(not [name for name in files if name.startswith("audit-bucket-")], f"the {component} pods mount the credentials of an audit bucket")
-        if component != "wallet-scheduler":
+        if component in ("wallet-service", "wallet-config"):
             # The server waits up to 600 s for the schema head before it
             # answers /healthz: the startup probe covers the wait.
             probe = pod["containers"][0].get("startupProbe") or {}
@@ -509,19 +594,22 @@ def main() -> int:
     check(nats is not None and len(nats["spec"]["template"]["spec"]["containers"]) == 2, "NATS has no reloader sidecar")
     nats_conf = config_map_file(f"{RELEASE}-nats", "nats.conf", raw=True) or ""
     users = re.findall(r"^\s*# (\S+)$", nats_conf, re.M)
-    check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-scheduler"],
+    # The clock connects to no NATS: it has no user.
+    check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-scheduler", "wallet-worker"],
           f"the NATS users are {users}")
-    # The WIA pool refill event: the config and service roles publish it,
-    # the scheduler subscribes to it, no other user has it.
+    # The WIA pool refill event: the config and service roles and the
+    # workers (the actors of the requests) publish it, the scheduler
+    # subscribes to it, no other user has it.
     refill = "ows.wia_pool.refill_requested"
-    for nkey, role in (("UTESTWALLETCONFIG", "config"), ("UTESTWALLETSERVICE", "service")):
+    for nkey, role in (("UTESTWALLETCONFIG", "config"), ("UTESTWALLETSERVICE", "service"), ("UTESTWALLETWORKER", "worker")):
         line = next((line for line in nats_conf.splitlines() if nkey in line), "")
         check(f'"{refill}"' in line.split("subscribe:")[0], f"the wallet {role} role cannot publish the WIA pool refill event")
         check(f'"{refill}"' not in line.split("subscribe:")[-1], f"the wallet {role} role subscribes to the WIA pool refill event")
     scheduler_line = next((line for line in nats_conf.splitlines() if "UTESTWALLETSCHEDULER" in line), "")
     check(f'subscribe: {{ allow: ["{refill}", "_INBOX_wallet.>"] }}' in scheduler_line, "the wallet scheduler role does not subscribe to the WIA pool refill event")
     check(f'"{refill}"' not in scheduler_line.split("subscribe:")[0], "the wallet scheduler role can publish the WIA pool refill event")
-    others = [line for line in nats_conf.splitlines() if refill in line and not any(n in line for n in ("UTESTWALLETCONFIG", "UTESTWALLETSERVICE", "UTESTWALLETSCHEDULER"))]
+    others = [line for line in nats_conf.splitlines() if refill in line
+              and not any(n in line for n in ("UTESTWALLETCONFIG", "UTESTWALLETSERVICE", "UTESTWALLETSCHEDULER", "UTESTWALLETWORKER"))]
     check(not others, "a NATS user other than the wallet roles has the WIA pool refill event")
 
     # --- Valkey ---------------------------------------------------------------
@@ -602,19 +690,19 @@ def main() -> int:
         ca = ("ows-redis-ca", "ca.crt")
         endpoint = {"sentinels": REDIS_EXTERNAL_SENTINELS, "master_name": "ows"}
         password_of = {key: (f"ows-redis-{user}", "password") for key, user in REDIS_USERS.items()}
-    for role, key in REDIS_WALLET_USERS.items():
+    for file, (component, key, _) in WALLET_PROCESSES.items():
         user = REDIS_USERS[key]
-        wallet = config_map_file(f"{RELEASE}-wallet", f"{role}.yaml") or {}
+        wallet = config_map_file(f"{RELEASE}-wallet", file) or {}
         files = f"{secret_dir}/redis-password"
         expected = {"queue": dict(endpoint, username=user, password_file=files, sentinel_username=user, sentinel_password_file=files,
                                   tls=True, ca_file=f"{secret_dir}/redis-ca.crt", connect_timeout_seconds=2, timeout_seconds=2),
                     "replica_wait_milliseconds": 100}
-        check(wallet.get("redis") == expected, f"wallet {role}.yaml redis is {wallet.get('redis')!r}")
-        deploy = find("Deployment", f"{RELEASE}-wallet-{role}")
+        check(wallet.get("redis") == expected, f"wallet {file} redis is {wallet.get('redis')!r}")
+        deploy = find("Deployment", f"{RELEASE}-{component}")
         if deploy:
             mounted = projected_files(pod_of(deploy))
             check(mounted.get("redis-password") == password_of[key] and mounted.get("redis-ca.crt") == ca,
-                  f"the wallet {role} pods mount {mounted.get('redis-password')} and {mounted.get('redis-ca.crt')} as the Valkey files")
+                  f"the {component} pods mount {mounted.get('redis-password')} and {mounted.get('redis-ca.crt')} as the Valkey files")
     gateway_deploy = find("Deployment", f"{RELEASE}-gateway")
     if gateway_deploy:
         mounted = projected_files(pod_of(gateway_deploy))
@@ -628,7 +716,7 @@ def main() -> int:
             reach = {d["metadata"]["name"] for d in policies for rule in d["spec"].get("egress", [])
                      if {(t.get("ipBlock") or {}).get("cidr") for t in rule.get("to", [])} == REDIS_EXTERNAL_CIDRS
                      and {p["port"] for p in rule.get("ports", [])} == {6379, 26379}}
-            want = {f"{RELEASE}-netpol-egress-{role}" for role in ("gateway", "wallet-service", "wallet-config", "wallet-scheduler")}
+            want = {f"{RELEASE}-netpol-egress-{role}" for role in ("gateway", "wallet-service", "wallet-config", "wallet-worker", "wallet-clock", "wallet-scheduler")}
             check(reach == want, f"the policies to the external Valkey are {sorted(reach)}, not {sorted(want)}")
 
     # --- Words that must not be in the render ------------------------------

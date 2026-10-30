@@ -102,7 +102,8 @@ for service in api consent wallet; do
 done
 
 echo "make-keys: the NATS users"
-nats_users="api:api apiWebhook:api-webhook consent:consent walletConfig:wallet-config walletService:wallet-service walletScheduler:wallet-scheduler"
+# walletWorker: the workers of the wallet (the clock connects to no NATS).
+nats_users="api:api apiWebhook:api-webhook consent:consent walletConfig:wallet-config walletService:wallet-service walletScheduler:wallet-scheduler walletWorker:wallet-worker"
 for entry in $nats_users; do
   name="${entry#*:}"
   igrant_api keys generate-nats-seed --file "nats-${name}.seed" > "$files/nats-${name}.nkey"

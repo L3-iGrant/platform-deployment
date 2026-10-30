@@ -168,7 +168,7 @@ check_installation() {
   # The password file of each login database role of the wallet (make
   # secrets; wallet-database-roles gives them to database-roles apply).
   local role missing_roles=""
-  for role in migrator launcher_app jobs audit_reader issuer_app relying_party_app \
+  for role in migrator launcher_app jobs clock audit_reader issuer_app relying_party_app \
     business_wallet_app individual_wp_app business_wp_app admin_app; do
     [ -s "secrets/database/igrant_wallet_${role}-password" ] || missing_roles+=" igrant_wallet_${role}"
   done

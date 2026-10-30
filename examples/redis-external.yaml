@@ -2,7 +2,7 @@
 # Valkey. It must meet the requirements of docs/redis.md: Valkey or Redis
 # 7.2 or later, Sentinel or one primary with replicas (not Redis Cluster),
 # TLS, maxmemory-policy noeviction, AOF everysec, min-replicas-to-write 1,
-# and the four ACL users below with the rights of docs/redis.md.
+# and the ACL users below with the rights of docs/redis.md.
 #
 # Before the install, create one Secret for each user with its password
 # (letters, digits and . _ ~ + / = -), and the Secret with the CA of your
@@ -27,6 +27,8 @@ redis:
   users:
     walletService: {username: wallet-service, passwordSecret: ows-redis-wallet-service, passwordKey: password}
     walletConfig: {username: wallet-config, passwordSecret: ows-redis-wallet-config, passwordKey: password}
+    walletWorker: {username: wallet-worker, passwordSecret: ows-redis-wallet-worker, passwordKey: password}
+    walletClock: {username: wallet-clock, passwordSecret: ows-redis-wallet-clock, passwordKey: password}
     walletScheduler: {username: wallet-scheduler, passwordSecret: ows-redis-wallet-scheduler, passwordKey: password}
     gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
 # With network policies (examples/networkpolicy.yaml): the addresses of your

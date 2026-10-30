@@ -93,3 +93,30 @@ The wallet does not read the bucket: the files in it stay there. The PDF
 files now have the backups and the replication of the wallet database.
 The wallet keeps a signed PDF 30 days after the signature, only to give
 it to the relying party, which keeps its own copy.
+
+## The workers and the clock of the wallet
+
+From the release that runs the background work of the wallet on the queues of Valkey, the chart runs the worker groups and the clock (see [Workers and clock](workers.md)). Before step 2:
+
+1. The NATS user of the workers. `scripts/make-keys.sh` of this chart version makes it for a new installation. For an installation that exists, make the key pair with the api image and add it:
+
+   ```bash
+   docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" -v "$PWD:/out" -w /out --entrypoint /app/bin/igrant-api \
+     <registry>/api:<release tag> keys generate-nats-seed --file nats-wallet-worker.seed   # prints the public nkey
+   kubectl -n ows create secret generic ows-nats-wallet-worker --from-file=seed=./nats-wallet-worker.seed
+   ```
+
+   Add `walletWorker: {nkey: <the public nkey>, seedSecret: ows-nats-wallet-worker}` to `nats.auth.users` in `values-keys.yaml`, then delete the seed file. Without it, the render stops with "set nkey and seedSecret for nats.auth.users.walletWorker". With an external NATS, add the user of the ConfigMap `<release>-nats-authorization` to your server.
+2. Your own Valkey or Redis (`redis.mode: external`): create the ACL users `wallet-worker` and `wallet-clock` with the rights of the other wallet users (see [Redis](redis.md#acl-users)), and their password Secrets (`redis.users.walletWorker.passwordSecret`, `redis.users.walletClock.passwordSecret`). The bundled Valkey gets the two users from the chart: its pods restart one at a time with the new ACL file.
+3. Network policies: the egress profile `auditBucket` belongs to the role `wallet-worker` now. If your values give it to `wallet-scheduler` (`networkPolicy.egress.roles.wallet-scheduler`), move it to `wallet-worker`: else the render stops with "the egress profile \"auditBucket\" is not allowed for the network role \"wallet-scheduler\"".
+4. Stop the scheduler before the upgrade: the migration hook removes the jobs that the workers now run, and the scheduler of the earlier release must not run them while the hook runs.
+
+   ```bash
+   kubectl -n ows scale deployment/ows-wallet-scheduler --replicas=0
+   ```
+
+   The upgrade gives the scheduler its replica again.
+
+The roles hook makes the new database role `<prefix>_clock` (a new key `clock` of the Secret `<release>-wallet-database-roles`, with a random value). With an audit bucket, the workers write the anchor copies and the exports: the scheduler no longer mounts the credentials of the bucket.
+
+Check after step 3: the Deployments `ows-wallet-worker-main`, `ows-wallet-worker-maintenance` and `ows-wallet-clock` are ready, and exactly one clock leads (see [Workers and clock](workers.md#check)).

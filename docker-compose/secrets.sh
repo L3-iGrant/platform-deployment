@@ -140,7 +140,7 @@ for name in admin igrant_api igrant_oidc igrant_consent igrant_wallet \
 done
 # The login database roles of the wallet (igrant_wallet_<name>; the service
 # wallet-database-roles makes them with these passwords).
-for name in migrator launcher_app jobs audit_reader issuer_app relying_party_app \
+for name in migrator launcher_app jobs clock audit_reader issuer_app relying_party_app \
   business_wallet_app individual_wp_app business_wp_app admin_app; do
   password "database/igrant_wallet_${name}-password"
 done
@@ -166,13 +166,14 @@ private_jwks gateway/internal-token-jwks.json gateway-1 token
 private_jwks consent/service-envelope-jwks.json consent-1 service
 private_jwks wallet/service-envelope-jwks.json eudi-wallet-1 service
 
-# 5. The NATS users: one for each process.
+# 5. The NATS users: one for each process (the clock connects to no NATS).
 nats_seed api/nats-api.nk
 nats_seed api/nats-api-webhook.nk
 nats_seed consent/nats-consent.nk
 nats_seed wallet/nats-wallet-config.nk
 nats_seed wallet/nats-wallet-service.nk
 nats_seed wallet/nats-wallet-scheduler.nk
+nats_seed wallet/nats-wallet-worker.nk
 
 # 6. OpenBao: the password of the user of the wallet, and the static seal
 # key (32 random bytes) that unseals OpenBao at each start.
@@ -184,7 +185,7 @@ fi
 
 # 7. Valkey: the password of each ACL user (hexadecimal: the start script of
 # the Valkey services accepts it).
-for name in wallet-config wallet-service wallet-scheduler gateway replication sentinel probe; do
+for name in wallet-config wallet-service wallet-worker wallet-clock wallet-scheduler gateway replication sentinel probe; do
   password "valkey/${name}-password"
 done
 
@@ -217,7 +218,7 @@ public_jwks wallet/service-envelope-jwks.json public/service-jwks/eudi-wallet.js
   printf '# the seeds in secrets/; config/nats/users.conf uses the names).\n'
   for pair in API:api/nats-api API_WEBHOOK:api/nats-api-webhook CONSENT:consent/nats-consent \
     WALLET_CONFIG:wallet/nats-wallet-config WALLET_SERVICE:wallet/nats-wallet-service \
-    WALLET_SCHEDULER:wallet/nats-wallet-scheduler; do
+    WALLET_SCHEDULER:wallet/nats-wallet-scheduler WALLET_WORKER:wallet/nats-wallet-worker; do
     printf 'NATS_NKEY_%s: "%s"\n' "${pair%%:*}" "$(< "${SECRETS}/${pair#*:}.nk.pub")"
   done
 } > "${SECRETS}/public/nats-nkeys.conf"

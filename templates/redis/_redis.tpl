@@ -67,12 +67,12 @@ has the users replication (the replicas), sentinel (the Sentinels) and
 probe (the probes), with the passwords of the Secret of the chart.
 */}}
 {{- define "ow.redis.processUsers" -}}
-walletService,walletConfig,walletScheduler,gateway
+walletService,walletConfig,walletWorker,walletClock,walletScheduler,gateway
 {{- end }}
 
-{{/* The values key of the ACL user of one wallet role (service, config, scheduler). */}}
+{{/* The values key of the ACL user of one wallet role (service, config, worker, clock, scheduler). */}}
 {{- define "ow.wallet.redisUser" -}}
-{{- get (dict "service" "walletService" "config" "walletConfig" "scheduler" "walletScheduler") . -}}
+{{- get (dict "service" "walletService" "config" "walletConfig" "worker" "walletWorker" "clock" "walletClock" "scheduler" "walletScheduler") . -}}
 {{- end }}
 
 {{/*

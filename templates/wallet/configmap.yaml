@@ -7,11 +7,17 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "wallet") | nindent 4 }}
 data:
-  # Each wallet Deployment mounts its key as /etc/eudi-wallet/config.yaml.
-  # No secret is in them.
-  {{- range $role := list "service" "config" "scheduler" }}
-  {{ $role }}.yaml: |
+  # Each wallet Deployment mounts its key as /etc/eudi-wallet/config.yaml:
+  # <role>.yaml, and worker-<group>.yaml for each worker group. No secret
+  # is in them.
+  {{- $files := list (dict "key" "service.yaml" "role" "service") (dict "key" "config.yaml" "role" "config") }}
+  {{- range $g := .Values.organisationWallet.workers.groups }}
+  {{- $files = append $files (dict "key" (printf "worker-%s.yaml" $g.name) "role" "worker" "group" $g) }}
+  {{- end }}
+  {{- $files = concat $files (list (dict "key" "clock.yaml" "role" "clock") (dict "key" "scheduler.yaml" "role" "scheduler")) }}
+  {{- range $file := $files }}
+  {{ $file.key }}: |
     # kms.vault: the login of the wallet to OpenBao (the Transit engine).
-    {{- include "ow.wallet.config" (dict "root" $ "role" $role) | nindent 4 }}
+    {{- include "ow.wallet.config" (dict "root" $ "role" $file.role "group" $file.group) | nindent 4 }}
   {{- end }}
 {{- end }}

@@ -18,6 +18,8 @@ roles:
   consent: {ports: {http: 80, admin: 8081}}   # admin: probes only
   wallet-service: {ports: {http: 8080}}
   wallet-config: {ports: {http: 8080}}
+  wallet-worker: {ports: {health: 9191}}   # /healthz, /readyz, /metrics: probes and the scrape only
+  wallet-clock: {ports: {health: 9192}}    # /healthz, /readyz, /metrics: probes and the scrape only
   wallet-scheduler: {ports: {}}
   dashboard: {ports: {http: 80}}
   db: {ports: {database: 5432}}          # the port of database.engine (5432)
@@ -41,44 +43,50 @@ connections:
   - {to: consent, port: http, from: [gateway]}
   - {to: wallet-config, port: http, from: [gateway]}
   # the own databases and the read-only reader connections across the services
-  - {to: db, port: database, from: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, job]}
-  - {to: nats, port: client, from: [api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, job]}
+  - {to: db, port: database, from: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, job]}
+  # the clock connects to no NATS
+  - {to: nats, port: client, from: [api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-scheduler, job]}
   - {to: nats, port: cluster, from: [nats]}
   - {to: nats, port: monitor, from: [monitoring]}
   # the chart OpenBao (wallet KMS): the wallet roles; the raft peers (join and
   # request forwarding on https, raft and cluster traffic on cluster)
-  - {to: openbao, port: https, from: [wallet-service, wallet-config, wallet-scheduler, openbao]}
+  - {to: openbao, port: https, from: [wallet-service, wallet-config, wallet-worker, wallet-scheduler, openbao]}
   - {to: openbao, port: cluster, from: [openbao]}
   # Valkey: the wallet roles and the gateway (the primary and the Sentinels
   # that give it); the other Valkey pods (the replication, the Sentinels on
   # the data servers and on each other, the start and stop scripts)
-  - {to: redis, port: redis, from: [gateway, wallet-service, wallet-config, wallet-scheduler, redis]}
-  - {to: redis, port: sentinel, from: [gateway, wallet-service, wallet-config, wallet-scheduler, redis]}
+  - {to: redis, port: redis, from: [gateway, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, redis]}
+  - {to: redis, port: sentinel, from: [gateway, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, redis]}
+  # the metrics of the workers and of the clock (the ServiceMonitor)
+  - {to: wallet-worker, port: health, from: [monitoring]}
+  - {to: wallet-clock, port: health, from: [monitoring]}
 
 # Connections that must be denied (the check proves it).
 forbidden:
-  - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-scheduler, db, nats, openbao, redis]}
-  - {from: gateway, to: [webhook, wallet-service, nats, openbao]}
-  - {from: api, to: [consent, wallet-config, wallet-service, webhook, gateway, openbao, redis]}
-  - {from: webhook, to: [api, consent, wallet-config, wallet-service, gateway, openbao, redis]}
-  - {from: consent, to: [api, wallet-config, wallet-service, webhook, gateway, openbao, redis]}
-  - {from: wallet-service, to: [api, consent, wallet-config, webhook, gateway]}
-  - {from: wallet-config, to: [api, consent, wallet-service, webhook, gateway]}
-  - {from: wallet-scheduler, to: [api, consent, wallet-config, wallet-service, webhook, gateway]}
-  - {from: dashboard, to: [gateway, api, webhook, consent, wallet-service, wallet-config, db, nats, openbao, redis]}
-  - {from: job, to: [gateway, api, webhook, consent, wallet-service, wallet-config, dashboard, openbao, redis]}
-  - {from: openbao, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats, redis]}
-  - {from: redis, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-scheduler, dashboard, db, nats, openbao]}
+  - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, db, nats, openbao, redis]}
+  - {from: gateway, to: [webhook, wallet-service, wallet-worker, wallet-clock, nats, openbao]}
+  - {from: api, to: [consent, wallet-config, wallet-service, wallet-worker, wallet-clock, webhook, gateway, openbao, redis]}
+  - {from: webhook, to: [api, consent, wallet-config, wallet-service, wallet-worker, wallet-clock, gateway, openbao, redis]}
+  - {from: consent, to: [api, wallet-config, wallet-service, wallet-worker, wallet-clock, webhook, gateway, openbao, redis]}
+  - {from: wallet-service, to: [api, consent, wallet-config, wallet-worker, wallet-clock, webhook, gateway]}
+  - {from: wallet-config, to: [api, consent, wallet-service, wallet-worker, wallet-clock, webhook, gateway]}
+  - {from: wallet-worker, to: [api, consent, wallet-config, wallet-service, wallet-clock, webhook, gateway, dashboard]}
+  - {from: wallet-clock, to: [api, consent, wallet-config, wallet-service, wallet-worker, webhook, gateway, dashboard, nats, openbao]}
+  - {from: wallet-scheduler, to: [api, consent, wallet-config, wallet-service, wallet-worker, wallet-clock, webhook, gateway]}
+  - {from: dashboard, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-clock, db, nats, openbao, redis]}
+  - {from: job, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-clock, dashboard, openbao, redis]}
+  - {from: openbao, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, dashboard, db, nats, redis]}
+  - {from: redis, to: [gateway, api, webhook, consent, wallet-service, wallet-config, wallet-worker, wallet-clock, wallet-scheduler, dashboard, db, nats, openbao]}
 
 # External egress profiles and the roles that may use them. The targets
 # (CIDRs or namespace/pod selectors) and the default profiles of each role
 # are values of the deployment (chart: networkPolicy.egress).
 profiles:
-  internet: {roles: [api, webhook, gateway, consent, wallet-service, wallet-config, wallet-scheduler, job]}
+  internet: {roles: [api, webhook, gateway, consent, wallet-service, wallet-config, wallet-worker, wallet-scheduler, job]}
   internet-any-port: {roles: [api, webhook]}
-  metadata: {roles: [api, webhook, wallet-service, wallet-config, wallet-scheduler, job]}
-  kms: {roles: [wallet-service, wallet-config, wallet-scheduler, job]}
-  cloudKms: {roles: [wallet-service, wallet-config, wallet-scheduler]}   # a private endpoint of a cloud KMS (the key store types gcp-kms, aws-kms, azure-key-vault)
-  auditBucket: {roles: [wallet-scheduler]}   # the S3 store of the audit bucket on a private address (organisationWallet.audit.bucket, type s3)
+  metadata: {roles: [api, webhook, wallet-service, wallet-config, wallet-worker, wallet-scheduler, job]}
+  kms: {roles: [wallet-service, wallet-config, wallet-worker, wallet-scheduler, job]}
+  cloudKms: {roles: [wallet-service, wallet-config, wallet-worker, wallet-scheduler]}   # a private endpoint of a cloud KMS (the key store types gcp-kms, aws-kms, azure-key-vault)
+  auditBucket: {roles: [wallet-worker]}   # the S3 store of the audit bucket on a private address (organisationWallet.audit.bucket, type s3)
   smtp: {roles: [api]}
   kubeApi: {roles: [api]}
