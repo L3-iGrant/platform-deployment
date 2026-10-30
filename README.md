@@ -2,7 +2,7 @@
 
 This Helm chart installs the Organisation Wallet Suite by iGrant.io on Kubernetes. With the suite, an organisation issues, holds and verifies verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
 
-The chart installs the platform and the services that it depends on: a database server (or it uses yours), NATS and OpenBao (or it uses yours). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
+The chart installs the platform and the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
 
 This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the suite on a single Docker host (development, tests or a small installation), use [Docker Compose](docker-compose/README.md).
 
@@ -26,6 +26,7 @@ This documentation is for the developers and IT operations teams who install and
 - [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, the database roles and hooks of the wallet, and the logs of the server.
 - [Audit log](docs/audit-log.md): the audit log of the wallet, its write-once bucket, the check of the log, and the retention purge of the wallet data.
 - [OpenBao](docs/openbao.md): the bundled OpenBao and its Shamir seal, or your own OpenBao.
+- [Redis](docs/redis.md): Valkey with Sentinel for the work queue, the single-use values and the caches of the wallet, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.
 - [Values reference](docs/values-reference.md): the main values and their defaults.
@@ -44,9 +45,10 @@ This documentation is for the developers and IT operations teams who install and
 - [Read access](docs/read-access.md): the read-only database users of the services.
 - [Privacy dashboard](docs/privacy-dashboard.md): the status of this feature in the chart.
 - [Tests](docs/tests.md): the tests of the chart, which run without a cluster.
+- [Images](docs/images.md): the images of the chart, for your own mirror.
 
 ## Licence
 
 Copyright (c) 2026 iGrant Technologies AB (iGrant.io), Sweden
 
-Licensed under the Apache License 2.0. You may not use this file except in compliance with the licence. Unless required by applicable law or agreed to in writing, software distributed under the licence is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the [LICENSE](LICENSE) file for the specific language governing permissions and limitations under the licence.
+Licensed under the Apache License 2.0. You may not use this file except in compliance with the licence. Unless required by applicable law or agreed to in writing, software distributed under the licence is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the [LICENSE](LICENSE) file for the specific language governing permissions and limitations under the licence. The chart runs software of other projects under their own licences: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

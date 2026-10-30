@@ -15,5 +15,6 @@ This page lists the components that the chart installs, and how your values file
 | Database | One PostgreSQL server for all components, or your own server. | None |
 | NATS | The messages between the services. | None |
 | OpenBao | Keeps the signing keys of the wallet. | None |
+| Valkey | The work queue, the single-use values and the shared caches of the wallet: three pods, each with a data server and a Sentinel, or your own Valkey or Redis. Never a record. | None |
 
-You describe your installation with a few values files: your site, the database, the OpenBao seal, the exposure and, when you need them, the network policies. The `examples/` folder has a ready file for each option.
+You describe your installation with a few values files: your site, the database, the OpenBao seal, the exposure and, when you need them, your own Valkey or Redis and the network policies. The `examples/` folder has a ready file for each option.
