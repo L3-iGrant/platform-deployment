@@ -129,6 +129,23 @@ writes its purge date, the workers purge. */ -}}
   "wallet_unit" $walletUnit
   "audit" $audit
   "retention" $retention -}}
+{{- /* The pools of the process (database.pools.wallet*; docs/database.md,
+"Connection budget"): the session pool and the allocation pool of a
+service, config or worker process. A worker process has one session
+connection for each thread of its group. The clock, the scheduler and the
+signer manager keep the defaults of the wallet. */ -}}
+{{- $pools := $v.database.pools -}}
+{{- $pool := dict -}}
+{{- if eq $role "service" -}}
+{{- $pool = dict "pool_size" $pools.walletService.poolSize "max_overflow" $pools.walletService.maxOverflow "allocation_pool_size" $pools.walletService.allocationPoolSize -}}
+{{- else if eq $role "config" -}}
+{{- $pool = dict "pool_size" $pools.walletConfig.poolSize "max_overflow" $pools.walletConfig.maxOverflow "allocation_pool_size" $pools.walletConfig.allocationPoolSize -}}
+{{- else if eq $role "worker" -}}
+{{- $pool = dict "pool_size" .group.threads "max_overflow" $pools.walletWorker.maxOverflow "allocation_pool_size" $pools.walletWorker.allocationPoolSize -}}
+{{- end -}}
+{{- range $key, $value := $pool -}}
+{{- $_ := set $config.database $key ($value | int) -}}
+{{- end -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
 {{- /* The clock reads only the database and Valkey: no service envelope (it

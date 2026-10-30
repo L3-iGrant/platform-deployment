@@ -17,7 +17,46 @@ All components verify the server with its CA (`sslmode=verify-full`). An externa
 
 ## Size of the bundled PostgreSQL
 
-The memory (`database.resources`, default 1536Mi) holds `shared_buffers`, about 5 MB for each connection up to `max_connections` (`database.postgresql.parameters`, default 150) and autovacuum (3 x `maintenance_work_mem`). Under load, each wallet role opens up to 50 connections. When you raise `max_connections`, raise the memory too: at the memory limit Kubernetes stops the server, and all components lose their connections.
+The memory (`database.resources`, default 1536Mi) holds `shared_buffers`, about 5 MB for each connection up to `max_connections` (`database.postgresql.parameters`, default 150) and autovacuum (3 x `maintenance_work_mem`). The pools of all processes must fit in `max_connections` (see [Connection budget](#connection-budget)). When you raise `max_connections`, raise the memory too: at the memory limit Kubernetes stops the server, and all components lose their connections.
+
+## Connection budget
+
+Each process of the platform has its own connection pools. The sum of the largest pools of all processes, in all their replicas, must stay below `max_connections` of the server, less the connections that the server keeps for the superuser (3 by default):
+
+- for each process: the largest number of connections of one pod, times its replicas (with an autoscaler, `maxReplicas`), plus one more pod for each Deployment during a rollout (the new pod starts first);
+- plus the hooks during an install or an upgrade (about 3 connections at a time), and a reserve for the operators (for example 5).
+
+The pools of each process:
+
+| Process | Connections of one pod | Values |
+| --- | --- | --- |
+| api core | `maxConns` of `DataBase`, of the OIDC database and of the reader of the wallet views | `database.pools.api`, `.oidc`, `.apiReadAccess` |
+| webhook handler | the same | `database.pools.webhook`, `.oidc`, `.apiReadAccess` |
+| gateway | `maxConns` | `database.pools.gateway` |
+| consent | `maxConns`, and 5 for each of its two readers (api and wallet views) | `database.pools.consent` |
+| wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
+| wallet config | the same, plus 10 for each of its two readers (api and consent views) | `database.pools.walletConfig` |
+| wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (a lock of an actor has a connection of its own) + 1; plus 1 for the health server of the pod | `database.pools.walletWorker`, the `processes` and `threads` of the group |
+| wallet clock | 1 (the leader lock) + 1 (the health server) | none |
+| wallet scheduler | the defaults of the wallet: 20 + 30 (the sessions) + 5 + 15 (the job store) + 1, and at most 4 locks of the WIA pool mints | none |
+
+The default values give these largest numbers. They are first values, not measured: the load test of your installation gives the values.
+
+| Process | Pods | Maximum for each pod | Sum |
+| --- | --- | --- | --- |
+| api core | 1 | 10 + 5 (OIDC) + 5 (reader) = 20 | 20 |
+| webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) = 15 | 15 |
+| gateway | 2 | 10 | 20 |
+| consent | 2 | 6 + 5 + 5 (readers) = 16 | 32 |
+| wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
+| wallet config | 1 | 8 + 4 + 2 + 20 (readers) + 1 = 35 | 35 |
+| workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
+| workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
+| clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
+| scheduler | 1 | 20 + 30 + 5 + 15 (job store) + 1 + 4 (locks) = 75 | 75 |
+| **Total** | | | **295** |
+
+The bundled server has `max_connections: 150` (`database.postgresql.parameters`). Usually far fewer connections are open: a pool opens a connection only when a process needs it. When the pools of your installation can open more than the server allows, lower the pools, or raise `max_connections` and `database.resources` together (see [Size of the bundled PostgreSQL](#size-of-the-bundled-postgresql)). For an external server, size `max_connections` with this rule.
 
 ## External PostgreSQL
 

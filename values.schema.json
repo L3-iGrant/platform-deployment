@@ -338,6 +338,90 @@
                   "type": "integer"
                 }
               }
+            },
+            "apiReadAccess": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxConns": {
+                  "type": "integer"
+                },
+                "minConns": {
+                  "type": "integer"
+                }
+              }
+            },
+            "walletService": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "poolSize",
+                "maxOverflow",
+                "allocationPoolSize"
+              ],
+              "properties": {
+                "poolSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "maxOverflow": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "allocationPoolSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
+            },
+            "walletConfig": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "poolSize",
+                "maxOverflow",
+                "allocationPoolSize"
+              ],
+              "properties": {
+                "poolSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "maxOverflow": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "allocationPoolSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
+            },
+            "walletWorker": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "maxOverflow",
+                "allocationPoolSize"
+              ],
+              "properties": {
+                "maxOverflow": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "allocationPoolSize": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50
+                }
+              }
             }
           }
         },
@@ -3405,7 +3489,7 @@
                   "threads": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 256
+                    "maximum": 100
                   },
                   "shutdownTimeoutSeconds": {
                     "type": "integer",

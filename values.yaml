@@ -172,14 +172,27 @@ database:
       user: ""
       passwordSecret: ""
       passwordKey: password
-  # -- Connection pool of each process (maxConns, minConns of DataBase and
-  # Extensions.oidc.database).
+  # -- The connection pool of each process (docs/database.md, "Connection
+  # budget"). api, webhook, oidc, gateway, consent: maxConns, minConns of
+  # DataBase and Extensions.oidc.database. apiReadAccess: the read-only
+  # connections of the api core and of the webhook handler to the wallet
+  # views (ReadAccess.wallet).
   pools:
     api: {maxConns: 10, minConns: 2}
     webhook: {maxConns: 5, minConns: 1}
     oidc: {maxConns: 5, minConns: 1}
     gateway: {maxConns: 10, minConns: 2}
     consent: {maxConns: 6, minConns: 2}
+    apiReadAccess: {maxConns: 5, minConns: 1}
+    # The organisation wallet, for each process: poolSize and maxOverflow
+    # of the session pool (database.pool_size, database.max_overflow), and
+    # allocationPoolSize, the connections of the status list allocations
+    # (database.allocation_pool_size).
+    walletService: {poolSize: 12, maxOverflow: 4, allocationPoolSize: 5}
+    walletConfig: {poolSize: 8, maxOverflow: 4, allocationPoolSize: 2}
+    # A worker process: the session pool has one connection for each
+    # thread of its group (database.pool_size), and maxOverflow more.
+    walletWorker: {maxOverflow: 2, allocationPoolSize: 2}
   tls:
     # -- TLS between the components and the server. bundled: the server
     # gets a certificate and the components verify it with its CA.

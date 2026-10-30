@@ -599,6 +599,14 @@ renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --s
 lacks "external NATS: no TLS Secret of the chart" "t-nats-tls" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
 lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]}"
 
+# The pools of the wallet and of the readers of the api (database.pools).
+guard "wallet pool size" "database.pools.walletService.poolSize" "${shamir[@]}" --set database.pools.walletService.poolSize=0
+guard "worker pool overflow" "database.pools.walletWorker.maxOverflow" "${shamir[@]}" --set database.pools.walletWorker.maxOverflow=-1
+guard "worker threads above the largest pool of the wallet" "organisationWallet.workers.groups.0.threads" "${shamir[@]}" --set-json "$(workers "${main_group/\"threads\":8/\"threads\":101}" "$maintenance_group")"
+renders "the session pool of a worker process follows its threads" "pool_size: 16" "${shamir[@]}" --set-json "$(workers "${main_group/\"threads\":8/\"threads\":16}" "$maintenance_group")" \
+  --show-only templates/wallet/configmap.yaml
+renders "the reader pool of the api" "maxConns: 9" "${shamir[@]}" --set database.pools.apiReadAccess.maxConns=9 --show-only templates/api/configmap.yaml
+
 # Valkey (redis.*): the schema and the template guards.
 redis_sts() {
   local name="$1" expect="$2"; shift 2
