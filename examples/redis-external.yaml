@@ -29,7 +29,6 @@ redis:
     walletConfig: {username: wallet-config, passwordSecret: ows-redis-wallet-config, passwordKey: password}
     walletWorker: {username: wallet-worker, passwordSecret: ows-redis-wallet-worker, passwordKey: password}
     walletClock: {username: wallet-clock, passwordSecret: ows-redis-wallet-clock, passwordKey: password}
-    walletScheduler: {username: wallet-scheduler, passwordSecret: ows-redis-wallet-scheduler, passwordKey: password}
     gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
 # With network policies (examples/networkpolicy.yaml): the addresses of your
 # servers and Sentinels.

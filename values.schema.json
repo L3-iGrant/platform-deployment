@@ -698,22 +698,6 @@
                     }
                   }
                 },
-                "walletScheduler": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "nkey": {
-                      "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
-                    },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
-                    }
-                  }
-                },
                 "walletWorker": {
                   "type": "object",
                   "additionalProperties": false,
@@ -946,24 +930,6 @@
               }
             },
             "walletClock": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string",
-                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-                },
-                "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                },
-                "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
-                }
-              }
-            },
-            "walletScheduler": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
@@ -3551,18 +3517,6 @@
             }
           }
         },
-        "scheduler": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "replicas": {
-              "type": "integer"
-            },
-            "resources": {
-              "type": "object"
-            }
-          }
-        },
         "clock": {
           "type": "object",
           "additionalProperties": false,
@@ -3998,16 +3952,6 @@
                     ]
                   },
                   "walletConfig": {
-                    "properties": {
-                      "passwordSecret": {
-                        "minLength": 1
-                      }
-                    },
-                    "required": [
-                      "passwordSecret"
-                    ]
-                  },
-                  "walletScheduler": {
                     "properties": {
                       "passwordSecret": {
                         "minLength": 1

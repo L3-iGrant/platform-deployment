@@ -2,7 +2,7 @@
 #
 # The chart installs the platform: the auth gateway, the API (with the OIDC
 # provider) and its webhook handler, consent management, the organisation
-# wallet (service, config, workers, clock and scheduler), the enterprise
+# wallet (service, config, workers and clock), the enterprise
 # dashboard, and the dependencies of the platform: NATS with JetStream, one
 # database server (or an external server), OpenBao (the key management
 # service of the wallet; or an external OpenBao) and Valkey with Sentinel
@@ -285,7 +285,6 @@ nats:
       consent: {nkey: "", seedSecret: "", seedKey: seed}
       walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
       walletService: {nkey: "", seedSecret: "", seedKey: seed}
-      walletScheduler: {nkey: "", seedSecret: "", seedKey: seed}
       # -- The workers of the wallet (all groups). The clock connects to no
       # NATS.
       walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
@@ -374,7 +373,6 @@ redis:
     walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
     walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
     walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
-    walletScheduler: {username: wallet-scheduler, passwordSecret: "", passwordKey: password}
     gateway: {username: gateway, passwordSecret: "", passwordKey: password}
   # The client settings of the wallet (the keys of its redis section).
   client:
@@ -1153,7 +1151,6 @@ networkPolicy:
       consent: [internet]
       wallet-service: [internet, kms, cloudKms]
       wallet-config: [internet, kms, cloudKms]
-      wallet-scheduler: [internet, kms, cloudKms]
       wallet-worker: [internet, kms, cloudKms, auditBucket]
       wallet-clock: []
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
@@ -1433,8 +1430,8 @@ openbao:
 # Organisation wallet (OpenID4VCI issuer, OpenID4VP verifier, holder and
 # wallet provider). Deployments of one image: service (public routes),
 # config (configuration routes, behind the gateway), the workers (the
-# actors of the queues), the clock (it sends the cron actors) and the
-# scheduler (docs/workers.md).
+# actors of the queues) and the clock (it sends the cron actors;
+# docs/workers.md).
 organisationWallet:
   enabled: true
   image:
@@ -1739,13 +1736,6 @@ organisationWallet:
         memory: 352Mi
       limits:
         memory: 1Gi
-  scheduler:
-    # -- The scheduler has no leader lock: keep 1 replica (strategy Recreate).
-    replicas: 1
-    resources:
-      requests:
-        cpu: 10m
-        memory: 192Mi
   # -- The clock (start-clock; docs/workers.md): it sends the messages of
   # the cron actors to the queues when their time comes. Only the clock
   # that holds the leader lock of the database sends, and a clock on a

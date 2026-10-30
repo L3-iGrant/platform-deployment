@@ -31,7 +31,7 @@ docker login -u _json_key --password-stdin https://europe-docker.pkg.dev < servi
 kubectl apply -n ows -f ./ows-keys/secrets.yaml
 ```
 
-Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernetes.io/component=keys -o name | wc -l` shows `14` (3 API keys, the gateway key, 3 service keys and 7 NATS users).
+Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernetes.io/component=keys -o name | wc -l` shows `13` (3 API keys, the gateway key, 3 service keys and 6 NATS users).
 
 `./ows-keys/values-keys.yaml` has the public values of the keys (key ids, public keys and Secret names, no secrets): you give it to Helm in step 4. `./ows-keys/secrets.yaml` and `./ows-keys/files/` hold private keys: keep a copy in your password safe, then delete the folder. See [Keys](keys.md).
 

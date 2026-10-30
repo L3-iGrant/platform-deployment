@@ -449,10 +449,12 @@ test_ca() {
 import json, sys, yaml
 data = yaml.safe_load(sys.stdin)["data"]
 expected = json.loads(sys.argv[1])
-for file in ("service.yaml", "config.yaml", "worker-main.yaml", "worker-maintenance.yaml", "clock.yaml", "scheduler.yaml"):
+for file in ("service.yaml", "config.yaml", "worker-main.yaml", "worker-maintenance.yaml"):
     test_ca = yaml.safe_load(data[file])["kms"].get("test_ca")
     if test_ca != expected:
         print(f"{file} kms.test_ca is {test_ca!r}")
+if "kms" in yaml.safe_load(data["clock.yaml"]):
+    print("clock.yaml has kms")
 ' "$expect" <<< "$text" 2>&1)" && [ -z "$problems" ]; then
     ok "test CA $name"
   else
@@ -480,7 +482,7 @@ expected = json.loads(sys.argv[2])
 def find(kind, name):
     return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
 files = find("ConfigMap", "t-wallet")["data"]
-for role in ("service", "config", "worker-main", "worker-maintenance", "clock", "scheduler"):
+for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
     worker = role.startswith("worker-")
     audit = yaml.safe_load(files[f"{role}.yaml"]).get("audit")
     want = None if role == "clock" else dict(expected["audit"], **({"bucket": expected["bucket"]} if worker and expected["bucket"] else {}))
@@ -551,10 +553,13 @@ renders "retention purge of a deactivated sandbox" "deactivated_sandbox_days: 14
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
 # The longest wallet database name: 43 characters.
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
-# The WIA pool refill is an actor of the workers: the scheduler
-# subscribes only to its inbox.
-renders "the scheduler subscribes only to its inbox" 'subscribe: { allow: ["_INBOX_wallet.>"] }' "${shamir[@]}"
+# The WIA pool refill is an actor of the workers, not a NATS event.
 lacks "no WIA pool refill event" "ows.wia_pool.refill_requested" "${shamir[@]}"
+# The scheduler is gone (eudi-wallet P3-D): no object, user or value of it.
+lacks "no scheduler" "scheduler" "${shamir[@]}" -f "$examples/networkpolicy.yaml"
+guard "no scheduler value" "Additional property scheduler" "${shamir[@]}" --set organisationWallet.scheduler.replicas=1
+guard "no NATS user of the scheduler" "Additional property walletScheduler" "${shamir[@]}" --set nats.auth.users.walletScheduler.nkey=UTESTWALLETSCHEDULER
+guard "no egress profiles of the scheduler" 'networkPolicy.egress.roles.wallet-scheduler: "wallet-scheduler" is not a network role' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-scheduler=["internet"]'
 # A value of database.postgresql.parameters wins over a log parameter of
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
@@ -751,7 +756,7 @@ if any(path == "redis-state-ca.crt" for _, _, path in items(find("Deployment", "
 def egress_cidrs(role):
     doc = find("NetworkPolicy", f"t-netpol-egress-{role}")
     return {peer["ipBlock"]["cidr"] for rule in (doc or {}).get("spec", {}).get("egress", []) for peer in rule.get("to", []) if "ipBlock" in peer}
-for role in ("wallet-service", "wallet-config", "wallet-worker", "wallet-clock", "wallet-scheduler"):
+for role in ("wallet-service", "wallet-config", "wallet-worker", "wallet-clock"):
     if "198.51.100.0/24" not in egress_cidrs(role):
         print(f"the role {role} does not reach the separate groups")
 for role in ("gateway", "redis"):

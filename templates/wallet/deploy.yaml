@@ -1,6 +1,6 @@
 {{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
-{{- $roles := list "service" "config" "scheduler" }}
+{{- $roles := list "service" "config" }}
 {{- range $role := $roles }}
 {{- $settings := index $w $role }}
 {{- $component := printf "wallet-%s" $role }}
@@ -17,18 +17,12 @@ metadata:
     {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
   replicas: {{ $settings.replicas }}
-  {{- if eq $role "scheduler" }}
-  # The scheduler has no leader lock: never run two at the same time.
-  strategy:
-    type: Recreate
-  {{- else }}
   minReadySeconds: 5
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
       maxUnavailable: 0
-  {{- end }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
@@ -45,16 +39,11 @@ spec:
       {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
       {{- /* The service and config pods: the stop budget of
       organisationWallet.server (ow.wallet.checkServer). */}}
-      terminationGracePeriodSeconds: {{ ternary 30 ($w.server.terminationGracePeriodSeconds | int) (eq $role "scheduler") }}
+      terminationGracePeriodSeconds: {{ $w.server.terminationGracePeriodSeconds | int }}
       containers:
         - name: {{ $component }}
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
-          {{- if eq $role "scheduler" }}
-          # The program of the scheduler (the image starts the server).
-          # Python is process 1 and gets SIGTERM.
-          command: ["/app/.venv/bin/start-scheduler"]
-          {{- end }}
           env:
             # The only environment variable of the wallet configuration: the
             # path of the file (the image has the same default).
@@ -63,7 +52,6 @@ spec:
             {{- with $w.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if ne $role "scheduler" }}
           ports:
             - name: http
               containerPort: 8080
@@ -100,7 +88,6 @@ spec:
             preStop:
               exec:
                 command: ["/bin/sleep", {{ $w.server.preStopSeconds | int | toString | quote }}]
-          {{- end }}
           {{- include "ow.containerSecurityContext" (list $ $w) | nindent 10 }}
           {{- with $settings.resources }}
           resources:

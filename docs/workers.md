@@ -10,9 +10,6 @@ The wallet runs its background work as actors on the queues of Valkey. An actor 
 | --- | --- | --- | --- | --- | --- | --- |
 | `<release>-wallet-worker-<group>` | `dramatiq ows.worker.run:start` with the processes, threads, shutdown timeout and queues of the group | the group | `<prefix>_jobs` | `walletWorker` | `walletWorker` (`wallet-worker`) | 9191 |
 | `<release>-wallet-clock` | `start-clock` | 2 | `<prefix>_clock` (CONNECT only) | none | `walletClock` (`wallet-clock`) | 9192 |
-| `<release>-wallet-scheduler` | `start-scheduler` | 1 | `<prefix>_jobs` | `walletScheduler` | `walletScheduler` (`wallet-scheduler`) | none |
-
-The scheduler runs the jobs of the wallet that are not actors in this release. A later release removes it.
 
 ## Queues and worker groups
 
@@ -99,7 +96,7 @@ Each worker pod reads the queue metrics of all queues from Valkey: use `max by (
 - The workers connect as the jobs role `<prefix>_jobs`, the clock as the clock role `<prefix>_clock`: it can only connect (see [Database](database.md#database-roles-of-the-wallet)).
 - The NATS user `walletWorker` publishes the events of the outbox relay and of the actors (see [NATS users](nats-users.md)). The clock connects to no NATS.
 - The Valkey users `wallet-worker` and `wallet-clock` have the rights of the other wallet users (see [Redis](redis.md#acl-users)).
-- The worker pods mount the files of the scheduler: the OpenBao login, the service key and the files of the audit bucket (the actors of the anchors and the exports write it). The clock pods mount only the password of their database role and of their Valkey user, and the CA files. The configuration of the clock names the NATS address and the OpenBao login of the KMS, because every wallet file must have them; the clock does not use them.
+- The worker pods mount the OpenBao login, the service key, the NATS seed of their user and the files of the audit bucket (the actors of the anchors and the exports write it). The clock pods mount only the password of their database role and of their Valkey user, and the CA files. The configuration of the clock has only the log level, the database, Valkey and its health port (`check-config --role clock` of the wallet checks it).
 
 ## Network policies
 

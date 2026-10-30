@@ -337,7 +337,7 @@ api,consent
 
 {{/* The NATS user (values key) of one wallet role; "" for the clock, which connects to no NATS. */}}
 {{- define "ow.wallet.natsUser" -}}
-{{- $users := dict "config" "walletConfig" "service" "walletService" "scheduler" "walletScheduler" "worker" "walletWorker" -}}
+{{- $users := dict "config" "walletConfig" "service" "walletService" "worker" "walletWorker" -}}
 {{- get $users . -}}
 {{- end }}
 
@@ -371,14 +371,14 @@ migrator,launcher_app,jobs,clock,audit_reader,issuer_app,relying_party_app,busin
 
 {{/*
 The database role of one wallet role (docs/database.md): the service and
-config roles connect as the launcher role, the workers and the scheduler as
-the jobs role, the clock as the clock role (CONNECT only: its leader lock
-and pg_is_in_recovery()).
+config roles connect as the launcher role, the workers as the jobs role,
+the clock as the clock role (CONNECT only: its leader lock and
+pg_is_in_recovery()).
 Output: the name without the prefix, also the key of its password in the
 role Secret.
 */}}
 {{- define "ow.wallet.databaseRole" -}}
-{{- $roles := dict "service" "launcher_app" "config" "launcher_app" "worker" "jobs" "clock" "clock" "scheduler" "jobs" -}}
+{{- $roles := dict "service" "launcher_app" "config" "launcher_app" "worker" "jobs" "clock" "clock" -}}
 {{- get $roles . -}}
 {{- end }}
 
@@ -414,8 +414,8 @@ and the CA of the server. Call with (list $ "<password file name>"
 {{- end }}
 
 {{/*
-Secret files of one wallet role ("service", "config", "worker", "clock" or
-"scheduler").
+Secret files of one wallet role ("service", "config", "worker" or
+"clock").
 All are files in one read-only folder (ow.wallet.secretDir), a
 projected volume of these Secret keys. Call with (list $ "<role>").
 Output: JSON object "<file name>" -> {secret, key}.
@@ -672,8 +672,6 @@ key of the user. Output: JSON list.
   "walletService" (dict
     "streams" (list "OWS_MICROSERVICE")
     "retired" (list "OWS_MICROSERVICE/credential-definition-worker" "OWS_MICROSERVICE/presentation-definition-worker"))
-  "walletScheduler" (dict
-    "streams" (list "OWS_MICROSERVICE"))
   "walletWorker" (dict
     "streams" (list "OWS_MICROSERVICE"))) -}}
 {{- $out := list -}}
@@ -717,8 +715,8 @@ The JetStream consumers of a process (pull, and push with a deliver subject
 from its inbox prefix) get their messages on its inbox, so a process
 subscribes only to its inbox, to the requests that it serves (api.v1.rpc.>,
 ows.cmd.*.>) and to the events of its core subscriptions (start-api: the
-passwordless status waits). The scheduler subscribes only to its inbox.
-The workers publish the events of the outbox relay and of their actors.
+passwordless status waits). The workers publish the events of the
+outbox relay and of their actors.
 The WIA pool refill is an actor of the workers, not a NATS event. The
 clock connects to no NATS. The
 JetStream API rights are the exact subjects
@@ -747,9 +745,6 @@ the stream or the consumers of another service. Output: JSON list.
     "subscribe" (list "ows.cmd.*.>" "ows.*.notification" "ows.*.webhook.present_proof"))
   (dict "name" "wallet-service" "key" "walletService" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
-    "subscribe" (list))
-  (dict "name" "wallet-scheduler" "key" "walletScheduler" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletScheduler" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))

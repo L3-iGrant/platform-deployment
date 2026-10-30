@@ -172,7 +172,6 @@ nats_seed api/nats-api-webhook.nk
 nats_seed consent/nats-consent.nk
 nats_seed wallet/nats-wallet-config.nk
 nats_seed wallet/nats-wallet-service.nk
-nats_seed wallet/nats-wallet-scheduler.nk
 nats_seed wallet/nats-wallet-worker.nk
 
 # 6. OpenBao: the password of the user of the wallet, and the static seal
@@ -185,7 +184,7 @@ fi
 
 # 7. Valkey: the password of each ACL user (hexadecimal: the start script of
 # the Valkey services accepts it).
-for name in wallet-config wallet-service wallet-worker wallet-clock wallet-scheduler gateway replication sentinel probe; do
+for name in wallet-config wallet-service wallet-worker wallet-clock gateway replication sentinel probe; do
   password "valkey/${name}-password"
 done
 
@@ -218,7 +217,7 @@ public_jwks wallet/service-envelope-jwks.json public/service-jwks/eudi-wallet.js
   printf '# the seeds in secrets/; config/nats/users.conf uses the names).\n'
   for pair in API:api/nats-api API_WEBHOOK:api/nats-api-webhook CONSENT:consent/nats-consent \
     WALLET_CONFIG:wallet/nats-wallet-config WALLET_SERVICE:wallet/nats-wallet-service \
-    WALLET_SCHEDULER:wallet/nats-wallet-scheduler WALLET_WORKER:wallet/nats-wallet-worker; do
+    WALLET_WORKER:wallet/nats-wallet-worker; do
     printf 'NATS_NKEY_%s: "%s"\n' "${pair%%:*}" "$(< "${SECRETS}/${pair#*:}.nk.pub")"
   done
 } > "${SECRETS}/public/nats-nkeys.conf"

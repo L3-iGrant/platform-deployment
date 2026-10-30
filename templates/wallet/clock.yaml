@@ -40,7 +40,7 @@ spec:
       # The clock does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.podSpecCommon" (list . $w) | nindent 6 }}
-      # SIGTERM stops the scheduler and closes the leader connection: the
+      # SIGTERM stops the clock and closes the leader connection: the
       # database frees the lock at once.
       terminationGracePeriodSeconds: 30
       containers:

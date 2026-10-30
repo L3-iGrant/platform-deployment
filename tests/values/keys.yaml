@@ -31,5 +31,4 @@ nats:
       consent: {nkey: UTESTCONSENT, seedSecret: t-nats-consent}
       walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
       walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
-      walletScheduler: {nkey: UTESTWALLETSCHEDULER, seedSecret: t-nats-wallet-scheduler}
       walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}
