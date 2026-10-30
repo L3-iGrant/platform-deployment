@@ -22,3 +22,36 @@ The bundled NATS always uses TLS. The clients (port 4222) verify the server with
 An external NATS with TLS: set `nats.tlsCa.existingSecret` to a Secret with the CA of your server. `nats.tlsCa` with the bundled NATS stops the render.
 
 New certificates: delete the Secret `<release>-nats-tls`, run `helm upgrade`, then restart the NATS pods and the pods of the services.
+
+## Streams, consumers and buckets
+
+The services make their JetStream streams, their durable consumers and their key-value buckets at their start, with the definitions of the contract of the api (`contract/v2/streams.json`). A NATS user can make and change only the streams, consumers and buckets of its process: no user can delete or purge a stream or the consumer of another service. Each stream keeps a message at most 8 days (`192h`), with a duplicate window of 2 minutes, and `nats.jetstreamReplicas` copies.
+
+| Stream | Made by | Subjects | Retention |
+| --- | --- | --- | --- |
+| `API_EVENTS` | the API core, the webhook handler | `api.v1.evt.organisation.created`, `.organisation.updated`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | limits |
+| `CONSENT_EVENTS` | consent | `consent.v1.evt.webhook.requested`, `consent.v1.evt.policy.updated` | limits |
+| `OWS_MICROSERVICE` | the wallet roles, the API core, the webhook handler | `ows.*.webhook.*`, `ows.*.notification`, `ows.*.evt.push_requested` (the wallet); `ows.users.*.authentication.oidcpasswordless.verified`, `.accepted`, `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` (the api) | interest: a message stays until each consumer has it |
+
+The durable consumers. The replicas of a process share each consumer (the deliver group is the name of the consumer). A consumer acknowledges each message. A failed message comes again after 30 seconds, then 1, 2, 5 and 10 minutes, at most 10 times; the last failure goes to the dead letters of the service. A message that is not acknowledged in 30 seconds comes again.
+
+| Consumer | Stream | Subjects | Process |
+| --- | --- | --- | --- |
+| `consent-api-organisation` | `API_EVENTS` | `api.v1.evt.organisation.created`, `.updated` | consent |
+| `eudi-wallet-api-triggers` | `API_EVENTS` | `api.v1.evt.organisation.updated`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | the config role of the wallet |
+| `api-consent-webhooks`, `api-consent-policy` | `CONSENT_EVENTS` | `consent.v1.evt.webhook.requested`, `consent.v1.evt.policy.updated` | the webhook handler |
+| `consent-dda-present-proof`, `consent-dda-presentation` | `OWS_MICROSERVICE` | `ows.*.webhook.present_proof`, `ows.*.webhook.presentation` | consent |
+| `api-webhook-issue-credential`, `api-webhook-credential`, `api-webhook-present-proof`, `api-webhook-presentation`, `api-push-requested` | `OWS_MICROSERVICE` | `ows.*.webhook.<kind>`, `ows.*.evt.push_requested` | the webhook handler |
+| `openidprovider-client-created`, `openidprovider-client-deleted`, `openidprovider-clients-deleted` | `OWS_MICROSERVICE` | `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` | the API core |
+
+Subscriptions without a JetStream consumer: the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply); the server-sent event streams of each config pod (`ows.*.notification`, `ows.*.webhook.present_proof`: each config pod gets each event); the passwordless waits of the API core.
+
+| Key-value bucket | Made by | Holds |
+| --- | --- | --- |
+| `OWS_ENVELOPE_JTI` | the API core | the ids of the signed write requests (replay check) |
+| `wallet-command-replay` | the config role of the wallet | the ids of the NATS commands (replay check) |
+| `wallet-command-replies` | the config role of the wallet | the reply of each NATS command, for a retry of the api (`organisationWallet.nats.commandReplySeconds`, default 300 seconds) |
+
+The workers and the clock of the wallet have no JetStream consumer: the background work of the wallet is on the queues of Valkey (see [Workers and clock](workers.md)). The outbox relay (an actor of the workers) publishes the events of the outbox of the wallet with the event id as the message id (`Nats-Msg-Id`), so the stream ignores a copy of an event within its duplicate window.
+
+Watch the consumers on the monitor port of a NATS server (8222, `/jsz?consumers=true`): `num_pending` (the messages that wait) and `num_ack_pending`. When `consent-dda-present-proof` or `consent-dda-presentation` has more than 1000 messages that wait, consent is behind: the stream keeps the messages until consent has them.
