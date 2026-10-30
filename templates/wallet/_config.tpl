@@ -102,8 +102,17 @@ writes its purge date, the workers purge. */ -}}
     "verifier_response_key_days" ($r.verifierResponseKeyDays | int)
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
-{{- if hasKey $files "play-integrity-service-account.json" -}}
-{{- $_ := set $walletUnit "play_integrity_credentials_file" (printf "%s/play-integrity-service-account.json" $dir) -}}
+{{- $p := $w.walletUnit.playIntegrity -}}
+{{- if and $p.existingSecret (not $p.certificateSha256Digests) -}}
+{{- fail "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
+{{- end -}}
+{{- if hasKey $files "play-integrity-decryption-key" -}}
+{{- $_ := set $walletUnit "play_integrity" (dict
+    "decryption_key_file" (printf "%s/play-integrity-decryption-key" $dir)
+    "verification_key_file" (printf "%s/play-integrity-verification-key" $dir)
+    "package_name" $p.packageName
+    "certificate_sha256_digests" $p.certificateSha256Digests
+    "min_version_code" ($p.minVersionCode | int)) -}}
 {{- end -}}
 {{- $config := dict
   "domain" (include "ow.publicUrlOf" (list $root "organisationWallet"))

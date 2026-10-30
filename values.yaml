@@ -1482,12 +1482,32 @@ organisationWallet:
     # (store apps). false: the development environment and no Play Integrity
     # check (development builds of the wallet apps).
     productionChecksEnabled: false
-    # -- Existing Secret with the Play Integrity service account JSON
-    # (wallet_unit.play_integrity_credentials_file). An Android wallet unit
-    # needs it when the production checks are on. Empty: no file.
+    # -- The Play Integrity check of the Android wallet units
+    # (wallet_unit.play_integrity). The wallet decrypts and verifies the
+    # integrity token of a classic Play Integrity request with the response
+    # encryption keys of the app in the Play Console ("Manage and download
+    # my response encryption keys"), and calls Google in no request. Only
+    # the service pods mount the keys. An Android wallet unit needs them
+    # when the production checks are on.
     playIntegrity:
+      # -- Existing Secret with the decryption key and the verification key
+      # of the Play Console, each the base64 text that the console gives.
+      # Empty: no keys (an Android wallet unit gets no WIA while the
+      # production checks are on).
       existingSecret: ""
-      key: service_account.json
+      # -- The key of the decryption key in the Secret.
+      decryptionKeyKey: decryption-key
+      # -- The key of the verification key in the Secret.
+      verificationKeyKey: verification-key
+      # -- The package name of the Android wallet app.
+      packageName: io.igrant.mobileagent
+      # -- SHA-256 (hex, ":" separators allowed) of the app signing key
+      # certificate of the app in the Play Console. At least one is
+      # required with existingSecret.
+      certificateSha256Digests: []
+      # -- The lowest versionCode of the app that gets a WIA. 0: every
+      # version.
+      minVersionCode: 0
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
   # hourly anchor of each scope signed with an installation key (the

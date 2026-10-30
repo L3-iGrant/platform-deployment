@@ -157,3 +157,30 @@ A rollback to a release with the scheduler needs the job store table again: the 
 ## The size of the bundled database server
 
 From the release with the connection budget, the bundled PostgreSQL has `max_connections` 250 and the memory 2048Mi (requests and limits of `database.resources`), so that the pools of the default values fit (see [Database](database.md#connection-budget)). The upgrade restarts the server once: the components lose their connections for some seconds and connect again. If your values set `database.postgresql.parameters.max_connections` or `database.resources`, check them with the rule: the render stops when the pools of your release need more.
+
+## The Play Integrity keys of the wallet
+
+From the release that checks the Play Integrity token of an Android
+wallet unit locally (the workers and Redis plan, T2), the wallet no longer
+calls Google with a service account. It decrypts and verifies the token of
+a classic Play Integrity request with the response encryption keys of the
+app in the Play Console. The value `organisationWallet.walletUnit.playIntegrity.key`
+(the service account JSON) is gone: the schema of the chart refuses it
+(`Additional property key is not allowed`), and the service account is no
+longer mounted.
+
+With the production checks on (`organisationWallet.walletUnit.productionChecksEnabled`),
+before step 2:
+
+1. In the Play Console of the app (Play Integrity API, "Response
+   encryption"), choose "Manage and download my response encryption keys",
+   and turn on the device attributes of the integrity verdict.
+2. Put the decryption key and the verification key (the base64 text of
+   each) in a Secret, with the keys `decryption-key` and
+   `verification-key` (or set `decryptionKeyKey` and `verificationKeyKey`).
+3. Set `playIntegrity.existingSecret` and `playIntegrity.certificateSha256Digests`
+   (the SHA-256 of the app signing key certificate, from "App signing" in
+   the Play Console). Without the digest the render stops.
+
+The apps of the same release make classic Play Integrity requests. An
+installation with the production checks off changes nothing.

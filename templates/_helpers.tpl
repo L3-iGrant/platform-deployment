@@ -456,8 +456,12 @@ NATS event (it only sends the messages of the cron actors). */ -}}
 {{- with include "ow.openbao.ca" $root | fromJson -}}
 {{- if .secret -}}{{- $_ := set $files "openbao-ca.crt" . -}}{{- end -}}
 {{- end -}}
-{{- with $w.walletUnit.playIntegrity.existingSecret -}}
-{{- $_ := set $files "play-integrity-service-account.json" (dict "secret" . "key" $w.walletUnit.playIntegrity.key) -}}
+{{- /* The keys of the Play Integrity check: only the service pods answer the
+WIA requests of the wallet units. */ -}}
+{{- $p := $w.walletUnit.playIntegrity -}}
+{{- if and $p.existingSecret (eq $role "service") -}}
+{{- $_ := set $files "play-integrity-decryption-key" (dict "secret" $p.existingSecret "key" $p.decryptionKeyKey) -}}
+{{- $_ := set $files "play-integrity-verification-key" (dict "secret" $p.existingSecret "key" $p.verificationKeyKey) -}}
 {{- end -}}
 {{- with $w.trustList.lookupToken.existingSecret -}}
 {{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
