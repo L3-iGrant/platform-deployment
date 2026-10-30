@@ -548,8 +548,10 @@ renders "retention purge of a deactivated sandbox" "deactivated_sandbox_days: 14
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
 # The longest wallet database name: 43 characters.
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
-# The WIA pool refill event (core NATS): the scheduler subscribes to it.
-renders "WIA pool refill event of the scheduler" 'subscribe: { allow: ["ows.wia_pool.refill_requested", "_INBOX_wallet.>"] }' "${shamir[@]}"
+# The WIA pool refill is an actor of the workers: the scheduler
+# subscribes only to its inbox.
+renders "the scheduler subscribes only to its inbox" 'subscribe: { allow: ["_INBOX_wallet.>"] }' "${shamir[@]}"
+lacks "no WIA pool refill event" "ows.wia_pool.refill_requested" "${shamir[@]}"
 # A value of database.postgresql.parameters wins over a log parameter of
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all

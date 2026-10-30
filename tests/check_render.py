@@ -671,20 +671,9 @@ def main() -> int:
     # The clock connects to no NATS: it has no user.
     check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-scheduler", "wallet-worker"],
           f"the NATS users are {users}")
-    # The WIA pool refill event: the config and service roles and the
-    # workers (the actors of the requests) publish it, the scheduler
-    # subscribes to it, no other user has it.
-    refill = "ows.wia_pool.refill_requested"
-    for nkey, role in (("UTESTWALLETCONFIG", "config"), ("UTESTWALLETSERVICE", "service"), ("UTESTWALLETWORKER", "worker")):
-        line = next((line for line in nats_conf.splitlines() if nkey in line), "")
-        check(f'"{refill}"' in line.split("subscribe:")[0], f"the wallet {role} role cannot publish the WIA pool refill event")
-        check(f'"{refill}"' not in line.split("subscribe:")[-1], f"the wallet {role} role subscribes to the WIA pool refill event")
-    scheduler_line = next((line for line in nats_conf.splitlines() if "UTESTWALLETSCHEDULER" in line), "")
-    check(f'subscribe: {{ allow: ["{refill}", "_INBOX_wallet.>"] }}' in scheduler_line, "the wallet scheduler role does not subscribe to the WIA pool refill event")
-    check(f'"{refill}"' not in scheduler_line.split("subscribe:")[0], "the wallet scheduler role can publish the WIA pool refill event")
-    others = [line for line in nats_conf.splitlines() if refill in line
-              and not any(n in line for n in ("UTESTWALLETCONFIG", "UTESTWALLETSERVICE", "UTESTWALLETSCHEDULER", "UTESTWALLETWORKER"))]
-    check(not others, "a NATS user other than the wallet roles has the WIA pool refill event")
+    # The WIA pool refill is an actor of the workers (P3-B): no NATS user
+    # publishes or subscribes to ows.wia_pool.refill_requested.
+    check("ows.wia_pool.refill_requested" not in nats_conf, "a NATS user has the removed WIA pool refill event")
 
     # --- Valkey ---------------------------------------------------------------
     # The bundled Valkey: normal resources, no hook (the processes need it only
