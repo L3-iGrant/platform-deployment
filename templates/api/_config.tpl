@@ -101,7 +101,8 @@ read-only user of the api (ReadAccess.wallet, the shape of DataBase). */ -}}
     "name" $reader.name
     "username" $reader.username
     "passwordFile" (include "ow.api.secretFile" (list $root "read-access-wallet-password"))
-    "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) | fromJson -}}
+    "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))
+    "pool" $v.database.pools.apiReadAccess) | fromJson -}}
 {{- $_ := set $config "ReadAccess" (dict "wallet" $walletRead) -}}
 {{- /* The api core verifies the internal token of the gateway on every
 request (start-api needs GatewayToken.jwksFile; start-webhook-api does not

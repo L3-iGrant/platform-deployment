@@ -31,7 +31,10 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `database.databases.<component>.name`, `.password` | Database and owner user of `api`, `oidc`, `consent`, `wallet`. The wallet name is also the prefix of the database roles of the wallet (at most 43 characters, see [Database](database.md#database-roles-of-the-wallet)) | `igrant_<component>`, random |
 | `database.auth.adminPassword`, `.existingSecret` | The admin password of the bundled server; an existing Secret with all passwords | random, `""` |
 | `database.external.host`, `.port`, `.admin.*` | The external server and its admin user (the admin user is required with the organisation wallet) | `""` |
-| `database.pools.<process>` | The pool of `api`, `webhook`, `oidc`, `gateway`, `consent` | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
+| `database.pools.<process>` | The pool of `api`, `webhook`, `oidc`, `gateway`, `consent` (`maxConns`/`minConns`) | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
+| `database.pools.apiReadAccess` | The reader of the wallet views of the api core and of the webhook handler | `5/1` |
+| `database.pools.walletService`, `.walletConfig` | The pools of one process of the wallet service and config roles: `poolSize`, `maxOverflow`, `allocationPoolSize` (see [Database](database.md#connection-budget)) | `12`, `4`, `5`; `8`, `4`, `2` |
+| `database.pools.walletWorker` | A worker process: one session connection for each thread of its group, `maxOverflow` more, and `allocationPoolSize` | `2`, `2` |
 | `database.tls.enabled`, `.existingSecret`, `.caSecret`, `.caKey`, `.sslMode` | TLS to the server | `true` |
 | `database.postgresql.image`, `.parameters` | The bundled PostgreSQL | `postgres:18.6` |
 | `database.postgresql.logDdlAndConnections` | The bundled server logs each DDL statement, connection and disconnection (see [Database](database.md#logs-of-the-database-server)) | `true` |

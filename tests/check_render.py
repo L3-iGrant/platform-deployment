@@ -255,6 +255,22 @@ def main() -> int:
     check(clock_file.get("clock") == {"health_port": 9192}, f"the clock file has clock {clock_file.get('clock')!r}")
     if clock_file:
         wallet_section("wallet clock.yaml database", clock_file["database"])
+    # The pools (database.pools; docs/database.md, "Connection budget"): the
+    # session and allocation pools of the service and config roles, one
+    # session connection for each thread of a worker process, the reader of
+    # the wallet views of the api and of the webhook handler.
+    pools = {"service.yaml": (12, 4, 5), "config.yaml": (8, 4, 2),
+             **{f"worker-{name}.yaml": (group[3], 2, 2) for name, group in WORKER_GROUPS.items()}}
+    for file, (size, overflow, allocation) in pools.items():
+        database = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}
+        found = (database.get("pool_size"), database.get("max_overflow"), database.get("allocation_pool_size"))
+        check(found == (size, overflow, allocation), f"wallet {file} has the pools {found}, not {(size, overflow, allocation)}")
+    for file in ("clock.yaml", "scheduler.yaml"):
+        database = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}
+        check(not {"pool_size", "max_overflow", "allocation_pool_size"} & set(database), f"wallet {file} has a pool value")
+    for key in ("api.yaml", "webhook.yaml"):
+        reader = ((config_map_file(f"{RELEASE}-api", key) or {}).get("ReadAccess") or {}).get("wallet") or {}
+        check((reader.get("maxConns"), reader.get("minConns")) == (5, 1), f"api {key} ReadAccess.wallet has not the pool 5/1")
     check(not [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"] == f"{RELEASE}-wallet-metrics"],
           "the ServiceMonitor of the wallet is rendered without organisationWallet.serviceMonitor.enabled")
 
