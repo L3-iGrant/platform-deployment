@@ -425,6 +425,25 @@
             }
           }
         },
+        "pooler": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "host": {
+              "type": "string",
+              "pattern": "^([A-Za-z0-9]([-A-Za-z0-9.]{0,251}[A-Za-z0-9])?)?$"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "serverConnections": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
         "tls": {
           "type": "object",
           "additionalProperties": false,
@@ -3466,6 +3485,10 @@
             },
             "terminationGracePeriodSeconds": {
               "type": "integer"
+            },
+            "nonceRequestsPerMinute": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         },

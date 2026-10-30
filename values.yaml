@@ -193,6 +193,23 @@ database:
     # A worker process: the session pool has one connection for each
     # thread of its group (database.pool_size), and maxOverflow more.
     walletWorker: {maxOverflow: 2, allocationPoolSize: 2}
+  # A connection pooler in transaction mode in front of the server, for
+  # the organisation wallet (docs/database.md, "Connection pooler"):
+  # PgBouncer 1.21 or later with pool_mode transaction and
+  # max_prepared_statements above 0. The chart does not run it.
+  pooler:
+    # -- Host name of the pooler (its certificate must name it). Empty: the
+    # wallet connects to the server. With a host, the sessions of the
+    # service, config and worker processes (and of the HSM signer manager)
+    # go through the pooler; the locks, the clock, the allocations, the
+    # readers of the views and the hooks connect to the server.
+    host: ""
+    port: 6432
+    # -- The most connections that the pooler opens to the server for the
+    # wallet database (the sum of its pools for the wallet database roles).
+    # Required with a host and the bundled server: the connection budget
+    # counts them in place of the session pools of the wallet.
+    serverConnections: 0
   tls:
     # -- TLS between the components and the server. bundled: the components
     # verify the server with its CA (the bundled server always serves TLS,
@@ -221,11 +238,14 @@ database:
       repository: library/postgres
       tag: "18.6"
     # -- Server parameters (postgres -c name=value). Sized for the memory of
-    # database.resources (1536Mi): shared_buffers, about 5 MB for each of
+    # database.resources (2048Mi): shared_buffers, about 5 MB for each of
     # the max_connections, and autovacuum (3 x maintenance_work_mem).
-    # Change max_connections and the memory together.
+    # Change max_connections and the memory together. The render stops
+    # when the pools of the release can open more connections than
+    # max_connections less the reserved ones (docs/database.md,
+    # "Connection budget").
     parameters:
-      max_connections: "150"
+      max_connections: "250"
       shared_buffers: 192MB
       effective_cache_size: 512MB
       work_mem: 2MB
@@ -246,10 +266,10 @@ database:
   resources:
     requests:
       cpu: 250m
-      memory: 1536Mi
+      memory: 2048Mi
     limits:
       cpu: "2"
-      memory: 1536Mi
+      memory: 2048Mi
   # -- The server image runs as the user 999 (postgres).
   podSecurityContext:
     fsGroup: 999
@@ -1690,6 +1710,15 @@ organisationWallet:
     backgroundShutdownSeconds: 10
     preStopSeconds: 10
     terminationGracePeriodSeconds: 45
+    # -- server.nonce_requests_per_minute: the nonce requests of one client
+    # address (an IPv6 /64 network) in 60 s at the anonymous nonce routes
+    # (the nonce of the wallet provider, the c_nonce of the credential
+    # issuer); more get 429 with Retry-After. The client address comes from
+    # X-Forwarded-For of a trusted proxy (forwardedAllowIps), so the proxy
+    # must pass the client address (docs/exposure.md). Behind a carrier NAT
+    # many phones share one IPv4 address: keep it above their requests at
+    # peak.
+    nonceRequestsPerMinute: 300
   # -- The hooks of the wallet (the roles, migration and read access hooks):
   # each reads only its database file, the password of its login and the
   # CA. Non-root with a read-only root file system.

@@ -32,13 +32,14 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `database.auth.adminPassword`, `.existingSecret` | The admin password of the bundled server; an existing Secret with all passwords | random, `""` |
 | `database.external.host`, `.port`, `.admin.*` | The external server and its admin user (the admin user is required with the organisation wallet) | `""` |
 | `database.pools.<process>` | The pool of `api`, `webhook`, `oidc`, `gateway`, `consent` (`maxConns`/`minConns`) | `10/2`, `5/1`, `5/1`, `10/2`, `6/2` |
+| `database.pooler.host`, `.port`, `.serverConnections` | A connection pooler in transaction mode for the organisation wallet, and its connections to the server (see [Database](database.md#connection-pooler)) | `""` (none), `6432`, `0` |
 | `database.pools.apiReadAccess` | The reader of the wallet views of the api core and of the webhook handler | `5/1` |
 | `database.pools.walletService`, `.walletConfig` | The pools of one process of the wallet service and config roles: `poolSize`, `maxOverflow`, `allocationPoolSize` (see [Database](database.md#connection-budget)) | `12`, `4`, `5`; `8`, `4`, `2` |
 | `database.pools.walletWorker` | A worker process: one session connection for each thread of its group, `maxOverflow` more, and `allocationPoolSize` | `2`, `2` |
 | `database.tls.enabled`, `.existingSecret`, `.caSecret`, `.caKey`, `.sslMode` | TLS to the server | `true` |
 | `database.postgresql.image`, `.parameters` | The bundled PostgreSQL | `postgres:18.6` |
 | `database.postgresql.logDdlAndConnections` | The bundled server logs each DDL statement, connection and disconnection (see [Database](database.md#logs-of-the-database-server)) | `true` |
-| `database.persistence.size`, `.storageClass`, `database.resources` | The volume and the resources of the bundled server | `50Gi`, 250m/1536Mi (CPU limit 2) |
+| `database.persistence.size`, `.storageClass`, `database.resources` | The volume and the resources of the bundled server | `50Gi`, 250m/2048Mi (CPU limit 2) |
 
 ## OpenBao
 
@@ -95,6 +96,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.audit.bucket.*` | The write-once bucket of the audit anchors and exports (see [Audit log](audit-log.md#audit-bucket)) | no bucket |
 | `organisationWallet.retention.*` | The retention purge of the wallet data (see [Audit log](audit-log.md#retention-purge)) | 30 days, sandboxes 7 days |
 | `organisationWallet.forwardedAllowIps` | The proxies that the wallet trusts for the scheme and the client address | private ranges |
+| `organisationWallet.server.nonceRequestsPerMinute` | The nonce requests of one client address (an IPv6 /64 network) in 60 s at the anonymous nonce routes of the wallet; more get 429 (see [Exposure](exposure.md)) | `300` |
 | `organisationWallet.walletUnit.productionChecksEnabled`, `.playIntegrity.*` | The checks of the wallet apps | `false` |
 | `organisationWallet.trustList.*` | The trust list lookup service | the NXD Foundation service |
 | `organisationWallet.serviceEnvelope.activeKid` | The key id of the NATS message key of the wallet | `""` |

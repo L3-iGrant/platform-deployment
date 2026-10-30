@@ -18,6 +18,11 @@ Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names p
 {{- end }}
 
 Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
+{{- $budget := include "ow.db.budget" . | fromJson }}
+  The pools of this release can open {{ $budget.total | int }} connections to it, and the hooks {{ include "ow.db.budgetReserve" . }} more
+{{- if include "ow.db.bundled" . }} (max_connections {{ index .Values.database.postgresql.parameters "max_connections" }}).
+{{- else }}: set max_connections of your server to at least {{ add ($budget.total | int) (include "ow.db.budgetReserve" . | int) }} plus its reserved connections and the other users of the server (docs/database.md, "Connection budget").
+{{- end }}
 {{- if include "ow.redis.bundled" . }}
 Valkey: bundled, {{ .Values.redis.replicas }} pods {{ include "ow.redis.name" . }}-<n> (a data server and a Sentinel in each; docs/redis.md).
 {{- else if include "ow.redis.enabled" . }}

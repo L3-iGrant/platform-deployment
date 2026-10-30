@@ -5,6 +5,7 @@ and labels: an upgrade must keep the volume.
 */}}
 {{- if and (include "ow.db.bundled" .) (eq (include "ow.db.engine" .) "postgresql") }}
 {{- include "ow.db.check" . }}
+{{- include "ow.db.checkBudget" . }}
 {{- $db := .Values.database }}
 {{- $pg := $db.postgresql }}
 {{- /*

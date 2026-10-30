@@ -19,14 +19,19 @@ The bundled server always serves TLS, also with `database.tls.enabled: false`: t
 
 ## Size of the bundled PostgreSQL
 
-The memory (`database.resources`, default 1536Mi) holds `shared_buffers`, about 5 MB for each connection up to `max_connections` (`database.postgresql.parameters`, default 150) and autovacuum (3 x `maintenance_work_mem`). The pools of all processes must fit in `max_connections` (see [Connection budget](#connection-budget)). When you raise `max_connections`, raise the memory too: at the memory limit Kubernetes stops the server, and all components lose their connections.
+The memory (`database.resources`, default 2048Mi) holds `shared_buffers`, about 5 MB for each connection up to `max_connections` (`database.postgresql.parameters`, default 250) and autovacuum (3 x `maintenance_work_mem`). The pools of all processes must fit in `max_connections` (see [Connection budget](#connection-budget)). When you raise `max_connections`, raise the memory too: at the memory limit Kubernetes stops the server, and all components lose their connections.
 
 ## Connection budget
 
-Each process of the platform has its own connection pools. The sum of the largest pools of all processes, in all their replicas, must stay below `max_connections` of the server, less the connections that the server keeps for the superuser (3 by default):
+Each process of the platform has its own connection pools. A pool opens a connection only when its process needs it, so usually far fewer connections are open. But a load peak can open all of them, and then a server that refuses a connection stops requests and jobs. The rule (WORKERS-AND-REDIS-PLAN.md item H1):
 
-- for each process: the largest number of connections of one pod, times its replicas (with an autoscaler, `maxReplicas`), plus one more pod for each Deployment during a rollout (the new pod starts first);
-- plus the hooks during an install or an upgrade (about 3 connections at a time), and a reserve for the operators (for example 5).
+- for each process: the largest number of connections of one pod (the table below), times its pods (with an autoscaler, its maximum: `organisationWallet.service.autoscaling.maxReplicas`, `autoscaling.keda.maxReplicaCount` of a worker group);
+- plus the hooks of an install or an upgrade (the migration, the roles step and the read access steps run one after the other: 5 connections);
+- at most `max_connections` of the server, less the connections that it keeps for the superuser (`superuser_reserved_connections`, 3 by default, and `reserved_connections`). The administrator connects as the superuser.
+
+With the bundled server, the chart checks the rule: the render stops when the sum is too large, and the message gives the sum of each process. Then lower the pools (`database.pools`) or the replicas, or raise `max_connections` and `database.resources` together (see [Size of the bundled PostgreSQL](#size-of-the-bundled-postgresql)). With an external server the chart cannot read its limit: the notes of `helm install` and `helm upgrade` print the sum. Give your server at least this sum plus its reserved connections and its other users.
+
+During a rollout, the new pod of a Deployment starts before the old pod stops (`maxSurge: 1`). The free connections of the table below cover this for the pods whose pools are not full at that time; for an upgrade under a load peak, keep more free connections.
 
 The pools of each process:
 
@@ -37,9 +42,11 @@ The pools of each process:
 | gateway | `maxConns` | `database.pools.gateway` |
 | consent | `maxConns`, and 5 for each of its two readers (api and wallet views) | `database.pools.consent` |
 | wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
-| wallet config | the same, plus 10 for each of its two readers (api and consent views), and 1 for each WIA pool mint that runs in the route of the wallet unit attestation (the lock of the mint has a connection of its own) | `database.pools.walletConfig` |
+| wallet config | the same, plus 10 for each of its two readers (api and consent views), plus 1 for a WIA pool mint (see below) | `database.pools.walletConfig` |
 | wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (a lock of an actor has a connection of its own) + 1; plus 1 for the health server of the pod | `database.pools.walletWorker`, the `processes` and `threads` of the group |
 | wallet clock | 1 (the leader lock) + 1 (the health server) | none |
+
+The WIA pool mint of the route of the wallet unit attestation (the config role) holds the lock of the mint on a connection of its own (the lock engine of the wallet has no pool), while the route waits for the mint. The rule counts one mint for each config pod. Each more mint that runs at the same time in another organisation opens one more connection: the free connections of the table cover some.
 
 The default values give these largest numbers. They are first values, not measured: the load test of your installation gives the values.
 
@@ -50,13 +57,29 @@ The default values give these largest numbers. They are first values, not measur
 | gateway | 2 | 10 | 20 |
 | consent | 2 | 6 + 5 + 5 (readers) = 16 | 32 |
 | wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
-| wallet config | 1 | 8 + 4 + 2 + 20 (readers) + 1 = 35 | 35 |
+| wallet config | 1 | 8 + 4 + 2 + 20 (readers) + 1 + 1 (mint) = 36 | 36 |
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| **Total** | | | **220** |
+| **Total** | | | **221** |
+| the hooks | | | 5 |
+| the superuser (`superuser_reserved_connections`) | | | 3 |
+| **`max_connections` of the bundled server** | | | **250** (21 free) |
 
-The bundled server has `max_connections: 150` (`database.postgresql.parameters`). Usually far fewer connections are open: a pool opens a connection only when a process needs it. When the pools of your installation can open more than the server allows, lower the pools, or raise `max_connections` and `database.resources` together (see [Size of the bundled PostgreSQL](#size-of-the-bundled-postgresql)). For an external server, size `max_connections` with this rule.
+## Connection pooler
+
+The organisation wallet can connect through a connection pooler in transaction mode, for example when the pools of many pods are too large for `max_connections` of your server. The chart does not run the pooler. Use PgBouncer 1.21 or later with `pool_mode = transaction` and `max_prepared_statements` above 0 (the wallet sends named prepared statements), and a pool for the wallet database and each of its database roles (`<prefix>_launcher_app`, `<prefix>_jobs`).
+
+| Value | Description |
+| --- | --- |
+| `database.pooler.host`, `.port` | The pooler (default port 6432). Empty host: no pooler. Its certificate must name the host, and the CA of the database (`database.tls`) must verify it. |
+| `database.pooler.serverConnections` | The most connections that the pooler opens to the server for the wallet database (the sum of its pools). Required with the bundled server: the connection budget counts them in place of the session pools of the wallet. |
+
+With a pooler, the configuration of the service, config and worker processes has `database.pooler`: their sessions (the requests, the actors, the NATS commands, the start checks) go through the pooler. These connections stay direct to the server: the locks of the WIA pool mints and of the clock, the status list allocations, the readers of the views of the api and consent, the readiness checks of the workers and the clock, and the hooks (the migration lock and `SET ROLE` need one server session). A connection through the pooler gives the server no timeout at its start: the roles step sets the timeouts of each database role as its defaults (`ALTER ROLE ... SET`), and a process sets other timeouts in each transaction. The other components (the api, consent, the gateway) connect to the server.
+
+The connection budget then counts, for the wallet, only the direct connections (the allocation pools, 20 for the readers and 1 mint for each config pod, 2 lock connections for each thread of a worker, the health checks, the clock) and `serverConnections`. With network policies, add the address of the pooler to `networkPolicy.externalDatabases`.
+
+The wallet image needs the key `database.pooler` (eudi-wallet with the change of WORKERS-AND-REDIS-PLAN.md item H1); an older image refuses the key.
 
 ## External PostgreSQL
 
