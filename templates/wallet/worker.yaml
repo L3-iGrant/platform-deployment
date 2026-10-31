@@ -110,10 +110,16 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.wallet.volumeMounts" $ | nindent 12 }}
+            {{- with include "ow.wallet.trustAnchorsMount" (list $ "worker") }}
+            {{- . | nindent 12 }}
+            {{- end }}
             - name: worker-state
               mountPath: {{ include "ow.wallet.workerStateDir" $ }}
       volumes:
         {{- include "ow.wallet.volumes" (list $ "worker" $configKey) | nindent 8 }}
+        {{- with include "ow.wallet.trustAnchorsVolume" (list $ "worker") }}
+        {{- . | nindent 8 }}
+        {{- end }}
         # The heartbeat and metric files of the worker processes
         # (worker.state_directory).
         - name: worker-state

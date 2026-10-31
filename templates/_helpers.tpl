@@ -539,6 +539,52 @@ Output: a list at column 0.
   readOnly: true
 {{- end }}
 
+{{/* Folder of the device roots of the wallet units (wallet_unit.trust_anchors_dir). */}}
+{{- define "ow.wallet.trustAnchorsDir" -}}
+/etc/eudi-wallet-trust-anchors
+{{- end }}
+
+{{/*
+true when the pods of one wallet role mount the device roots of
+organisationWallet.walletUnit.trustAnchors.existingConfigMap: the service,
+config and worker roles, which check device evidence. The clock has no
+wallet_unit settings. Call with (list $ "<role>").
+*/}}
+{{- define "ow.wallet.trustAnchors" -}}
+{{- $root := index . 0 -}}
+{{- if and $root.Values.organisationWallet.walletUnit.trustAnchors.existingConfigMap (has (index . 1) (list "service" "config" "worker")) -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The volume of the device roots of one wallet role: the two root files of
+the ConfigMap (a missing key stops the start of the pod). Call with (list $
+"<role>"). Output: a list at column 0, or nothing.
+*/}}
+{{- define "ow.wallet.trustAnchorsVolume" -}}
+{{- $root := index . 0 -}}
+{{- if include "ow.wallet.trustAnchors" . -}}
+- name: trust-anchors
+  configMap:
+    name: {{ $root.Values.organisationWallet.walletUnit.trustAnchors.existingConfigMap }}
+    items:
+      - key: google_hardware_attestation_root.pem
+        path: google_hardware_attestation_root.pem
+      - key: apple_app_attestation_root_ca.pem
+        path: apple_app_attestation_root_ca.pem
+{{- end -}}
+{{- end }}
+
+{{/* The mount of the device roots of one wallet role. Call with (list $ "<role>"). Output: a list at column 0, or nothing. */}}
+{{- define "ow.wallet.trustAnchorsMount" -}}
+{{- if include "ow.wallet.trustAnchors" . -}}
+- name: trust-anchors
+  mountPath: {{ include "ow.wallet.trustAnchorsDir" (index . 0) }}
+  readOnly: true
+{{- end -}}
+{{- end }}
+
 {{/* Folder of the gateway secret files (one projected volume). */}}
 {{- define "ow.gateway.secretDir" -}}
 /run/secrets/igrant-gateway

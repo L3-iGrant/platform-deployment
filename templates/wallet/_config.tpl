@@ -119,6 +119,11 @@ wallet units: only their file has the digests of the Android app. */ -}}
     "package_name" $p.packageName
     "min_version_code" ($p.minVersionCode | int)) -}}
 {{- end -}}
+{{- /* The device roots of the ConfigMap (organisationWallet.walletUnit.
+trustAnchors), in the roles that mount them; else the roots of the image. */ -}}
+{{- if include "ow.wallet.trustAnchors" (list $root $role) -}}
+{{- $_ := set $walletUnit "trust_anchors_dir" (include "ow.wallet.trustAnchorsDir" $root) -}}
+{{- end -}}
 {{- $config := dict
   "domain" (include "ow.publicUrlOf" (list $root "organisationWallet"))
   "log_level" ($w.logLevel | upper)

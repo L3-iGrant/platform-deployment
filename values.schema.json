@@ -3023,6 +3023,15 @@
                   "minimum": 0
                 }
               }
+            },
+            "trustAnchors": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingConfigMap": {
+                  "type": "string"
+                }
+              }
             }
           }
         },

@@ -100,6 +100,9 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.wallet.volumeMounts" $ | nindent 12 }}
+            {{- with include "ow.wallet.trustAnchorsMount" (list $ $role) }}
+            {{- . | nindent 12 }}
+            {{- end }}
             - name: server-metrics
               mountPath: {{ include "ow.wallet.serverMetricsDir" $ }}
             {{- if $gatewayKeys }}
@@ -112,6 +115,9 @@ spec:
             {{- end }}
       volumes:
         {{- include "ow.wallet.volumes" (list $ $role) | nindent 8 }}
+        {{- with include "ow.wallet.trustAnchorsVolume" (list $ $role) }}
+        {{- . | nindent 8 }}
+        {{- end }}
         # The metrics files of the processes of the server
         # (server.metrics_directory).
         - name: server-metrics
