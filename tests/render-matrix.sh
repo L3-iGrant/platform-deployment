@@ -559,6 +559,48 @@ guard "Play Integrity keys without the certificate digest" "androidSigningCertif
 guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" "${shamir[@]}" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
 guard "the Play Integrity digest value is gone" "certificateSha256Digests" "${shamir[@]}" --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}"
 guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
+# The device roots of the wallet units (wallet_unit.trust_anchors_dir): with
+# a ConfigMap, the service, config and worker files name the folder and
+# their pods mount the two root files of the ConfigMap; the clock never.
+# Without one, no file names the folder (the roots of the image).
+trust_anchors() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  # Only stdout is YAML (helm writes its warnings to stderr).
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" > "$out/anchors.yaml" 2> "$out/anchors.err"; then
+    bad "trust anchors $name: $(head -c 200 "$out/anchors.err")"
+  elif problems="$(python3 - "$out/anchors.yaml" "$expect" <<'PY' 2>&1
+import json, sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = json.loads(sys.argv[2])
+def find(kind, name):
+    return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
+files = find("ConfigMap", "t-wallet")["data"]
+for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
+    mounts = expected["configmap"] is not None and role != "clock"
+    unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
+    want = "/etc/eudi-wallet-trust-anchors" if mounts else None
+    if unit.get("trust_anchors_dir") != want:
+        print(f"{role}.yaml wallet_unit.trust_anchors_dir is {unit.get('trust_anchors_dir')!r}")
+    pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
+    volumes = [v for v in pod["volumes"] if v["name"] == "trust-anchors"]
+    got = [[v["configMap"]["name"], sorted(i["key"] for i in v["configMap"]["items"])] for v in volumes]
+    want = [[expected["configmap"], ["apple_app_attestation_root_ca.pem", "google_hardware_attestation_root.pem"]]] if mounts else []
+    if got != want:
+        print(f"the {role} pods have the trust anchor volumes {got!r}")
+    paths = [m["mountPath"] for c in pod["containers"] for m in c["volumeMounts"] if m["name"] == "trust-anchors"]
+    if paths != (["/etc/eudi-wallet-trust-anchors"] if mounts else []):
+        print(f"the {role} pods mount the trust anchors at {paths!r}")
+PY
+)" && [ -z "$problems" ]; then
+    ok "trust anchors $name"
+  else
+    bad "trust anchors $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+}
+trust_anchors "the roots of the image by default" '{"configmap": null}' "${shamir[@]}"
+trust_anchors "the roots of a ConfigMap" '{"configmap": "test-roots"}' "${shamir[@]}" \
+  --set organisationWallet.walletUnit.trustAnchors.existingConfigMap=test-roots
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)

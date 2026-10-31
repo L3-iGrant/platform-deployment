@@ -1512,6 +1512,16 @@ organisationWallet:
       # -- The lowest versionCode of the app that gets a WIA. 0: every
       # version.
       minVersionCode: 0
+    # -- The device roots of the wallet units (wallet_unit.trust_anchors_dir):
+    # an existing ConfigMap with the keys google_hardware_attestation_root.pem
+    # (the root of the Android Key Attestation chains) and
+    # apple_app_attestation_root_ca.pem (the root of the App Attest
+    # attestations). The service, config and worker pods mount it. The checks
+    # read both roots only from this folder and refuse the evidence when a
+    # file is missing. Empty: the Google and Apple roots of the image. A test
+    # installation gives its test roots here.
+    trustAnchors:
+      existingConfigMap: ""
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
   # hourly anchor of each scope signed with an installation key (the

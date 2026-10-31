@@ -101,6 +101,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.walletUnit.playIntegrity.existingSecret`, `.decryptionKeyKey`, `.verificationKeyKey` | The Secret with the decryption key and the verification key of the Play Console; only the service pods mount them | no Secret; `decryption-key`, `verification-key` |
 | `organisationWallet.walletUnit.androidSigningCertificateDigests` | The SHA-256 of the app signing key certificate of the Android app: the Play Integrity check (required with the Secret), the device key of the registration and the key attestations | `[]` |
 | `organisationWallet.walletUnit.playIntegrity.packageName`, `.minVersionCode` | The package and the lowest version code of the Android app | `io.igrant.mobileagent`, `0` |
+| `organisationWallet.walletUnit.trustAnchors.existingConfigMap` | A ConfigMap with the device roots of the wallet units (`google_hardware_attestation_root.pem`, `apple_app_attestation_root_ca.pem`); the service, config and worker pods mount it as `wallet_unit.trust_anchors_dir` | `""` (the roots of the image) |
 | `organisationWallet.trustList.*` | The trust list lookup service | the NXD Foundation service |
 | `organisationWallet.serviceEnvelope.activeKid` | The key id of the NATS message key of the wallet | `""` |
 | `organisationWallet.nats.commandReplySeconds` | How long the config role keeps the reply of a NATS command of the api for a retry (120 to 3600; the same for all config pods) | `300` |
