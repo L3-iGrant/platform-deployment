@@ -1,4 +1,4 @@
-# Your installation: the public host names.
+# Your installation: the host names.
 # Copy this file and change the values. Use it with one file of each group
 # (database, OpenBao, exposure) and the keys file of scripts/make-keys.sh:
 #   helm install ows <chart> -n ows -f values-keys.yaml -f site.yaml \
@@ -8,12 +8,13 @@ global:
   # a placeholder: no image has this tag.
   imageTag: "2026.10.x"
 api:
-  # The public host of the api (the auth gateway receives every request).
+  # The host of the api (the auth gateway receives every request). On
+  # premise it is internal (examples/exposure-on-premise.yaml).
   host: api.example.org
 organisationWallet:
   # The public host of the organisation wallet.
   host: wallet.example.org
 enterpriseDashboard:
-  # The public host of the enterprise dashboard. It must have the same
-  # registrable domain as the api host (the login cookie).
+  # The host of the enterprise dashboard (on premise internal). It must
+  # have the same registrable domain as the api host (the login cookie).
   host: dashboard.example.org

@@ -14,7 +14,7 @@
 # scripts/make-keys.sh makes the keys and writes their values):
 # - global.imageTag: the release tag of your version (the default is a
 #   placeholder: the render does not stop, but the pods cannot pull);
-# - the public host names: api.host, organisationWallet.host,
+# - the host names: api.host, organisationWallet.host,
 #   enterpriseDashboard.host, and the exposure of each (exposure.*);
 # - the keys (scripts/make-keys.sh): api.keyStorage.tokenSigning.activeKid,
 #   gateway.internalToken.activeKid, gateway.publicKeys.*,
@@ -72,11 +72,14 @@ global:
   # -- Scheme of the public URLs.
   publicScheme: https
 
-# How the public services (the api host, the wallet host, the dashboard
-# host) are exposed. The chart never installs an ingress controller or a
-# Gateway: they must exist in the cluster. Each public service can override
-# these values in <component>.exposure. The proxy only routes: CORS,
-# authentication and rate limits are in the services.
+# How the services with a host (the api host, the wallet host, the
+# dashboard host) are exposed. The chart never installs an ingress
+# controller or a Gateway: they must exist in the cluster. Each host can
+# override these values in <component>.exposure, for example an internal
+# IngressClass for the api and dashboard hosts of an on-premise
+# installation, where only the wallet host is public (docs/exposure.md).
+# The proxy only routes: CORS, authentication and rate limits are in the
+# services.
 exposure:
   # -- "ingress" (a networking.k8s.io/v1 Ingress), "gatewayAPI" (a
   # gateway.networking.k8s.io/v1 HTTPRoute to your Gateway) or "none" (only
@@ -582,8 +585,9 @@ api:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
-  # -- Public host name of the api (required). The auth gateway receives
-  # every request of this host.
+  # -- Host name of the api (required). The auth gateway receives every
+  # request of this host. On premise it is an internal host
+  # (docs/exposure.md).
   host: ""
   # -- The exposure of the api host (see exposure). The api host carries
   # server-sent event streams of up to 3900 s and bodies of up to 10 MiB:
@@ -1895,7 +1899,8 @@ enterpriseDashboard:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
-  # -- Public host name of the dashboard (required).
+  # -- Host name of the dashboard (required). On premise it is an
+  # internal host (docs/exposure.md).
   host: ""
   # -- The exposure of the dashboard host (the same fields as
   # api.exposure).

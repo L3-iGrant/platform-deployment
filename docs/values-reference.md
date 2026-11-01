@@ -18,8 +18,8 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `exposure.type` | `ingress`, `gatewayAPI` or `none` | `ingress` |
 | `exposure.ingress.className`, `.annotations` | IngressClass and annotations of every Ingress | `""`, `{}` |
 | `exposure.gatewayAPI.parentRefs`, `.annotations`, `.timeouts` | The Gateway, the annotations and the timeouts of every HTTPRoute | `[]`, `{}`, `{}` |
-| `<component>.host` | Public host of `api`, `organisationWallet`, `enterpriseDashboard` (required) | `""` |
-| `<component>.exposure.*` | `type`, `className`, `annotations` (added), `path`, `pathType`, `tls.secretName`, `parentRefs`, `timeouts` of one public service | empty |
+| `<component>.host` | Host of `api`, `organisationWallet`, `enterpriseDashboard` (required; on premise only the wallet host is public, see [Exposure](exposure.md#on-premise-installation)) | `""` |
+| `<component>.exposure.*` | `type`, `className`, `annotations` (added), `path`, `pathType`, `tls.secretName`, `parentRefs`, `timeouts` of one host | empty |
 | `clientAddress.header`, `.trustedProxies`, `.trustedProxyHeader` | The client address behind your proxies (rate limits, IP allow-lists) | empty |
 
 ## Database
