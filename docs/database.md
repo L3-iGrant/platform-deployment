@@ -139,7 +139,7 @@ On a new installation, Helm creates the Secrets first (Helm `pre-install`), and 
 
 ## Data scopes of the wallet
 
-The wallet keeps its tables in data scopes: `platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `wallet_provider`, `events` and `conformance`. A data scope is a schema in the wallet database, for example `issuer` in `igrant_wallet`. The roles hook creates the schemas, with the owner role as their owner, and the migration hook creates their tables.
+The wallet keeps its tables in data scopes: `platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `individual_wallet_provider`, `business_wallet_provider`, `events` and `conformance`. A data scope is a schema in the wallet database, for example `issuer` in `igrant_wallet`. The roles hook creates the schemas, with the owner role as their owner, and the migration hook creates their tables.
 
 The read views stay in the schemas `read_v1` and `read_v2`, with the same names and columns (see [Read access](read-access.md)).
 

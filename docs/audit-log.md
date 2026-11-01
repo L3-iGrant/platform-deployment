@@ -4,7 +4,7 @@ This page describes the audit log of the organisation wallet: its settings, the 
 
 [Back to the contents](../README.md#contents)
 
-The wallet records the actions of the platform in an audit log in its database: for example a configuration change, a key retirement, an issued credential or a refused request. Each data scope with an audit log (`platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `wallet_provider`; see [Database](database.md#data-scopes-of-the-wallet)) has its own audit tables, with one hash chain for each organisation. The events of a scope are in monthly partitions.
+The wallet records the actions of the platform in an audit log in its database: for example a configuration change, a key retirement, an issued credential or a refused request. Each data scope with an audit log (`platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `individual_wallet_provider`, `business_wallet_provider`; see [Database](database.md#data-scopes-of-the-wallet)) has its own audit tables, with one hash chain for each organisation. The events of a scope are in monthly partitions.
 
 | Part | Where | Written by |
 | --- | --- | --- |

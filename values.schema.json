@@ -3067,7 +3067,8 @@
                   "authorisation_server",
                   "relying_party",
                   "business_wallet",
-                  "wallet_provider"
+                  "individual_wallet_provider",
+                  "business_wallet_provider"
                 ]
               },
               "additionalProperties": {

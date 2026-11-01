@@ -677,6 +677,11 @@ guard "audit bucket name" "organisationWallet.audit.bucket.name" "${shamir[@]}" 
 guard "audit bucket prefix" "organisationWallet.audit.bucket.prefix" "${shamir[@]}" "${s3[@]}" --set organisationWallet.audit.bucket.prefix=/audit
 guard "audit retention of at least one year" "organisationWallet.audit.retentionYears" "${shamir[@]}" --set organisationWallet.audit.retentionYears=0
 guard "audit retention of a scope without an audit log" "organisationWallet.audit.scopeRetentionYears" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.events=3
+# The wallet provider split replaced the scope wallet_provider with
+# individual_wallet_provider and business_wallet_provider.
+guard "audit retention of the old wallet provider scope" "organisationWallet.audit.scopeRetentionYears" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.wallet_provider=10
+renders "audit retention of the individual wallet provider scope" "individual_wallet_provider: 10" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.individual_wallet_provider=10
+renders "audit retention of the business wallet provider scope" "business_wallet_provider: 12" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.business_wallet_provider=12
 guard "retention purge batch size" "organisationWallet.retention.batchSize" "${shamir[@]}" --set organisationWallet.retention.batchSize=20000
 renders "retention purge of a deactivated sandbox" "deactivated_sandbox_days: 14" "${shamir[@]}" --set organisationWallet.retention.deactivatedSandboxDays=14
 
