@@ -187,3 +187,18 @@ before step 2:
 
 The apps of the same release make classic Play Integrity requests. An
 installation with the production checks off changes nothing.
+
+## The App IDs of the iOS wallet apps
+
+From the release with `organisationWallet.walletUnit.appAttest.appIds`,
+the App ID of the iOS wallet app is a value of the chart, not a constant of
+the image. The default is the App ID of the iGrant.io Data Wallet app
+(`Y9726WB7V8.io.iGrant.DataWallet`), so an installation with this app
+changes nothing.
+
+An installation with another iOS app sets the App ID of that app
+(`<Team ID>.<bundle id>`), or the App IDs of all its iOS apps. The service
+pods accept the App Attest objects of each App ID of the list. A wallet unit
+does not keep the App ID of its registration: when you remove an App ID,
+the wallet units of that app get no new WIA and no key attestation. With
+the production checks on, an empty list stops the render.

@@ -559,6 +559,39 @@ guard "Play Integrity keys without the certificate digest" "androidSigningCertif
 guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" "${shamir[@]}" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
 guard "the Play Integrity digest value is gone" "certificateSha256Digests" "${shamir[@]}" --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}"
 guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
+# The App IDs of the iOS wallet apps (wallet_unit.app_attest.app_ids): only
+# the service file names them (the WIA and key attestation requests).
+app_attest() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  # Only stdout is YAML (helm writes its warnings to stderr).
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
+    bad "app attest $name: $(head -c 200 "$out/app-attest.err")"
+  elif problems="$(python3 - "$out/app-attest.yaml" "$expect" <<'PY' 2>&1
+import json, sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = json.loads(sys.argv[2])
+files = next(d for d in docs if d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "t-wallet")["data"]
+for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
+    unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
+    want = {"app_ids": expected} if role == "service" else None
+    if unit.get("app_attest") != want:
+        print(f"{role}.yaml wallet_unit.app_attest is {unit.get('app_attest')!r}")
+PY
+)" && [ -z "$problems" ]; then
+    ok "app attest $name"
+  else
+    bad "app attest $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+}
+app_ids='Y9726WB7V8.io.iGrant.DataWallet,ABCDE12345.com.example.wallet'
+app_attest "the iGrant.io Data Wallet app by default" '["Y9726WB7V8.io.iGrant.DataWallet"]' "${shamir[@]}"
+app_attest "the App IDs of two iOS apps" '["Y9726WB7V8.io.iGrant.DataWallet", "ABCDE12345.com.example.wallet"]' "${shamir[@]}" \
+  --set "organisationWallet.walletUnit.appAttest.appIds={$app_ids}"
+app_attest "no App ID without the production checks" '[]' "${shamir[@]}" --set-json 'organisationWallet.walletUnit.appAttest.appIds=[]'
+guard "no App ID with the production checks" "appAttest.appIds needs at least one App ID" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.productionChecksEnabled=true --set-json 'organisationWallet.walletUnit.appAttest.appIds=[]'
+guard "App ID without the Team ID" "appIds" "${shamir[@]}" --set "organisationWallet.walletUnit.appAttest.appIds={io.iGrant.DataWallet}"
 # The device roots of the wallet units (wallet_unit.trust_anchors_dir): with
 # a ConfigMap, the service, config and worker files name the folder and
 # their pods mount the two root files of the ConfigMap; the clock never.

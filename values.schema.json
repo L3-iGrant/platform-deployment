@@ -3024,6 +3024,19 @@
                 }
               }
             },
+            "appAttest": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "appIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Z0-9]{10}\\.[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*$"
+                  }
+                }
+              }
+            },
             "trustAnchors": {
               "type": "object",
               "additionalProperties": false,

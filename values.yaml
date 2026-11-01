@@ -1512,6 +1512,16 @@ organisationWallet:
       # -- The lowest versionCode of the app that gets a WIA. 0: every
       # version.
       minVersionCode: 0
+    # -- The App Attest check of the iOS wallet units
+    # (wallet_unit.app_attest of the service pods).
+    appAttest:
+      # -- The App IDs (<Team ID>.<bundle id>) of the iOS wallet apps of
+      # this installation. The App Attest attestation of the registration
+      # of a wallet unit, its later assertions and the App Attest objects
+      # of a key attestation request must be for one of them. At least one
+      # is required when productionChecksEnabled is true.
+      appIds:
+        - Y9726WB7V8.io.iGrant.DataWallet
     # -- The device roots of the wallet units (wallet_unit.trust_anchors_dir):
     # an existing ConfigMap with the keys google_hardware_attestation_root.pem
     # (the root of the Android Key Attestation chains) and
