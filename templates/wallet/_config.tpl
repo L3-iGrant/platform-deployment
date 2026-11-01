@@ -112,6 +112,15 @@ wallet units: only their file has the digests of the Android app. */ -}}
 {{- if and $digests (eq $role "service") -}}
 {{- $_ := set $walletUnit "android_signing_certificate_digests" $digests -}}
 {{- end -}}
+{{- /* The App IDs of the iOS wallet apps: the service pods check the App
+Attest objects of the same requests. */ -}}
+{{- $appIds := $w.walletUnit.appAttest.appIds -}}
+{{- if and $w.walletUnit.productionChecksEnabled (not $appIds) -}}
+{{- fail "organisationWallet.walletUnit.appAttest.appIds needs at least one App ID (<Team ID>.<bundle id>) of the iOS wallet app when productionChecksEnabled is true" -}}
+{{- end -}}
+{{- if eq $role "service" -}}
+{{- $_ := set $walletUnit "app_attest" (dict "app_ids" $appIds) -}}
+{{- end -}}
 {{- if hasKey $files "play-integrity-decryption-key" -}}
 {{- $_ := set $walletUnit "play_integrity" (dict
     "decryption_key_file" (printf "%s/play-integrity-decryption-key" $dir)
