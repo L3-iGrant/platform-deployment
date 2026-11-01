@@ -112,7 +112,7 @@ Check: after some minutes, all pods are `Running` and `READY` (the Valkey pods `
 
 Some restarts are usual at the first start (`RESTARTS` 3 to 5). The Jobs try again while the database starts, the wallet pods wait until the migration hook has created the schema of the wallet database, and a service that reads the views of another service (the API, consent and the wallet config role) is ready only when its read-only database user exists. Until then, a process stops when the database, its read-only user or the OpenBao login of the wallet (step 5) is not ready yet, and its log shows the reason. When a pod still restarts after 10 minutes, read its log (`kubectl -n ows logs <pod> --previous`).
 
-Then check the public hosts through your ingress controller or Gateway:
+Then check the hosts through your ingress controller or Gateway (an internal host from your internal network):
 
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' https://api.example.org/healthz      # 200

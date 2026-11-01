@@ -1,16 +1,53 @@
 # Exposure
 
-This page explains how the chart exposes the three public hosts of the platform, and what your ingress controller or Gateway must do.
+This page explains how the chart exposes the three hosts of the platform, which hosts are public in an on-premise installation, and what your ingress controller or Gateway must do.
 
 [Back to the contents](../README.md#contents)
 
-The chart exposes three public services. Each has a host name (`api.host`, `organisationWallet.host`, `enterpriseDashboard.host`). `exposure.*` sets the exposure of all three, and `<component>.exposure.*` the exposure of one:
+The chart exposes three services. Each has a host name (`api.host`, `organisationWallet.host`, `enterpriseDashboard.host`). `exposure.*` sets the exposure of all three, and `<component>.exposure.*` the exposure of one:
 
 | `exposure.type` | The chart creates | You give |
 | --- | --- | --- |
 | `ingress` (default) | A `networking.k8s.io/v1` Ingress for each host | `exposure.ingress.className`, the annotations of your controller, and the TLS Secret of each host (`<component>.exposure.tls.secretName`; empty: no TLS block) |
 | `gatewayAPI` | A `gateway.networking.k8s.io/v1` HTTPRoute for each host | `exposure.gatewayAPI.parentRefs` (your Gateway: name, namespace, sectionName), and optional `timeouts` |
 | `none` | Only the Services | Your own routes to the Services `<release>-gateway` (API host), `<release>-wallet-service` (wallet host) and `<release>-dashboard` (dashboard host), each on port 80 |
+
+The chart does not decide which host is public: the IngressClass, the Gateway or your own routes of each host decide. The Service of the config role of the wallet (`<release>-wallet-config`) never has a route: only the gateway calls it, inside the cluster. Do not make a route to it.
+
+## On-premise installation
+
+An on-premise installation exposes only the service routes. Only the wallet host is public; the API host and the dashboard host stay on your internal network:
+
+| Host or Service | Network | Values |
+| --- | --- | --- |
+| Wallet host (`<release>-wallet-service`) | Public | `organisationWallet.exposure`: your public IngressClass (`className`) or your public Gateway (`parentRefs`) |
+| API host (`<release>-gateway`) | Internal | `api.exposure`: an internal IngressClass (`className`) or an internal Gateway (`parentRefs`); or `type: none` and your own internal route |
+| Dashboard host (`<release>-dashboard`) | Internal | `enterpriseDashboard.exposure`: the same as the API host |
+| `<release>-wallet-config` | In the cluster only | No route |
+
+`examples/exposure-on-premise.yaml` does this with two ingress-nginx controllers: the public IngressClass `nginx` for the wallet host, and the internal IngressClass `nginx-internal` for the other hosts (the default `exposure.ingress.className`, so that a host is internal unless you name the public class). The admins open the dashboard from the internal network, and their browser calls the API host there.
+
+The wallet host serves only the public routes of the wallet: the service role of the wallet has only the route group `service`. The configuration routes are in the config role, which has no route.
+
+With network policies, `networkPolicy.ingressController` is the one source of the gateway, wallet service and dashboard pods: give a selector that selects the pods of both controllers (the example selects the namespaces `ingress-nginx` and `ingress-nginx-internal`).
+
+### The routes of the phone app
+
+For the wallet unit flow, the wallet app of a phone calls only the wallet host (`<wallet id>`: the wallet id of the wallet provider organisation):
+
+| Route on the wallet host | Use |
+| --- | --- |
+| `GET` or `POST /organisation/<wallet id>/service/wallet-provider/nonce` | The nonce of the wallet provider |
+| `POST /organisation/<wallet id>/service/wallet-provider/wallet-unit/request`, `.../wallet-unit/request/batch` | The registration of a wallet unit and its WIA requests |
+| `POST /organisation/<wallet id>/service/wallet-provider/key-attestation` | The key attestations |
+| `GET /organisation/<wallet id>/service/revocation-statuslists/<status list id>` | The status lists of the WIAs and of the key attestations |
+| `GET /.well-known/openid-credential-issuer/organisation/<wallet id>/service/version-01`, `GET /.well-known/oauth-authorization-server/organisation/<wallet id>/service/wallet-provider` | The metadata of the wallet provider |
+
+The issuers and verifiers that the app uses after that are at their own hosts.
+
+### The limit of the API host
+
+The chart exposes the API host as one path (`api.exposure.path`, default `/`) to the gateway: the API host is public with all the routes of the gateway, or internal with all of them. Some apps need a public route of the gateway, for example the login of an individual, the `/service` routes of consent, or the app link files `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`. The chart cannot expose only these routes of the API host today. With `api.exposure.type: none` you make the routes of the API host yourself, and the chart does not know which paths they make public.
 
 ## What your proxy must do
 

@@ -4,7 +4,7 @@ This page lists the components that the chart installs, and how your values file
 
 [Back to the contents](../README.md#contents)
 
-| Component | What it does | Public host |
+| Component | What it does | Host |
 | --- | --- | --- |
 | Gateway | The single entry point of the API. It checks every request (API keys, logins, roles) and sends it to the right service. | The API host |
 | API | Organisations, admins, credential definitions, webhooks and the OpenID provider. | Through the gateway |

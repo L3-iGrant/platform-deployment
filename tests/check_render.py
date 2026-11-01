@@ -4,7 +4,8 @@
 Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs> [<redis>]]
   engine: postgresql; mode: bundled | external;
   openbao: shamir | external;
-  exposure: ingress | gatewayAPI | none; networkpolicy: off | on;
+  exposure: ingress | gatewayAPI | none | on-premise (only the wallet host
+    on the public IngressClass); networkpolicy: off | on;
   database-logs: on (default) | off (database.postgresql.logDdlAndConnections
     false);
   redis: bundled (default) | external (examples/redis-external.yaml).
@@ -600,12 +601,16 @@ def main() -> int:
     # --- Exposure ------------------------------------------------------------
     ingresses = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "Ingress"}
     routes = {d["metadata"]["name"]: d for d in docs if d.get("kind") == "HTTPRoute"}
-    if exposure == "ingress":
+    if exposure in ("ingress", "on-premise"):
         check(set(ingresses) == set(HOSTS) and not routes, f"the Ingresses are {sorted(ingresses)}, the routes {sorted(routes)}")
         for name, ingress in ingresses.items():
             rule = ingress["spec"]["rules"][0]
             check(rule["host"] == HOSTS[name], f"Ingress {name} has the host {rule['host']}")
-            check(ingress["spec"].get("ingressClassName") == "nginx", f"Ingress {name} has no ingressClassName nginx")
+            # On premise only the wallet host is on the public class nginx;
+            # the api and dashboard hosts are on the internal class.
+            public = exposure == "ingress" or name == f"{RELEASE}-wallet-service"
+            want = "nginx" if public else "nginx-internal"
+            check(ingress["spec"].get("ingressClassName") == want, f"Ingress {name} has not the ingressClassName {want}")
     elif exposure == "gatewayAPI":
         check(set(routes) == set(HOSTS) and not ingresses, f"the routes are {sorted(routes)}, the Ingresses {sorted(ingresses)}")
         for name, route in routes.items():
@@ -616,6 +621,11 @@ def main() -> int:
             check(api_route["spec"]["rules"][0].get("timeouts", {}).get("request") == "3900s", "the api HTTPRoute has no request timeout of 3900s")
     else:
         check(not ingresses and not routes, "an Ingress or an HTTPRoute is rendered with exposure none")
+    # Only the gateway calls the config role of the wallet: no route to it.
+    backends = [path["backend"]["service"]["name"] for ingress in ingresses.values()
+                for rule in ingress["spec"]["rules"] for path in rule["http"]["paths"]]
+    backends += [ref["name"] for route in routes.values() for rule in route["spec"]["rules"] for ref in rule["backendRefs"]]
+    check(f"{RELEASE}-wallet-config" not in backends, "a route goes to the Service of the wallet config role")
     for name in ("gateway", "wallet-service", "dashboard"):
         check(find("Service", f"{RELEASE}-{name}") is not None, f"the Service {RELEASE}-{name} is missing")
 

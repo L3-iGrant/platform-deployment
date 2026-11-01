@@ -22,7 +22,7 @@ This documentation is for the developers and IT operations teams who install and
 
 ### Configure
 
-- [Exposure](docs/exposure.md): the three public hosts, and the settings of your ingress controller or Gateway.
+- [Exposure](docs/exposure.md): the three hosts, the hosts that are public on premise (only the wallet host), and the settings of your ingress controller or Gateway.
 - [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, the database roles and hooks of the wallet, and the logs of the server.
 - [Audit log](docs/audit-log.md): the audit log of the wallet, its write-once bucket, the check of the log, and the retention purge of the wallet data.
 - [Workers and clock](docs/workers.md): the background work of the wallet: the worker groups and their queues, the clock, the stops, the probes and the metrics.

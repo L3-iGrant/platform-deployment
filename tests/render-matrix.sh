@@ -16,7 +16,8 @@
 #      database   postgresql-bundled, postgresql-external
 #      OpenBao    openbao-shamir, openbao-external
 #      exposure   exposure-ingress-nginx, exposure-ingress-nginx-cert-manager,
-#                 exposure-envoy-gateway, exposure-kgateway, exposure-none
+#                 exposure-envoy-gateway, exposure-kgateway, exposure-none,
+#                 exposure-on-premise
 #      policies   none, networkpolicy
 #    For each: helm template, kubeconform -strict (when it is installed; the
 #    HTTPRoute schema of the Gateway API from the CRDs catalog) and
@@ -151,7 +152,7 @@ mkdir -p "$kubeconform_cache"
 # The example files of the database are <engine>-<mode>.yaml.
 engine_of() { echo "${1%%-*}"; }
 mode_of() { case "$1" in *-external) echo external ;; *) echo bundled ;; esac; }
-exposure_of() { case "$1" in exposure-ingress-*) echo ingress ;; exposure-none) echo none ;; *) echo gatewayAPI ;; esac; }
+exposure_of() { case "$1" in exposure-ingress-*) echo ingress ;; exposure-none) echo none ;; exposure-on-premise) echo on-premise ;; *) echo gatewayAPI ;; esac; }
 for database in postgresql-bundled postgresql-external; do
   for openbao in openbao-shamir openbao-external; do
     base=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/$openbao.yaml")
@@ -161,7 +162,7 @@ for database in postgresql-bundled postgresql-external; do
       bad "lint $database $openbao"
       sed 's/^/  /' "$out/lint.txt" | head -10
     fi
-    for exposure in exposure-ingress-nginx exposure-ingress-nginx-cert-manager exposure-envoy-gateway exposure-kgateway exposure-none; do
+    for exposure in exposure-ingress-nginx exposure-ingress-nginx-cert-manager exposure-envoy-gateway exposure-kgateway exposure-none exposure-on-premise; do
       for policies in none networkpolicy; do
         name="$database-$openbao-$exposure-$policies"
         args=("${base[@]}" -f "$examples/$exposure.yaml")
