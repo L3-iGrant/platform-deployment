@@ -1548,7 +1548,8 @@ organisationWallet:
     retentionYears: 7
     # -- audit.scope_retention_years: another period for some data scopes
     # (platform, kms, trust, issuer, authorisation_server, relying_party,
-    # business_wallet, wallet_provider), for example {kms: 10}.
+    # business_wallet, individual_wallet_provider,
+    # business_wallet_provider), for example {kms: 10}.
     scopeRetentionYears: {}
     # -- audit.bucket: the write-once bucket of the copies of the anchors
     # and of the monthly exports (docs/audit-log.md). Only the workers
