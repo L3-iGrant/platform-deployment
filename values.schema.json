@@ -1,11 +1,16 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Organisation Wallet Suite values",
+  "title": "iGrant.io platform values",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "fullnameOverride": {
       "type": "string"
+    },
+    "nameOverride": {
+      "type": "string",
+      "maxLength": 63,
+      "pattern": "^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)?$"
     },
     "global": {
       "type": "object",

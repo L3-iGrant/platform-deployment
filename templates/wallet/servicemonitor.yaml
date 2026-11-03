@@ -54,7 +54,7 @@ spec:
   jobLabel: metrics.igrant.io/job
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ .Chart.Name }}
+      app.kubernetes.io/name: {{ include "ow.chartName" . }}
       app.kubernetes.io/instance: {{ .Release.Name }}
     matchExpressions:
       - key: app.kubernetes.io/component

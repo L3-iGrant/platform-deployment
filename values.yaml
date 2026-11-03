@@ -1,4 +1,4 @@
-# Organisation Wallet Suite by iGrant.io
+# iGrant.io platform
 #
 # The chart installs the platform: the auth gateway, the API (with the OIDC
 # provider) and its webhook handler, consent management, the organisation
@@ -34,6 +34,12 @@
 
 # -- Object name prefix. Empty: the release name.
 fullnameOverride: ""
+
+# -- The value of the label app.kubernetes.io/name. This label is also in
+# the selectors, and Kubernetes does not let an upgrade change a selector.
+# Empty: the chart name (platform). A release that was installed from the
+# chart organisationwallet sets "organisationwallet" (docs/upgrade.md).
+nameOverride: ""
 
 global:
   # -- Registry of the iGrant.io images (the registry of iGrant.io for

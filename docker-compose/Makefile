@@ -1,5 +1,5 @@
 # =============================================================================
-# The Organisation Wallet Suite by iGrant.io for Docker Compose. README.md has the procedure.
+# The iGrant.io platform for Docker Compose. README.md has the procedure.
 # =============================================================================
 
 COMPOSE ?= docker compose

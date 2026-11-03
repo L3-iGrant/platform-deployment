@@ -1,4 +1,4 @@
-# The services of the Organisation Wallet Suite by iGrant.io for Docker Compose (README.md).
+# The services of the iGrant.io platform for Docker Compose (README.md).
 #
 # Do not start this file directly: docker-compose.yaml loads it with the
 # values of .env and of config/engine/<DB_ENGINE>.env (DB_PORT,
