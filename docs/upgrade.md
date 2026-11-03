@@ -9,7 +9,7 @@ This page upgrades an installation to a new release of the platform.
 3. Upgrade:
 
    ```bash
-   helm upgrade ows ./helmcharts -n ows \
+   helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
      -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml \
      --wait --timeout 15m

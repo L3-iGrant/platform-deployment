@@ -4,7 +4,7 @@ This page installs the platform in seven steps. Each step ends with a check: con
 
 [Back to the contents](../README.md#contents)
 
-The examples use the release name `ows`, the namespace `ows` and a clone of this repository in `./helmcharts`.
+The examples use the release name `ows`, the namespace `ows` and a clone of this repository in `./platform-deployment`.
 
 ## Step 1: the namespace and the registry access
 
@@ -27,7 +27,7 @@ Ask iGrant.io for the release tag of your version (for example `2026.10.1`). You
 
 ```bash
 docker login -u _json_key --password-stdin https://europe-docker.pkg.dev < service-account-key.json
-./helmcharts/scripts/make-keys.sh --release ows --namespace ows --tag <release tag> --out ./ows-keys
+./platform-deployment/scripts/make-keys.sh --release ows --namespace ows --tag <release tag> --out ./ows-keys
 kubectl apply -n ows -f ./ows-keys/secrets.yaml
 ```
 
@@ -52,7 +52,7 @@ Copy the files that you use (for example to `my-database.yaml`, `my-openbao.yaml
 Check: the render has no error:
 
 ```bash
-helm template ows ./helmcharts -n ows \
+helm template ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
   -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml > /tmp/ows.yaml
 ```
@@ -64,7 +64,7 @@ When you use optional files, add them to this command and to every `helm install
 ## Step 4: install
 
 ```bash
-helm install ows ./helmcharts -n ows \
+helm install ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
   -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml \
   --timeout 15m
@@ -152,7 +152,7 @@ The dashboard does not accept an admin without an organisation. Three Jobs of th
    ```
 
    ```bash
-   helm upgrade ows ./helmcharts -n ows \
+   helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
      -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml -f first-admin.yaml
    ```

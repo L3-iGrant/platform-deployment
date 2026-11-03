@@ -7,7 +7,7 @@ clock (the port health) gives the pods as the targets, also the pods that
 are not ready (a worker is not ready while Valkey does not answer, and its
 metrics show it). The label metrics.igrant.io/job of each Service is the
 job of its targets: wallet-server, wallet-worker, wallet-clock (the job
-names of the alerts of eudi-wallet).
+names of the alerts of organisation-wallet-suite).
 */}}
 {{- if and .Values.organisationWallet.enabled .Values.organisationWallet.serviceMonitor.enabled }}
 {{- $w := .Values.organisationWallet }}

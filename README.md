@@ -1,10 +1,10 @@
-# Organisation Wallet Suite by iGrant.io: Helm chart
+# iGrant.io platform deployment
 
-This Helm chart installs the Organisation Wallet Suite by iGrant.io on Kubernetes. With the suite, an organisation issues, holds and verifies verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
+This repository holds the Helm chart and the Docker Compose files that install the iGrant.io platform. With the platform, an organisation issues, holds and verifies verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
 
-The chart installs the platform and the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
+The Helm chart installs the platform on Kubernetes, with the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
 
-This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the suite on a single Docker host (development, tests or a small installation), use [Docker Compose](docker-compose/README.md).
+This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host (development, tests or a small installation), use the [Docker Compose files](docker-compose/README.md).
 
 ## Contents
 

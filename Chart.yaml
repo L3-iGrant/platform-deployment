@@ -1,7 +1,14 @@
 apiVersion: v2
 name: organisationwallet
-description: The Helm chart for Organisation Wallet by iGrant.io enables the issuer, holder, and verifier of verifiable credentials within the eIDAS 2.0 framework. It incorporates the latest amendments, the EU Architectural Reference Framework (ARF), and Implementing Acts (IA).
+description: This Helm chart installs the iGrant.io platform on Kubernetes so that an organisation can issue, hold and verify verifiable credentials under eIDAS 2.0.
 type: application
 kubeVersion: ">=1.25.0-0"
 version: 2026.10.0
+home: https://igrant.io
+sources:
+  - https://github.com/L3-iGrant/platform-deployment
+maintainers:
+  - name: iGrant.io development team
+    email: support@igrant.io
+    url: https://igrant.io
 icon: https://igrant.io/assets/images/favicons/android-icon-192x192.png

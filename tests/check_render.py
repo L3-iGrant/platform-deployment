@@ -44,7 +44,7 @@ RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deac
 # Valkey: the ACL user of each process (the values key and the user name),
 # the settings of the data servers (WORKERS-AND-REDIS-PLAN.md section 2.7)
 # and the rights of the wallet users (the rights of the wallet tests,
-# eudi-wallet ows/testing/redis_servers.py).
+# organisation-wallet-suite ows/testing/redis_servers.py).
 REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletWorker": "wallet-worker", "walletClock": "wallet-clock",
                "gateway": "gateway"}
 # The wallet processes with the defaults of the values: the configuration
@@ -205,7 +205,7 @@ def main() -> int:
         get = ((container.get(name) or {}).get("httpGet") or {})
         return get.get("path"), get.get("port")
 
-    # The metrics of the servers (eudi-wallet OBS): server.metrics_port 9190
+    # The metrics of the servers (organisation-wallet-suite): server.metrics_port 9190
     # (/metrics only) and server.metrics_directory on an emptyDir in memory;
     # the probes stay on the port of the routes.
     for server_role in ("service", "config"):
@@ -274,8 +274,8 @@ def main() -> int:
         check({"database-password", "redis-password"} <= paths <= {"database-password", "database-ca.crt", "redis-password", "redis-ca.crt"},
               f"the clock pods mount {sorted(paths)}, not only the files of the database and of Valkey")
     clock_file = config_map_file(f"{RELEASE}-wallet", "clock.yaml") or {}
-    # The scheduler is gone (eudi-wallet P3-D): no Deployment and no
-    # configuration key.
+    # The scheduler is gone (organisation-wallet-suite removed it): no
+    # Deployment and no configuration key.
     check(find("Deployment", f"{RELEASE}-wallet-scheduler") is None, "the Deployment of the scheduler is rendered")
     check("scheduler.yaml" not in ((find("ConfigMap", f"{RELEASE}-wallet") or {}).get("data") or {}), "the wallet ConfigMap has scheduler.yaml")
     check(set(clock_file) == {"log_level", "database", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")

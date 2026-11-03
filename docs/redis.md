@@ -83,7 +83,7 @@ The image `redis.metrics.image` is `docker.io/oliver006/redis_exporter` (MIT Lic
 
 The wallet roles and the gateway log in with their own user. `redis.users.<key>.username` sets the name; the password is in the Secret `<release>-redis-users` of the chart (random, kept across upgrades), or in your Secret (`redis.users.<key>.passwordSecret`, `.passwordKey`). A password has only letters, digits and `. _ ~ + / = -`.
 
-The keys of the Secret `<release>-redis-users` are the values keys (`walletService`, `walletConfig`, `walletWorker`, `walletClock`, `gateway`), not the user names. The deploy files of eudi-wallet (`deploy/staging`, `deploy/demo`) keep the passwords in the Secret `<env>-eudi-wallet-redis` with the user names as keys (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`). To use such a Secret, give each user its key: for example `redis.users.walletWorker: {passwordSecret: <env>-eudi-wallet-redis, passwordKey: wallet-worker}`.
+The keys of the Secret `<release>-redis-users` are the values keys (`walletService`, `walletConfig`, `walletWorker`, `walletClock`, `gateway`), not the user names. The deploy files of the organisation-wallet-suite repository (`deploy/staging`, `deploy/demo`) keep the passwords in the Secret `<env>-eudi-wallet-redis` with the user names as keys (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`). To use such a Secret, give each user its key: for example `redis.users.walletWorker: {passwordSecret: <env>-eudi-wallet-redis, passwordKey: wallet-worker}`.
 
 | User (`redis.users.<key>`) | Process | Rights on the data servers | Rights on the Sentinels |
 | --- | --- | --- | --- |

@@ -79,7 +79,7 @@ With a pooler, the configuration of the service, config and worker processes has
 
 The connection budget then counts, for the wallet, only the direct connections (the allocation pools, 20 for the readers and 1 mint for each config pod, 2 lock connections for each thread of a worker, the health checks, the clock) and `serverConnections`. With network policies, add the address of the pooler to `networkPolicy.externalDatabases`.
 
-The wallet image needs the key `database.pooler` (eudi-wallet with the change of WORKERS-AND-REDIS-PLAN.md item H1); an older image refuses the key.
+The key `database.pooler` needs a wallet image of organisation-wallet-suite with the support of the pooler; an older image refuses the key.
 
 ## External PostgreSQL
 
