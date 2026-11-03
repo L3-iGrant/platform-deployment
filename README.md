@@ -4,6 +4,8 @@ This repository holds the Helm chart and the Docker Compose files that install t
 
 The Helm chart installs the platform on Kubernetes, with the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
 
+The name of the Helm chart is `platform`. A release that was installed from the chart `organisationwallet` sets `nameOverride: organisationwallet` before its next upgrade: see [The chart name platform](docs/upgrade.md#the-chart-name-platform).
+
 This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host (development, tests or a small installation), use the [Docker Compose files](docker-compose/README.md).
 
 ## Contents

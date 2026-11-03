@@ -1,6 +1,6 @@
-# Organisation Wallet Suite by iGrant.io: Docker Compose
+# iGrant.io platform: Docker Compose
 
-This folder installs the Organisation Wallet Suite by iGrant.io on one Docker host. Use it for
+This folder installs the iGrant.io platform on one Docker host. Use it for
 tests and for small production installations. For a Kubernetes cluster, use
 the Helm chart of this repository.
 

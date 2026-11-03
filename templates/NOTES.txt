@@ -1,4 +1,4 @@
-Organisation Wallet Suite {{ .Chart.Version }} is installed in the namespace {{ .Release.Namespace }}.
+The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Release.Namespace }}.
 {{- $ns := .Release.Namespace }}
 {{- if eq (.Values.global.imageTag | toString) "2026.10.x" }}
 

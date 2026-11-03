@@ -16,10 +16,20 @@ fullnameOverride, else the release name.
 {{- printf "%s-%s" (include "ow.fullname" $root) (index . 1) | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
+{{/*
+The value of the label app.kubernetes.io/name: nameOverride, else the chart
+name. The label is in the selectors, which an upgrade cannot change: a
+release that was installed from the chart organisationwallet sets
+nameOverride organisationwallet.
+*/}}
+{{- define "ow.chartName" -}}
+{{- .Values.nameOverride | default .Chart.Name -}}
+{{- end }}
+
 {{/* Selector labels. Call with (list $ "component"). */}}
 {{- define "ow.selectorLabels" -}}
 {{- $root := index . 0 -}}
-app.kubernetes.io/name: {{ $root.Chart.Name }}
+app.kubernetes.io/name: {{ include "ow.chartName" $root }}
 app.kubernetes.io/instance: {{ $root.Release.Name }}
 app.kubernetes.io/component: {{ index . 1 }}
 {{- end }}

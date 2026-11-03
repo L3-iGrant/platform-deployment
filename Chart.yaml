@@ -1,5 +1,5 @@
 apiVersion: v2
-name: organisationwallet
+name: platform
 description: This Helm chart installs the iGrant.io platform on Kubernetes so that an organisation can issue, hold and verify verifiable credentials under eIDAS 2.0.
 type: application
 kubeVersion: ">=1.25.0-0"

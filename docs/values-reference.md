@@ -10,6 +10,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 
 | Value | Description | Default |
 | --- | --- | --- |
+| `nameOverride` | The value of the label `app.kubernetes.io/name`, which is also in the selectors. A release that was installed from the chart `organisationwallet` sets `organisationwallet`: see [Upgrade](upgrade.md#the-chart-name-platform) | `""` (the chart name `platform`) |
 | `global.imageRegistry` | Registry of the iGrant.io images | `europe-docker.pkg.dev/jenkins-189019/igrantio` |
 | `global.imageTag` | The release tag of the iGrant.io images (`api`, `gateway`, `consent-management-backend`, `eudi-wallet`, `dashboard`, `openbao`). Set the tag of your release | `2026.10.x` (a placeholder) |
 | `global.imagePullSecrets` | Image pull Secrets of all pods | `[igrant-registry-creds]` |

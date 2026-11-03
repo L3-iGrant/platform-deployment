@@ -4,7 +4,7 @@ This page upgrades an installation to a new release of the platform.
 
 [Back to the contents](../README.md#contents)
 
-1. Set `global.imageTag` in `my-site.yaml` to the release tag of the new version (from iGrant.io). The chart and the images of one release belong together: a new chart with the images of an older release can stop the pods (for example, the wallet refuses a configuration key that it does not know). Then read the `values.yaml` of the new chart version and adapt your files where necessary.
+1. Set `global.imageTag` in `my-site.yaml` to the release tag of the new version (from iGrant.io). The chart and the images of one release belong together: a new chart with the images of an older release can stop the pods (for example, the wallet refuses a configuration key that it does not know). Then read the `values.yaml` of the new chart version and adapt your files where necessary. A release that was installed from the chart `organisationwallet` also sets `nameOverride: organisationwallet` (see [The chart name platform](#the-chart-name-platform)).
 2. Check the render with the new chart (`helm template`, as in install step 3).
 3. Upgrade:
 
@@ -202,3 +202,19 @@ pods accept the App Attest objects of each App ID of the list. A wallet unit
 does not keep the App ID of its registration: when you remove an App ID,
 the wallet units of that app get no new WIA and no key attestation. With
 the production checks on, an empty list stops the render.
+
+## The chart name platform
+
+The name of the chart is `platform`. Earlier releases of the chart had the name `organisationwallet`. From a Helm repository, the chart is `<repository>/platform`; earlier it was `<repository>/organisationwallet`.
+
+The chart puts the value of `nameOverride`, else its name, in the label `app.kubernetes.io/name`. This label is in the selectors of the Deployments and the StatefulSets, and Kubernetes does not let an upgrade change a selector. Without `nameOverride`, the upgrade of a release that was installed from the chart `organisationwallet` stops with `field is immutable`.
+
+Before step 2, add this line to `my-site.yaml`, and keep it for all later upgrades of the release:
+
+```yaml
+nameOverride: organisationwallet
+```
+
+Check after step 2: the render shows the old label, for example `helm template ... | grep -m 1 'app.kubernetes.io/name'` shows `app.kubernetes.io/name: organisationwallet`.
+
+A new installation does not set `nameOverride`: its label is `platform`. The label `helm.sh/chart` has the new chart name in all installations (`platform-<version>`); it is not in a selector.

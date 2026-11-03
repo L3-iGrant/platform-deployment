@@ -1,4 +1,4 @@
-# Connection matrix of the Organisation Wallet Suite: the one source of the
+# Connection matrix of the iGrant.io platform: the one source of the
 # network policy rules of the Helm chart (templates/networkpolicy/). The
 # chart templates read this file. It is deployment data, not a service
 # contract.
