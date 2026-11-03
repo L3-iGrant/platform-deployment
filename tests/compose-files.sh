@@ -544,7 +544,7 @@ if set(clock_file) != {"log_level", "database", "redis", "clock"}:
 if clock_file.get("clock") != {"health_port": 9192}:
     problems.append("wallet-clock: the health port is not 9192")
 if "wallet-scheduler" in project["services"] or "wallet-scheduler-config" in project["configs"]:
-    problems.append("the scheduler is still a service (eudi-wallet P3-D removed it)")
+    problems.append("the scheduler is still a service (organisation-wallet-suite removed it)")
 targets = sorted(s["target"] for s in clock.get("secrets", []))
 if targets != ["/run/secrets/eudi-wallet/database-password", "/run/secrets/eudi-wallet/redis-password"]:
     problems.append(f"wallet-clock mounts {targets}")

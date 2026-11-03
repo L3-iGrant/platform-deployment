@@ -690,7 +690,7 @@ renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
 # The WIA pool refill is an actor of the workers, not a NATS event.
 lacks "no WIA pool refill event" "ows.wia_pool.refill_requested" "${shamir[@]}"
-# The scheduler is gone (eudi-wallet P3-D): no object, user or value of it.
+# The scheduler is gone (organisation-wallet-suite removed it): no object, user or value of it.
 lacks "no scheduler" "scheduler" "${shamir[@]}" -f "$examples/networkpolicy.yaml"
 guard "no scheduler value" "Additional property scheduler" "${shamir[@]}" --set organisationWallet.scheduler.replicas=1
 guard "no NATS user of the scheduler" "Additional property walletScheduler" "${shamir[@]}" --set nats.auth.users.walletScheduler.nkey=UTESTWALLETSCHEDULER
