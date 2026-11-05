@@ -226,3 +226,14 @@ From the release with one kind of webhook event for the issuer, the verifier and
 At their start, the API core and the webhook handler delete the consumers of earlier releases: `api-webhook-issue-credential`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`. An event of the earlier release that waits in one of these consumers at that time gives no webhook.
 
 The webhook handler reads each event from the view `wallet_read_v1_webhook_event` of the wallet database, and the API core and the webhook handler are ready only when this view exists. The migration hook of the wallet makes the view, and the read access hook gives the read-only user of the api the right to read it, before the pods change. Upgrade the api and the wallet together, with one `global.imageTag`.
+
+## The queued revocations and the statistics of the issuer
+
+From the release that queues the revocations of the issuer status lists and counts the issuances in counters:
+
+- The migration hook adds the revocation queue (`issuer.status_list_change`), the issuance counters (`issuer.issuance_counter`, `issuer.issuance_counter_change`) and the end of the grant of each open issuance (`expires_at`). It gives the status `expired` to the open issuances whose grant ended, without a webhook event. The grant step gives the rights of the new tables (the data scope `issuer`).
+- The pods of the new release queue each revocation, and only the workers of the new release write the queued revocations into the status lists (see [Workers and clock](workers.md#status-list-writes)). During the rollout, the pods of the earlier release write the lists at once. Step 3 changes the Deployments of the servers and of the workers together: do not scale the worker groups or the clock to 0. Check after step 3: `max(ows_status_list_change_age_seconds)` stays at 60 or below.
+- About 10 minutes after the migration, a worker counts all issuances once for the statistics of the issuer (a durable job of `issuance_counter.reconcile`, queue `maintenance`); the same actor runs each night. Until this first count ends, the statistics count only the issuances that had a step after the upgrade.
+- The scope `issuer` of the audit log gets 8 sub-chains for each organisation (see [Audit log](audit-log.md#settings)). During the rollout, the pods of the earlier release append to one chain: this is safe.
+
+Add the alerts of the issuer to your monitoring (see [Workers and clock](workers.md#probes-and-metrics)).
