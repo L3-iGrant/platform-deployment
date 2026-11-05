@@ -148,9 +148,10 @@ Each day the actor `retention.dispatch` of the workers (queue `maintenance`) sta
 | `organisationWallet.retention.deadLetterDays` | `retention.dead_letter_days` | `30` | The dead letters of the event consumers |
 | `organisationWallet.retention.loginCodeDays` | `retention.login_code_days` | `1` | The login codes of the conformance tests, after their expiry |
 | `organisationWallet.retention.verifierResponseKeyDays` | `retention.verifier_response_key_days` | `1` | The verifier response keys, after the expiry of their verification |
+| `organisationWallet.retention.issuedCredentialTokenDays` | `retention.issued_credential_token_days` | `30` | The tokens of the issued credentials, after the issue. The issued credential stays; its read then gives no token |
 | `organisationWallet.retention.batchSize` | `retention.batch_size` | `500` | The rows of one delete statement (1 to 10000) |
 
-The history of the issuances, verifications, held credentials, presentations and wallet units that is not deleted has no age rule. The first run after an upgrade from a release without the purge deletes the soft-deleted rows that are older than the period.
+The purge also deletes the protocol session of an issuance (the hashes of its codes and tokens) one day after the end of its grant; this rule has no value. The history of the issuances, verifications, held credentials, presentations and wallet units that is not deleted has no age rule. The first run after an upgrade from a release without the purge deletes the soft-deleted rows that are older than the period.
 
 ## Partitions
 

@@ -100,6 +100,7 @@ writes its purge date, the workers purge. */ -}}
     "dead_letter_days" ($r.deadLetterDays | int)
     "login_code_days" ($r.loginCodeDays | int)
     "verifier_response_key_days" ($r.verifierResponseKeyDays | int)
+    "issued_credential_token_days" ($r.issuedCredentialTokenDays | int)
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- $p := $w.walletUnit.playIntegrity -}}

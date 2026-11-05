@@ -684,6 +684,8 @@ renders "audit retention of the individual wallet provider scope" "individual_wa
 renders "audit retention of the business wallet provider scope" "business_wallet_provider: 12" "${shamir[@]}" --set organisationWallet.audit.scopeRetentionYears.business_wallet_provider=12
 guard "retention purge batch size" "organisationWallet.retention.batchSize" "${shamir[@]}" --set organisationWallet.retention.batchSize=20000
 renders "retention purge of a deactivated sandbox" "deactivated_sandbox_days: 14" "${shamir[@]}" --set organisationWallet.retention.deactivatedSandboxDays=14
+renders "retention of the tokens of the issued credentials" "issued_credential_token_days: 90" "${shamir[@]}" --set organisationWallet.retention.issuedCredentialTokenDays=90 --show-only templates/wallet/configmap.yaml
+guard "retention of the tokens of the issued credentials" "organisationWallet.retention.issuedCredentialTokenDays" "${shamir[@]}" --set organisationWallet.retention.issuedCredentialTokenDays=0
 
 renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]}"
 # The longest wallet database name: 43 characters.

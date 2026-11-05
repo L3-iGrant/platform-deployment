@@ -3184,6 +3184,10 @@
               "type": "integer",
               "minimum": 1
             },
+            "issuedCredentialTokenDays": {
+              "type": "integer",
+              "minimum": 1
+            },
             "batchSize": {
               "type": "integer",
               "minimum": 1,
