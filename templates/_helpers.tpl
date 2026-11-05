@@ -700,17 +700,22 @@ purge the stream or the consumers of another service. Call with the values
 key of the user. Output: JSON list.
 */}}
 {{- define "ow.nats.jetStreamRights" -}}
+{{- /* The durables of the api that the contract removed (contract/v2
+streams.json removedConsumers): the API core and the webhook handler both
+delete them at their start, before they ensure OWS_MICROSERVICE. The
+webhook events of the wallet have one consumer, api-webhook-event. */ -}}
+{{- $apiRetired := list "OWS_MICROSERVICE/api-wua-revocation" "OWS_MICROSERVICE/api-webhook-issue-credential" "OWS_MICROSERVICE/api-webhook-issuer-event" "OWS_MICROSERVICE/api-webhook-credential" "OWS_MICROSERVICE/api-webhook-present-proof" "OWS_MICROSERVICE/api-webhook-presentation" -}}
 {{- $spec := dig . dict (dict
   "api" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
     "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted")
-    "retired" (list "OWS_MICROSERVICE/api-wua-revocation")
+    "retired" $apiRetired
     "kv" (list "OWS_ENVELOPE_JTI")
     "extra" (list "$JS.API.INFO"))
   "apiWebhook" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
-    "durables" (list "OWS_MICROSERVICE/api-webhook-issue-credential" "OWS_MICROSERVICE/api-webhook-credential" "OWS_MICROSERVICE/api-webhook-present-proof" "OWS_MICROSERVICE/api-webhook-presentation" "OWS_MICROSERVICE/api-push-requested" "CONSENT_EVENTS/api-consent-webhooks" "CONSENT_EVENTS/api-consent-policy")
-    "retired" (list "OWS_MICROSERVICE/api-wua-revocation"))
+    "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested" "CONSENT_EVENTS/api-consent-webhooks" "CONSENT_EVENTS/api-consent-policy")
+    "retired" $apiRetired)
   "consent" (dict
     "streams" (list "CONSENT_EVENTS")
     "pull" (list "API_EVENTS/consent-api-organisation" "OWS_MICROSERVICE/consent-dda-present-proof" "OWS_MICROSERVICE/consent-dda-presentation"))
@@ -765,8 +770,10 @@ The JetStream consumers of a process (pull, and push with a deliver subject
 from its inbox prefix) get their messages on its inbox, so a process
 subscribes only to its inbox, to the requests that it serves (api.v1.rpc.>,
 ows.cmd.*.>) and to the events of its core subscriptions (start-api: the
-passwordless status waits). The workers publish the events of the
-outbox relay and of their actors.
+passwordless status waits). The wallet roles publish the events of their
+outbox (the outbox edge of the servers, the outbox relay and the actors of
+the workers): the record events, the notifications, the push trigger and
+the webhook events of the issuer, the verifier and the holder.
 The WIA pool refill is an actor of the workers, not a NATS event. The
 clock connects to no NATS. The
 JetStream API rights are the exact subjects
@@ -777,6 +784,7 @@ the stream or the consumers of another service. Output: JSON list.
 {{- define "ow.nats.users" -}}
 {{- $v := .Values -}}
 {{- $users := $v.nats.auth.users -}}
+{{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
@@ -791,13 +799,13 @@ the stream or the consumers of another service. Output: JSON list.
     "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" "consent" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
+    "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
     "subscribe" (list "ows.cmd.*.>" "ows.*.notification" "ows.*.webhook.present_proof"))
   (dict "name" "wallet-service" "key" "walletService" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
+    "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
-    "publish" (concat (list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested") (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
+    "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
     "subscribe" (list)) -}}
 {{- $out := list -}}
 {{- range $user := $table -}}

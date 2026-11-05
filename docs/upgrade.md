@@ -218,3 +218,11 @@ nameOverride: organisationwallet
 Check after step 2: the render shows the old label, for example `helm template ... | grep -m 1 'app.kubernetes.io/name'` shows `app.kubernetes.io/name: organisationwallet`.
 
 A new installation does not set `nameOverride`: its label is `platform`. The label `helm.sh/chart` has the new chart name in all installations (`platform-<version>`); it is not in a selector.
+
+## The webhook events of the wallet
+
+From the release with one kind of webhook event for the issuer, the verifier and the holder, the wallet publishes its webhook events on `ows.*.evt.webhook_event`, and the webhook handler reads them with the durable consumer `api-webhook-event` (see [NATS users](nats-users.md#streams-consumers-and-buckets)). The chart gives the NATS users of the wallet roles, the API core and the webhook handler the new rights. With an external NATS, before step 3, give your server the users of the new release (the render of step 2 has them in the ConfigMap `<release>-nats-authorization`): without them, the API core and the webhook handler do not start, and the wallet cannot publish its webhook events.
+
+At their start, the API core and the webhook handler delete the consumers of earlier releases: `api-webhook-issue-credential`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`. An event of the earlier release that waits in one of these consumers at that time gives no webhook.
+
+The webhook handler reads each event from the view `wallet_read_v1_webhook_event` of the wallet database, and the API core and the webhook handler are ready only when this view exists. The migration hook of the wallet makes the view, and the read access hook gives the read-only user of the api the right to read it, before the pods change. Upgrade the api and the wallet together, with one `global.imageTag`.
