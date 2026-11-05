@@ -197,6 +197,9 @@ processes of a pod share their heartbeat and metric files in
 state_directory (an emptyDir). */ -}}
 {{- if eq $role "worker" -}}
 {{- $_ := set $config "worker" (dict "health_port" (include "ow.wallet.workerHealthPort" $root | int) "state_directory" (include "ow.wallet.workerStateDir" $root)) -}}
+{{- /* The writes of the issuer status lists: only the actor
+status_list.write_changes of the workers reads the interval. */ -}}
+{{- $_ := set $config "status_list" (dict "write_interval_seconds" ($w.statusList.writeIntervalSeconds | int)) -}}
 {{- else if eq $role "clock" -}}
 {{- $_ := set $config "clock" (dict "health_port" (include "ow.wallet.clockHealthPort" $root | int)) -}}
 {{- end -}}

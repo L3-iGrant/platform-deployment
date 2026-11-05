@@ -1619,6 +1619,14 @@ organisationWallet:
     verifierResponseKeyDays: 1
     # -- The rows of one delete statement (1 to 10000).
     batchSize: 500
+  # -- The writes of the issuer status lists (status_list.*, only in the
+  # files of the workers; docs/workers.md). A revocation is final at once in
+  # the issuance and in its event; the actor status_list.write_changes
+  # (queue realtime, every 5 seconds) writes the queued revocations of each
+  # list at most once in writeIntervalSeconds (0 to 50; 0: at each run). A
+  # revocation is in the published list within 60 seconds.
+  statusList:
+    writeIntervalSeconds: 30
   trustList:
     # -- trust_list.lookup_url: the trust list lookup service.
     lookupUrl: https://trustlist.nxd.foundation/trust-list/lookup

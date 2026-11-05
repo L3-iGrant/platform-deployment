@@ -774,6 +774,12 @@ lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]
 # only in the file of the config role.
 renders "command reply life of the config role" "command_reply_seconds: 900" "${shamir[@]}" --set organisationWallet.nats.commandReplySeconds=900
 guard "command reply life" "organisationWallet.nats.commandReplySeconds" "${shamir[@]}" --set organisationWallet.nats.commandReplySeconds=119
+# The interval of the writes of the issuer status lists
+# (organisationWallet.statusList.writeIntervalSeconds): only in the files of
+# the workers (each file is checked in each render).
+renders "status list write interval of the workers" "write_interval_seconds: 10" "${shamir[@]}" --set organisationWallet.statusList.writeIntervalSeconds=10 --show-only templates/wallet/configmap.yaml
+renders "status list write interval 0" "write_interval_seconds: 0" "${shamir[@]}" --set organisationWallet.statusList.writeIntervalSeconds=0 --show-only templates/wallet/configmap.yaml
+guard "status list write interval" "organisationWallet.statusList.writeIntervalSeconds" "${shamir[@]}" --set organisationWallet.statusList.writeIntervalSeconds=51
 # The nonce limit of the anonymous nonce routes (server.nonce_requests_per_minute).
 renders "nonce limit of the server roles" "nonce_requests_per_minute: 300" "${shamir[@]}" --show-only templates/wallet/configmap.yaml
 renders "nonce limit value" "nonce_requests_per_minute: 1200" "${shamir[@]}" --set organisationWallet.server.nonceRequestsPerMinute=1200 --show-only templates/wallet/configmap.yaml

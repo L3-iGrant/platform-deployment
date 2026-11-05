@@ -3191,6 +3191,17 @@
             }
           }
         },
+        "statusList": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "writeIntervalSeconds": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50
+            }
+          }
+        },
         "trustList": {
           "type": "object",
           "additionalProperties": false,
