@@ -75,6 +75,13 @@ REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
 REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
 
+# The NATS durables of the api that the contract removed (contract/v2
+# streams.json removedConsumers): the API core and the webhook handler can
+# only read and delete them.
+API_RETIRED_DURABLES = ["api-wua-revocation", "api-webhook-issue-credential", "api-webhook-issuer-event", "api-webhook-credential",
+                        "api-webhook-present-proof", "api-webhook-presentation"]
+WALLET_NATS_USERS = ["wallet-config", "wallet-service", "wallet-worker"]
+
 # Words that must not be in a render (case-insensitive).
 FORBIDDEN = [
     (r"hashicorp", "the name HashiCorp"),
@@ -90,6 +97,20 @@ FORBIDDEN = [
     ("\u2014", "an em dash"),
     ("\u2013", "an en dash"),
 ]
+
+
+def nats_rights(nats_conf: str) -> dict:
+    """The publish and subscribe subjects of each user of nats.conf, by the name in its comment."""
+    rights, name = {}, None
+    for line in nats_conf.splitlines():
+        match = re.match(r"^\s*# (\S+)$", line)
+        if match:
+            name = match.group(1)
+        elif name and "nkey:" in line:
+            lists = {kind: re.search(kind + r": \{ allow: \[(.*?)\] \}", line) for kind in ("publish", "subscribe")}
+            rights[name] = {kind: set(re.findall(r'"([^"]*)"', found.group(1))) if found else set() for kind, found in lists.items()}
+            name = None
+    return rights
 
 
 def main() -> int:
@@ -714,6 +735,26 @@ def main() -> int:
     # The WIA pool refill is an actor of the workers (P3-B): no NATS user
     # publishes or subscribes to ows.wia_pool.refill_requested.
     check("ows.wia_pool.refill_requested" not in nats_conf, "a NATS user has the removed WIA pool refill event")
+    # The webhook events of the wallet (contract/v2 E9): each wallet role
+    # publishes them, the webhook handler has their durable api-webhook-event,
+    # and the API core and the webhook handler can only read and delete the
+    # retired durables of the api (they delete them at their start).
+    rights = nats_rights(nats_conf)
+    for user in WALLET_NATS_USERS:
+        check("ows.*.evt.webhook_event" in rights.get(user, {}).get("publish", set()),
+              f"the NATS user {user} cannot publish the webhook events ows.*.evt.webhook_event")
+    durable = "OWS_MICROSERVICE.api-webhook-event"
+    webhook_publish = rights.get("api-webhook", {}).get("publish", set())
+    check({f"$JS.API.CONSUMER.DURABLE.CREATE.{durable}", f"$JS.API.CONSUMER.INFO.{durable}", f"$JS.ACK.{durable}.>"} <= webhook_publish,
+          "the NATS user api-webhook has not the rights of the durable api-webhook-event")
+    for user in ("api", "api-webhook"):
+        publish = rights.get(user, {}).get("publish", set())
+        for retired in API_RETIRED_DURABLES:
+            subject = f"OWS_MICROSERVICE.{retired}"
+            check({f"$JS.API.CONSUMER.INFO.{subject}", f"$JS.API.CONSUMER.DELETE.{subject}"} <= publish,
+                  f"the NATS user {user} cannot delete the retired durable {retired}")
+            check(not {f"$JS.API.CONSUMER.DURABLE.CREATE.{subject}", f"$JS.ACK.{subject}.>"} & publish,
+                  f"the NATS user {user} can use the retired durable {retired}")
 
     # --- Valkey ---------------------------------------------------------------
     # The bundled Valkey: normal resources, no hook (the processes need it only
