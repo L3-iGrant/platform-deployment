@@ -225,6 +225,8 @@ From the release with one kind of webhook event for the issuer, the verifier and
 
 At their start, the API core and the webhook handler delete the consumers of earlier releases: `api-webhook-issue-credential`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`. An event of the earlier release that waits in one of these consumers at that time gives no webhook.
 
+The webhook handler sends the command `ows.cmd.*.issuance.revoke` to revoke the earlier Authenticator credential of an admin. The command of the earlier releases, `ows.cmd.*.credential_history.set_revocation_status`, is not in the wallet of this release, and the NATS user `apiWebhook` gets only the new subject. With an external NATS, give your server this user of the new release before step 3, with the other users: without it, NATS refuses the revocation, and the earlier Authenticator credential stays valid.
+
 The webhook handler reads each event from the view `wallet_read_v1_webhook_event` of the wallet database, and the API core and the webhook handler are ready only when this view exists. The migration hook of the wallet makes the view, and the read access hook gives the read-only user of the api the right to read it, before the pods change. Upgrade the api and the wallet together, with one `global.imageTag`.
 
 ## The queued revocations and the statistics of the issuer

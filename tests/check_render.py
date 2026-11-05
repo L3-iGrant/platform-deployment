@@ -751,6 +751,10 @@ def main() -> int:
     webhook_publish = rights.get("api-webhook", {}).get("publish", set())
     check({f"$JS.API.CONSUMER.DURABLE.CREATE.{durable}", f"$JS.API.CONSUMER.INFO.{durable}", f"$JS.ACK.{durable}.>"} <= webhook_publish,
           "the NATS user api-webhook has not the rights of the durable api-webhook-event")
+    # The webhook handler sends one command of the wallet: the revocation of
+    # an issuance (the earlier Authenticator credential of an admin).
+    commands = sorted(subject for subject in webhook_publish if subject.startswith("ows.cmd."))
+    check(commands == ["ows.cmd.*.issuance.revoke"], f"the NATS user api-webhook publishes the wallet commands {commands}")
     for user in ("api", "api-webhook"):
         publish = rights.get(user, {}).get("publish", set())
         for retired in API_RETIRED_DURABLES:

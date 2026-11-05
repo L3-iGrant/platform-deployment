@@ -765,7 +765,9 @@ account, with the subjects of the process. Each item: name, values key,
 nkey, seed {secret, key}, inbox prefix, publish, subscribe, allowResponses,
 enabled (the process is in the chart). The services publish their events
 and requests by name (the stream and subject contract of the services); the
-wallet commands stay ows.cmd.>.
+wallet commands of the API core stay ows.cmd.>. The webhook handler sends
+one command of the wallet, ows.cmd.*.issuance.revoke: it revokes the
+Authenticator credential of an admin when the admin gets a new one.
 The JetStream consumers of a process (pull, and push with a deliver subject
 from its inbox prefix) get their messages on its inbox, so a process
 subscribes only to its inbox, to the requests that it serves (api.v1.rpc.>,
@@ -797,7 +799,7 @@ the stream or the consumers of another service. Output: JSON list.
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))
   (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "enabled" $v.api.enabled "allowResponses" false
-    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.credential_history.set_revocation_status") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
+    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "consent" "key" "consent" "inbox" "_INBOX_consent" "enabled" $v.consent.enabled "allowResponses" false
     "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" "consent" | fromJsonArray))
