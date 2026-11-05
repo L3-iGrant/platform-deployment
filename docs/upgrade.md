@@ -219,9 +219,9 @@ Check after step 2: the render shows the old label, for example `helm template .
 
 A new installation does not set `nameOverride`: its label is `platform`. The label `helm.sh/chart` has the new chart name in all installations (`platform-<version>`); it is not in a selector.
 
-## The webhook events of the wallet
+## The webhook events and the cache clears of the wallet
 
-From the release with one kind of webhook event for the issuer, the verifier and the holder, the wallet publishes its webhook events on `ows.*.evt.webhook_event`, and the webhook handler reads them with the durable consumer `api-webhook-event` (see [NATS users](nats-users.md#streams-consumers-and-buckets)). The chart gives the NATS users of the wallet roles, the API core and the webhook handler the new rights. With an external NATS, before step 3, give your server the users of the new release (the render of step 2 has them in the ConfigMap `<release>-nats-authorization`): without them, the API core and the webhook handler do not start, and the wallet cannot publish its webhook events.
+From the release with one kind of webhook event for the issuer, the verifier and the holder, the wallet publishes its webhook events on `ows.*.evt.webhook_event`, and the webhook handler reads them with the durable consumer `api-webhook-event` (see [NATS users](nats-users.md#streams-consumers-and-buckets)). The service and config pods of the wallet also send and get the clears of their process caches on `ows.cache.cleared` (core NATS). The chart gives the NATS users of the wallet roles, the API core and the webhook handler the new rights. With an external NATS, before step 3, give your server the users of the new release (the render of step 2 has them in the ConfigMap `<release>-nats-authorization`): without them, the API core and the webhook handler do not start, the wallet cannot publish its webhook events, and the service and config pods of the wallet are not ready.
 
 At their start, the API core and the webhook handler delete the consumers of earlier releases: `api-webhook-issue-credential`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`. An event of the earlier release that waits in one of these consumers at that time gives no webhook.
 
