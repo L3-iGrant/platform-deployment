@@ -755,6 +755,13 @@ def main() -> int:
                   f"the NATS user {user} cannot delete the retired durable {retired}")
             check(not {f"$JS.API.CONSUMER.DURABLE.CREATE.{subject}", f"$JS.ACK.{subject}.>"} & publish,
                   f"the NATS user {user} can use the retired durable {retired}")
+    # The clears of the process caches (core NATS ows.cache.cleared): the
+    # service and config pods send and get them, the workers do not.
+    for user in WALLET_NATS_USERS:
+        server = user != "wallet-worker"
+        for kind in ("publish", "subscribe"):
+            check(("ows.cache.cleared" in rights.get(user, {}).get(kind, set())) == server,
+                  f"the NATS user {user} {'cannot' if server else 'can'} {kind} ows.cache.cleared")
 
     # --- Valkey ---------------------------------------------------------------
     # The bundled Valkey: normal resources, no hook (the processes need it only

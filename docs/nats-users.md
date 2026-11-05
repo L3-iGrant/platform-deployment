@@ -47,7 +47,7 @@ The durable consumers. The replicas of a process share each consumer (the delive
 
 The services delete the durable consumers of their earlier releases at their start, before they update the stream: the API core and the webhook handler delete `api-wua-revocation`, `api-webhook-issue-credential`, `api-webhook-issuer-event`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`; the service and config roles of the wallet delete `credential-definition-worker` and `presentation-definition-worker`. The NATS users of these processes can only read and delete these consumers. Without this right, the API core and the webhook handler do not start.
 
-Subscriptions without a JetStream consumer: the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply); the server-sent event streams of each config pod (`ows.*.notification`, `ows.*.webhook.present_proof`: each config pod gets each event); the passwordless waits of the API core.
+Subscriptions without a JetStream consumer: the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply); the server-sent event streams of each config pod (`ows.*.notification`, `ows.*.webhook.present_proof`: each config pod gets each event); the clears of the process caches of the wallet (`ows.cache.cleared`: the service and config pods send them, and each of these pods gets each clear; a pod that cannot subscribe to it is not ready); the passwordless waits of the API core.
 
 | Key-value bucket | Made by | Holds |
 | --- | --- | --- |
