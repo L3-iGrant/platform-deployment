@@ -4,7 +4,7 @@ This page describes the audit log of the organisation wallet: its settings, the 
 
 [Back to the contents](../README.md#contents)
 
-The wallet records the actions of the platform in an audit log in its database: for example a configuration change, a key retirement, an issued credential or a refused request. Each data scope with an audit log (`platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `individual_wallet_provider`, `business_wallet_provider`; see [Database](database.md#data-scopes-of-the-wallet)) has its own audit tables, with one hash chain for each organisation. The events of a scope are in monthly partitions.
+The wallet records the actions of the platform in an audit log in its database: for example a configuration change, a key retirement, an issued credential or a refused request. Each data scope with an audit log (`platform`, `kms`, `trust`, `issuer`, `authorisation_server`, `relying_party`, `business_wallet`, `individual_wallet_provider`, `business_wallet_provider`; see [Database](database.md#data-scopes-of-the-wallet)) has its own audit tables, with a hash chain for each organisation (the scope `issuer`: 8 sub-chains for each organisation, see [Settings](#settings)). The events of a scope are in monthly partitions.
 
 | Part | Where | Written by |
 | --- | --- | --- |
@@ -28,6 +28,8 @@ The workers make the anchor keys at their start: Transit keys of OpenBao, not ex
 | `organisationWallet.audit.bucket.ca.existingSecret`, `.key` | Type `s3`: `audit.bucket.ca_file`: the Secret with a PEM CA bundle of the TLS certificate of the store. Empty: the CA bundle of the client | `""`, `ca.crt` |
 | `organisationWallet.audit.bucket.project` | Type `gcs`: `audit.bucket.project`: the project of the bucket. Empty: the project of the credentials | `""` |
 | `organisationWallet.audit.bucket.credentials.existingSecret`, `.key` | Type `gcs`: `audit.bucket.credentials_file`: the Secret with the service account JSON of the bucket. Empty: the Google default credentials | `""`, `service-account.json` |
+
+Each step of an issuance writes an audit event in the scope `issuer`. So that the issuances of one organisation do not wait for the head of one chain, the scope `issuer` has 8 sub-chains for each organisation, and each other scope has one: the default of the wallet for `audit.scope_sub_chains`, the same in each process without a value of the chart. `audit verify` checks each sub-chain. An installation that keeps one chain for the issuer sets the value in the files of all wallet roles: `organisationWallet.extraConfig: {audit: {scope_sub_chains: {issuer: 1}}}`. All processes must have the same value.
 
 The chart writes the retention to the configuration of each wallet role (not of the clock) and of the migration hook, and the bucket only to the configuration of the worker groups, the only pods that mount the credentials of the bucket. The values of one type do not mix with the values of the other type: the render stops. Seven years is the period of EN 319 411-1 for the records of the key life cycle. Set a longer period when your practice statement or your certification asks for one.
 

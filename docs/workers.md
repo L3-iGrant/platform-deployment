@@ -17,11 +17,11 @@ The wallet has five queues:
 
 | Queue | Actors |
 | --- | --- |
-| `realtime` | the outbox relay (also the durable jobs), the audit anchors, the credential offers, the QES PDF signatures, the Android attestation status list |
+| `realtime` | the outbox relay (also the durable jobs), the audit anchors, the credential offers, the QES PDF signatures, the Android attestation status list, the writes of the issuer status lists, the issuance counters |
 | `attestation` | the WIA pools of the organisation wallet units |
 | `status` | the status refresh of the held credentials |
 | `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer they end at once) |
-| `maintenance` | the retention purge, the monthly exports of the audit log, the usage report, the deactivation of an organisation |
+| `maintenance` | the retention purge, the monthly exports of the audit log, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters |
 
 A worker group (`organisationWallet.workers.groups`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
 
@@ -59,7 +59,11 @@ organisationWallet:
 
 A revocation of an issued credential is final at once in its issuance and in its webhook event. The transaction of the revocation adds it to a queue in the database, and the workers write it into the published status list of the issuer: the actor `status_list.write_changes` (queue `realtime`, every 5 seconds) writes the queued revocations of each list at most once in `organisationWallet.statusList.writeIntervalSeconds` (default 30, 0 to 50; 0: at each run). A revocation is in the published list within 60 seconds. Only the files of the workers have the value (`status_list.write_interval_seconds`).
 
+Without a worker group that runs the queue `realtime`, or without the clock, a revocation is final in the issuance and in its event, but the published list does not change. The same queue keeps the statistics of the issuer: the actor `issuance_counter.apply_changes` adds the count changes of the issuances to the counters every 5 seconds. The queue `maintenance` gives the status `expired` to the open issuances whose grant ended (`issuance.expiry_dispatch`, each minute) and counts all issuances again each night (`issuance_counter.reconcile`, 03:10 UTC). See the alerts in [Probes and metrics](#probes-and-metrics).
+
 ## Stops and rollouts
+
+An upgrade changes the Deployments of the servers and of the workers together. The service and config pods of a new release can depend on actors that only the workers of the same release have (for example, they queue the revocations of the issuer status lists, and only the new workers write them). Do not scale the worker groups or the clock to 0 during an upgrade, and do not hold back the workers of a new release.
 
 At SIGTERM, a worker stops the consumers of its queues, then waits at most `shutdownTimeoutSeconds` for its running actors. Each actor has a time limit. Set `shutdownTimeoutSeconds` to at least the longest time limit of the actors of the queues of the group: 600 seconds for the queues of `main`, and 4 hours for `maintenance` (the export of one month of one scope of the audit log). An actor that does not end in that time stops, and runs again from its message: each actor is idempotent.
 
@@ -96,6 +100,34 @@ The service and config pods have the port `metrics` (9190) for the metrics of th
 | `ows_clock_messages_sent_total`, `ows_clock_send_failures_total` | actor | clock |
 
 Each worker pod reads the queue metrics of all queues from Valkey: use `max by (queue)` for them.
+
+Each worker pod also reads gauges from the database at each scrape, so each pod gives the same values: use `max` for them. The chart makes no alert rules: the docs of the organisation-wallet-suite repository list the metrics and their alerts. The issuer needs these alerts:
+
+| Metric | Alert | Meaning |
+| --- | --- | --- |
+| `ows_status_list_change_age_seconds` | above 60 | The age of the oldest queued revocation of an issuer status list (0 without one). A revocation is in the published list within 60 seconds: check the worker group of the queue `realtime` and the clock. |
+| `ows_issuance_counter_change_age_seconds` | above 60 | The age of the oldest count change of the issuances that waits for the actor `issuance_counter.apply_changes` (0 without one). The statistics of the issuer are late. |
+| `ows_worker_schedule_overdue_rows{schedule="issuance.expiry"}` | above 0 | The open issuances whose grant ended more than two runs of `issuance.expiry_dispatch` ago: the expiry is late. Check the worker group of the queue `maintenance` and the clock. |
+
+For example, as a PrometheusRule of the Prometheus Operator:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ows-wallet-issuer
+  namespace: ows
+spec:
+  groups:
+    - name: ows-wallet-issuer
+      rules:
+        - alert: IssuerStatusListWritesLate
+          expr: max(ows_status_list_change_age_seconds) > 60
+        - alert: IssuanceCountersLate
+          expr: max(ows_issuance_counter_change_age_seconds) > 60
+        - alert: IssuanceExpiryLate
+          expr: max(ows_worker_schedule_overdue_rows{schedule="issuance.expiry"}) > 0
+```
 
 ## Users and files
 
