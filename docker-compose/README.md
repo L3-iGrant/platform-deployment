@@ -394,7 +394,8 @@ order.
 
 The worker also purges the wallet data every day: soft-deleted history
 rows 30 days after their delete, a deleted organisation 30 days and a
-deleted sandbox 7 days after its deactivation, dead letters after 30 days
+deleted sandbox 7 days after its deactivation, dead letters after 30 days,
+the tokens of the issued credentials 30 days after the issue
 (the `retention` settings of the wallet, with their defaults).
 
 ## Worker and clock

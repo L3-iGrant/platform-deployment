@@ -40,7 +40,8 @@ DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnec
 # the migration hook, no audit bucket.
 AUDIT = {"retention_years": 7}
 RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deactivated_sandbox_days": 7,
-             "dead_letter_days": 30, "login_code_days": 1, "verifier_response_key_days": 1, "batch_size": 500}
+             "dead_letter_days": 30, "login_code_days": 1, "verifier_response_key_days": 1,
+             "issued_credential_token_days": 30, "batch_size": 500}
 # Valkey: the ACL user of each process (the values key and the user name),
 # the settings of the data servers (WORKERS-AND-REDIS-PLAN.md section 2.7)
 # and the rights of the wallet users (the rights of the wallet tests,

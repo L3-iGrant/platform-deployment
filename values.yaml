@@ -1617,6 +1617,11 @@ organisationWallet:
     loginCodeDays: 1
     # -- The verifier response keys, after the expiry of their verification.
     verifierResponseKeyDays: 1
+    # -- The tokens of the issued credentials, after the issue
+    # (retention.issued_credential_token_days). The issued credential stays;
+    # its read then gives no token. The copy of the issuances of earlier
+    # releases copies only the tokens that are younger.
+    issuedCredentialTokenDays: 30
     # -- The rows of one delete statement (1 to 10000).
     batchSize: 500
   # -- The writes of the issuer status lists (status_list.*, only in the
