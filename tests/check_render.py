@@ -209,6 +209,10 @@ def main() -> int:
         check("storage" not in wallet, f"wallet {role}.yaml has a storage section (the PDF files are in the database)")
         check((wallet.get("nats") or {}).get("command_reply_seconds") == (300 if file == "config.yaml" else None),
               f"wallet {file} has nats.command_reply_seconds {(wallet.get('nats') or {}).get('command_reply_seconds')!r}")
+        # The interval of the writes of the issuer status lists: only the
+        # workers write the lists (the actor status_list.write_changes).
+        check(wallet.get("status_list") == ({"write_interval_seconds": 30} if file in WORKER_FILES else None),
+              f"wallet {file} has status_list {wallet.get('status_list')!r}")
         if file == "config.yaml":
             for owner in ("api", "consent"):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])

@@ -55,6 +55,10 @@ organisationWallet:
          shutdownTimeoutSeconds: 14400, terminationGracePeriodSeconds: 14430}
 ```
 
+## Status list writes
+
+A revocation of an issued credential is final at once in its issuance and in its webhook event. The transaction of the revocation adds it to a queue in the database, and the workers write it into the published status list of the issuer: the actor `status_list.write_changes` (queue `realtime`, every 5 seconds) writes the queued revocations of each list at most once in `organisationWallet.statusList.writeIntervalSeconds` (default 30, 0 to 50; 0: at each run). A revocation is in the published list within 60 seconds. Only the files of the workers have the value (`status_list.write_interval_seconds`).
+
 ## Stops and rollouts
 
 At SIGTERM, a worker stops the consumers of its queues, then waits at most `shutdownTimeoutSeconds` for its running actors. Each actor has a time limit. Set `shutdownTimeoutSeconds` to at least the longest time limit of the actors of the queues of the group: 600 seconds for the queues of `main`, and 4 hours for `maintenance` (the export of one month of one scope of the audit log). An actor that does not end in that time stops, and runs again from its message: each actor is idempotent.

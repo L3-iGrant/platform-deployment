@@ -109,6 +109,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `organisationWallet.nats.commandReplySeconds` | How long the config role keeps the reply of a NATS command of the api for a retry (120 to 3600; the same for all config pods) | `300` |
 | `organisationWallet.{service,config}.replicas` | Replicas of the service and config roles | `1` |
 | `organisationWallet.workers.groups` | The worker groups: name, queues, replicas, processes, threads, `shutdownTimeoutSeconds`, `terminationGracePeriodSeconds`, resources (see [Workers and clock](workers.md)) | `main` (`realtime`, `attestation`, `status`, `kms`), `maintenance` |
+| `organisationWallet.statusList.writeIntervalSeconds` | The workers write the queued revocations of each issuer status list at most once in this time (0 to 50; 0: at each run of the actor, every 5 seconds). A revocation is in the published list within 60 seconds (see [Workers and clock](workers.md#status-list-writes)) | `30` |
 | `organisationWallet.clock.replicas`, `.resources` | The clock (only the leader sends) | `2` |
 | `organisationWallet.serviceMonitor.enabled`, `.interval`, `.labels` | A ServiceMonitor of `/metrics` of the servers (port 9190), the workers and the clock | off, `15s` |
 | `organisationWallet.keyStores.types`, `.providers.*`, `.allowPrivateAddresses` | The key store types and providers that admins may add (see [Key stores](key-stores.md)) | `[vault, csc, gcp-kms, aws-kms, azure-key-vault]` |
