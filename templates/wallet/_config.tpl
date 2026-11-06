@@ -55,10 +55,15 @@ OpenBao. */ -}}
     "allow_private_addresses" $w.keyStores.allowPrivateAddresses
     "test_ca" (dict "enabled" $w.keyStores.testCa.enabled "leaf_validity_days" ($w.keyStores.testCa.leafValidityDays | int)) -}}
 {{- /* An empty eu_lotl_url switches the EU trusted list check off (null). */ -}}
-{{- $trustList := dict "lookup_url" $w.trustList.lookupUrl "eu_lotl_url" ($w.trustList.euLotlUrl | default nil) -}}
-{{- if hasKey $files "trust-list-lookup-token" -}}
-{{- $_ := set $trustList "lookup_token_file" (printf "%s/trust-list-lookup-token" $dir) -}}
-{{- end -}}
+{{- $trustList := dict "eu_lotl_url" ($w.trustList.euLotlUrl | default nil) -}}
+{{- /* The refresh of the list trust sources of the organisations. */ -}}
+{{- $ts := $w.trustSources -}}
+{{- $trustSources := dict
+    "refresh_max_interval_seconds" ($ts.refreshMaxIntervalSeconds | int)
+    "refresh_min_interval_seconds" ($ts.refreshMinIntervalSeconds | int)
+    "retry_interval_seconds" ($ts.retryIntervalSeconds | int)
+    "stale_grace_seconds" ($ts.staleGraceSeconds | int)
+    "manual_refresh_min_interval_seconds" ($ts.manualRefreshMinIntervalSeconds | int) -}}
 {{- /* The audit log (audit.*): the retention in the file of every role,
 so that each process and the migration hook have the same values; the
 bucket of the anchor copies and of the monthly exports only in the
@@ -154,6 +159,7 @@ trustAnchors), in the roles that mount them; else the roots of the image. */ -}}
     "clock_skew_seconds" ($w.serviceEnvelope.clockSkewSeconds | int))
   "kms" $kms
   "trust_list" $trustList
+  "trust_sources" $trustSources
   "wallet_unit" $walletUnit
   "audit" $audit
   "retention" $retention -}}
@@ -184,11 +190,11 @@ processes with sessions connect to it; the clock has none. */ -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
 {{- /* The clock reads only the database and Valkey (load_clock_settings of
-the wallet): no domain, NATS, KMS, service envelope, trust list, wallet
-unit, audit log or retention settings; it mounts no NATS seed and no
-OpenBao password. */ -}}
+the wallet): no domain, NATS, KMS, service envelope, trust list, trust
+sources, wallet unit, audit log or retention settings; it mounts no NATS
+seed and no OpenBao password. */ -}}
 {{- if eq $role "clock" -}}
-{{- range $key := list "domain" "nats" "kms" "service_envelope" "trust_list" "wallet_unit" "audit" "retention" -}}
+{{- range $key := list "domain" "nats" "kms" "service_envelope" "trust_list" "trust_sources" "wallet_unit" "audit" "retention" -}}
 {{- $_ := unset $config $key -}}
 {{- end -}}
 {{- end -}}

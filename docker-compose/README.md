@@ -62,8 +62,9 @@ For HSM support and larger installations, see the chart pages [Connect your on-p
   is yours: this folder does not install one. Its settings are in
   [Reverse proxy](#reverse-proxy).
 - Outbound HTTPS from the host to the internet: the image registries, the
-  trust list service of the wallet (`https://trustlist.nxd.foundation`)
-  and the services of other issuers, verifiers and wallets.
+  EU list of trusted lists (`https://ec.europa.eu/tools/lotl/eu-lotl.xml`),
+  the trusted lists that the organisations add as trust sources, and the
+  services of other issuers, verifiers and wallets.
 - Optional: your SMTP server, for the e-mails of the api (invitations of
   new admins, password reset).
 

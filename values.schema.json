@@ -3210,24 +3210,35 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "lookupUrl": {
-              "type": "string"
-            },
-            "lookupToken": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
             "euLotlUrl": {
               "type": "string",
               "pattern": "^(https://.+)?$"
+            }
+          }
+        },
+        "trustSources": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "refreshMaxIntervalSeconds": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "refreshMinIntervalSeconds": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "retryIntervalSeconds": {
+              "type": "integer",
+              "minimum": 60
+            },
+            "staleGraceSeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "manualRefreshMinIntervalSeconds": {
+              "type": "integer",
+              "minimum": 0
             }
           }
         },

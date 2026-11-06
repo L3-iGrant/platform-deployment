@@ -463,9 +463,6 @@ WIA requests of the wallet units. */ -}}
 {{- $_ := set $files "play-integrity-decryption-key" (dict "secret" $p.existingSecret "key" $p.decryptionKeyKey) -}}
 {{- $_ := set $files "play-integrity-verification-key" (dict "secret" $p.existingSecret "key" $p.verificationKeyKey) -}}
 {{- end -}}
-{{- with $w.trustList.lookupToken.existingSecret -}}
-{{- $_ := set $files "trust-list-lookup-token" (dict "secret" . "key" $w.trustList.lookupToken.key) -}}
-{{- end -}}
 {{- /* The workers write the copies of the audit anchors and the monthly
 exports to the audit bucket (the actors audit.anchor and audit.export):
 with the access key of the wallet (type s3) or with its service account
