@@ -87,6 +87,14 @@ The admin user needs `CREATEROLE` and `CREATEDB`, and must be able to `SET ROLE`
 
 Set the log parameters of [Logs of the database server](#logs-of-the-database-server) on your server too. The chart does not change the parameters of an external server.
 
+The migration hook of the wallet adds the extension `pg_trgm` of PostgreSQL (the search of the issuances by a part of the holder name) with `CREATE EXTENSION IF NOT EXISTS pg_trgm`, as the owner role `<prefix>_owner`: the roles hook gives this role `CREATE` on the wallet database and on the schema `public`. `pg_trgm` is a trusted extension (PostgreSQL 13 and later), so the role needs no superuser right. Your server must have the extension (the contrib modules of PostgreSQL; the image `postgres` has them) and must allow it: on a managed service, read its list of the allowed extensions. When only the admin user of your service can create an extension, create it once before the upgrade, as that user, in the wallet database:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public;
+```
+
+Without the extension, the migration hook of the wallet stops with exit code 1, and the pods of the earlier release stay.
+
 ## Logs of the database server
 
 The bundled server writes these events to its container log (`kubectl -n <namespace> logs <release>-postgres-0`, or the log system of your cluster):
