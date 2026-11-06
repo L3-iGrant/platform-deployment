@@ -21,7 +21,7 @@ The wallet has five queues:
 | `attestation` | the WIA pools of the organisation wallet units |
 | `status` | the status refresh of the held credentials |
 | `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer they end at once) |
-| `maintenance` | the retention purge, the monthly exports of the audit log, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters |
+| `maintenance` | the retention purge, the monthly exports of the audit log, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters, the copy of the issuances of earlier releases |
 
 A worker group (`organisationWallet.workers.groups`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
 
@@ -60,6 +60,40 @@ organisationWallet:
 A revocation of an issued credential is final at once in its issuance and in its webhook event. The transaction of the revocation adds it to a queue in the database, and the workers write it into the published status list of the issuer: the actor `status_list.write_changes` (queue `realtime`, every 5 seconds) writes the queued revocations of each list at most once in `organisationWallet.statusList.writeIntervalSeconds` (default 30, 0 to 50; 0: at each run). A revocation is in the published list within 60 seconds. Only the files of the workers have the value (`status_list.write_interval_seconds`).
 
 Without a worker group that runs the queue `realtime`, or without the clock, a revocation is final in the issuance and in its event, but the published list does not change. The same queue keeps the statistics of the issuer: the actor `issuance_counter.apply_changes` adds the count changes of the issuances to the counters every 5 seconds. The queue `maintenance` gives the status `expired` to the open issuances whose grant ended (`issuance.expiry_dispatch`, each minute) and counts all issuances again each night (`issuance_counter.reconcile`, 03:10 UTC). See the alerts in [Probes and metrics](#probes-and-metrics).
+
+## The copy of the issuances
+
+The wallet keeps each issuance in tables by its life cycle: the issuance, its claims, its protocol session, its evidence, each issued credential and its token. The issuances of earlier releases are rows of `issuer.credential_issuance`. Two actors of the queue `maintenance` copy these rows into the tables of the issuance:
+
+| Actor | When | Work |
+| --- | --- | --- |
+| `issuance.backfill` | A durable job of the upgrade, about 10 minutes after the migration (only when `issuer.credential_issuance` has rows), then one job for each next run while rows are left | Copies the rows in the order of their ids: 1,000 rows in each transaction, 20 transactions in each run. It records its position in `platform.data_migration` (`issuance backfill`). At the end it sends the reconcile. |
+| `issuance.backfill_reconcile` | Each day at 04:10 UTC, and at the end of the backfill | Copies the rows that have no copy, and the copies that wait for a change that a pod of an earlier release made. Then it writes the counts to the progress row and to the log. |
+
+The two actors hold the lock `issuance:backfill`: only one run at a time. A copy of a row that has a copy and did not change writes nothing. A server pod that reads an issuance that the backfill did not copy yet copies it at once, so a wallet that was in an issuance at the upgrade can complete it.
+
+Run the command `issuance-backfill` in a worker pod, with the configuration of the worker:
+
+```bash
+kubectl -n ows exec deploy/ows-wallet-worker-maintenance -- /app/.venv/bin/issuance-backfill status
+```
+
+`status` prints JSON with two parts:
+
+- `progress`: the progress row (`applied`, `outcome`, the start and end times, and in `details` the position and the counts of the last reconcile). `null`: the installation had no issuance of an earlier release, and there is nothing to copy.
+- `counts`: the counts at this time. `source`: the rows of `issuer.credential_issuance`; `copied` and `missing`: the rows with and without a copy; `issuances`: the issuances; `changed`: the copies that wait for a copy again; `revoked` and `revokedCopies`: the revoked rows and their revoked copies.
+
+The copy is complete when `progress.applied` is `true` and `counts.missing` and `counts.changed` are `0`.
+
+`issuance-backfill start` adds a durable job of the backfill, for example when the job stopped after its retries: the job continues after the recorded position. `issuance-backfill start --from-start` reads every row again from the first one: use it when `counts.missing` stays above 0 after a reconcile. With `--operator <id>`, the audit log names you by a pseudonymous id (never an e-mail address) in place of the command. Exit code: 0 done, 1 a database error, 2 a wrong argument.
+
+The reconcile has no metric. When a row has no copy, it writes a warning to the log of the worker: the line has `[ows.issuance.backfill] [WARNING] Issuance backfill reconcile:`, then the counts. Make an alert on this line in your log system, for example with Loki:
+
+```text
+sum(count_over_time({namespace="ows", container=~"wallet-worker-.+"} |= "[ows.issuance.backfill] [WARNING]" [1d])) > 0
+```
+
+After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete (see [Upgrade](upgrade.md#the-tables-of-the-issuances)).
 
 ## Stops and rollouts
 
@@ -128,6 +162,8 @@ spec:
         - alert: IssuanceExpiryLate
           expr: max(ows_worker_schedule_overdue_rows{schedule="issuance.expiry"}) > 0
 ```
+
+The copy of the issuances of earlier releases has an alert on a log line, not on a metric: see [The copy of the issuances](#the-copy-of-the-issuances).
 
 ## Users and files
 

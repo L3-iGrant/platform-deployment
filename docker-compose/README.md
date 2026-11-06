@@ -420,6 +420,21 @@ docker compose exec wallet-clock /app/.venv/bin/python -c \
 You see `ows_clock_leader 1.0`. The Helm chart runs the workers in groups
 of queues and two clocks: see [Workers and clock](../docs/workers.md).
 
+When you use a new release on data of a release that kept each issuance
+in one table (`issuer.credential_issuance`), the worker copies the
+issuances into the tables of the issuance (see
+[The copy of the issuances](../docs/workers.md#the-copy-of-the-issuances)).
+Check the progress:
+
+```bash
+docker compose exec wallet-worker /app/.venv/bin/issuance-backfill status
+```
+
+The copy is complete when `progress.applied` is `true` and
+`counts.missing` and `counts.changed` are `0`. A later release drops the
+table of the earlier releases: use that release only after the copy is
+complete.
+
 ## Valkey
 
 The wallet uses Valkey (a Redis-compatible server) for the work queue of
