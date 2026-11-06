@@ -540,6 +540,12 @@ proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 proxy_set_header X-Forwarded-Proto $scheme;
 ```
 
+The example keeps no answer in a cache. The metadata routes and the JWKS
+of the issuers answer with `Cache-Control: max-age=60` and an `ETag`: a
+proxy cache must keep the header `Vary: Accept` of the credential issuer
+metadata (see
+[Proxies in front of the cluster](../docs/exposure.md#proxies-in-front-of-the-cluster)).
+
 With `PUBLISH_ADDRESS=0.0.0.0`, let only your reverse proxy reach the host
 ports: a client must not reach the ports without the proxy. Docker sets its
 port rules before the rules of ufw: put your firewall rules in the
