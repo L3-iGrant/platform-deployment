@@ -75,6 +75,8 @@ With the Gateway API, the client address needs a Gateway policy that sets the he
 
 ## Proxies in front of the cluster
 
+The metadata routes of the issuers on the wallet host (`/.well-known/openid-credential-issuer/...`, `/.well-known/oauth-authorization-server/...`, `/.well-known/jwt-vc-issuer/...`) and the JWKS of an issuer (`/organisation/<wallet id>/service/<version>/jwks` and `/organisation/<wallet id>/service/jwks`) answer with `Cache-Control: max-age=60` and a strong `ETag`; a request with a matching `If-None-Match` gets 304 without a body. The chart and the exposure examples set no cache rule. A CDN or a proxy that keeps these answers must keep the header `Vary: Accept` of the credential issuer metadata (`Accept: application/jwt` gives the signed metadata, with its own `ETag`). A change of the metadata then shows after at most 60 seconds in the wallet pods, plus the time that your cache keeps the answer.
+
 Behind a CDN or another proxy, set `clientAddress.trustedProxies` and `clientAddress.trustedProxyHeader` together.
 
 The wallet must see the `https` scheme of the public request (`X-Forwarded-Proto`): `organisationWallet.forwardedAllowIps` must contain the addresses of your proxy pods (the default is the private address ranges).
