@@ -437,6 +437,14 @@ renders "first organisation Job" "name: t-api-create-organisation-1" "${shamir[@
 # The key store providers and the EU trusted list check of the wallet.
 renders "EU trusted list check on by default" "eu_lotl_url: https://ec.europa.eu/tools/lotl/eu-lotl.xml" "${shamir[@]}"
 renders "EU trusted list check off" "eu_lotl_url: null" "${shamir[@]}" --set organisationWallet.trustList.euLotlUrl=
+# The refresh of the list trust sources (trust_sources.*); the shared trust
+# list lookup service is gone (no lookup_url, no lookup token file).
+renders "trust sources refresh defaults" "refresh_max_interval_seconds: 86400" "${shamir[@]}"
+renders "trust sources stale grace" "stale_grace_seconds: 3600" "${shamir[@]}" --set organisationWallet.trustSources.staleGraceSeconds=3600
+lacks "no trust list lookup service" "lookup_url" "${shamir[@]}"
+lacks "no trust list lookup token" "trust-list-lookup-token" "${shamir[@]}"
+guard "removed trust list lookup value" "Additional property lookupUrl" "${shamir[@]}" --set organisationWallet.trustList.lookupUrl=https://trustlist.example.org/lookup
+guard "trust sources refresh interval too short" "refreshMinIntervalSeconds" "${shamir[@]}" --set organisationWallet.trustSources.refreshMinIntervalSeconds=10
 renders "added key store provider" "logo_url: https://example.org/qtsp.png" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"example-qtsp","category":"qtsp","type":"csc","name":"Example QTSP","protection":"provider","qualified":true,"logoUrl":"https://example.org/qtsp.png","region":"SE","order":30}]'
 guard "key store provider category" "category" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"x","category":"cloud","type":"csc","name":"X","protection":"provider"}]'
 guard "key store provider type of the category" "add.0.type" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"x","category":"qtsp","type":"vault","name":"X","protection":"provider"}]'

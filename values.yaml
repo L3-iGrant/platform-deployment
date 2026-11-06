@@ -1633,19 +1633,41 @@ organisationWallet:
   statusList:
     writeIntervalSeconds: 30
   trustList:
-    # -- trust_list.lookup_url: the trust list lookup service.
-    lookupUrl: https://trustlist.nxd.foundation/trust-list/lookup
-    # -- Existing Secret with the bearer token of the lookup service
-    # (trust_list.lookup_token_file). Empty: no token.
-    lookupToken:
-      existingSecret: ""
-      key: lookup-token
     # -- trust_list.eu_lotl_url: the EU list of trusted lists. The wallet
     # reads it (and the trusted list of the provider's country) to show
     # whether the key of a qualified trust service provider is qualified.
     # The wallet pods need outbound https to the list hosts (the egress
     # profile internet). Empty: no check (the status is always unknown).
     euLotlUrl: https://ec.europa.eu/tools/lotl/eu-lotl.xml
+  # The refresh of the list trust sources (trust_sources.*). Each
+  # organisation adds its own trust sources: trust anchors (CA
+  # certificates) and lists (ETSI trusted lists, ETSI lists of trusted
+  # entities) at their https URL. A check never downloads a list: it reads
+  # the stored entries. The workers download each list URL once for the
+  # installation, at the earlier of its next update and the last download
+  # plus refreshMaxIntervalSeconds, never before the last download plus
+  # refreshMinIntervalSeconds. The organisations have no interval
+  # setting, only Refresh now. The wallet pods need outbound https to the
+  # list hosts (the egress profile internet).
+  trustSources:
+    # -- trust_sources.refresh_max_interval_seconds: the longest time
+    # between two downloads of a list (at least 60).
+    refreshMaxIntervalSeconds: 86400
+    # -- trust_sources.refresh_min_interval_seconds: the shortest time
+    # between two scheduled downloads of a list; it also protects the list
+    # servers (at least 60).
+    refreshMinIntervalSeconds: 3600
+    # -- trust_sources.retry_interval_seconds: the wait after a failed
+    # download. The last good copy of the list stays in use (at least 60).
+    retryIntervalSeconds: 900
+    # -- trust_sources.stale_grace_seconds: how long after the next update
+    # of a list its last good copy is still in use. After it, the list is
+    # expired and the checks of its roles give error (at least 0).
+    staleGraceSeconds: 259200
+    # -- trust_sources.manual_refresh_min_interval_seconds: the shortest
+    # time between two Refresh now of one trust source; an earlier one
+    # gets 429 (at least 0).
+    manualRefreshMinIntervalSeconds: 300
   # The key stores that organisation admins add in the dashboard: signing
   # keys in their own OpenBao (Transit engine), in their cloud KMS or at a
   # QTSP. The local key store of this installation (OpenBao Transit) is
