@@ -28,6 +28,9 @@ NAMESPACE = "ow"
 EXTERNAL_DB_HOST = "db.example.org"
 EXTERNAL_OPENBAO = "https://openbao.example.org:8200"
 HOSTS = {"t-api": "api.example.org", "t-wallet-service": "wallet.example.org", "t-dashboard": "dashboard.example.org"}
+# The public path of the routes of the OIDC provider extension of the api
+# (Extensions.oidc.apiPathBase and qrPollPrefix of the api configuration).
+OIDC_PROVIDER_PATH = "/v4/service/platform/extension/oidc"
 KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
 # The facts of each engine of the chart helper ow.db.engines: the name
 # suffix of the bundled server, the port and the admin password key.
@@ -169,6 +172,11 @@ def main() -> int:
         if api:
             go_section(f"api {key} DataBase", api["DataBase"])
             go_section(f"api {key} Extensions.oidc.database", api["Extensions"]["oidc"]["database"])
+            oidc = api["Extensions"]["oidc"]
+            check(oidc.get("apiPathBase") == f"{OIDC_PROVIDER_PATH}/{{organisationId}}/{{sandboxOrgId}}",
+                  f"api {key} Extensions.oidc.apiPathBase is {oidc.get('apiPathBase')!r}")
+            check(oidc.get("qrPollPrefix") == api["ApiBaseUrl"] + OIDC_PROVIDER_PATH,
+                  f"api {key} Extensions.oidc.qrPollPrefix is {oidc.get('qrPollPrefix')!r}")
             go_section(f"api {key} ReadAccess.wallet", api["ReadAccess"]["wallet"])
             check(api["KeyStorage"].get("allowPlaintextProviderKeys") is False, f"api {key} KeyStorage.allowPlaintextProviderKeys is not false")
             check("PrivacyDashboardDeployment" not in api, f"api {key} has PrivacyDashboardDeployment")
