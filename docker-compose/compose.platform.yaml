@@ -733,9 +733,9 @@ configs:
         OpenIdServiceEndpoint: ${WALLET_PUBLIC_URL}
       Extensions:
         oidc:
-          apiPathBase: /v3/service/extension/oidc/{organisationId}/{sandboxOrgId}
+          apiPathBase: /v4/service/platform/extension/oidc/{organisationId}/{sandboxOrgId}
           issuer: ${API_PUBLIC_URL}
-          qrPollPrefix: ${API_PUBLIC_URL}/v3/service/extension/oidc
+          qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
           database:
             type: ${DB_ENGINE}
             hosts: [database]
@@ -840,9 +840,9 @@ configs:
         OpenIdServiceEndpoint: ${WALLET_PUBLIC_URL}
       Extensions:
         oidc:
-          apiPathBase: /v3/service/extension/oidc/{organisationId}/{sandboxOrgId}
+          apiPathBase: /v4/service/platform/extension/oidc/{organisationId}/{sandboxOrgId}
           issuer: ${API_PUBLIC_URL}
-          qrPollPrefix: ${API_PUBLIC_URL}/v3/service/extension/oidc
+          qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
           database:
             type: ${DB_ENGINE}
             hosts: [database]

@@ -41,8 +41,8 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "Extensions" (dict
     "oidc" (dict
       "issuer" $apiUrl
-      "qrPollPrefix" (printf "%s/v3/service/extension/oidc" $apiUrl)
-      "apiPathBase" "/v3/service/extension/oidc/{organisationId}/{sandboxOrgId}"
+      "qrPollPrefix" (printf "%s/v4/service/platform/extension/oidc" $apiUrl)
+      "apiPathBase" "/v4/service/platform/extension/oidc/{organisationId}/{sandboxOrgId}"
       "database" (include "ow.db.goOwner" (dict "root" $root "db" "oidc" "secretDir" $dir "passwordFile" "oidc-db-password" "pool" $pools.oidc) | fromJson)))
   "Nats" (dict
     "url" (include "ow.nats.url" $root)
