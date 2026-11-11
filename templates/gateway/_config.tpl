@@ -46,7 +46,6 @@ values file without the key keeps the default of the gateway). */ -}}
 {{- $enforce = dig "features" "enforce" true $g -}}
 {{- end -}}
 {{- $config := dict
-  "ApplicationMode" "multi-tenant"
   "ApiBaseUrl" (include "ow.publicUrlOf" (list $root "api"))
   "ApiSecretKeyFile" (printf "%s/api-secret-key" $dir)
   "DataBase" (include "ow.db.goOwner" (dict "root" $root "db" "api" "secretDir" $dir "passwordFile" "db-password" "pool" $v.database.pools.gateway) | fromJson)

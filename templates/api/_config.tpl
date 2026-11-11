@@ -22,7 +22,6 @@ Call with (dict "root" $ "role" "api"|"webhook").
 {{- $config := dict
   "ApiBaseUrl" $apiUrl
   "ServiceName" "igrant-api"
-  "ApplicationMode" "multi-tenant"
   "ApiSecretKeyFile" (include "ow.api.secretFile" (list $root "api-secret-key"))
   "DataBase" (include "ow.db.goOwner" (dict "root" $root "db" "api" "secretDir" $dir "passwordFile" "db-password" "pool" $pool) | fromJson)
   "Dashboard" (dict "url" ($api.dashboardUrl | default (include "ow.publicUrlOf" (list $root "enterpriseDashboard"))))

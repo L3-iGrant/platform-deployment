@@ -686,7 +686,6 @@ configs:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
       ServiceName: igrant-api
-      ApplicationMode: multi-tenant
       ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
       # The header of the client address that your reverse proxy sets
       # (CLIENT_ADDRESS_HEADER; empty: the TCP peer). The same value as the
@@ -798,7 +797,6 @@ configs:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
       ServiceName: igrant-api
-      ApplicationMode: multi-tenant
       ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
@@ -922,7 +920,6 @@ configs:
   # Auth gateway (igrant-gateway): its own file, only its own secrets.
   gateway-config:
     content: |
-      ApplicationMode: multi-tenant
       ApiBaseUrl: ${API_PUBLIC_URL}
       ApiSecretKeyFile: /run/secrets/igrant-gateway/api-secret-key
       # The client address of the rate limits and of the IP allow-lists of

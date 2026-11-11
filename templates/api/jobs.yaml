@@ -6,7 +6,7 @@ command with the configuration (api.yaml) and the secret files of the api.
 The name has the release revision, so an enabled Job runs at each install
 and upgrade: turn an operator Job off after the run.
 
-The platform operator of a multi-tenant installation (an installation has
+The platform operator of an installation (an installation has
 one platform operator organisation, and only the command line makes it):
 - api.jobs.bootstrapPlatform, a new installation: "onboard
   bootstrap-platform" makes the organisation type, the first admin, the
