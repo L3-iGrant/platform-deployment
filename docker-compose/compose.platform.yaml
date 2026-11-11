@@ -995,12 +995,6 @@ configs:
       Http:
         maxRequestBodyBytes: 5242880
       PublicBaseUrl: ${API_PUBLIC_URL}
-      DefaultPolicy:
-        name: ""
-        url: ""
-        industrySector: ""
-        geographicRestriction: ""
-        storageLocation: ""
       Log:
         level: info
       GatewayToken:
