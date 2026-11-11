@@ -11,13 +11,13 @@ export HOST_GID := $(shell id -g)
 CHART_DIR ?= ..
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets check up status logs down reset admin organisation db-shell \
-	openbao-status nats-config
+.PHONY: help env secrets check up status logs down reset platform-operator platform-set-operator \
+	platform-grant-admin platform-status admin organisation db-shell openbao-status nats-config
 
 help: ## Show the targets
 	@echo "iGrant.io platform - Docker Compose (README.md has the procedure)"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # --- Installation ----------------------------------------------------------------
 
@@ -55,11 +55,46 @@ reset: ## Remove the containers AND all data (asks first)
 
 # --- Operation -------------------------------------------------------------------
 
-# The first admin (no organisation) of a new installation, then its
-# organisation (the dashboard login refuses an admin without an
-# organisation). The commands are idempotent.
+API_COMMAND = $(COMPOSE) exec -T api /app/bin/igrant-api
+API_CONFIG = --config /etc/igrant-api/config.yaml
 ORGANISATION_TYPE ?= Technology
-admin: ## Step 8: make the first admin: make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=... (asks for the password)
+
+# The platform operator of a new installation: the platform operator
+# organisation and its first admin with the platform admin right, in one
+# command (onboard bootstrap-platform; it also makes the organisation type).
+# An installation has one platform operator organisation; its platform
+# admins make the other organisations in the dashboard. The command is
+# idempotent. The password is read from the terminal and goes to the
+# command on standard input: it is never an argument. It needs 15
+# characters or more, and the admin sets a new password at the first login.
+platform-operator: ## Step 8: make the platform operator organisation and its first platform admin: make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... (asks for the password)
+	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
+		{ echo "platform-operator: set ADMIN_EMAIL, ADMIN_NAME, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
+	@stty -echo 2>/dev/null; printf 'First password of %s (15 characters or more; the input is hidden): ' "$(ADMIN_EMAIL)"; \
+	IFS= read -r password; stty echo 2>/dev/null; echo; \
+	printf '%s' "$$password" | $(API_COMMAND) onboard bootstrap-platform \
+		--admin-email "$(ADMIN_EMAIL)" --admin-name "$(ADMIN_NAME)" --password-file - \
+		--organisation-name "$(ORG_NAME)" --type "$(ORGANISATION_TYPE)" \
+		--location "$(ORG_LOCATION)" --policy-url "$(ORG_POLICY_URL)" $(API_CONFIG)
+
+# The platform operator of an installation that exists (README.md, "Change
+# to the release with the platform operator"). The commands are idempotent.
+platform-set-operator: ## An installation that exists: give an organisation that exists the platform operator mark: make platform-set-operator ORGANISATION_ID=...
+	@test -n "$(ORGANISATION_ID)" || { echo "platform-set-operator: set ORGANISATION_ID" >&2; exit 1; }
+	@$(API_COMMAND) platform set-operator --organisation-id "$(ORGANISATION_ID)" $(API_CONFIG) </dev/null
+
+platform-grant-admin: ## An installation that exists: give an admin of the platform operator organisation the platform admin right: make platform-grant-admin ADMIN_EMAIL=...
+	@test -n "$(ADMIN_EMAIL)" || { echo "platform-grant-admin: set ADMIN_EMAIL" >&2; exit 1; }
+	@$(API_COMMAND) platform grant-admin --email "$(ADMIN_EMAIL)" $(API_CONFIG) </dev/null
+
+platform-status: ## Show the platform operator organisation and the platform admins (reads only)
+	@$(API_COMMAND) platform status $(API_CONFIG) </dev/null
+
+# An admin and an organisation WITHOUT the platform operator mark (the
+# targets of the earlier releases; the dashboard login refuses an admin
+# without an organisation). For a new installation, use platform-operator.
+# The commands are idempotent.
+admin: ## Earlier releases: make an admin without an organisation: make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=... (asks for the password)
 	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ADMIN_PHONE)" || \
 		{ echo "admin: set ADMIN_EMAIL, ADMIN_NAME and ADMIN_PHONE" >&2; exit 1; }
 	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation-type \
@@ -70,7 +105,7 @@ admin: ## Step 8: make the first admin: make admin ADMIN_EMAIL=... ADMIN_NAME=..
 		--email "$(ADMIN_EMAIL)" --name "$(ADMIN_NAME)" --phone "$(ADMIN_PHONE)" \
 		--password-file - --config /etc/igrant-api/config.yaml
 
-organisation: ## Step 9: make the organisation of the admin: make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]
+organisation: ## Earlier releases: make the organisation of that admin (no platform operator mark): make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]
 	@test -n "$(ADMIN_EMAIL)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
 		{ echo "organisation: set ADMIN_EMAIL, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
 	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation \

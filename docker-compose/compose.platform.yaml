@@ -960,6 +960,12 @@ configs:
         internalToken:
           signingJwksFile: /run/secrets/igrant-gateway/internal-token-jwks.json
           activeKid: gateway-1
+      # The feature gate (FEATURES_ENFORCE; default true): the gateway
+      # refuses a route of a product feature that is off for the
+      # organisation of the credential (403 feature_disabled). Only the
+      # gateway file has this section.
+      Features:
+        enforce: ${FEATURES_ENFORCE:-true}
       Log:
         level: info
 

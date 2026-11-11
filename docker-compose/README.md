@@ -13,6 +13,7 @@ check: do the next step only when you see the result of the check.
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Operation](#operation)
+- [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)
 - [Settings](#settings)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
@@ -195,36 +196,94 @@ Check: `https://<your API host>/readyz` and `https://<your wallet
 host>/readyz` give `200`, and `https://<your dashboard host>` shows the
 login page of the dashboard.
 
-### Step 8: Make the first admin
+### Step 8: Make the platform operator organisation and the first platform admin
+
+An installation has one platform operator organisation. The platform admins
+of this organisation add, suspend and delete the other organisations of the
+installation in the dashboard. Only the command line makes the platform
+operator organisation and gives the first platform admin right.
 
 ```bash
-make admin ADMIN_EMAIL=admin@example.com ADMIN_NAME="First Admin" ADMIN_PHONE=+46700000000
+make platform-operator ADMIN_EMAIL=admin@example.com ADMIN_NAME="First Admin" \
+  ORG_NAME="Example Wallet Provider" ORG_LOCATION=Stockholm \
+  ORG_POLICY_URL=https://example.com/privacy
 ```
 
-This command creates the organisation type `Technology` and the first admin
-account. It asks for the password of the admin (the input is hidden). To
-use another organisation type, add `ORGANISATION_TYPE=<type>` to the
-commands of step 8 and step 9, with the same value.
+This command runs `igrant-api onboard bootstrap-platform` in the `api`
+container. In one command, it makes the organisation type `Technology`
+(when no type has the name), the first admin, the organisation with the
+platform operator mark, and the platform admin right of the admin. To use
+another organisation type, add `ORGANISATION_TYPE=<type>`.
 
-Check: you see two JSON lines, each with a status line after it (and a
-log line of the api before it, for example `IAM provider chain: [builtin]`).
-The second JSON line has your e-mail address and `"created":true` (or
-`"created":false` when the admin exists).
+The command asks for the first password of the admin (the input is hidden).
+The password goes to the command on standard input: it is never an argument.
+The password of a platform admin must have 15 characters or more (at most
+256). It must not be a known password, and it must not have a part of the
+e-mail address, the name or the organisation name. When the API refuses the
+password, the command names the rules that failed, and makes nothing.
 
-### Step 9: Make the organisation of the first admin
-
-The dashboard login refuses an admin without an organisation.
+Check: you see one JSON line with `organisationId`, `adminId` and
+`"created":true`, with a status line after it (and a log line of the api
+before it, for example `IAM provider chain: [builtin]`). A second run with the
+same values changes nothing and shows `"created":false`; the password of an
+account that exists does not change. Then:
 
 ```bash
-make organisation ADMIN_EMAIL=admin@example.com ORG_NAME="Example Organisation" \
-  ORG_LOCATION=Stockholm ORG_POLICY_URL=https://example.com/privacy \
-  ORG_DESCRIPTION="The organisation of the first admin."
+make platform-status
 ```
 
-Check: you see one JSON line with your e-mail address and
-`"created":true` (or `"created":false` when the admin has an organisation).
-Then log in on the dashboard with the first admin: the dashboard shows your
-organisation.
+The JSON line has `operatorOrganisationId` (the id of your organisation)
+and one entry in `platformAdmins`. The command reads only, and it prints
+no secret.
+
+Then log in on the dashboard with the e-mail address and the password. The
+account must change the password at the first login: the dashboard opens
+the page for the new password (15 characters or more). This needs no
+e-mail service. The dashboard shows the functions of a platform admin in
+the group "Wallet Provider (Orgs)".
+
+Rules of the command:
+
+- Use it only for a new installation. For an installation that has
+  organisations, see
+  [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator).
+  When an admin with the e-mail address has a different organisation, the
+  command exits 1 and changes nothing.
+- There is no transfer and no removal of the platform operator mark.
+- The wallet of the platform operator organisation is the wallet provider
+  of the installation: the wallet gets this flag when an admin deploys it,
+  and no route changes the flag later.
+
+### After the installation: the other organisations and admins
+
+A platform admin does these tasks in the dashboard, in the group "Wallet
+Provider (Orgs)". No `make` target is necessary.
+
+| Task | What an operator of the installation must know |
+|---|---|
+| Add an organisation with its first admin (page "Wallet Units", the + button) | The first admin gets an invitation by e-mail or a one-time password. An invitation needs the e-mail service (`SMTP_HOST`): without it, use the one-time password. The API deploys the wallet of the new organisation. |
+| Set the features of an organisation ("Manage Features") | The gateway refuses the routes of a feature that is off for the organisation (`FEATURES_ENFORCE`, see [Settings](#settings)). |
+| Suspend and resume an organisation | The gateway refuses each credential of a suspended organisation within 60 seconds. When the wallet did not get the state, the page shows a warning: send the request again. |
+| Delete a suspended organisation ("Delete Organisation") | The deletion cannot be undone. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the wallets of the organisation and purges them after its retention period. No background job repeats a failed step of the API: when the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in `docker compose logs api`. |
+| Give and remove the platform admin right (page "Platform Admins") | Only an admin of the platform operator organisation can get the right. A platform admin with a password of less than 15 characters sets a new password at the next login. |
+
+Each other new password must have 12 characters or more.
+
+When no platform admin can log in, give the right to an admin of the
+platform operator organisation with `make platform-grant-admin
+ADMIN_EMAIL=...`.
+
+The wallet login of the admins: the configuration of the api has no
+`AdminAuth.walletLogin.organisationId`. With this empty value, the platform
+operator organisation is the organisation of the wallet login, when it is
+the wallet provider and its OIDC extension is on.
+
+The targets `make admin` and `make organisation` of the earlier releases
+stay. They make an admin (a password of 12 characters or more) and an
+organisation without the platform operator mark and without the platform
+admin right: the functions of a platform admin stay hidden in the
+dashboard. Do not use them for the first organisation of a new
+installation.
 
 ## Operation
 
@@ -235,8 +294,9 @@ organisation.
 | Stop the platform (the data stays) | `make down` |
 | Start the platform again | `make up` |
 | Change a setting | Change `.env`, then `make check` and `make up` (Compose starts the changed services again) |
-| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)) |
-| Delete all data and start again | `make reset`, then `make up`, then steps 8 and 9 |
+| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)). For the release with the platform operator, see [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator) |
+| Show the platform operator organisation and the platform admins | `make platform-status` |
+| Delete all data and start again | `make reset`, then `make up`, then step 8 |
 | OpenBao seal status | `make openbao-status` |
 | SQL shell of the database server | `make db-shell` |
 | Log of the database server (DDL statements, connections) | `docker compose logs postgres` |
@@ -248,6 +308,146 @@ used:
   that unseals OpenBao, and `secrets/openbao/init.json`, the root token and
   the recovery key of OpenBao);
 - the Docker volumes of the project `igrant-platform`.
+
+## Change to the release with the platform operator
+
+From this release, an installation has one platform operator organisation
+(see [step 8](#step-8-make-the-platform-operator-organisation-and-the-first-platform-admin)).
+An installation that exists has none after the change to this release: the organisations
+and their admins work as before, but the functions of a platform admin
+stay hidden in the dashboard until you do the steps below. Do not use
+`make platform-operator` for an installation that exists: with an e-mail
+address that no admin has, it makes a new organisation with the platform
+operator mark, and then no organisation that exists can get the mark.
+
+Removed in this release of the API: the command `igrant-api iam
+set-organisation-login` (a platform admin suspends and resumes an
+organisation in the dashboard), the route `POST
+/v4/onboard/platform/organisation` and the API key scope
+`organisation:create` (a platform admin adds an organisation in the
+dashboard). Change each script that uses them.
+
+Before you start the new release, with the earlier release:
+
+1. Choose the organisation that becomes the platform operator. The platform
+   operator is always the wallet provider organisation of the installation.
+   When one organisation is the wallet provider, only this organisation can
+   be the platform operator. When no organisation is the wallet provider,
+   choose an organisation with no wallet, or do item 2 for the organisation
+   that you choose. To read the id of an organisation and the state of its
+   wallet, use an API key of the organisation with the scopes `onboard` and
+   `config`:
+
+   ```text
+   GET <API_PUBLIC_URL>/v4/onboard/platform/organisation
+   GET <API_PUBLIC_URL>/v4/config/ows/wallet/deployment
+   ```
+
+   A release without the `/v4` routes has them at `GET
+   /v2/onboard/organisation` and `GET /v2/config/digital-wallet/openid`.
+   The first answer has the `id` of the organisation. The second answer
+   has `statusStr` (`Deployed` for a deployed wallet) and
+   `isWalletProvider`. An organisation with `"isWalletProvider": true`, or
+   with a wallet that is not deployed, needs no more work before the new
+   release.
+
+2. Only for an organisation whose wallet is deployed and is not the wallet
+   provider (and no other organisation is the wallet provider): make its
+   wallet the wallet provider with the earlier release. The new release has
+   no route and no command for this. An admin of that organisation, or an
+   API key of it with the scope `config`, sends this request one time:
+
+   ```text
+   PUT <API_PUBLIC_URL>/v4/config/ows/wallet/deployment
+   Content-Type: application/json
+
+   {"isWalletProvider": true}
+   ```
+
+   A release without the routes `/v4/config/ows/...` has the same route at
+   `PUT /v2/config/digital-wallet/openid`. A build of the API that has the
+   command `platform set-operator` and still sets the flag in this route
+   takes the body `{}` for the organisation with the platform operator
+   mark. Check: the answer shows `"isWalletProvider": true`. If you did not
+   do this item with the earlier release, the organisation cannot become
+   the platform operator in the new release: contact iGrant.io.
+
+3. Decide the first value of the feature gate (`FEATURES_ENFORCE`). With
+   the default `true`, an organisation that uses the routes of a feature
+   that is off for it gets `403` `feature_disabled` from the first request
+   with the new release. To check the features first, set
+   `FEATURES_ENFORCE=false` before you start the new release.
+
+The start of the new release. A release that changes the messages between the services has a
+release order: consent, then the wallet, then the API and the gateway. A
+plain `make up` starts the new services in the order of their dependencies,
+which is not this order: for some seconds, a container of the earlier
+consent release can refuse the answers of the new API. To keep the order,
+start the services in steps (the services lose their NATS connection for
+some seconds and connect again):
+
+```bash
+# PLATFORM_TAG in .env is the tag of the new release
+make secrets
+make check
+docker compose up -d --force-recreate nats
+docker compose up -d consent
+docker compose up -d wallet-config wallet-service wallet-worker wallet-clock
+make up
+```
+
+Each step first runs the one-shot services that its services wait for (the
+migrations and the read access). Check after each step: `make status`
+shows the services of the step as `running`, and the one-shot services as
+`exited` with the code 0.
+
+After the start of the new release:
+
+1. Give the organisation the platform operator mark, then give one of its
+   admins the platform admin right:
+
+   ```bash
+   make platform-set-operator ORGANISATION_ID=6731f0c2a1b2c3d4e5f60789
+   make platform-grant-admin ADMIN_EMAIL=admin@example.com
+   ```
+
+   Check: each command shows one JSON line with `"changed":true` (or
+   `"changed":false` when the result exists), with a status line after it. `platform-set-operator`
+   exits 1 for an organisation whose wallet is deployed and is not the
+   wallet provider, and when a different organisation is the wallet
+   provider or has the mark. `platform-grant-admin` exits 1 for an admin
+   who is not an admin of the platform operator organisation.
+
+2. `make platform-status` shows `operatorOrganisationId` with the id of
+   your organisation, and the admin in `platformAdmins`.
+
+3. The admin logs in on the dashboard (the gateway and the API read the
+   platform operator again within 60 seconds). A platform admin needs a
+   password of 15 characters or more: an admin with a shorter password sets
+   a new password at this login.
+
+4. With `FEATURES_ENFORCE=false`: a platform admin opens "Manage Features"
+   of each organisation in the dashboard and reads the features that are
+   off. Decide with the organisation: an organisation that uses the routes
+   of a feature (for example with an API key) needs the feature on. The
+   features with routes in the gate are the data agreements, the data
+   disclosure agreements, issuer and verifier, the wallet units, consent
+   management, the privacy dashboard, the account, the action logs and the
+   webhooks. Then set `FEATURES_ENFORCE=true`, and do `make check` and
+   `make up`.
+
+5. An organisation that you stopped with `iam set-organisation-login`
+   with the earlier release stays suspended in the API, but consent and the
+   wallet do not know it. A platform admin sends the suspend request for it
+   one time in the dashboard.
+
+`config/nats/users.conf` of this release gives the API the right to publish
+`api.v1.evt.organisation.deleted` (the deletion of an organisation). The
+NATS server reads the file only when its container is made: the command
+`docker compose up -d --force-recreate nats` above makes the container
+again with the new file (the data of NATS is in its volume and stays).
+Without it, the API cannot publish the deletion of an organisation, and
+consent and the wallet keep the data of a deleted organisation.
 
 ## Settings
 
@@ -266,6 +466,7 @@ your shell has priority over the value in `.env`.
 | `PUBLISH_ADDRESS` | `127.0.0.1` | The IP address of the host ports. |
 | `API_PORT`, `WALLET_PORT`, `DASHBOARD_PORT` | `8080`, `8090`, `3000` | The host ports. |
 | `CLIENT_ADDRESS_HEADER` | empty | The header with the client address that your reverse proxy sets. |
+| `FEATURES_ENFORCE` | `true` | The feature gate of the gateway (`Features.enforce`): with `true`, the gateway refuses a route of a product feature that is off for the organisation of the credential (`403`, `feature_disabled`). With `false`, it refuses no route for a feature: use it for an emergency, or for the first start of the release with the gate on an installation that exists (see [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)). |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. Empty `SMTP_HOST`: no e-mail. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the default of the Helm chart). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
 | `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
@@ -569,8 +770,12 @@ the function is off, and the api answers that it is not configured.
 | `make logs` | Follow the logs. |
 | `make down` | Stop and remove the containers. The data stays. |
 | `make reset` | Remove the containers and all data (asks first). |
-| `make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=...` | Create the first admin. |
-| `make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]` | Create the organisation of the first admin. |
+| `make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORGANISATION_TYPE=...]` | A new installation: create the platform operator organisation and its first platform admin. |
+| `make platform-set-operator ORGANISATION_ID=...` | An installation that exists: give an organisation the platform operator mark. |
+| `make platform-grant-admin ADMIN_EMAIL=...` | Give an admin of the platform operator organisation the platform admin right. |
+| `make platform-status` | The platform operator organisation and the platform admins (reads only). |
+| `make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=...` | Earlier releases: create an admin without an organisation. |
+| `make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]` | Earlier releases: create the organisation of that admin, without the platform operator mark. |
 | `make openbao-status` | The seal status of OpenBao. |
 | `make db-shell` | The SQL shell of the database server. |
 

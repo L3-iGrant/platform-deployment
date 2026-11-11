@@ -113,6 +113,16 @@ check_installation() {
     bad "CLIENT_ADDRESS_HEADER must be a header name (letters, digits, -)"
   fi
 
+  # The feature gate of the gateway. Empty: the default of
+  # compose.platform.yaml (true).
+  local features_enforce
+  features_enforce="$(setting FEATURES_ENFORCE)"
+  case "$features_enforce" in
+    "" | true) ok "feature gate (on)" ;;
+    false) warn "FEATURES_ENFORCE is false: the gateway refuses no route for a feature that is off for an organisation" ;;
+    *) bad "FEATURES_ENFORCE ($features_enforce) must be true or false" ;;
+  esac
+
   local smtp_host smtp_user
   smtp_host="$(setting SMTP_HOST)"
   smtp_user="$(setting SMTP_USERNAME)"

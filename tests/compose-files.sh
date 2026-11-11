@@ -361,6 +361,79 @@ PY
     done
   fi
 
+  # The feature gate of the gateway (FEATURES_ENFORCE): Features.enforce in
+  # the gateway file only (the api refuses the section). Empty value: the
+  # default true.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local gate
+    for gate in "" false; do
+      if ! json="$(FEATURES_ENFORCE="$gate" docker compose config --format json 2>&1)"; then
+        bad "feature gate ${gate:-default}: docker compose config: $json"
+        continue
+      fi
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" "${gate:-true}" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+expected = {"enforce": sys.argv[2] == "true"}
+features = yaml.safe_load(project["configs"]["gateway-config"]["content"]).get("Features")
+if features != expected:
+    sys.exit(f"gateway: Features {features!r}, not {expected!r}")
+for name in ("api-config", "webhook-config"):
+    config = project["configs"].get(name)
+    if config and "Features" in yaml.safe_load(config["content"]):
+        sys.exit(f"{name} has a Features section (only the gateway file has it)")
+print(f"Features {expected}")
+PY
+)"; then
+        ok "feature gate ${gate:-default}: $output"
+      else
+        bad "feature gate ${gate:-default}: $output"
+      fi
+      rm -f "$project_file"
+    done
+  fi
+
+  # The platform operator targets of the Makefile (make -n: no container):
+  # the commands of the api, the password of the first platform admin on
+  # standard input (--password-file -, never an argument), and the API core
+  # may publish the deletion of an organisation.
+  local dry
+  if dry="$(make -n platform-operator ADMIN_EMAIL=admin@example.com ADMIN_NAME='First Admin' ORG_NAME='Example Wallet Provider' \
+      ORG_LOCATION=Stockholm ORG_POLICY_URL=https://example.com/privacy 2>&1)" \
+    && grep -q -F 'onboard bootstrap-platform' <<< "$dry" && grep -q -F -- '--password-file - ' <<< "$dry" \
+    && grep -q -F -- '--organisation-name "Example Wallet Provider" --type "Technology"' <<< "$dry" \
+    && ! grep -q -E -- '--password[= ]' <<< "$dry"; then
+    ok "make platform-operator runs onboard bootstrap-platform with the password on standard input"
+  else
+    bad "make platform-operator: $dry"
+  fi
+  if dry="$(make -n platform-set-operator ORGANISATION_ID=6731f0c2a1b2c3d4e5f60789 2>&1)" \
+    && grep -q -F 'platform set-operator --organisation-id "6731f0c2a1b2c3d4e5f60789"' <<< "$dry" \
+    && dry="$(make -n platform-grant-admin ADMIN_EMAIL=admin@example.com 2>&1)" \
+    && grep -q -F 'platform grant-admin --email "admin@example.com"' <<< "$dry" \
+    && dry="$(make -n platform-status 2>&1)" && grep -q -F 'platform status' <<< "$dry"; then
+    ok "make platform-set-operator, platform-grant-admin and platform-status"
+  else
+    bad "the platform operator targets: $dry"
+  fi
+  if make platform-operator > /dev/null 2>&1 || make platform-set-operator > /dev/null 2>&1 || make platform-grant-admin > /dev/null 2>&1; then
+    bad "a platform operator target runs without its values"
+  else
+    ok "the platform operator targets stop without their values"
+  fi
+  if grep -q -F '"api.v1.evt.organisation.deleted"' config/nats/users.conf; then
+    ok "the NATS user of the api publishes api.v1.evt.organisation.deleted"
+  else
+    bad "config/nats/users.conf: the api cannot publish api.v1.evt.organisation.deleted (make nats-config)"
+  fi
+
   # The audit log (AUDIT_RETENTION_YEARS): the same retention in the files of
   # the wallet roles and of wallet-migrate (the partition step), and no audit
   # bucket. Empty value: the default.
