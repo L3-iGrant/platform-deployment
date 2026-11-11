@@ -77,9 +77,12 @@ text_check() {
   # not prose. For the vault check, these are not the earlier key store
   # product: the key store type ids `vault`, external-vault and
   # azure-key-vault, a list of the types ([vault, ...]), the product name
-  # Azure Key Vault and its host names (<vault>.vault.azure.net).
+  # Azure Key Vault and its host names (<vault>.vault.azure.net). The
+  # table "organizations" of the API database in an SQL query is a name of
+  # the API, not prose.
   hits="$(grep -n -i -E "$pattern" "$@" 2>/dev/null | grep -v -F 'tests/render-matrix.sh:' | grep -v -F 'tests/check_render.py:' \
     | grep -v -F 'tests/compose-files.sh:' \
+    | grep -v -E '^[^:]*docs/upgrade\.md:[0-9]+: +FROM "organizations",$' \
     | grep -v -E '\.initialized|Initialized +true|"Initialized' \
     | grep -v -E '^[^:]*\.py:[0-9]+:.*(\bserialization\.|import .*\bserialization\b)' \
     | grep -v -E '^[^:]*:[0-9]+: +types: \[vault(, [a-z-]+)*\]$|^[^:]*values\.schema\.json:[0-9]+: +"(external-|azure-key-)?vault",?$' \
@@ -324,7 +327,8 @@ notes() {
   fi
 }
 notes "shamir" "bao operator unseal" -f "$examples/openbao-shamir.yaml"
-notes "external OpenBao" "Make the first admin" -f "$examples/openbao-external.yaml"
+notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$examples/openbao-external.yaml"
+notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
@@ -389,6 +393,25 @@ guard "first organisation without name" "api.jobs.createOrganisation.name" "${sh
 guard "first organisation without policy URL" "api.jobs.createOrganisation.policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm
 guard "first organisation without admin" "api.jobs.createOrganisation.adminEmail" "${shamir[@]}" --set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy --set api.jobs.createOrganisation.type=Technology
 guard "first organisation policy URL not http" "policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=ftp://example.org/privacy
+# The platform operator Jobs: the required values, one path at a time, an
+# http or https policy URL, an organisation id without other characters,
+# and no password as a value (the password is a file of a Secret).
+bootstrap=(-f "$here/values/operator-jobs-bootstrap.yaml")
+guard "platform operator without admin e-mail" "api.jobs.bootstrapPlatform.adminEmail" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminEmail=
+guard "platform operator without admin name" "api.jobs.bootstrapPlatform.adminName" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminName=
+guard "platform operator without password Secret" "api.jobs.bootstrapPlatform.passwordSecret" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.passwordSecret=
+guard "platform operator without organisation name" "api.jobs.bootstrapPlatform.organisationName" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.organisationName=
+guard "platform operator without organisation type" "api.jobs.bootstrapPlatform.type" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.type=
+guard "platform operator without location" "api.jobs.bootstrapPlatform.location" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.location=
+guard "platform operator without policy URL" "api.jobs.bootstrapPlatform.policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=
+guard "platform operator policy URL not http" "policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=ftp://example.org/privacy
+guard "platform operator password as a value" "Additional property password" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.password=not-a-value
+guard "platform operator with the first admin Job" "api.jobs.bootstrapPlatform cannot run with api.jobs.registerAdmin" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-old.yaml"
+guard "platform operator of a new and of an existing installation" "enable only one of them" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-upgrade.yaml"
+guard "existing platform operator without organisation id" "api.jobs.platformOperator.organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.organisationId=
+guard "existing platform operator without admin e-mail" "api.jobs.platformOperator.adminEmail" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.adminEmail=
+guard "existing platform operator organisation id with a space" "organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set-string "api.jobs.platformOperator.organisationId=6731 --allow-last"
+guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -434,6 +457,37 @@ first=(--set api.jobs.registerAdmin.enabled=true --set api.jobs.registerAdmin.em
 renders "first organisation admin from registerAdmin" "--admin-email=admin@example.org" "${shamir[@]}" "${first[@]}"
 renders "first organisation type from createOrganisationType" "--type=Technology" "${shamir[@]}" "${first[@]}"
 renders "first organisation Job" "name: t-api-create-organisation-1" "${shamir[@]}" "${first[@]}"
+# The operator Jobs of the api (tests/check_operator_jobs.py): none by
+# default; the three Jobs of the earlier releases render as before (their
+# values file of the earlier install page); the platform operator of a new
+# installation (onboard bootstrap-platform) and of an installation that
+# exists (platform set-operator, then platform grant-admin). The password is
+# a file of its own Secret, never an argument, a variable or a ConfigMap
+# value.
+operator_jobs() {
+  local case="$1"; shift
+  local file="$out/operator-jobs-$case.yaml" result
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "$@" 2>&1 > "$file")"; then
+    bad "operator Jobs $case: $(printf '%s' "$result" | head -c 300)"
+  elif result="$(python3 "$here/check_operator_jobs.py" "$file" "$case" 2>&1)"; then
+    ok "operator Jobs $case"
+  else
+    bad "operator Jobs $case"
+    printf '%s\n' "$result" | sed 's/^/  /' | head -20
+  fi
+}
+operator_jobs none
+operator_jobs old -f "$here/values/operator-jobs-old.yaml"
+operator_jobs bootstrap -f "$here/values/operator-jobs-bootstrap.yaml"
+operator_jobs operator -f "$here/values/operator-jobs-upgrade.yaml"
+# The feature gate of the gateway (Features.enforce): on by default, off
+# with gateway.features.enforce false, and gateway.extraConfig still wins.
+renders "feature gate on by default" "enforce: true" "${shamir[@]}"
+renders "feature gate off" "enforce: false" "${shamir[@]}" --set gateway.features.enforce=false
+lacks "feature gate off has no enforce true" "enforce: true" "${shamir[@]}" --set gateway.features.enforce=false
+renders "feature gate off with extraConfig" "enforce: false" "${shamir[@]}" --set gateway.extraConfig.Features.enforce=false
+# The API core publishes the deletion of an organisation (contract/v2 E10).
+renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"' "${shamir[@]}"
 # The key store providers and the EU trusted list check of the wallet.
 renders "EU trusted list check on by default" "eu_lotl_url: https://ec.europa.eu/tools/lotl/eu-lotl.xml" "${shamir[@]}"
 renders "EU trusted list check off" "eu_lotl_url: null" "${shamir[@]}" --set organisationWallet.trustList.euLotlUrl=

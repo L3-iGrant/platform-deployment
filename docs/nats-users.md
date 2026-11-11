@@ -29,7 +29,7 @@ The services make their JetStream streams, their durable consumers and their key
 
 | Stream | Made by | Subjects | Retention |
 | --- | --- | --- | --- |
-| `API_EVENTS` | the API core, the webhook handler | `api.v1.evt.organisation.created`, `.organisation.updated`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | limits |
+| `API_EVENTS` | the API core, the webhook handler | `api.v1.evt.organisation.created`, `.organisation.updated`, `.organisation.deleted`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | limits |
 | `CONSENT_EVENTS` | consent | `consent.v1.evt.webhook.requested`, `consent.v1.evt.policy.updated` | limits |
 | `OWS_MICROSERVICE` | the wallet roles, the API core, the webhook handler | `ows.*.webhook.*`, `ows.*.notification`, `ows.*.evt.push_requested`, `ows.*.evt.webhook_event` (the wallet); `ows.users.*.authentication.oidcpasswordless.verified`, `.accepted`, `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` (the api) | interest: a message stays until each consumer has it |
 
@@ -37,17 +37,19 @@ The durable consumers. The replicas of a process share each consumer (the delive
 
 | Consumer | Stream | Subjects | Process |
 | --- | --- | --- | --- |
-| `consent-api-organisation` | `API_EVENTS` | `api.v1.evt.organisation.created`, `.updated` | consent |
-| `eudi-wallet-api-triggers` | `API_EVENTS` | `api.v1.evt.organisation.updated`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | the config role of the wallet |
+| `consent-api-organisation` | `API_EVENTS` | `api.v1.evt.organisation.created`, `.updated`, `.deleted` | consent |
+| `eudi-wallet-api-triggers` | `API_EVENTS` | `api.v1.evt.organisation.updated`, `.organisation.deleted`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | the config role of the wallet |
 | `api-consent-webhooks`, `api-consent-policy` | `CONSENT_EVENTS` | `consent.v1.evt.webhook.requested`, `consent.v1.evt.policy.updated` | the webhook handler |
 | `consent-dda-present-proof`, `consent-dda-presentation` | `OWS_MICROSERVICE` | `ows.*.webhook.present_proof`, `ows.*.webhook.presentation` | consent |
 | `api-webhook-event` | `OWS_MICROSERVICE` | `ows.*.evt.webhook_event` (the webhook events of the issuer, the verifier and the holder) | the webhook handler |
 | `api-push-requested` | `OWS_MICROSERVICE` | `ows.*.evt.push_requested` | the webhook handler |
 | `openidprovider-client-created`, `openidprovider-client-deleted`, `openidprovider-clients-deleted` | `OWS_MICROSERVICE` | `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` | the API core |
 
+The API core publishes each event of `API_EVENTS` by its name: its NATS user has the publish right for each of the 6 subjects, and no wildcard. `api.v1.evt.organisation.deleted` is the deletion of an organisation by a platform admin: consent purges its data of the organisation, and the wallet deactivates the wallets of the organisation. The API core adds the subject to the stream at its start, and consent and the config role of the wallet add it to the filter of their consumers at their start. A consumer has no subject right of its own (it gets its messages on the inbox of its process), so only the user `api` changes. With an external NATS, see [Upgrade](upgrade.md#before-the-upgrade).
+
 The services delete the durable consumers of their earlier releases at their start, before they update the stream: the API core and the webhook handler delete `api-wua-revocation`, `api-webhook-issue-credential`, `api-webhook-issuer-event`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`; the service and config roles of the wallet delete `credential-definition-worker` and `presentation-definition-worker`. The NATS users of these processes can only read and delete these consumers. Without this right, the API core and the webhook handler do not start.
 
-Subscriptions without a JetStream consumer: the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply: the API core sends all commands, the webhook handler sends only `ows.cmd.*.issuance.revoke`, the revocation of the earlier Authenticator credential of an admin); the server-sent event streams of each config pod (`ows.*.notification`, `ows.*.webhook.present_proof`: each config pod gets each event); the clears of the process caches of the wallet (`ows.cache.cleared`: the service and config pods send them, and each of these pods gets each clear; a pod that cannot subscribe to it is not ready; the workers send no clear, so a change that a worker commits reaches the caches of the service and config pods when their 60 seconds end, as does a lost clear); the passwordless waits of the API core.
+Subscriptions without a JetStream consumer: the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply: the API core sends all commands, for example `ows.cmd.<wallet organisation id>.organisation.set_suspended` for the suspension of an organisation; the webhook handler sends only `ows.cmd.*.issuance.revoke`, the revocation of the earlier Authenticator credential of an admin); the server-sent event streams of each config pod (`ows.*.notification`, `ows.*.webhook.present_proof`: each config pod gets each event); the clears of the process caches of the wallet (`ows.cache.cleared`: the service and config pods send them, and each of these pods gets each clear; a pod that cannot subscribe to it is not ready; the workers send no clear, so a change that a worker commits reaches the caches of the service and config pods when their 60 seconds end, as does a lost clear); the passwordless waits of the API core.
 
 | Key-value bucket | Made by | Holds |
 | --- | --- | --- |

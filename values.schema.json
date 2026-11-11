@@ -1695,6 +1695,56 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "bootstrapPlatform": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "adminEmail": {
+                  "type": "string"
+                },
+                "adminName": {
+                  "type": "string"
+                },
+                "passwordSecret": {
+                  "type": "string"
+                },
+                "passwordKey": {
+                  "type": "string"
+                },
+                "organisationName": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "string"
+                },
+                "policyUrl": {
+                  "type": "string",
+                  "pattern": "^(|https?://[^\\s/]+.*)$"
+                }
+              }
+            },
+            "platformOperator": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "organisationId": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9-]*$"
+                },
+                "adminEmail": {
+                  "type": "string"
+                }
+              }
+            },
             "registerAdmin": {
               "type": "object",
               "additionalProperties": false,
@@ -2050,6 +2100,15 @@
                   "type": "integer"
                 }
               }
+            }
+          }
+        },
+        "features": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enforce": {
+              "type": "boolean"
             }
           }
         },

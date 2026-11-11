@@ -80,11 +80,15 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `api.keyStorage.*` | The key Secrets and the active key id (`scripts/make-keys.sh`) | see values |
 | `api.serviceEnvelope.activeKid` | The key id of the NATS message key of the api | `""` |
 | `api.smtp.*`, `api.twilio.*` | E-mail and SMS | empty |
-| `api.adminAuth.walletLogin.organisationId` | The wallet provider organisation of the wallet login of the admins | `""` |
-| `api.jobs.registerAdmin`, `.createOrganisationType`, `.createOrganisation` | The first admin and its organisation (install step 7) | off |
+| `api.adminAuth.walletLogin.organisationId` | The organisation whose OpenID provider the admins use for the wallet login. Empty: the platform operator organisation of the installation, when it is the wallet provider and its OIDC extension is on; without such an organisation, the admins have no wallet login | `""` |
+| `api.jobs.bootstrapPlatform.enabled`, `.adminEmail`, `.adminName`, `.organisationName`, `.type`, `.location`, `.policyUrl` | A new installation: the Job that makes the platform operator organisation and its first platform admin (`igrant-api onboard bootstrap-platform`; it also makes the organisation type). All are required when enabled. See [Install](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin) | off, `""` |
+| `api.jobs.bootstrapPlatform.passwordSecret`, `.passwordKey` | The existing Secret and its key with the first password of the platform admin: 15 characters or more (the other accounts: 12). The Job mounts it as a file. The chart and its schema cannot check a password in a Secret: the Job fails when the API refuses it. The admin sets a new password at the first login | `""`, `password` |
+| `api.jobs.platformOperator.enabled`, `.organisationId`, `.adminEmail` | An installation that exists: the Job that gives an organisation the platform operator mark (`igrant-api platform set-operator`), then gives one of its admins the platform admin right (`igrant-api platform grant-admin`). The organisation must be the wallet provider or have no wallet. See [Upgrade](upgrade.md#the-platform-operator) | off, `""` |
+| `api.jobs.registerAdmin`, `.createOrganisationType`, `.createOrganisation` | The Jobs of the earlier releases: an admin (a password of 12 characters or more) and its organisation, without the platform operator mark. They stay for the values files that use them. The render stops when `bootstrapPlatform` is enabled with `registerAdmin` or `createOrganisation` | off |
 | `api.extraConfig` | More configuration keys of the api (no secrets) | `{}` |
 | `gateway.replicas`, `.resources` | The gateway | `2`, 100m/128Mi |
 | `gateway.internalToken.activeKid`, `gateway.publicKeys.*` | The gateway key and the public keys (`scripts/make-keys.sh`) | `""` |
+| `gateway.features.enforce` | The feature gate (`Features.enforce` of the gateway file): `true`, the gateway refuses a route of a product feature that is off for the organisation of the credential (`403`, `feature_disabled`); `false`, it refuses no route for a feature (an emergency, or the first upgrade of an installation that exists: see [Upgrade](upgrade.md#the-feature-gate)) | `true` (the default of the gateway) |
 | `gateway.upstreams.*`, `gateway.proxy.*` | The services behind the gateway and the connection limits | the Services of the chart |
 
 ## Consent, wallet and dashboard

@@ -761,8 +761,11 @@ NATS users of the services: one nkey user per service process in the global
 account, with the subjects of the process. Each item: name, values key,
 nkey, seed {secret, key}, inbox prefix, publish, subscribe, allowResponses,
 enabled (the process is in the chart). The services publish their events
-and requests by name (the stream and subject contract of the services); the
-wallet commands of the API core stay ows.cmd.>. The webhook handler sends
+and requests by name (the stream and subject contract of the services; the
+events of the api are the subjects of the stream API_EVENTS, with
+api.v1.evt.organisation.deleted, the deletion of an organisation); the
+wallet commands of the API core stay ows.cmd.> (also
+ows.cmd.*.organisation.set_suspended). The webhook handler sends
 one command of the wallet, ows.cmd.*.issuance.revoke: it revokes the
 Authenticator credential of an admin when the admin gets a new one.
 The JetStream consumers of a process (pull, and push with a deliver subject
@@ -791,7 +794,7 @@ the stream or the consumers of another service. Output: JSON list.
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
-      (list "api.v1.evt.organisation.created" "api.v1.evt.organisation.updated" "api.v1.evt.sandbox.updated" "api.v1.evt.sandbox.deleted" "api.v1.evt.extension.updated")
+      (list "api.v1.evt.organisation.created" "api.v1.evt.organisation.updated" "api.v1.evt.organisation.deleted" "api.v1.evt.sandbox.updated" "api.v1.evt.sandbox.deleted" "api.v1.evt.extension.updated")
       (list "ows.openidprovider.client.created" "ows.openidprovider.client.deleted" "ows.openidprovider.clients.deleted")
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))
