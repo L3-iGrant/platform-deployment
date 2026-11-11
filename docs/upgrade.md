@@ -379,7 +379,7 @@ Rules that an operator must know:
 
 From the release with the feature gate, the gateway refuses a route of a product feature that is off for the organisation of the credential: `403` with `errorKey` `feature_disabled`. The value is `gateway.features.enforce`, and its default is `true`, the default of the gateway. An organisation cannot set its own features: a platform admin sets them in the dashboard.
 
-The migration hook of the API turns `dataDisclosureAgreements` and `files` on for each organisation, and `sandbox` on for each organisation with a sandbox organisation. Each other feature keeps its value. An organisation that uses the routes of a feature that is off for it (for example with an API key) gets `403` from the first request after the upgrade.
+The platform has four product features: `issuerVerifier`, `walletUnit`, `consentManagement` and `dataDisclosureAgreements` (see [The four feature switches](#the-four-feature-switches)). The migration hook of the API turns `dataDisclosureAgreements` on for each organisation that exists, and it gives each organisation its four features. An organisation that uses the routes of a feature that is off for it (for example with an API key) gets `403` from the first request after the upgrade.
 
 To check the features before the gate is on:
 
@@ -396,15 +396,99 @@ To check the features before the gate is on:
    ```sql
    SELECT "id", "doc" ->> 'name' AS "name", "feature"
    FROM "organizations",
-     unnest(ARRAY['dataagreements', 'datadisclosureagreements', 'issuerverifier', 'walletunit',
-       'consentmanagement', 'privacydashboard', 'account', 'actionlogs', 'webhooks']) AS "feature"
+     unnest(ARRAY['issuerverifier', 'walletunit', 'consentmanagement', 'datadisclosureagreements']) AS "feature"
    WHERE ("doc" -> 'configuredfeatures' -> "feature") IS DISTINCT FROM 'true'::jsonb
    ORDER BY "name", "feature";
    ```
 
-   The query lists the 9 features that have routes in the gate. A key that is not in the record reads as off.
+   The query lists the 4 product features. A key that is not in the record reads as off.
 
 3. For each row, decide with the organisation. A platform admin turns a feature on in the dashboard (row menu "Manage Features"): this needs the platform operator (see [After the upgrade](#after-the-upgrade)).
 4. Remove the value (or set `enforce: true`) and run the upgrade again. The gateway pods restart with the gate on. To see the refusals, search the log of the gateway pods for `route of a disabled feature refused`.
 
 Use `enforce: false` also for an emergency: the gateway then refuses no route for a feature, and the features only show and hide the areas of the dashboard. A gateway image of an earlier release does not know the key `Features` and does not start with it: use the chart and the images of one release.
+
+## The four feature switches
+
+From the release with the four feature switches, an organisation has four product features. They are the switches of the panel "Manage Features" of a platform admin:
+
+| Switch | Key | What follows the switch | New organisation |
+| --- | --- | --- | --- |
+| Issuer & Verifier | `issuerVerifier` | The issuer, the verifier, the extensions, the files of the verifier, and the sandbox organisations | On |
+| Wallet Unit (Holder) | `walletUnit` | The wallet unit of the organisation, and the sandbox organisations | Off |
+| Consent Management | `consentManagement` | The users, the user requests, the privacy dashboard, the data agreements and the personal data | Off |
+| Data Marketplace | `dataDisclosureAgreements` | The data disclosure agreements and the data space, with the data agreements | Off |
+
+Getting Started, Account (the team, the data verifier users and the API keys), Webhooks and Activity Logs have no switch. They are always available, and a platform admin cannot turn them off for an organisation. The release before had 13 features, also for these functions.
+
+What changes with the upgrade:
+
+- **A new organisation has only Issuer & Verifier on.** Before, a new organisation also had the wallet unit, the consent management, the data agreements and the privacy dashboard on. A platform admin turns the other areas on for each organisation that needs them (see the steps below). Change each script that makes organisations and expects the old defaults.
+- **The platform operator organisation has the four on.** The Job `bootstrapPlatform` makes it with them, the Job `api.jobs.platformOperator` (`igrant-api platform set-operator`) turns them on when it gives the mark, and the migration turns them on for the platform operator organisation that exists.
+- **The organisations that exist keep what they can use.** The migration hook of the API (`0029_four_product_features`) changes the stored features of each organisation:
+
+  | Before the migration | After the migration |
+  | --- | --- |
+  | Consent management, data agreements, personal data or privacy dashboard on | Consent Management is on. |
+  | Issuer and verifier, wallet unit, data marketplace | They keep their values. |
+  | A sandbox organisation that is not deleted, and the issuer and verifier and the wallet unit off | Issuer & Verifier is on, because the routes of the sandbox organisations now need one of the two. |
+  | The platform operator organisation | The four are on. |
+  | An organisation record with no features | The four are off. |
+  | The 9 other keys (`gettingstarted`, `dataagreements`, `manageddata`, `privacydashboard`, `account`, `actionlogs`, `webhooks`, `files`, `sandbox`) | Removed from the record. |
+
+  A second run of the migration changes no record.
+- **The routes of the sandbox organisations** are available when Issuer & Verifier or Wallet Unit (Holder) is on. With the two off, they answer `403` `feature_disabled`.
+- **The API takes the 4 keys and the preview `apiKeyScopesUi` only.** A request with one of the 9 removed keys gets `400` with a text that names the key. Change each client that sets features with the old keys.
+
+Before the upgrade:
+
+1. The gateway of the release before reads 13 features, and a key that is not in the record reads as off there. The migration hook runs before the pods change. Thus, until the new gateway pods run, the earlier gateway pods refuse the routes of Account, Webhooks, Activity Logs, the data agreements and the privacy dashboard for each organisation (`403` `feature_disabled`). To prevent this, turn the gate off with the chart of the release that you have, then upgrade with the gate off, then turn it on:
+
+   ```yaml
+   gateway:
+     features:
+       enforce: false
+   ```
+
+   Or do the upgrade in a maintenance window. A release from before the feature gate does not refuse a route for a feature: this step is not necessary for it.
+2. List the organisations with a sandbox organisation and no wallet area, as the owner user of the API database (`igrant_api`). The migration turns Issuer & Verifier on for them:
+
+   ```sql
+   SELECT "o"."organisation" AS "id", "o"."name"
+   FROM "organizations",
+     LATERAL (SELECT "id" AS "organisation", "doc" ->> 'name' AS "name", "doc" -> 'configuredfeatures' AS "features") AS "o"
+   WHERE ("o"."features" -> 'issuerverifier') IS DISTINCT FROM 'true'::jsonb
+     AND ("o"."features" -> 'walletunit') IS DISTINCT FROM 'true'::jsonb
+     AND EXISTS (
+       SELECT 1 FROM "subwallets" AS "s"
+       WHERE "s"."doc" ->> 'organisationid' = "o"."organisation"
+         AND ("s"."doc" -> 'isdeleted') IS DISTINCT FROM 'true'::jsonb)
+   ORDER BY "o"."name";
+   ```
+
+   To keep the area off for such an organisation, a platform admin turns Issuer & Verifier off for it after the upgrade. Its sandbox organisations stay in the database.
+
+After the upgrade:
+
+1. List the features of each organisation:
+
+   ```sql
+   SELECT "id", "doc" ->> 'name' AS "name", "f"."features"
+   FROM "organizations",
+     LATERAL (SELECT "doc" -> 'configuredfeatures' AS "features") AS "f"
+   ORDER BY "name";
+   ```
+
+2. To turn an area on for an organisation, a platform admin logs in to the dashboard, opens the list of the organisations in the group "Wallet Provider (Orgs)", opens the row menu of the organisation, selects "Manage Features", and sets the switch. The change applies in each gateway pod within one minute. The same change with the API, with the access token of a platform admin:
+
+   ```bash
+   curl -X PUT https://api.example.org/v4/onboard/platform/operator/organisation/<organisationId>/features \
+     -H "Authorization: Bearer <access token>" -H "Content-Type: application/json" \
+     -d '{"walletUnit": true, "consentManagement": true}'
+   ```
+
+3. When you turned the gate off in step 1 before the upgrade, remove the value (or set `enforce: true`) and run the upgrade again.
+
+A rollback of the images to the release before needs the 9 keys again: with the records of this release, the earlier gateway refuses the routes of Account, Webhooks and Activity Logs. Apply the down file `0029_four_product_features.down.sql` of the API and set the version of `schema_migrations` back to 28, in one transaction, before the earlier images start; or set `gateway.features.enforce: false` for the earlier release. The down file cannot restore the values from before the upgrade (see [Rollback](#rollback)).
+
+A single-tenant installation (`ApplicationMode: single-tenant`) has no platform admin. Its organisation of a new installation has only Issuer & Verifier on. To use the other areas there, set `gateway.features.enforce: false`.
