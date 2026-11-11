@@ -125,7 +125,7 @@ An installation has one platform operator organisation. The platform admins of t
 
 The Job `bootstrapPlatform` of the chart runs `igrant-api onboard bootstrap-platform`. In one command, it makes the organisation type (when no type has the name), the first admin, the organisation with the platform operator mark, the role Super Admin of the admin in it, and the platform admin right of the admin.
 
-1. Create a Secret with the first password of the admin. The password of a platform admin must have 15 characters or more (at most 256). It must not be a known password, and it must not have a part of the e-mail address, the name or the organisation name. The chart cannot check a password in a Secret: the Job fails when the API refuses the password, and its log names the rules that failed, never the password.
+1. Create a Secret with the first password of the admin. The password of a platform admin must have 15 characters or more (at most 256) and at least one special character, for example `!`, `#` or `%`. A space is not a special character. It must not be a known password, and it must not have a part of the e-mail address, the name or the organisation name. The chart cannot check a password in a Secret: the Job fails when the API refuses the password, and its log names the rules that failed, never the password.
 
    ```bash
    kubectl -n ows create secret generic ows-platform-admin --from-file=password=./admin-password.txt
@@ -169,7 +169,7 @@ The Job `bootstrapPlatform` of the chart runs `igrant-api onboard bootstrap-plat
 
    The output has one JSON line with `operatorOrganisationId` (the id of your organisation) and one entry in `platformAdmins`.
 
-4. Log in to `https://dashboard.example.org` with the e-mail address and the password. The account must change the password at the first login: the dashboard opens the page for the new password (15 characters or more). This step needs no e-mail service. After the login you see the "Getting started" page of the organisation. The dashboard shows the functions of a platform admin in the group "Wallet Provider (Orgs)".
+4. Log in to `https://dashboard.example.org` with the e-mail address and the password. The account must change the password at the first login: the dashboard opens the page for the new password (15 characters or more, with at least one special character). This step needs no e-mail service. After the login you see the "Getting started" page of the organisation. The dashboard shows the functions of a platform admin in the group "Wallet Provider (Orgs)".
 
 5. Run `helm upgrade` again without `platform-operator.yaml`: this turns the Job off. Then delete the password file and the Secret. The admin exists, and only the Job of item 2 reads the Secret.
 
@@ -196,7 +196,7 @@ A platform admin does these tasks in the dashboard, in the group "Wallet Provide
 | Delete a suspended organisation | Row menu, "Delete Organisation" | The deletion cannot be undone. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the wallets of the organisation and purges them after its retention period. No background job repeats a failed step of the API: when the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
 | Give and remove the platform admin right | Page "Platform Admins" | Only an admin of the platform operator organisation can get the right. A platform admin with a password of less than 15 characters sets a new password at the next login. |
 
-Each other new password (an invitation, a one-time password change, a reset) must have 12 characters or more.
+Each other new password (an invitation, a one-time password change, a reset) must have 12 characters or more and at least one special character.
 
 When no platform admin can log in (for example the only platform admin left), give the right to an admin of the platform operator organisation with the command line:
 

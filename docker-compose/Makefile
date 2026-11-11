@@ -66,11 +66,12 @@ ORGANISATION_TYPE ?= Technology
 # admins make the other organisations in the dashboard. The command is
 # idempotent. The password is read from the terminal and goes to the
 # command on standard input: it is never an argument. It needs 15
-# characters or more, and the admin sets a new password at the first login.
+# characters or more and at least one special character, and the admin sets
+# a new password at the first login.
 platform-operator: ## Step 8: make the platform operator organisation and its first platform admin: make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... (asks for the password)
 	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
 		{ echo "platform-operator: set ADMIN_EMAIL, ADMIN_NAME, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
-	@stty -echo 2>/dev/null; printf 'First password of %s (15 characters or more; the input is hidden): ' "$(ADMIN_EMAIL)"; \
+	@stty -echo 2>/dev/null; printf 'First password of %s (15 characters or more, with at least one special character; the input is hidden): ' "$(ADMIN_EMAIL)"; \
 	IFS= read -r password; stty echo 2>/dev/null; echo; \
 	printf '%s' "$$password" | $(API_COMMAND) onboard bootstrap-platform \
 		--admin-email "$(ADMIN_EMAIL)" --admin-name "$(ADMIN_NAME)" --password-file - \
@@ -99,7 +100,7 @@ admin: ## Earlier releases: make an admin without an organisation: make admin AD
 		{ echo "admin: set ADMIN_EMAIL, ADMIN_NAME and ADMIN_PHONE" >&2; exit 1; }
 	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation-type \
 		--type "$(ORGANISATION_TYPE)" --config /etc/igrant-api/config.yaml </dev/null
-	@stty -echo 2>/dev/null; printf 'Password of %s (the input is hidden): ' "$(ADMIN_EMAIL)"; \
+	@stty -echo 2>/dev/null; printf 'Password of %s (12 characters or more, with at least one special character; the input is hidden): ' "$(ADMIN_EMAIL)"; \
 	IFS= read -r password; stty echo 2>/dev/null; echo; \
 	printf '%s' "$$password" | $(COMPOSE) exec -T api /app/bin/igrant-api onboard register-admin \
 		--email "$(ADMIN_EMAIL)" --name "$(ADMIN_NAME)" --phone "$(ADMIN_PHONE)" \
