@@ -491,4 +491,3 @@ After the upgrade:
 
 A rollback of the images to the release before needs the 9 keys again: with the records of this release, the earlier gateway refuses the routes of Account, Webhooks and Activity Logs. Apply the down file `0029_four_product_features.down.sql` of the API and set the version of `schema_migrations` back to 28, in one transaction, before the earlier images start; or set `gateway.features.enforce: false` for the earlier release. The down file cannot restore the values from before the upgrade (see [Rollback](#rollback)).
 
-A single-tenant installation (`ApplicationMode: single-tenant`) has no platform admin. Its organisation of a new installation has only Issuer & Verifier on. To use the other areas there, set `gateway.features.enforce: false`.
