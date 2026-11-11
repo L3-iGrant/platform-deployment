@@ -264,7 +264,7 @@ Provider (Orgs)". No `make` target is necessary.
 | Task | What an operator of the installation must know |
 |---|---|
 | Add an organisation with its first admin (page "Wallet Units", the + button) | The first admin gets an invitation by e-mail or a one-time password. An invitation needs the e-mail service (`SMTP_HOST`): without it, use the one-time password. The API deploys the wallet of the new organisation. |
-| Set the features of an organisation ("Manage Features") | The gateway refuses the routes of a feature that is off for the organisation (`FEATURES_ENFORCE`, see [Settings](#settings)). |
+| Set the features of an organisation ("Manage Features") | The panel has four switches: Issuer & Verifier, Wallet Unit (Holder), Consent Management and Data Marketplace. A new organisation has only Issuer & Verifier on, and the platform operator organisation has the four on. Getting Started, Account, Webhooks and Activity Logs have no switch and are always available. The gateway refuses the routes of a feature that is off for the organisation (`FEATURES_ENFORCE`, see [Settings](#settings)). |
 | Suspend and resume an organisation | The gateway refuses each credential of a suspended organisation within 60 seconds. When the wallet did not get the state, the page shows a warning: send the request again. |
 | Delete a suspended organisation ("Delete Organisation") | The deletion cannot be undone. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the wallets of the organisation and purges them after its retention period. No background job repeats a failed step of the API: when the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in `docker compose logs api`. |
 | Give and remove the platform admin right (page "Platform Admins") | Only an admin of the platform operator organisation can get the right. A platform admin with a password of less than 15 characters sets a new password at the next login. |
@@ -381,6 +381,20 @@ Before you start the new release, with the earlier release:
    that is off for it gets `403` `feature_disabled` from the first request
    with the new release. To check the features first, set
    `FEATURES_ENFORCE=false` before you start the new release.
+
+4. From the release with the four feature switches, an organisation has
+   four product features: Issuer & Verifier, Wallet Unit (Holder), Consent
+   Management and Data Marketplace. `api-migrate` of the new release
+   changes the stored features of each organisation: Consent Management is
+   on for an organisation that had the consent management, the data
+   agreements, the personal data or the privacy dashboard on, and the three
+   other switches keep their values. Nothing that an organisation can use
+   goes off. Stop the gateway container of the earlier release before you
+   start the new release, or set `FEATURES_ENFORCE=false` for the earlier
+   release: with the changed records, a gateway of the earlier release
+   refuses the routes of Account, Webhooks and Activity Logs. With the new
+   release, a new organisation has only Issuer & Verifier on: a platform
+   admin turns the other areas on in "Manage Features".
 
 The start of the new release. A release that changes the messages between the services has a
 release order: consent, then the wallet, then the API and the gateway. A
