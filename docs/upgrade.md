@@ -251,3 +251,160 @@ From the release that keeps each issuance in tables by its life cycle (the issua
 - The retention purge deletes the token of an issued credential 30 days after the issue (`organisationWallet.retention.issuedCredentialTokenDays`, see [Audit log](audit-log.md#retention-purge)). The copy copies only the tokens that are younger.
 - The read view of the issuances for the api keeps its name and its columns: no action.
 - A later release drops `issuer.credential_issuance`. Its migration stops (exit code 1) while the copy is not complete. Before you upgrade to that release, run this release until `issuance-backfill status` shows the copy complete. Do not go from an earlier release to that release in one upgrade: the copy needs the workers of this release.
+
+## The platform operator
+
+From the release with the platform operator, an installation has one platform operator organisation. Its platform admins add, suspend and delete the other organisations in the dashboard, and they set the features of each organisation (see [Install](install.md#after-the-installation-the-other-organisations-and-admins)). Only the command line gives an organisation the platform operator mark and gives the first platform admin right.
+
+An installation that exists has no platform operator organisation after the upgrade. The organisations and their admins work as before, but the functions of a platform admin stay hidden in the dashboard until you do the steps of this section. Do not use the Job `api.jobs.bootstrapPlatform` for an installation that exists: it is for a new installation. With an e-mail address that no admin has, it makes a new organisation with the platform operator mark, and then no organisation that exists can get the mark.
+
+Removed in this release of the API:
+
+| Removed | Use |
+| --- | --- |
+| The command `igrant-api iam set-organisation-login` | A platform admin suspends and resumes an organisation in the dashboard (`PUT /v4/onboard/platform/operator/organisation/{organisationId}/status`). Change each script that calls the command. |
+| The route `POST /v4/onboard/platform/organisation` and the API key scope `organisation:create` | A platform admin adds an organisation in the dashboard (`POST /v4/onboard/platform/operator/organisation`). No API key can make an organisation. |
+| The member `isWalletProvider` in the body of `PUT /v4/config/ows/wallet/deployment` | No route sets the wallet provider flag after the deployment of a wallet: see item 2 below. |
+
+### Before the upgrade
+
+Do these items with the earlier release, before step 2.
+
+1. Choose the organisation that becomes the platform operator. The platform operator is always the wallet provider organisation of the installation:
+
+   - when one organisation is the wallet provider, only this organisation can be the platform operator;
+   - when no organisation is the wallet provider, choose an organisation with no wallet, or do item 2 for the organisation that you choose.
+
+   The command `platform set-operator` refuses an organisation whose wallet is deployed and is not the wallet provider, and each organisation when a different organisation is the wallet provider. To read the id of an organisation and the state of its wallet, use an API key of the organisation with the scopes `onboard` and `config`:
+
+   ```bash
+   curl -s https://api.example.org/v4/onboard/platform/organisation -H "Authorization: ApiKey $API_KEY"
+   curl -s https://api.example.org/v4/config/ows/wallet/deployment -H "Authorization: ApiKey $API_KEY"
+   ```
+
+   A release without the `/v4` routes has them at `GET /v2/onboard/organisation` and `GET /v2/config/digital-wallet/openid`. The first answer has the `id` of the organisation. The second answer has `statusStr` (`Deployed` for a deployed wallet) and `isWalletProvider`. An organisation with `"isWalletProvider": true`, or with a wallet that is not deployed, needs no more work before the upgrade.
+
+2. Only for an organisation whose wallet is deployed and is not the wallet provider (and no other organisation is the wallet provider): make its wallet the wallet provider with the earlier release. The new release has no route and no command for this. An admin of that organisation, or an API key of it with the scope `config`, sends this request one time to the API of the earlier release:
+
+   ```bash
+   curl -s -X PUT https://api.example.org/v4/config/ows/wallet/deployment \
+     -H "Authorization: ApiKey $API_KEY" -H 'Content-Type: application/json' \
+     -d '{"isWalletProvider": true}'
+   ```
+
+   A release without the routes `/v4/config/ows/...` has the same route at `PUT /v2/config/digital-wallet/openid`. A build of the API that has the command `platform set-operator` and still sets the flag in this route (it refuses the member `isWalletProvider`) takes the body `{}` for the organisation with the platform operator mark.
+
+   Check: the answer, and `GET` of the same path, show `"isWalletProvider": true`. An answer `Wallet provider already exists` usually means that a different organisation is the wallet provider: that organisation is the only one that can be the platform operator.
+
+   If you did not do this item before the upgrade, the organisation cannot become the platform operator in the new release. Contact iGrant.io.
+
+3. External NATS (`nats.enabled: false`): give your server the users of the new release before step 3 (the render of step 2 has them in the ConfigMap `<release>-nats-authorization`). The user `api` gets the right to publish `api.v1.evt.organisation.deleted`. Without it, the API cannot publish the deletion of an organisation, and consent and the wallet keep the data of a deleted organisation. The bundled NATS gets the users from the chart.
+
+4. Decide the first value of the feature gate: see [The feature gate](#the-feature-gate).
+
+### The order of the services
+
+A release that changes the messages between the services has a release order: consent, then the wallet, then the API and the gateway. The API is the last one because it sends the new messages.
+
+What the chart does:
+
+- The migration hooks run before a pod changes, in the order of step 3: the API (also the tables of the gateway, which are in the API database), consent (`0005_organisation_purges`) and the wallet.
+- Then Helm changes all Deployments in one step. The chart cannot start the new pods of consent before the new pods of the wallet, or the new pods of the wallet before the new pods of the API.
+
+What this means for the time of the rollout, while pods of two releases run together:
+
+- A pod of the earlier consent release refuses the answer of a new API pod to its read of an organisation (the answer has the new member `suspended`). Such a request of consent fails until the consent pods of the new release are ready.
+- A suspension or a deletion of an organisation does not reach a pod of the earlier consent release or of the earlier wallet release. In the first upgrade to this release this cannot occur: no platform admin exists until you do [After the upgrade](#after-the-upgrade).
+
+What you must do:
+
+1. Do the upgrade in a maintenance window, with `--wait` (step 3).
+2. Continue only when all pods of consent, the wallet, the API and the gateway are of the new release and ready: `kubectl -n ows get pods` shows no pod of the earlier ReplicaSets, and `kubectl -n ows rollout status deployment/ows-consent` (also `ows-wallet-config`, `ows-wallet-service`, `ows-api`, `ows-api-webhook`, `ows-gateway`) shows `successfully rolled out`.
+3. Do [After the upgrade](#after-the-upgrade) only then. In later upgrades, do not suspend, resume or delete an organisation while a rollout runs.
+
+A rollback of the images after a platform admin suspended or deleted an organisation is not supported: the earlier releases do not know these states (see [Rollback](#rollback)).
+
+### After the upgrade
+
+1. Give the organisation the platform operator mark, and give one of its admins the platform admin right. The Job `api.jobs.platformOperator` runs `igrant-api platform set-operator`, then `igrant-api platform grant-admin`. Write these values to a file `platform-operator.yaml` and run the `helm upgrade` of step 3 with this file:
+
+   ```yaml
+   api:
+     jobs:
+       platformOperator:
+         enabled: true
+         organisationId: 6731f0c2a1b2c3d4e5f60789
+         adminEmail: admin@example.org
+   ```
+
+   Check: `kubectl -n ows get jobs` shows `ows-api-platform-operator-<revision>` as `Complete`. The logs show the result of each command:
+
+   ```bash
+   kubectl -n ows logs job/ows-api-platform-operator-<revision> -c set-operator   # {"organisationId":"...","changed":true}
+   kubectl -n ows logs job/ows-api-platform-operator-<revision> -c command        # {"adminId":"...","email":"...","changed":true}
+   ```
+
+   When `set-operator` refuses the organisation, the Job is `Failed`, no admin gets the right, and the log of `set-operator` has the cause. The two commands change nothing when the result exists, so a second run is safe.
+
+   You can run the same commands in an api pod, without the Job:
+
+   ```bash
+   kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform set-operator --organisation-id 6731f0c2a1b2c3d4e5f60789 --config=/etc/igrant-api/config.yaml
+   kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform grant-admin --email admin@example.org --config=/etc/igrant-api/config.yaml
+   ```
+
+2. Check the result. The command reads only, and it prints no secret:
+
+   ```bash
+   kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform status --config=/etc/igrant-api/config.yaml
+   ```
+
+   The JSON line of the output has `operatorOrganisationId` with the id of your organisation, and the admin in `platformAdmins`. A line `WARNING: the wallet of the organisation is deployed and is not the wallet provider` in the log of `set-operator` means that the installation has no wallet provider: contact iGrant.io.
+
+3. Run `helm upgrade` again without `platform-operator.yaml`: this turns the Job off.
+
+4. The admin logs in to the dashboard. The gateway and the API read the platform operator and the platform admins again within 60 seconds. A platform admin needs a password of 15 characters or more: an admin with a shorter password sets a new password at this login. Each other new password needs 12 characters or more: the API checks a password only when it is set, so a shorter password that exists still works. The Job `api.jobs.registerAdmin` fails when the password of a new admin has less than 12 characters.
+
+5. An organisation that you stopped with `iam set-organisation-login` before the upgrade stays suspended in the API, but consent and the wallet do not know it. A platform admin sends the suspend request for it one time in the dashboard: the request sends the state to the two services.
+
+Rules that an operator must know:
+
+- An installation has one platform operator organisation. No command moves or removes the mark.
+- `platform revoke-admin --email <e-mail>` removes the right of an admin. It refuses the last platform admin unless you add `--allow-last`. After the first platform admin exists, a platform admin gives and removes the right in the dashboard.
+- The wallet login of the admins (`api.adminAuth.walletLogin.organisationId`): with an empty value, the platform operator organisation is the organisation of the wallet login, when it is the wallet provider and its OIDC extension is on. An installation that sets the value keeps its organisation.
+- The API keeps the actions on the accounts of the admins for 365 days (`AccountActions.RetentionDays` in `api.extraConfig` sets another time).
+- The deletion of an organisation cannot be undone. No background job repeats a failed step of the API: a platform admin sends the request again until no step is left (see [Install](install.md#after-the-installation-the-other-organisations-and-admins)).
+
+## The feature gate
+
+From the release with the feature gate, the gateway refuses a route of a product feature that is off for the organisation of the credential: `403` with `errorKey` `feature_disabled`. The value is `gateway.features.enforce`, and its default is `true`, the default of the gateway. An organisation cannot set its own features: a platform admin sets them in the dashboard.
+
+The migration hook of the API turns `dataDisclosureAgreements` and `files` on for each organisation, and `sandbox` on for each organisation with a sandbox organisation. Each other feature keeps its value. An organisation that uses the routes of a feature that is off for it (for example with an API key) gets `403` from the first request after the upgrade.
+
+To check the features before the gate is on:
+
+1. Upgrade with the gate off:
+
+   ```yaml
+   gateway:
+     features:
+       enforce: false
+   ```
+
+2. List the features that are off, as the owner user of the API database (`igrant_api`):
+
+   ```sql
+   SELECT "id", "doc" ->> 'name' AS "name", "feature"
+   FROM "organizations",
+     unnest(ARRAY['dataagreements', 'datadisclosureagreements', 'issuerverifier', 'walletunit',
+       'consentmanagement', 'privacydashboard', 'account', 'actionlogs', 'webhooks']) AS "feature"
+   WHERE ("doc" -> 'configuredfeatures' -> "feature") IS DISTINCT FROM 'true'::jsonb
+   ORDER BY "name", "feature";
+   ```
+
+   The query lists the 9 features that have routes in the gate. A key that is not in the record reads as off.
+
+3. For each row, decide with the organisation. A platform admin turns a feature on in the dashboard (row menu "Manage Features"): this needs the platform operator (see [After the upgrade](#after-the-upgrade)).
+4. Remove the value (or set `enforce: true`) and run the upgrade again. The gateway pods restart with the gate on. To see the refusals, search the log of the gateway pods for `route of a disabled feature refused`.
+
+Use `enforce: false` also for an emergency: the gateway then refuses no route for a feature, and the features only show and hide the areas of the dashboard. A gateway image of an earlier release does not know the key `Features` and does not start with it: use the chart and the images of one release.

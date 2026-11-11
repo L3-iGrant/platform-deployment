@@ -119,52 +119,93 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api.example.org/healthz      # 
 curl -s -o /dev/null -w '%{http_code}\n' https://dashboard.example.org/       # 200
 ```
 
-## Step 7: the first admin and the organisation
+## Step 7: the platform operator organisation and the first platform admin
 
-The dashboard does not accept an admin without an organisation. Three Jobs of the chart create the organisation type, the first admin and the organisation of this admin.
+An installation has one platform operator organisation. The platform admins of this organisation add, suspend and delete the other organisations of the installation in the dashboard. Only the command line makes the platform operator organisation and gives the first platform admin right: no route of the API does this.
 
-1. Create a Secret with the password of the first admin:
+The Job `bootstrapPlatform` of the chart runs `igrant-api onboard bootstrap-platform`. In one command, it makes the organisation type (when no type has the name), the first admin, the organisation with the platform operator mark, the role Super Admin of the admin in it, and the platform admin right of the admin.
+
+1. Create a Secret with the first password of the admin. The password of a platform admin must have 15 characters or more (at most 256). It must not be a known password, and it must not have a part of the e-mail address, the name or the organisation name. The chart cannot check a password in a Secret: the Job fails when the API refuses the password, and its log names the rules that failed, never the password.
 
    ```bash
-   kubectl -n ows create secret generic ows-first-admin --from-file=password=./admin-password.txt
+   kubectl -n ows create secret generic ows-platform-admin --from-file=password=./admin-password.txt
    ```
 
-2. Write these values to a file `first-admin.yaml` and run `helm upgrade` with all files of step 4 and this file:
+2. Write these values to a file `platform-operator.yaml` and run `helm upgrade` with all files of step 4 and this file:
 
    ```yaml
    api:
      jobs:
-       createOrganisationType:
+       bootstrapPlatform:
          enabled: true
+         adminEmail: admin@example.org
+         adminName: First Admin
+         passwordSecret: ows-platform-admin
+         organisationName: Example Wallet Provider
          type: Technology
-       registerAdmin:
-         enabled: true
-         email: admin@example.org
-         name: First Admin
-         phone: "+4612345678"
-         passwordSecret: ows-first-admin
-       createOrganisation:
-         enabled: true
-         name: Example Organisation
          location: Stockholm
          policyUrl: https://example.org/privacy
-         description: The organisation of the first admin.
    ```
 
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-     -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml -f first-admin.yaml
+     -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml -f platform-operator.yaml
    ```
 
-   The Jobs run at the same time. `ows-api-create-organisation-<revision>` tries again until the admin and the organisation type exist.
-
-3. Check: `kubectl -n ows get jobs` shows `ows-api-register-admin-<revision>`, `ows-api-create-organisation-type-<revision>` and `ows-api-create-organisation-<revision>` as `Complete`. Then log in to `https://dashboard.example.org` with the e-mail address and the password. You see the "Getting started" page of the organisation.
-
-4. Run `helm upgrade` again without `first-admin.yaml`: this turns the three Jobs off. Then delete the password file and the Secret. The admin exists, and only the Job of item 2 reads the Secret.
+3. Check: `kubectl -n ows get jobs` shows `ows-api-bootstrap-platform-<revision>` as `Complete`, and its log has one JSON line with `organisationId`, `adminId` and `"created":true`:
 
    ```bash
-   kubectl -n ows delete secret ows-first-admin
+   kubectl -n ows logs job/ows-api-bootstrap-platform-<revision> -c command
    ```
 
-An admin without an organisation sees the message "Your account has no organisation" at the login. To create the organisation of such an admin, use the Job `createOrganisation` with `adminEmail` set to the e-mail address of the admin.
+   When the Job is `Failed`, read this log, correct the cause (for example the password) and run the `helm upgrade` of item 2 again. A second run with the same values changes nothing and shows `"created":false`.
+
+   The command `platform status` shows the platform operator organisation and its platform admins. It reads only, and it prints no secret:
+
+   ```bash
+   kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform status --config=/etc/igrant-api/config.yaml
+   ```
+
+   The output has one JSON line with `operatorOrganisationId` (the id of your organisation) and one entry in `platformAdmins`.
+
+4. Log in to `https://dashboard.example.org` with the e-mail address and the password. The account must change the password at the first login: the dashboard opens the page for the new password (15 characters or more). This step needs no e-mail service. After the login you see the "Getting started" page of the organisation. The dashboard shows the functions of a platform admin in the group "Wallet Provider (Orgs)".
+
+5. Run `helm upgrade` again without `platform-operator.yaml`: this turns the Job off. Then delete the password file and the Secret. The admin exists, and only the Job of item 2 reads the Secret.
+
+   ```bash
+   kubectl -n ows delete secret ows-platform-admin
+   ```
+
+Rules of the Job:
+
+- Use it only for a new installation. For an installation that has organisations, see [Upgrade](upgrade.md#the-platform-operator): with an e-mail address that no admin has, the Job makes a new organisation with the platform operator mark, and then no organisation that exists can get the mark. When an admin with the e-mail address has a different organisation, or the installation has a platform operator organisation of which the admin is not an admin, the Job fails and changes nothing.
+- It is safe to run again: when the admin is a platform admin of the platform operator organisation, the command changes nothing. The password of an account that exists does not change. But turn the Job off after the run: it fails at a later `helm upgrade` when the admin is no longer an admin of the organisation.
+- There is no transfer and no removal of the platform operator mark.
+- The wallet of the platform operator organisation is the wallet provider of the installation: the wallet gets this flag when an admin deploys it, and no route changes the flag later.
+
+## After the installation: the other organisations and admins
+
+A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Orgs)". No Job and no command of the chart is necessary.
+
+| Task | Where | What an operator of the installation must know |
+| --- | --- | --- |
+| Add an organisation with its first admin | Page "Wallet Units", the + button | The first admin gets an invitation by e-mail or a one-time password. An invitation needs the e-mail service (`api.smtp.host`): without it, use the one-time password. The API deploys the wallet of the new organisation. |
+| Set the features of an organisation | Row menu, "Manage Features" | The gateway refuses the routes of a feature that is off for the organisation (`gateway.features.enforce`, see [Values reference](values-reference.md#api-and-gateway)). |
+| Suspend and resume an organisation | Row menu | The gateway refuses each credential of a suspended organisation within 60 seconds. When the wallet did not get the state, the page shows a warning: send the request again. |
+| Delete a suspended organisation | Row menu, "Delete Organisation" | The deletion cannot be undone. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the wallets of the organisation and purges them after its retention period. No background job repeats a failed step of the API: when the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
+| Give and remove the platform admin right | Page "Platform Admins" | Only an admin of the platform operator organisation can get the right. A platform admin with a password of less than 15 characters sets a new password at the next login. |
+
+Each other new password (an invitation, a one-time password change, a reset) must have 12 characters or more.
+
+When no platform admin can log in (for example the only platform admin left), give the right to an admin of the platform operator organisation with the command line:
+
+```bash
+kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform grant-admin --email admin2@example.org --config=/etc/igrant-api/config.yaml
+```
+
+## The Jobs of the earlier releases
+
+The Jobs `api.jobs.registerAdmin`, `api.jobs.createOrganisationType` and `api.jobs.createOrganisation` stay in the chart, with the same values, for the values files that use them. They make an admin and an organisation without the platform operator mark and without the platform admin right: the functions of a platform admin stay hidden in the dashboard. Do not use them for the first organisation of a new installation. The render stops when `bootstrapPlatform` is enabled together with `registerAdmin` or `createOrganisation`.
+
+An installation that got its first organisation from these Jobs makes that organisation the platform operator with the Job `api.jobs.platformOperator`: see [Upgrade](upgrade.md#the-platform-operator).

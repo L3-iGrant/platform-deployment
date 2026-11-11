@@ -56,9 +56,9 @@ Next steps (docs/install.md has each step with its check):
 {{- $step = add1 $step }}
 {{- if .Values.api.enabled }}
 
-{{ $step }}. Make the first admin and its organisation, at the first installation only (docs/install.md, step 7): set api.jobs.createOrganisationType,
-   api.jobs.registerAdmin and api.jobs.createOrganisation, run "helm upgrade", then turn the three Jobs off again.
-   Then log in to the dashboard.
+{{ $step }}. Make the platform operator organisation and its first platform admin, at the first installation only (docs/install.md, step 7):
+   set api.jobs.bootstrapPlatform, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
+   An installation that exists and has no platform operator: docs/upgrade.md, "The platform operator" (api.jobs.platformOperator).
 {{- $step = add1 $step }}
 {{- end }}
 

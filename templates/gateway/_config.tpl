@@ -8,7 +8,8 @@ gateway, and the gateway reads every <Name>File at start: the file names only
 the secrets of the gateway (ow.gateway.secretFiles), not the token signing
 keys of the api. The file has no secret. The gateway decides every request,
 counts the rate limits and writes the action log; it resolves the client
-address with ClientAddress and sends it in the token (claim cip). It sends
+address with ClientAddress and sends it in the token (claim cip). Features
+is only in this file: the feature gate (gateway.features.enforce). It sends
 the consent routes to the consent service, the wallet config routes to the
 wallet config role and all other routes to the api core.
 */}}
@@ -38,6 +39,12 @@ client gets the 413 of the gateway with another text. 0 = the defaults
 {{- if lt $fileLimit (add $imageMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api ImageUpload.maxBytes (%v) + 65536: the gateway would refuse an image that the api accepts" $fileLimit $imageMax) -}}
 {{- end -}}
+{{- /* The feature gate: on unless gateway.features.enforce is false (a
+values file without the key keeps the default of the gateway). */ -}}
+{{- $enforce := true -}}
+{{- if kindIs "bool" (dig "features" "enforce" true $g) -}}
+{{- $enforce = dig "features" "enforce" true $g -}}
+{{- end -}}
 {{- $config := dict
   "ApplicationMode" "multi-tenant"
   "ApiBaseUrl" (include "ow.publicUrlOf" (list $root "api"))
@@ -48,6 +55,7 @@ client gets the 413 of the gateway with another text. 0 = the defaults
     "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir)))
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" ($g.logLevel | default $api.logLevel))
+  "Features" (dict "enforce" $enforce)
   "Gateway" (dict
     "listenPort" ($g.listenPort | int)
     "drainSeconds" ($g.drainSeconds | int)

@@ -183,6 +183,16 @@ def main() -> int:
     gateway = config_map_file(f"{RELEASE}-gateway", "config.yaml")
     if gateway:
         go_section("gateway DataBase", gateway["DataBase"])
+        # The feature gate of the gateway is on by default, and only the
+        # gateway file has the section (the api refuses it).
+        check(gateway.get("Features") == {"enforce": True}, f"the gateway Features section is {gateway.get('Features')}")
+        for file in ("api.yaml", "webhook.yaml"):
+            check("Features" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Features section (only the gateway file has it)")
+    # The operator Jobs of the api are off by default: no Job makes an
+    # admin, an organisation or the platform operator.
+    operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
+        r"-api-(bootstrap-platform|platform-operator|register-admin|create-organisation(-type)?)-\d+$", d["metadata"]["name"]))
+    check(not operator_jobs, f"the default values render the operator Jobs {operator_jobs}")
     consent = config_map_file(f"{RELEASE}-consent", "config.yaml")
     if consent:
         go_section("consent DataBase", consent["DataBase"])
@@ -764,6 +774,17 @@ def main() -> int:
     # an issuance (the earlier Authenticator credential of an admin).
     commands = sorted(subject for subject in webhook_publish if subject.startswith("ows.cmd."))
     check(commands == ["ows.cmd.*.issuance.revoke"], f"the NATS user api-webhook publishes the wallet commands {commands}")
+    # The events of the api (contract/v2, stream API_EVENTS): the API core
+    # publishes each subject by name, also the deletion of an organisation
+    # (E10). Its wallet commands are ows.cmd.> (also
+    # organisation.set_suspended).
+    api_publish = rights.get("api", {}).get("publish", set())
+    api_events = sorted(subject for subject in api_publish if subject.startswith("api.v1.evt."))
+    check(api_events == sorted(f"api.v1.evt.{name}" for name in (
+        "organisation.created", "organisation.updated", "organisation.deleted",
+        "sandbox.updated", "sandbox.deleted", "extension.updated")),
+          f"the NATS user api publishes the api events {api_events}")
+    check("ows.cmd.>" in api_publish, "the NATS user api cannot publish the wallet commands ows.cmd.>")
     for user in ("api", "api-webhook"):
         publish = rights.get(user, {}).get("publish", set())
         for retired in API_RETIRED_DURABLES:
