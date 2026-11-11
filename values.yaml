@@ -821,8 +821,9 @@ api:
       # -- Existing Secret and key with the first password of the admin. The
       # Job mounts it as a file (--password-file); it is never an argument.
       # The password of a platform admin needs 15 characters or more (at
-      # most 256), and it must not be a known password or have a part of
-      # the e-mail address, the name or the organisation name. The chart
+      # most 256) and at least one special character, for example ! # or %.
+      # It must not be a known password or have a part of the e-mail
+      # address, the name or the organisation name. The chart
       # cannot check a password in a Secret: the Job fails when the api
       # refuses it, and its log names the failed rules. The admin must set
       # a new password at the first login.
@@ -852,7 +853,8 @@ api:
     # -- Makes an admin account without an organisation (igrant-api onboard
     # register-admin). For the platform operator of a new installation, use
     # bootstrapPlatform. Idempotent: an existing account with the e-mail
-    # address is not changed. The password needs 12 characters or more.
+    # address is not changed. The password needs 12 characters or more
+    # and at least one special character.
     registerAdmin:
       enabled: false
       # -- The e-mail address, the name and the phone number of the admin

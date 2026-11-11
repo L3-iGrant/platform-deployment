@@ -218,7 +218,8 @@ another organisation type, add `ORGANISATION_TYPE=<type>`.
 The command asks for the first password of the admin (the input is hidden).
 The password goes to the command on standard input: it is never an argument.
 The password of a platform admin must have 15 characters or more (at most
-256). It must not be a known password, and it must not have a part of the
+256) and at least one special character, for example `!`, `#` or `%`. A
+space is not a special character. It must not be a known password, and it must not have a part of the
 e-mail address, the name or the organisation name. When the API refuses the
 password, the command names the rules that failed, and makes nothing.
 
@@ -238,7 +239,8 @@ no secret.
 
 Then log in on the dashboard with the e-mail address and the password. The
 account must change the password at the first login: the dashboard opens
-the page for the new password (15 characters or more). This needs no
+the page for the new password (15 characters or more, with at least one
+special character). This needs no
 e-mail service. The dashboard shows the functions of a platform admin in
 the group "Wallet Provider (Orgs)".
 
@@ -267,7 +269,8 @@ Provider (Orgs)". No `make` target is necessary.
 | Delete a suspended organisation ("Delete Organisation") | The deletion cannot be undone. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the wallets of the organisation and purges them after its retention period. No background job repeats a failed step of the API: when the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in `docker compose logs api`. |
 | Give and remove the platform admin right (page "Platform Admins") | Only an admin of the platform operator organisation can get the right. A platform admin with a password of less than 15 characters sets a new password at the next login. |
 
-Each other new password must have 12 characters or more.
+Each other new password must have 12 characters or more and at least one
+special character.
 
 When no platform admin can log in, give the right to an admin of the
 platform operator organisation with `make platform-grant-admin
@@ -279,7 +282,8 @@ operator organisation is the organisation of the wallet login, when it is
 the wallet provider and its OIDC extension is on.
 
 The targets `make admin` and `make organisation` of the earlier releases
-stay. They make an admin (a password of 12 characters or more) and an
+stay. They make an admin (a password of 12 characters or more, with at
+least one special character) and an
 organisation without the platform operator mark and without the platform
 admin right: the functions of a platform admin stay hidden in the
 dashboard. Do not use them for the first organisation of a new
@@ -424,7 +428,9 @@ After the start of the new release:
 3. The admin logs in on the dashboard (the gateway and the API read the
    platform operator again within 60 seconds). A platform admin needs a
    password of 15 characters or more: an admin with a shorter password sets
-   a new password at this login.
+   a new password at this login. Each new password also needs at least one
+   special character. This rule applies only when a password is set or
+   changed: the accounts of today continue to log in, with no forced change.
 
 4. With `FEATURES_ENFORCE=false`: a platform admin opens "Manage Features"
    of each organisation in the dashboard and reads the features that are
