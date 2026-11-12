@@ -788,6 +788,10 @@ configs:
       Server:
         drainSeconds: 1
         gracefulShutdownSeconds: 20
+      # The limits of the installation (MAX_ORGANISATIONS; README.md,
+      # "Settings"): the section only when the setting has a value.
+      ${MAX_ORGANISATIONS:+Limits:}
+        ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
       Log:
         level: info
 
@@ -890,6 +894,10 @@ configs:
       Server:
         drainSeconds: 1
         gracefulShutdownSeconds: 20
+      # The limits of the installation (MAX_ORGANISATIONS; README.md,
+      # "Settings"): the section only when the setting has a value.
+      ${MAX_ORGANISATIONS:+Limits:}
+        ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
       Log:
         level: info
 
@@ -1094,6 +1102,9 @@ configs:
           transit_mount: transit
       wallet_unit:
         production_checks_enabled: false
+        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
+        # only when the setting has a value.
+        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
       # "Audit log"): the same value in each wallet file.
       audit:
@@ -1186,6 +1197,9 @@ configs:
           transit_mount: transit
       wallet_unit:
         production_checks_enabled: false
+        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
+        # only when the setting has a value.
+        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
       # "Audit log"): the same value in each wallet file.
       audit:
@@ -1249,6 +1263,9 @@ configs:
           transit_mount: transit
       wallet_unit:
         production_checks_enabled: false
+        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
+        # only when the setting has a value.
+        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # The audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
       # worker signs the hourly anchors with the Transit keys of OpenBao.
       # There is no audit bucket: Compose has no write-once store. The

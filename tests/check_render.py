@@ -188,6 +188,12 @@ def main() -> int:
         check(gateway.get("Features") == {"enforce": True}, f"the gateway Features section is {gateway.get('Features')}")
         for file in ("api.yaml", "webhook.yaml"):
             check("Features" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Features section (only the gateway file has it)")
+        # The limits of the installation are not set by default: no Limits
+        # section in the api files (an api of an earlier release refuses
+        # it), and never in the gateway file (the gateway refuses it).
+        check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
+        for file in ("api.yaml", "webhook.yaml"):
+            check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
     # The operator Jobs of the api are off by default: no Job makes an
     # admin, an organisation or the platform operator.
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
@@ -237,6 +243,10 @@ def main() -> int:
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
+        # The limit of the organisation wallet units is not set by default:
+        # a wallet of an earlier release refuses the key.
+        check("organisation_wallet_units_max" not in (wallet.get("wallet_unit") or {}),
+              f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max (the default values set no limit)")
 
     # The workers and the clock (docs/workers.md): one Deployment for each
     # worker group (dramatiq with the queues of the group) and the clock
