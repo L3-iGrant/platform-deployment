@@ -6,7 +6,9 @@ The Helm chart installs the platform on Kubernetes, with the services that it de
 
 The name of the Helm chart is `platform`. A release that was installed from the chart `organisationwallet` sets `nameOverride: organisationwallet` before its next upgrade: see [The chart name platform](docs/upgrade.md#the-chart-name-platform).
 
-This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host (development, tests or a small installation), use the [Docker Compose files](docker-compose/README.md).
+This is the community installation of the platform: use it for development, tests and evaluation, and as the reference architecture and setup. For production, use the enterprise installation: the enterprise Helm chart and its installation guide, with your HSM, the automatic unseal of OpenBao, high availability and sizing for your load. iGrant.io gives access on request: contact support@igrant.io.
+
+This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host, use the [Docker Compose files](docker-compose/README.md).
 
 ## Contents
 
