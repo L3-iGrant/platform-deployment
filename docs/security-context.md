@@ -32,9 +32,9 @@ The test `tests/check_security.py` checks these settings in each render of `test
 | Auth gateway | `gateway` | `65532:65532` | `65532` | none | none |
 | Consent, its Jobs and hooks | `consent`, the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir`) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
 | Dashboard (`<release>-dashboard`) | `dashboard` | `101:101` | none | `/tmp` (`emptyDir`, 64Mi): the pid file and the temporary files of nginx, and `/tmp/dashboard` of the start scripts | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
-| Wallet service and config roles | `wallet-service`, `wallet-config` | `65532:65532` | `65532` | `/tmp` (`emptyDir`, 256Mi), `/run/ows-server` (`emptyDir` in memory, 64Mi) | none |
-| Wallet workers (each group) | `wallet-worker-<group>` | `65532:65532` | `65532` | `/tmp` (on disk: `organisationWallet.workers.tmp`, 10Gi), `/run/ows-worker` (`emptyDir` in memory, 64Mi) | none |
-| Wallet clock | `wallet-clock` | `65532:65532` | `65532` | `/tmp` (`emptyDir`, 64Mi) | none |
+| Wallet service and config roles | `wallet-service`, `wallet-config` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi), `/run/ows-server` (`emptyDir` in memory, 64Mi: `server.metrics_directory`) | none |
+| Wallet workers (each group) | `wallet-worker-<group>` | `65532:65532` | `65532` | `/tmp` (on disk: `organisationWallet.workers.tmp`, 10Gi), `/run/ows-worker` (`emptyDir` in memory, 64Mi: `worker.state_directory`) | none |
+| Wallet clock | `wallet-clock` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi) | none |
 | Hooks of the wallet (`organisationWallet.jobs`) | the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi) | none |
 | Bundled PostgreSQL (`<release>-postgres`) | `postgres` | `999:999` (the user `postgres` of the image) | `999` | the data volume (`/var/lib/postgresql`), `/var/run/postgresql` (`emptyDir` in memory, 1Mi: the socket and the lock file), `/tmp` (`emptyDir`, 64Mi) | none |
 | Init hook of the databases (`<release>-db-init`) | `create-databases` | `999:999` | `999` | `/tmp` (`emptyDir` in memory, 16Mi) | none |
@@ -48,7 +48,9 @@ Notes:
 - The api, the webhook handler, consent and the dashboard listen on port 80 as a non-root user. The sysctl `net.ipv4.ip_unprivileged_port_start=0` lets the pod open a port below 1024 without a capability. It is a safe sysctl (Kubernetes 1.22 or later): you do not need to allow it on the kubelet.
 - The bundled PostgreSQL and NATS have `fsGroupChangePolicy: OnRootMismatch`: the kubelet changes the group of the files of the data volume only when the top folder does not have the group. The first start after the upgrade to this release changes all files of the NATS store (see [Upgrade](upgrade.md#the-non-root-containers)).
 - The reloader sends `SIGHUP` to `nats-server` through the shared process namespace. Thus `nats` and `reloader` must have the same user.
-- A size of an `emptyDir` is a limit, not a reservation. When a pod writes more than the limit, the kubelet evicts the pod.
+- A size of an `emptyDir` is a limit, not a reservation. When a pod writes more than the limit, the kubelet evicts the pod. An `emptyDir` in memory counts against the memory limit of the container.
+- The wallet files of the chart set `server.metrics_directory: /run/ows-server` (service and config) and `worker.state_directory: /run/ows-worker` (workers): each is an `emptyDir` of the pod. A log file must also be on an `emptyDir`: the render stops when `log_file.path` of `organisationWallet.extraConfig` is not below `/tmp` (or below the folder of the role), or when `Log.file.path` of `api.extraConfig` is not below `/tmp/`.
+- The api image has no shell. Each container, hook, Job and probe of the chart starts a program of the image directly (`/app/bin/igrant-api`, `/app/.venv/bin/<command>`), and the probes are HTTP probes. The only exec hook of the wallet pods is the `preStop` command `/bin/sleep` of the service and config pods. Your own commands in the pods (`kubectl exec`) must also call the program directly, for example `kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform status --config=/etc/igrant-api/config.yaml`.
 
 ## The /tmp folder of the workers
 
