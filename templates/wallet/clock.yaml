@@ -93,6 +93,13 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.wallet.volumeMounts" . | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
       volumes:
         {{- include "ow.wallet.volumes" (list . "clock") | nindent 8 }}
+        # The temporary files of Python (tempfile; the root file system is
+        # read-only).
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 {{- end }}

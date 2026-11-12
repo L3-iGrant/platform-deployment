@@ -123,6 +123,8 @@ spec:
             {{- end }}
             - name: worker-state
               mountPath: {{ include "ow.wallet.workerStateDir" $ }}
+            - name: tmp
+              mountPath: /tmp
       volumes:
         {{- include "ow.wallet.volumes" (list $ "worker" $configKey) | nindent 8 }}
         {{- with include "ow.wallet.trustAnchorsVolume" (list $ "worker") }}
@@ -134,5 +136,6 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
+        {{- include "ow.wallet.workerTmpVolume" (list $ $g) | nindent 8 }}
 {{- end }}
 {{- end }}
