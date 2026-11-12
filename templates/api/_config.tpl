@@ -116,6 +116,14 @@ section. */ -}}
 {{- $_ := set $config "Server" (dict
     "drainSeconds" ($api.server.drainSeconds | int)
     "gracefulShutdownSeconds" ($api.server.gracefulShutdownSeconds | int)) -}}
+{{- /* The limits of the installation (api.limits): the key only when the
+installer sets a value; without it the api uses its default. An api of a
+release before the input limits does not know the section and does not
+start with it. The gateway file never has it: the gateway refuses the
+section. */ -}}
+{{- with dig "limits" "maxOrganisations" "" $api -}}
+{{- $_ := set $config "Limits" (dict "maxOrganisations" (. | int)) -}}
+{{- end -}}
 {{- if $api.verifierApp.androidPackageName -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}
