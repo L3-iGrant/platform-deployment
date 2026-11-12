@@ -697,6 +697,76 @@ PY
 trust_anchors "the roots of the image by default" '{"configmap": null}' "${shamir[@]}"
 trust_anchors "the roots of a ConfigMap" '{"configmap": "test-roots"}' "${shamir[@]}" \
   --set organisationWallet.walletUnit.trustAnchors.existingConfigMap=test-roots
+# The limits of the installation: Limits.maxOrganisations of the api and
+# webhook files (api.limits.maxOrganisations) and
+# wallet_unit.organisation_wallet_units_max of the service, config and
+# worker files (organisationWallet.walletUnit.organisationWalletUnitsMax),
+# as integers, only when a value is set: an api or a wallet of a release
+# before the input limits refuses the keys. No other object has them: not
+# the gateway file (the gateway refuses the section), the clock, the
+# hooks or the Jobs.
+installation_limits() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  # Only stdout is YAML (helm writes its warnings to stderr).
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" > "$out/limits.yaml" 2> "$out/limits.err"; then
+    bad "installation limits $name: $(head -c 200 "$out/limits.err")"
+  elif problems="$(python3 - "$out/limits.yaml" "$expect" <<'PY' 2>&1
+import json, sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = json.loads(sys.argv[2])
+def data(name):
+    return next(d for d in docs if d.get("kind") == "ConfigMap" and d["metadata"]["name"] == name)["data"]
+checked = set()
+want = None if expected["organisations"] is None else {"maxOrganisations": expected["organisations"]}
+for file in ("api.yaml", "webhook.yaml"):
+    got = yaml.safe_load(data("t-api")[file]).get("Limits")
+    if got != want or (got is not None and type(got.get("maxOrganisations")) is not int):
+        print(f"{file} Limits is {got!r}")
+    checked.add(("t-api", file))
+wallet = data("t-wallet")
+roles = [file for file in wallet if file in ("service.yaml", "config.yaml") or file.startswith("worker-")]
+if len(roles) < 3:
+    print(f"the wallet files are {sorted(wallet)}")
+for file in roles:
+    got = (yaml.safe_load(wallet[file]).get("wallet_unit") or {}).get("organisation_wallet_units_max")
+    if got != expected["units"] or (got is not None and type(got) is not int):
+        print(f"{file} wallet_unit.organisation_wallet_units_max is {got!r}")
+    checked.add(("t-wallet", file))
+for doc in docs:
+    name = doc["metadata"]["name"]
+    parts = (doc.get("data") or {}).items() if doc.get("kind") == "ConfigMap" else [("", yaml.safe_dump(doc))]
+    for key, text in parts:
+        for word in ("maxOrganisations", "organisation_wallet_units_max"):
+            if (name, key) not in checked and word in str(text):
+                print(f"{doc['kind']} {name} {key} has {word}")
+PY
+)" && [ -z "$problems" ]; then
+    ok "installation limits $name"
+  else
+    bad "installation limits $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+  fi
+}
+installation_limits "no key by default" '{"organisations": null, "units": null}' "${shamir[@]}"
+installation_limits "no key with empty values" '{"organisations": null, "units": null}' "${shamir[@]}" \
+  --set api.limits.maxOrganisations= --set organisationWallet.walletUnit.organisationWalletUnitsMax=
+installation_limits "the two limits" '{"organisations": 250, "units": 300}' "${shamir[@]}" \
+  --set api.limits.maxOrganisations=250 --set organisationWallet.walletUnit.organisationWalletUnitsMax=300
+installation_limits "only the organisation limit" '{"organisations": 150, "units": null}' "${shamir[@]}" --set api.limits.maxOrganisations=150
+installation_limits "only the organisation wallet unit limit" '{"organisations": null, "units": 150}' "${shamir[@]}" \
+  --set organisationWallet.walletUnit.organisationWalletUnitsMax=150
+# A values file gives a number as a float: the files have the integer, not 1e+06.
+installation_limits "the largest limits as JSON numbers" '{"organisations": 1000000, "units": 10000000}' "${shamir[@]}" \
+  --set-json 'api.limits={"maxOrganisations": 1000000}' --set-json 'organisationWallet.walletUnit.organisationWalletUnitsMax=10000000'
+guard "organisation limit 0" "api.limits.maxOrganisations" "${shamir[@]}" --set api.limits.maxOrganisations=0
+guard "organisation limit over 1000000" "api.limits.maxOrganisations" "${shamir[@]}" --set api.limits.maxOrganisations=1000001
+guard "organisation limit as a string" "api.limits.maxOrganisations" "${shamir[@]}" --set-string api.limits.maxOrganisations=200
+guard "organisation wallet unit limit 0" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.organisationWalletUnitsMax=0
+guard "organisation wallet unit limit over 10000000" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.organisationWalletUnitsMax=10000001
+guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
+  --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=200
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
