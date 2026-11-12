@@ -139,8 +139,10 @@ Output: JSON object "<file name>" -> {secret, key}.
   "token-hash-secret.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenHash" "api-token-hash")) "key" $ks.tokenHash.key)
   "token-signing-jwks.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenSigning" "api-token-signing")) "key" $ks.tokenSigning.key)
   "db-wrapping-keys.json" (dict "secret" (include "ow.api.keySecretName" (list $root "dbWrapping" "api-db-wrapping")) "key" $ks.dbWrapping.key)) -}}
+{{- if include "ow.installation.has" (list $root "wallet") -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $_ := set $files "read-access-wallet-password" (dict "secret" $reader.secret "key" $reader.key) -}}
+{{- end -}}
 {{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- with include "ow.nats.ca" $root | fromJson -}}
@@ -233,7 +235,24 @@ the operator Jobs use "api") and the secret files (mode 0440). Call with
             - key: {{ .key }}
               path: nats-seed
       {{- end }}
-{{ include "ow.serviceKeys.volume" (list $root "igrant-api" "igrant-consent-management" "eudi-wallet") }}
+{{ include "ow.serviceKeys.volume" (prepend (include "ow.api.trustedIssuers" $root | fromJsonArray) $root) }}
+{{- end }}
+
+{{/*
+The issuers of the signed NATS envelopes that the api trusts: its own
+internal events, and the installed services (consent, the wallet). Output:
+JSON list.
+*/}}
+{{- define "ow.api.trustedIssuers" -}}
+{{- include "ow.installation.issuers" (list . "igrant-api" "igrant-consent-management" "eudi-wallet") -}}
+{{- end }}
+
+{{/*
+The issuers of the signed NATS envelopes that consent trusts: the api, and
+the wallet when it is installed. Output: JSON list.
+*/}}
+{{- define "ow.consent.trustedIssuers" -}}
+{{- include "ow.installation.issuers" (list . "igrant-api" "eudi-wallet") -}}
 {{- end }}
 
 {{/* Folder of the consent secret files (one projected volume). */}}
@@ -243,10 +262,10 @@ the operator Jobs use "api") and the secret files (mode 0440). Call with
 
 {{/*
 The owner databases that consent reads with its own read-only users
-(ReadAccess).
+(ReadAccess): the api, and the wallet when it is installed.
 */}}
 {{- define "ow.consent.readAccessOwners" -}}
-api,wallet
+api{{- if include "ow.installation.has" (list . "wallet") -}},wallet{{- end -}}
 {{- end }}
 
 {{/*
@@ -319,7 +338,7 @@ and the optional NATS CA (mode 0440). Output: a list at column 0.
               path: nats-ca.crt
       {{- end }}
 {{ include "ow.gateway.keysVolume" $root }}
-{{ include "ow.serviceKeys.volume" (list $root "igrant-api" "eudi-wallet") }}
+{{ include "ow.serviceKeys.volume" (prepend (include "ow.consent.trustedIssuers" $root | fromJsonArray) $root) }}
 {{- end }}
 
 {{/* The NATS user (values key) of one api role (api, webhook). */}}
@@ -329,10 +348,10 @@ and the optional NATS CA (mode 0440). Output: a list at column 0.
 
 {{/*
 The owner databases that the wallet config role reads with its own read-only
-users (read_access).
+users (read_access): the api, and consent when it is installed.
 */}}
 {{- define "ow.wallet.readAccessOwners" -}}
-api,consent
+api{{- if include "ow.installation.has" (list . "consent") -}},consent{{- end -}}
 {{- end }}
 
 {{/* The NATS user (values key) of one wallet role; "" for the clock, which connects to no NATS. */}}
@@ -716,6 +735,9 @@ webhook events of the wallet have one consumer, api-webhook-event. */ -}}
   "consent" (dict
     "streams" (list "CONSENT_EVENTS")
     "pull" (list "API_EVENTS/consent-api-organisation" "OWS_MICROSERVICE/consent-dda-present-proof" "OWS_MICROSERVICE/consent-dda-presentation"))
+  "consentWithoutWallet" (dict
+    "streams" (list "CONSENT_EVENTS")
+    "pull" (list "API_EVENTS/consent-api-organisation"))
   "walletConfig" (dict
     "streams" (list "OWS_MICROSERVICE")
     "pull" (list "API_EVENTS/eudi-wallet-api-triggers")
@@ -791,6 +813,10 @@ the stream or the consumers of another service. Output: JSON list.
 {{- $users := $v.nats.auth.users -}}
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
+{{- /* Without the wallet, consent has no consumer of the wallet events
+(consent-dda-present-proof, consent-dda-presentation). */ -}}
+{{- $consent := include "ow.installation.has" (list . "consent") -}}
+{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
@@ -802,7 +828,7 @@ the stream or the consumers of another service. Output: JSON list.
     "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "consent" "key" "consent" "inbox" "_INBOX_consent" "enabled" $v.consent.enabled "allowResponses" false
-    "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" "consent" | fromJsonArray))
+    "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" (ternary "consent" "consentWithoutWallet" (eq $wallet "true")) | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
@@ -813,6 +839,9 @@ the stream or the consumers of another service. Output: JSON list.
   (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
     "subscribe" (list)) -}}
+{{- /* installed: the service of the user is installed (ow.installation.has).
+nats.conf has no user of a service that is not installed. */ -}}
+{{- $installed := dict "consent" $consent "walletConfig" $wallet "walletService" $wallet "walletWorker" $wallet -}}
 {{- $out := list -}}
 {{- range $user := $table -}}
 {{- $values := index $users $user.key | default dict -}}
@@ -821,6 +850,7 @@ the stream or the consumers of another service. Output: JSON list.
 {{- $out = append $out (dict
     "name" $user.name "key" $user.key "nkey" ($values.nkey | default "") "seed" $seed "inbox" $user.inbox
     "enabled" $user.enabled "allowResponses" $user.allowResponses
+    "installed" (or (not (hasKey $installed $user.key)) (eq (get $installed $user.key) "true"))
     "publish" $user.publish
     "subscribe" (concat $user.subscribe (list (printf "%s.>" $user.inbox)))) -}}
 {{- end -}}
@@ -849,14 +879,15 @@ no user without credentials. Output: nothing.
 
 {{/*
 The authorization block of nats.conf: the users of the processes of the
-chart, no user without credentials. Output: text at column 0.
+chart and of the installed services, no user without credentials. Output:
+text at column 0.
 */}}
 {{- define "ow.nats.authorization" -}}
 {{- include "ow.nats.checkUsers" . -}}
 authorization {
   users = [
     {{- range $user := include "ow.nats.users" . | fromJsonArray }}
-    {{- if $user.nkey }}
+    {{- if and $user.nkey $user.installed }}
     # {{ $user.name }}
     {{- /* An empty allow list is no restriction in nats.conf: a process
     without publish subjects gets a deny of all subjects. */}}
@@ -1044,20 +1075,36 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 {{- end }}
 
 {{/*
+The read-only users of the chart: the pairs (reader, owner) of the readers
+that this release runs and of the owners that are installed (an owner of
+another release is installed too: ow.installation.has). api -> wallet;
+consent -> api, wallet; wallet -> api, consent. Output: JSON list of
+[reader, owner].
+*/}}
+{{- define "ow.readAccess.pairs" -}}
+{{- $v := .Values -}}
+{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
+{{- $consent := include "ow.installation.has" (list . "consent") -}}
+{{- $pairs := list -}}
+{{- if and $v.api.enabled $wallet -}}{{- $pairs = append $pairs (list "api" "wallet") -}}{{- end -}}
+{{- if $v.consent.enabled -}}{{- $pairs = append $pairs (list "consent" "api") -}}{{- end -}}
+{{- if and $v.consent.enabled $wallet -}}{{- $pairs = append $pairs (list "consent" "wallet") -}}{{- end -}}
+{{- if $v.organisationWallet.enabled -}}{{- $pairs = append $pairs (list "wallet" "api") -}}{{- end -}}
+{{- if and $v.organisationWallet.enabled $consent -}}{{- $pairs = append $pairs (list "wallet" "consent") -}}{{- end -}}
+{{- toJson $pairs -}}
+{{- end }}
+
+{{/*
 Checks that no two read-only users of the chart have the same name on one
 database server: a PostgreSQL role belongs to the whole server, so the
 second "read-access apply" would change the password of the first user,
-and one read connection would fail. The pairs of the enabled
-services: api -> wallet; consent -> api, wallet; wallet -> api, consent.
+and one read connection would fail. The pairs of ow.readAccess.pairs.
 Output: nothing.
 */}}
 {{- define "ow.readAccess.checkNames" -}}
 {{- $root := . -}}
 {{- $v := $root.Values -}}
-{{- $pairs := list -}}
-{{- if $v.api.enabled -}}{{- $pairs = append $pairs (list "api" "wallet") -}}{{- end -}}
-{{- if $v.consent.enabled -}}{{- $pairs = concat $pairs (list (list "consent" "api") (list "consent" "wallet")) -}}{{- end -}}
-{{- if $v.organisationWallet.enabled -}}{{- $pairs = concat $pairs (list (list "wallet" "api") (list "wallet" "consent")) -}}{{- end -}}
+{{- $pairs := include "ow.readAccess.pairs" $root | fromJsonArray -}}
 {{- $seen := dict -}}
 {{- range $pair := $pairs -}}
 {{- $reader := index $pair 0 -}}

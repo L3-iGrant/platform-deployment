@@ -5,6 +5,11 @@ The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Re
 WARNING: global.imageTag is the placeholder "2026.10.x": no image has this tag, so the pods cannot pull their images.
   Set global.imageTag to the release tag of your version (from iGrant.io) and run "helm upgrade".
 {{- end }}
+{{- if hasKey (.Values.api.webhooks | default dict) "events" }}
+
+WARNING: api.webhooks.events is not used: the effective features of each organisation select its webhook event types.
+  Remove api.webhooks.events from your values files (docs/upgrade.md, "The webhook event types"). A later release refuses the value.
+{{- end }}
 
 Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names point to your ingress controller or Gateway):
 {{- if .Values.api.enabled }}
@@ -15,6 +20,17 @@ Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names p
 {{- end }}
 {{- if .Values.enterpriseDashboard.enabled }}
   Dashboard:           {{ include "ow.publicUrlOf" (list . "enterpriseDashboard") }}
+{{- end }}
+{{- $services := include "ow.installation.services" . | fromJsonArray }}
+{{- if lt (len $services) 2 }}
+
+Services of the installation: {{ join ", " $services }} (Installation.services of the api and gateway files).
+{{- if not (has "consent" $services) }}
+  Consent is not installed: the gateway answers 404 to the consent routes, and the dashboard shows no consent area (docs/components.md).
+{{- end }}
+{{- if not (has "wallet" $services) }}
+  The organisation wallet is not installed: the gateway answers 404 to the wallet routes, and the dashboard shows no wallet area (docs/components.md).
+{{- end }}
 {{- end }}
 
 Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.

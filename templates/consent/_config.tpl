@@ -5,8 +5,9 @@ projected secret volume /run/secrets/consent (see deploy.yaml). Consent
 always verifies the internal token of the gateway (GatewayToken: the gateway
 of the chart is the trusted issuer), connects to NATS with its nkey user and
 signs and verifies the NATS envelopes (ServiceEnvelope; it trusts igrant-api
-and eudi-wallet). It reads the views of the api and wallet databases with its
-own read-only users (ReadAccess; readAccess.consent.*).
+and, when the wallet is installed, eudi-wallet). It reads the views of the
+api database, and of the wallet database when the wallet is installed, with
+its own read-only users (ReadAccess; readAccess.consent.*).
 */}}
 {{- define "ow.consent.config" -}}
 {{- $c := .Values.consent -}}
@@ -43,7 +44,7 @@ own read-only users (ReadAccess; readAccess.consent.*).
     "activeKid" $signing.activeKid
     "lifetimeSeconds" ($c.serviceEnvelope.lifetimeSeconds | int)
     "clockSkewSeconds" ($c.serviceEnvelope.clockSkewSeconds | int)
-    "trustedIssuers" (include "ow.serviceKeys.trusted" (list . "igrant-api" "eudi-wallet") | fromJsonArray)) -}}
+    "trustedIssuers" (include "ow.serviceKeys.trusted" (prepend (include "ow.consent.trustedIssuers" . | fromJsonArray) .) | fromJsonArray)) -}}
 {{- $readAccess := dict -}}
 {{- range $owner := include "ow.consent.readAccessOwners" . | splitList "," -}}
 {{- $reader := include "ow.readAccess.reader" (list $ "consent" $owner) | fromJson -}}

@@ -86,18 +86,21 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `api.jobs.platformOperator.enabled`, `.organisationId`, `.adminEmail` | An installation that exists: the Job that gives an organisation the platform operator mark (`igrant-api platform set-operator`), then gives one of its admins the platform admin right (`igrant-api platform grant-admin`). The organisation must be the wallet provider or have no wallet. See [Upgrade](upgrade.md#the-platform-operator) | off, `""` |
 | `api.jobs.registerAdmin`, `.createOrganisationType`, `.createOrganisation` | The Jobs of the earlier releases: an admin (a password of 12 characters or more, with at least one special character) and its organisation, without the platform operator mark. They stay for the values files that use them. The render stops when `bootstrapPlatform` is enabled with `registerAdmin` or `createOrganisation` | off |
 | `api.limits.maxOrganisations` | The most organisations of the installation (`Limits.maxOrganisations` of the api and webhook files, 1 to 100). The create of one more organisation gets `409` `organisation_limit_reached`; the organisations that exist stay. Empty: the chart writes no key, and the api uses its default. Set a value only with the images of the release with the input limits (see [Upgrade](upgrade.md#the-limits-of-the-installation)) | `""` (the api uses 100) |
-| `api.extraConfig` | More configuration keys of the api (no secrets) | `{}` |
+| `api.webhooks.deliveryRetentionDays` | Days that the api keeps the webhook delivery records. The effective features of each organisation select its webhook event types: the chart has no list of event types. `api.webhooks.events` is not used: the schema accepts it for one release, and the notes tell you to remove it (see [Upgrade](upgrade.md#the-webhook-event-types)) | `10` |
+| `api.extraConfig` | More configuration keys of the api (no secrets). Not `Installation`: the chart writes it (see [Components](components.md#the-services-of-the-installation)) | `{}` |
 | `gateway.replicas`, `.resources` | The gateway | `2`, 100m/128Mi |
 | `gateway.internalToken.activeKid`, `gateway.publicKeys.*` | The gateway key and the public keys (`scripts/make-keys.sh`) | `""` |
 | `gateway.features.enforce` | The feature gate (`Features.enforce` of the gateway file): `true`, the gateway refuses a route of a product feature that is off for the organisation of the credential (`403`, `feature_disabled`); `false`, it refuses no route for a feature (an emergency, or the first upgrade of an installation that exists: see [Upgrade](upgrade.md#the-feature-gate)) | `true` (the default of the gateway) |
-| `gateway.upstreams.*`, `gateway.proxy.*` | The services behind the gateway and the connection limits | the Services of the chart |
+| `gateway.upstreams.*`, `gateway.proxy.*` | The services behind the gateway and the connection limits. `gateway.upstreams.consent.url` and `.walletConfig.url`: the consent service and the wallet config role of another release (with `consent.enabled: false` or `organisationWallet.enabled: false`). Without the URL, a service that this release does not run is not installed (see [Components](components.md#the-services-of-the-installation)) | the Services of the chart |
 
 ## Consent, wallet and dashboard
 
 | Value | Description | Default |
 | --- | --- | --- |
+| `consent.enabled` | Run consent management in this release. `false` with `gateway.upstreams.consent.url`: the consent service of another release. `false` without the URL: the installation has no consent (see [Components](components.md#the-services-of-the-installation)) | `true` |
 | `consent.replicas` | Consent management | `2` |
 | `consent.serviceEnvelope.activeKid` | The key id of the NATS message key of consent | `""` |
+| `organisationWallet.enabled` | Run the organisation wallet in this release. `false` with `gateway.upstreams.walletConfig.url`: the wallet of another release. `false` without the URL: the installation has no wallet, and `organisationWallet.host` is not required (see [Components](components.md#the-services-of-the-installation)) | `true` |
 | `organisationWallet.audit.retentionYears`, `.scopeRetentionYears` | The audit log of the wallet (see [Audit log](audit-log.md)) | `7`, `{}` |
 | `organisationWallet.audit.bucket.*` | The write-once bucket of the audit anchors and exports (see [Audit log](audit-log.md#audit-bucket)) | no bucket |
 | `organisationWallet.retention.*` | The retention purge of the wallet data (see [Audit log](audit-log.md#retention-purge)) | 30 days, sandboxes 7 days |
@@ -141,4 +144,4 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `serviceKeys.publicJwks.*` | The public keys of the NATS messages (`scripts/make-keys.sh`) | `""` |
 | `readAccess.*` | The read-only users (see [Read access](read-access.md)) | see values |
 | `networkPolicy.*` | See [Network policies](network-policies.md) (`networkPolicy.externalRedis` for your Valkey or Redis) | off |
-| `privacyDashboard.enabled`, `.namespace` | See [Privacy dashboard](privacy-dashboard.md) | `false`, `""` |
+| `privacyDashboard.enabled`, `.namespace` | See [Privacy dashboard](privacy-dashboard.md). Needs consent: without consent, `true` stops the render | `false`, `""` |

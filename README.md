@@ -12,7 +12,7 @@ This documentation is for the developers and IT operations teams who install and
 
 ### Get started
 
-- [Components](docs/components.md): what the chart installs, and how your values files describe an installation.
+- [Components](docs/components.md): what the chart installs, how your values files describe an installation, and an installation without consent or without the organisation wallet.
 - [Prerequisites](docs/prerequisites.md): what your cluster, your network and your workstation need.
 - [Install](docs/install.md): the installation in seven steps, each with a check.
 

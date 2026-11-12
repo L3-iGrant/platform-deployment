@@ -31,12 +31,15 @@
 # 3. The next steps (NOTES.txt).
 # 4. The render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
-# 5. Rendered settings.
+# 5. Rendered settings, also the services of the installation
+#    (tests/check_installation.py): all services, consent or the wallet of
+#    another release, without consent, without the wallet.
 # 6. Install and upgrade: tests/check_hook_order.py replays the steps of
 #    Helm on the renders (each render of the matrix is an install; installs
 #    with consent, the api or the organisation wallet off; an upgrade with
-#    the same values, and upgrades that turn the organisation wallet,
-#    consent or the api on). The Secrets that are hooks keep the values of
+#    the same values, upgrades that turn the organisation wallet, consent
+#    or the api on, and upgrades that install or remove consent or the
+#    wallet). The Secrets that are hooks keep the values of
 #    the earlier Secrets (a copy of the chart reads them from a file in place
 #    of lookup).
 #
@@ -333,6 +336,17 @@ notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of an external server" "set max_connections of your server to at least 226" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
+notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
+notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'api.webhooks.events=["consent.allowed"]'
+notes "without the wallet" "The organisation wallet is not installed" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
+# The readers of the views of a service that is not installed open no
+# connection: without the wallet, the api core and the webhook handler have
+# no reader pool, and consent one reader (67 = 1 x 15 + 1 x 10 + 2 x 10 +
+# 2 x 11); without consent, the wallet config role has one reader (221 less
+# 2 x 16 of consent and 10).
+notes "connection budget without the wallet" "can open 67 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
+notes "connection budget without consent" "can open 179 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 
 # --- 4. The render guards --------------------------------------------------------
 # Each case: the values that must stop the render, and a text of the message.
@@ -486,6 +500,15 @@ renders "feature gate on by default" "enforce: true" "${shamir[@]}"
 renders "feature gate off" "enforce: false" "${shamir[@]}" --set gateway.features.enforce=false
 lacks "feature gate off has no enforce true" "enforce: true" "${shamir[@]}" --set gateway.features.enforce=false
 renders "feature gate off with extraConfig" "enforce: false" "${shamir[@]}" --set gateway.extraConfig.Features.enforce=false
+# The webhook event types: the effective features of each organisation
+# select them, so the api files have no Webhooks.events. A values file of an
+# earlier release that sets api.webhooks.events still renders (the schema
+# accepts the value for one release), the files do not have it, and the
+# notes tell to remove it.
+events='api.webhooks.events=["consent.allowed","data.delete.initiated"]'
+renders "webhook delivery retention of the api files" "DeliveryRetentionDays: 10" "${shamir[@]}" --show-only templates/api/configmap.yaml
+lacks "no webhook event types in the api files" "consent.allowed" "${shamir[@]}" --show-only templates/api/configmap.yaml
+lacks "api.webhooks.events of an earlier values file is not rendered" "consent.allowed" "${shamir[@]}" --set-json "$events" --show-only templates/api/configmap.yaml
 # The API core publishes the deletion of an organisation (contract/v2 E10).
 renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"' "${shamir[@]}"
 # The key store providers and the EU trusted list check of the wallet.
@@ -767,6 +790,63 @@ guard "organisation wallet unit limit over 100" "organisationWallet.walletUnit.o
   --set organisationWallet.walletUnit.organisationWalletUnitsMax=101
 guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
   --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=50
+# The services of the installation (docs/components.md): Installation.services
+# in the api, webhook and gateway files only when a service is not
+# installed, and no upstream, object, read user, trust, NATS user or Valkey
+# user of that service (tests/check_installation.py). A release without a
+# service needs no key of it: the cases remove its public keys and its NATS
+# users. Each case is also an install (tests/check_hook_order.py) and, with
+# network policies, the network matrix (tests/check_network_matrix.py).
+no_consent=(--set consent.enabled=false --set serviceKeys.publicJwks.igrant-consent-management=null --set nats.auth.users.consent=null)
+no_wallet=(--set organisationWallet.enabled=false --set organisationWallet.host= --set serviceKeys.publicJwks.eudi-wallet=null
+  --set nats.auth.users.walletConfig=null --set nats.auth.users.walletService=null --set nats.auth.users.walletWorker=null)
+installation() {
+  local name="$1" case="$2"; shift 2
+  local file="$out/installation-${name// /-}.yaml" result good=1
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "$@" 2>&1 > "$file")"; then
+    bad "installation $name: $(printf '%s' "$result" | head -c 300)"
+    return
+  fi
+  if ! result="$(python3 "$here/check_installation.py" "$file" "$case" 2>&1)"; then
+    good=0
+    printf '%s\n' "$result" | sed 's/^/  /' | head -20
+  fi
+  if ! python3 "$here/check_hook_order.py" install "$file"; then
+    good=0
+  fi
+  if grep -q -x 'kind: NetworkPolicy' "$file" && ! python3 "$here/check_network_matrix.py" "$file" "$chart/policies/network-matrix.yaml"; then
+    good=0
+  fi
+  if [ "$good" = 1 ]; then ok "installation $name"; else bad "installation $name"; fi
+}
+installation "all services" all "${shamir[@]}"
+installation "all services with network policies" all "${shamir[@]}" -f "$examples/networkpolicy.yaml"
+installation "consent of another release" consent-elsewhere "${shamir[@]}" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
+installation "the wallet of another release" wallet-elsewhere "${shamir[@]}" --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org
+installation "without consent" no-consent "${shamir[@]}" "${no_consent[@]}"
+installation "without consent, network policies" no-consent "${shamir[@]}" "${no_consent[@]}" -f "$examples/networkpolicy.yaml"
+installation "without consent, external database" no-consent "${shamir[@]}" "${no_consent[@]}" -f "$examples/postgresql-external.yaml"
+installation "without the wallet" no-wallet "${shamir[@]}" "${no_wallet[@]}"
+installation "without the wallet, network policies" no-wallet "${shamir[@]}" "${no_wallet[@]}" -f "$examples/networkpolicy.yaml"
+installation "without the wallet, external database" no-wallet "${shamir[@]}" "${no_wallet[@]}" -f "$examples/postgresql-external.yaml"
+# api.extraConfig and gateway.extraConfig cannot set another list: the
+# same services are accepted, and the files have the form of the chart.
+installation "without consent, the same list in api.extraConfig" no-consent "${shamir[@]}" "${no_consent[@]}" \
+  --set-json 'api.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.extraConfig.Installation={"services":["wallet"]}'
+installation "all services, the full list in api.extraConfig" all "${shamir[@]}" --set-json 'api.extraConfig.Installation={"services":["consent","wallet"]}'
+guard "no service installed" "the installation has no service" "${shamir[@]}" --set consent.enabled=false --set organisationWallet.enabled=false
+guard "privacy dashboard without consent" "privacyDashboard.enabled needs the consent service" "${shamir[@]}" "${no_consent[@]}" \
+  --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards
+guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet, consent)" "${shamir[@]}" \
+  --set-json 'api.extraConfig.Installation={"services":["wallet"]}'
+guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" "${shamir[@]}" "${no_consent[@]}" \
+  --set-json 'gateway.extraConfig.Installation={"services":["wallet","consent"]}'
+guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" "${shamir[@]}" "${no_consent[@]}" \
+  --set-json 'api.extraConfig.Installation={}'
+guard "without consent, the public keys of the wallet are still required" "serviceKeys.publicJwks.eudi-wallet" "${shamir[@]}" "${no_consent[@]}" \
+  --set serviceKeys.publicJwks.eudi-wallet=null
+guard "without the wallet, the public keys of consent are still required" "serviceKeys.publicJwks.igrant-consent-management" "${shamir[@]}" "${no_wallet[@]}" \
+  --set serviceKeys.publicJwks.igrant-consent-management=null
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
@@ -1145,6 +1225,23 @@ upgrade_order() {
     bad "upgrade $name ($database)"
   fi
 }
+# An upgrade that turns a service off: the earlier release has all
+# components on; the new release has the values of each case.
+upgrade_removes() {
+  local name="$1" database="$2"; shift 2
+  local args=(-f "$keys" -f "$examples/site.yaml" -f "$examples/$database.yaml" -f "$examples/openbao-shamir.yaml"
+    -f "$examples/exposure-ingress-nginx.yaml")
+  local case="$out/upgrade-$database-${name// /-}"
+  if ! helm template t "$chart" --namespace ow "${args[@]}" > "$case-before.yaml" 2> "$case.err" \
+      || ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case-after.yaml" 2> "$case.err"; then
+    bad "upgrade $name ($database): helm template"
+    sed 's/^/  /' "$case.err" | head -5
+  elif python3 "$here/check_hook_order.py" upgrade "$case-before.yaml" "$case-after.yaml"; then
+    ok "upgrade $name ($database)"
+  else
+    bad "upgrade $name ($database)"
+  fi
+}
 for database in postgresql-bundled postgresql-external; do
   install_order "with consent off" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
   install_order "with the api off" "$database" --set api.enabled=false
@@ -1156,6 +1253,12 @@ for database in postgresql-bundled postgresql-external; do
   upgrade_order "that turns consent on" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
   upgrade_order "that turns the api on" "$database" --set api.enabled=false
   upgrade_order "that turns the database TLS on" "$database" --set database.tls.enabled=false
+  # A service added later (the earlier release does not install it), and a
+  # service removed (the new release does not install it).
+  upgrade_order "that installs consent" "$database" "${no_consent[@]}"
+  upgrade_order "that installs the wallet" "$database" "${no_wallet[@]}"
+  upgrade_removes "that removes consent" "$database" "${no_consent[@]}"
+  upgrade_removes "that removes the wallet" "$database" "${no_wallet[@]}"
   # The first upgrade from a release in which the database Secret, the read
   # access Secret and the init Job were resources, not hooks: the earlier
   # release is the render of the new release without their hook annotations

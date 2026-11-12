@@ -47,6 +47,8 @@ Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.ima
 | Redis (optional) | `redis-external.yaml` (your Valkey or Redis). Without it, the chart runs Valkey with Sentinel | [Redis](redis.md) |
 | Network policies (optional) | `networkpolicy.yaml` | [Network policies](network-policies.md) |
 
+An installation has consent management and the organisation wallet by default. For an installation without consent or without the wallet, set `consent.enabled: false` or `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: the OpenBao file has no effect, and you do not do step 5.
+
 Copy the files that you use (for example to `my-database.yaml`, `my-openbao.yaml` and `my-exposure.yaml`) and adapt their values (for example the Gateway name or the TLS Secret names). Each file names the Secrets to create before the install, for example the database admin password. Create these Secrets now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 
 Check: the render has no error:
@@ -80,7 +82,7 @@ When a hook fails, the install stops. Read the log of its Job (for example `kube
 
 ## Step 5: initialise OpenBao (bundled OpenBao only)
 
-With an external OpenBao (`openbao-external.yaml`), go to step 6.
+With an external OpenBao (`openbao-external.yaml`), or without the organisation wallet, go to step 6.
 
 1. Initialise OpenBao once. The keys and the root token appear only in your terminal: keep them outside the cluster, for example in a password safe, with the keys held by different persons.
 
