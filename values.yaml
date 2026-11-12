@@ -753,8 +753,7 @@ api:
     # installation (1 to 100: a smaller value than the default, never a larger one). The create of one more organisation gets
     # 409 organisation_limit_reached; the organisations that exist stay.
     # Empty: the default of the api (100). An installation with more than
-    # 100 organisations sets a higher value in its upgrade to the release
-    # with the input limits.
+    # 100 organisations keeps them, but it cannot make a new organisation.
     maxOrganisations: ""
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
@@ -1640,8 +1639,8 @@ organisationWallet:
     # Set a value only with the images of the release with the input
     # limits: a wallet of an earlier release does not know the key and does
     # not start (docs/upgrade.md, "The limits of the installation"). An
-    # installation with more than 100 organisation wallets sets a higher
-    # value in its upgrade to that release.
+    # installation with more than 100 organisation wallets keeps them, but
+    # it cannot make the organisation wallet of a new organisation.
     organisationWalletUnitsMax: ""
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
