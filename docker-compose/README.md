@@ -742,7 +742,7 @@ a tmpfs (in memory, with a size) or to a volume:
 | `gateway` | `65532:65532` | none |
 | `consent` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `consent-migrate`, `consent-read-access` | `65532:65532` | `/tmp` (tmpfs, 16 MB) |
-| `wallet-config`, `wallet-service` | `65532:65532` | `/tmp` (tmpfs, 256 MB) |
+| `wallet-config`, `wallet-service` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `wallet-worker` | `65532:65532` | `/tmp` (the volume `wallet-worker-tmp`, on disk), `/run/ows-worker` (tmpfs, 64 MB) |
 | `wallet-clock` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `wallet-database-roles`, `wallet-migrate`, `wallet-read-access` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |

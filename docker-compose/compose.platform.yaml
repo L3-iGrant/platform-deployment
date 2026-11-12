@@ -40,7 +40,7 @@ x-wallet: &wallet
   <<: *hardened
   user: "65532:65532"
   tmpfs:
-    - /tmp:size=256m
+    - /tmp:size=64m
   # The wallet waits at most 20 s for open requests and 10 s for background
   # tasks (its defaults).
   stop_grace_period: 40s

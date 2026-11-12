@@ -582,4 +582,6 @@ During step 3:
 
 Check after step 3: all pods are `Running` and `READY`, and `kubectl -n ows get pod ows-nats-0 -o jsonpath='{.spec.securityContext.runAsUser}'` shows `1000`.
 
+Docker Compose: the one-shot service `api-read-access` is now two services, `api-read-access-wallet` and `api-read-access-consent` (the api image has no shell). Change your scripts and your monitoring that name `api-read-access`, and run `docker compose up -d --remove-orphans` (see the [Compose README](../docker-compose/README.md#change-to-the-release-with-the-non-root-services)).
+
 When you go back to an earlier release (see [Rollback](#rollback)), use its chart and its images together. The NATS store keeps the group 1000: NATS of the earlier release runs as root and can use it.
