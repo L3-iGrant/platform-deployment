@@ -128,13 +128,13 @@ check_installation() {
   local max_organisations max_units
   max_organisations="$(setting MAX_ORGANISATIONS)"
   max_units="$(setting MAX_ORGANISATION_WALLET_UNITS)"
-  if [ -n "$max_organisations" ] && { [[ ! $max_organisations =~ ^[1-9][0-9]{0,6}$ ]] || [ "$max_organisations" -gt 1000000 ]; }; then
-    bad "MAX_ORGANISATIONS ($max_organisations) must be empty or a number, 1 to 1000000"
+  if [ -n "$max_organisations" ] && { [[ ! $max_organisations =~ ^[1-9][0-9]{0,2}$ ]] || [ "$max_organisations" -gt 100 ]; }; then
+    bad "MAX_ORGANISATIONS ($max_organisations) must be empty or a number, 1 to 100"
   else
     ok "organisation limit (${max_organisations:-the default of the api, 100})"
   fi
-  if [ -n "$max_units" ] && { [[ ! $max_units =~ ^[1-9][0-9]{0,7}$ ]] || [ "$max_units" -gt 10000000 ]; }; then
-    bad "MAX_ORGANISATION_WALLET_UNITS ($max_units) must be empty or a number, 1 to 10000000"
+  if [ -n "$max_units" ] && { [[ ! $max_units =~ ^[1-9][0-9]{0,2}$ ]] || [ "$max_units" -gt 100 ]; }; then
+    bad "MAX_ORGANISATION_WALLET_UNITS ($max_units) must be empty or a number, 1 to 100"
   else
     ok "organisation wallet unit limit (${max_units:-the default of the wallet, 100})"
   fi

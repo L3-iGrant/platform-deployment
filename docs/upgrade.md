@@ -497,8 +497,8 @@ From the release with the input limits, the platform has a limit of the organisa
 
 | Value | Configuration key | Range | At the limit |
 | --- | --- | --- | --- |
-| `api.limits.maxOrganisations` | `Limits.maxOrganisations` of the api and webhook files | 1 to 1000000 | The api refuses the create of one more organisation: `409` `organisation_limit_reached` |
-| `organisationWallet.walletUnit.organisationWalletUnitsMax` | `wallet_unit.organisation_wallet_units_max` of the service, config and worker files | 1 to 10000000 | The wallet refuses the organisation wallet of one more organisation: `409` `organisation_wallet_unit.limit_reached` |
+| `api.limits.maxOrganisations` | `Limits.maxOrganisations` of the api and webhook files | 1 to 100 | The api refuses the create of one more organisation: `409` `organisation_limit_reached` |
+| `organisationWallet.walletUnit.organisationWalletUnitsMax` | `wallet_unit.organisation_wallet_units_max` of the service, config and worker files | 1 to 1000 | The wallet refuses the organisation wallet of one more organisation: `409` `organisation_wallet_unit.limit_reached` |
 
 The two values are empty by default. With an empty value, the chart writes no key, and the api or the wallet uses its default (100). Set a value only with the images of the release with the input limits: an api or a wallet of an earlier release does not know the key and does not start with it.
 

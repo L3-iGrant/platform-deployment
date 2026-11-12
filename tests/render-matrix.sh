@@ -750,23 +750,23 @@ PY
 installation_limits "no key by default" '{"organisations": null, "units": null}' "${shamir[@]}"
 installation_limits "no key with empty values" '{"organisations": null, "units": null}' "${shamir[@]}" \
   --set api.limits.maxOrganisations= --set organisationWallet.walletUnit.organisationWalletUnitsMax=
-installation_limits "the two limits" '{"organisations": 250, "units": 300}' "${shamir[@]}" \
-  --set api.limits.maxOrganisations=250 --set organisationWallet.walletUnit.organisationWalletUnitsMax=300
-installation_limits "only the organisation limit" '{"organisations": 150, "units": null}' "${shamir[@]}" --set api.limits.maxOrganisations=150
-installation_limits "only the organisation wallet unit limit" '{"organisations": null, "units": 150}' "${shamir[@]}" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=150
+installation_limits "the two limits" '{"organisations": 50, "units": 60}' "${shamir[@]}" \
+  --set api.limits.maxOrganisations=50 --set organisationWallet.walletUnit.organisationWalletUnitsMax=60
+installation_limits "only the organisation limit" '{"organisations": 40, "units": null}' "${shamir[@]}" --set api.limits.maxOrganisations=40
+installation_limits "only the organisation wallet unit limit" '{"organisations": null, "units": 40}' "${shamir[@]}" \
+  --set organisationWallet.walletUnit.organisationWalletUnitsMax=40
 # A values file gives a number as a float: the files have the integer, not 1e+06.
-installation_limits "the largest limits as JSON numbers" '{"organisations": 1000000, "units": 10000000}' "${shamir[@]}" \
-  --set-json 'api.limits={"maxOrganisations": 1000000}' --set-json 'organisationWallet.walletUnit.organisationWalletUnitsMax=10000000'
+installation_limits "the largest limits as JSON numbers" '{"organisations": 100, "units": 100}' "${shamir[@]}" \
+  --set-json 'api.limits={"maxOrganisations": 100}' --set-json 'organisationWallet.walletUnit.organisationWalletUnitsMax=100'
 guard "organisation limit 0" "api.limits.maxOrganisations" "${shamir[@]}" --set api.limits.maxOrganisations=0
-guard "organisation limit over 1000000" "api.limits.maxOrganisations" "${shamir[@]}" --set api.limits.maxOrganisations=1000001
-guard "organisation limit as a string" "api.limits.maxOrganisations" "${shamir[@]}" --set-string api.limits.maxOrganisations=200
+guard "organisation limit over 100" "api.limits.maxOrganisations" "${shamir[@]}" --set api.limits.maxOrganisations=101
+guard "organisation limit as a string" "api.limits.maxOrganisations" "${shamir[@]}" --set-string api.limits.maxOrganisations=50
 guard "organisation wallet unit limit 0" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
   --set organisationWallet.walletUnit.organisationWalletUnitsMax=0
-guard "organisation wallet unit limit over 10000000" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=10000001
+guard "organisation wallet unit limit over 100" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
+  --set organisationWallet.walletUnit.organisationWalletUnitsMax=101
 guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
-  --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=200
+  --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=50
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}' "${shamir[@]}"
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
