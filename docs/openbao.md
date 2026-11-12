@@ -11,7 +11,7 @@ OpenBao keeps the signing keys of the organisation wallet in its Transit engine.
 | `bundled` (default) | The chart runs OpenBao with 3 raft nodes, TLS and the Shamir seal. | `openbao-shamir.yaml` |
 | `external` | The wallet uses your OpenBao (see [External OpenBao](#external-openbao)). | `openbao-external.yaml` |
 
-For an automatic unseal through an HSM or a Google Cloud KMS key, see [Connect your on-premise HSM](on-premise-hsm.md), [Thales Luna Cloud HSM (DPoD)](dpod.md) and [Scaled deployments](scaled-deployments.md).
+For an automatic unseal through an HSM or a Google Cloud KMS key, see [Connect your on-premise HSM](on-premise-hsm.md), [Thales Luna Cloud HSM (DPoD)](dpod.md) and [Scaled deployments](scaled-deployments.md). A production installation must use an automatic unseal through an HSM or Google Cloud KMS. The Shamir seal is for development and tests.
 
 ## The Shamir seal
 
