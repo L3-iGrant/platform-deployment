@@ -27,7 +27,8 @@ service; the bundled Valkey has no user of the wallet. Without the wallet,
 the consent file has no key ReadAccess.wallet, the NATS user of consent has
 no rights of the consumers of the wallet events (consent-dda-present-proof,
 consent-dda-presentation), consent has no read access Job for the reader
-wallet, the api file has no OpenIdDeployment and the dashboard has no
+wallet (and without consent, the wallet has no read access Job for the
+reader consent), the api file has no OpenIdDeployment and the dashboard has no
 walletUrl.
 """
 
@@ -200,6 +201,12 @@ def main() -> int:
     reader_jobs = [name for name in jobs if name.startswith(f"{RELEASE}-consent-read-access-wallet")]
     check(bool(reader_jobs) == (consent == "here" and wallet == "here"),
           f"the read access Jobs of consent for the wallet are {reader_jobs}")
+    # The read access hook of the wallet for the reader consent (wallet
+    # read-access apply --reader consent): only when this release runs the
+    # wallet and consent.
+    reader_jobs = [name for name in jobs if name == f"{RELEASE}-wallet-read-access-consent"]
+    check(bool(reader_jobs) == (consent == "here" and wallet == "here"),
+          f"the read access Jobs of the wallet for consent are {reader_jobs}")
 
     # The bundled Valkey: the users of the wallet only with the wallet.
     users = sorted((find("Secret", f"{RELEASE}-redis-users") or {}).get("data") or {})
