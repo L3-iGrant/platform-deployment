@@ -62,9 +62,10 @@ global:
   # -- Priority class of all pods (the class must exist). Empty: none.
   priorityClassName: ""
   # -- Pod security context of each component whose own
-  # podSecurityContext is empty. On OpenShift, remove runAsUser, runAsGroup
-  # and fsGroup from the podSecurityContext of each component (the SCC sets
-  # them).
+  # podSecurityContext is empty. Each component has its own default (a
+  # non-root user, docs/security-context.md), and Helm merges your keys
+  # into it: set a key to null to remove it. On OpenShift, set runAsUser,
+  # runAsGroup and fsGroup of each component to null (the SCC sets them).
   podSecurityContext: {}
   # -- Container security context of each component whose own
   # containerSecurityContext is empty.
@@ -279,10 +280,27 @@ database:
     limits:
       cpu: "2"
       memory: 2048Mi
-  # -- The server image runs as the user 999 (postgres).
+  # -- The bundled server and the init hook (database-init) run as the user
+  # postgres of the image (UID 999, GID 999), not as root. fsGroup: the
+  # group of the data volume and of the secret files (mode 0440 and 0640).
+  # OnRootMismatch: the kubelet changes the group of the files of the data
+  # volume only when the top folder does not have it (a large volume
+  # starts faster). The server writes only to the data volume and to
+  # emptyDir volumes (/var/run/postgresql: the socket and the lock file;
+  # /tmp).
   podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
     fsGroup: 999
-  containerSecurityContext: {}
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
@@ -368,8 +386,27 @@ nats:
     requests:
       cpu: 15m
       memory: 32Mi
-  podSecurityContext: {}
-  containerSecurityContext: {}
+  # -- NATS and the reloader run as the user 1000 and the group 1000 (the
+  # images have no user: any UID that is not 0). The reloader sends SIGHUP
+  # to nats-server, thus both containers must have the same user. fsGroup:
+  # the group of the JetStream store and of the TLS files (mode 0440).
+  # OnRootMismatch: the kubelet changes the group of the files of the store
+  # only when the top folder does not have it (the first start after the
+  # upgrade changes all files). NATS writes only to the store (/data) and
+  # to the emptyDir of the pid file (/var/run/nats).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
@@ -948,10 +985,27 @@ api:
         memory: 32Mi
       limits:
         memory: 256Mi
-  # -- The api image runs as root. When you set a non-root runAsUser, also
-  # set fsGroup: the secret files have mode 0440.
-  podSecurityContext: {}
-  containerSecurityContext: {}
+  # -- The api and webhook pods (with the migrate init container). The image
+  # runs as the user nonroot (UID 65532, GID 65532). fsGroup: the group of
+  # the secret files (mode 0440). The api and the webhook handler listen on
+  # port 80 as a non-root user: the sysctl lets the pod open a port below
+  # 1024 without a capability. The processes write only to the emptyDir
+  # /tmp (64Mi).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+    sysctls:
+      - name: net.ipv4.ip_unprivileged_port_start
+        value: "0"
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
@@ -1974,6 +2028,31 @@ organisationWallet:
   # for some of the queues; together the groups must run every queue. A
   # list: your list replaces the whole default list.
   workers:
+    # -- The /tmp folder of each worker pod (the root file system is
+    # read-only). The monthly audit export (audit.export, queue maintenance;
+    # only with audit.bucket.name) writes one month of the audit log of one
+    # data scope two times to /tmp/ows-audit-export-*: the export and the
+    # download that checks it. Thus /tmp is on disk, never in memory.
+    # sizeLimit: the most data in /tmp of one pod. Give at least two times
+    # the largest month of one data scope (docs/workers.md, "The /tmp folder
+    # of the workers"). A group can override these values with its own
+    # tmp.
+    tmp:
+      # -- emptyDir (default): the ephemeral storage of the node. Kubernetes
+      # evicts the pod when /tmp holds more than sizeLimit, and the export
+      # runs again from its message on another pod. The node must have the
+      # free disk space.
+      sizeLimit: 10Gi
+      # -- true: /tmp is a generic ephemeral volume in place of the emptyDir:
+      # a PersistentVolumeClaim of sizeLimit that Kubernetes makes with the
+      # pod and deletes with the pod (for exports that are larger than the
+      # free disk of the nodes).
+      volume:
+        enabled: false
+        # -- The storage class of the claim. Empty: global.storageClass,
+        # else the default storage class of the cluster. "-": no storage
+        # class.
+        storageClass: ""
     groups:
       # name: lower-case letters, digits and -; the Deployment name has at
       #   most 63 characters.
@@ -1985,6 +2064,9 @@ organisationWallet:
       #   limit of the actors of the queues, else an actor stops before its
       #   end and runs again from its message.
       # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
+      # tmp (optional): the /tmp folder of the pods of the group, with the
+      #   keys of organisationWallet.workers.tmp (sizeLimit, volume). Each
+      #   key that you give replaces the key of workers.tmp.
       - name: main
         queues: [realtime, attestation, status, kms]
         replicas: 2
@@ -2023,10 +2105,24 @@ organisationWallet:
     enabled: false
     interval: 15s
     labels: {}
-  # -- The wallet image runs as root. When you set a non-root runAsUser,
-  # also set fsGroup: the secret files have mode 0440.
-  podSecurityContext: {}
-  containerSecurityContext: {}
+  # -- The service, config, worker and clock pods. The image runs as the
+  # user ows (UID 65532, GID 65532). fsGroup: the group of the secret files
+  # (mode 0440; with 0400 the user cannot read them). The processes write
+  # only to emptyDir volumes: /tmp of each pod, /run/ows-server (the
+  # metrics files of the servers) and /run/ows-worker (the state files of
+  # the workers). The hooks use organisationWallet.jobs.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
@@ -2068,8 +2164,26 @@ enterpriseDashboard:
     requests:
       cpu: 10m
       memory: 32Mi
-  podSecurityContext: {}
-  containerSecurityContext: {}
+  # -- The image (nginx) runs as the user nginx (UID 101, GID 101). The
+  # dashboard listens on port 80 as a non-root user: the sysctl lets the
+  # pod open a port below 1024 without a capability. nginx writes only to
+  # the emptyDir /tmp (64Mi): its pid file, its temporary files and the
+  # files of the start scripts. The config.json of the ConfigMap is
+  # read-only.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+    sysctls:
+      - name: net.ipv4.ip_unprivileged_port_start
+        value: "0"
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []

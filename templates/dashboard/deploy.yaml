@@ -42,8 +42,16 @@ spec:
             - name: config
               mountPath: /usr/share/nginx/html/config
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: config
           configMap:
             name: {{ include "ow.name" (list . "dashboard") }}
+        # The only writable path (the root file system is read-only): the
+        # pid file and the temporary files of nginx, and the files that the
+        # start scripts of the image write (/tmp/dashboard).
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 {{- end }}

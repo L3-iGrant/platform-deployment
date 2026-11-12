@@ -118,11 +118,16 @@ spec:
         - name: config
           configMap:
             name: {{ include "ow.name" (list . "nats") }}
+        # The pid file (the root file system is read-only).
         - name: pid
-          emptyDir: {}
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        # The group of the files is fsGroup.
         - name: tls
           secret:
             secretName: {{ include "ow.nats.tlsSecretName" . }}
+            defaultMode: 0440
             items:
               - key: tls.crt
                 path: tls.crt
