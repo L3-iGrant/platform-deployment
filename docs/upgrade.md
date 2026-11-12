@@ -540,10 +540,15 @@ Helm removes the pods, the Jobs, the Services and the ConfigMaps of the service.
 
 The stored features, the stored webhook subscriptions and the stored API keys of the service apply again. A service that was installed before finds its data in its database. With the bundled OpenBao, the OpenBao pods start with their earlier volumes: unseal each pod (install step 5, item 2), and do not initialise OpenBao again.
 
-Consent gets the events of the api from the stream `API_EVENTS`. The stream keeps an event for 8 days. When consent was not installed for more than 8 days, it does not get the older events:
+Consent and the organisation wallet get the events of the api from the stream `API_EVENTS` (consent: the changes and the deletions of organisations; the wallet: the changes and the deletions of organisations and sandboxes). The stream keeps an event for 8 days. No tool sends an older event again.
 
-- The suspensions and resumptions of organisations: no action. Consent reads each organisation from the api again when its local copy expires (after at most 15 minutes), and the answer of the api has the state of today.
-- The deletions of organisations: consent keeps the consent data of each organisation that a platform admin deleted in that time. Before you add consent again, make a list of these organisations. After the upgrade, contact iGrant.io with the list to purge their consent data.
+- A service that you add for the first time has a new database: it misses nothing, and you do nothing.
+- A service that you removed and add again does not get the events that are older than 8 days:
+  - Consent, the suspensions and resumptions of organisations: no action. Consent reads each organisation from the api again when its local copy expires (after at most 15 minutes), and the answer of the api has the state of today.
+  - Consent, the deletions of organisations: consent keeps the consent data of each organisation that a platform admin deleted while consent was not installed.
+  - The wallet: the wallet keeps the wallets of each organisation and sandbox that a platform admin deleted while the wallet was not installed, and the api sent no wallet command in that time (for example the suspension of an organisation).
+
+  The organisations list of the platform operator shows each deleted organisation with the status `deleting`, without the date. The action log of the platform operator organisation has the entry `organisation_deletion_started` with the date, but only for `api.actionLogRetentionDays` (default 30 days). Thus, keep a record of each organisation that you delete while a service is not installed. After the upgrade, contact iGrant.io support with this record to purge the data of these organisations in the service.
 
 ## The webhook event types
 
