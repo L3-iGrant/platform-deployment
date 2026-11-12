@@ -31,9 +31,7 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "mode" "builtin")
   "AdminAuth" (dict
     "walletLogin" (dict "organisationId" $api.adminAuth.walletLogin.organisationId))
-  "Webhooks" (dict
-    "events" $api.webhooks.events
-    "DeliveryRetentionDays" ($api.webhooks.deliveryRetentionDays | int))
+  "Webhooks" (dict "DeliveryRetentionDays" ($api.webhooks.deliveryRetentionDays | int))
   "ActionLogs" (dict "RetentionDays" ($api.actionLogRetentionDays | int))
   "Extensions" (dict
     "oidc" (dict

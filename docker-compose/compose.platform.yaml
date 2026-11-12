@@ -715,16 +715,9 @@ configs:
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
         adminEmail: "${SMTP_FROM}"
+      # The effective features of each organisation select its webhook
+      # event types: no list of event types.
       Webhooks:
-        events:
-          - consent.allowed
-          - consent.disallowed
-          - data.delete.initiated
-          - data.download.initiated
-          - data.update.initiated
-          - data.delete.cancelled
-          - data.download.cancelled
-          - data.update.cancelled
         DeliveryRetentionDays: 10
       ActionLogs:
         RetentionDays: 30
@@ -825,16 +818,9 @@ configs:
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
         adminEmail: "${SMTP_FROM}"
+      # The effective features of each organisation select its webhook
+      # event types: no list of event types.
       Webhooks:
-        events:
-          - consent.allowed
-          - consent.disallowed
-          - data.delete.initiated
-          - data.download.initiated
-          - data.update.initiated
-          - data.delete.cancelled
-          - data.download.cancelled
-          - data.update.cancelled
         DeliveryRetentionDays: 10
       ActionLogs:
         RetentionDays: 30

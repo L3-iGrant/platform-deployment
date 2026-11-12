@@ -337,6 +337,8 @@ notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$exampl
 notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of an external server" "set max_connections of your server to at least 226" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
+notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'api.webhooks.events=["consent.allowed"]'
 notes "without the wallet" "The organisation wallet is not installed" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
 # The readers of the views of a service that is not installed open no
 # connection: without the wallet, the api core and the webhook handler have
@@ -498,6 +500,15 @@ renders "feature gate on by default" "enforce: true" "${shamir[@]}"
 renders "feature gate off" "enforce: false" "${shamir[@]}" --set gateway.features.enforce=false
 lacks "feature gate off has no enforce true" "enforce: true" "${shamir[@]}" --set gateway.features.enforce=false
 renders "feature gate off with extraConfig" "enforce: false" "${shamir[@]}" --set gateway.extraConfig.Features.enforce=false
+# The webhook event types: the effective features of each organisation
+# select them, so the api files have no Webhooks.events. A values file of an
+# earlier release that sets api.webhooks.events still renders (the schema
+# accepts the value for one release), the files do not have it, and the
+# notes tell to remove it.
+events='api.webhooks.events=["consent.allowed","data.delete.initiated"]'
+renders "webhook delivery retention of the api files" "DeliveryRetentionDays: 10" "${shamir[@]}" --show-only templates/api/configmap.yaml
+lacks "no webhook event types in the api files" "consent.allowed" "${shamir[@]}" --show-only templates/api/configmap.yaml
+lacks "api.webhooks.events of an earlier values file is not rendered" "consent.allowed" "${shamir[@]}" --set-json "$events" --show-only templates/api/configmap.yaml
 # The API core publishes the deletion of an organisation (contract/v2 E10).
 renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"' "${shamir[@]}"
 # The key store providers and the EU trusted list check of the wallet.

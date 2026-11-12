@@ -1621,6 +1621,7 @@
           "additionalProperties": false,
           "properties": {
             "events": {
+              "description": "Not used: the effective features of each organisation select its webhook event types. The chart does not render the value and accepts it for one release (docs/upgrade.md, The webhook event types).",
               "type": "array",
               "items": {
                 "type": [
