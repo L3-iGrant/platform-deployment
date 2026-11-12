@@ -57,10 +57,18 @@ spec:
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
           # The program of the worker (the image starts the server). The
           # Dramatiq main process is process 1 and gets SIGTERM.
+          # --worker-fork-timeout: the health server is a fork process of
+          # Dramatiq. Dramatiq starts the fork processes when the worker
+          # processes are online, or after this timeout (30 s by default)
+          # with the list that the worker processes gave until then. A
+          # slow start gave no list: no health server, and the pod never
+          # passed its probes. The value is the time of the startup probe
+          # (periodSeconds x failureThreshold).
           command:
             {{- toYaml (concat (list "/app/.venv/bin/dramatiq" "ows.worker.run:start"
                 "--processes" ($g.processes | toString) "--threads" ($g.threads | toString)
                 "--worker-shutdown-timeout" (mul ($g.shutdownTimeoutSeconds | int64) 1000 | toString)
+                "--worker-fork-timeout" "650000"
                 "--queues") $g.queues) | nindent 12 }}
           env:
             # The only environment variable of the wallet configuration: the

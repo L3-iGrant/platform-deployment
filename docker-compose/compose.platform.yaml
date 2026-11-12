@@ -537,7 +537,7 @@ services:
   wallet-worker:
     <<: *wallet
     command: ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", "1", "--threads", "8",
-              "--worker-shutdown-timeout", "3600000", "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
+              "--worker-shutdown-timeout", "3600000", "--worker-fork-timeout", "600000", "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
     stop_grace_period: 3630s
     configs:
       - {source: wallet-worker-config, target: /etc/eudi-wallet/config.yaml}

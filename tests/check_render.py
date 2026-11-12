@@ -280,7 +280,12 @@ def main() -> int:
         pod = deploy["spec"]["template"]["spec"]
         container = pod["containers"][0]
         command = ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", str(processes), "--threads", str(threads),
-                   "--worker-shutdown-timeout", str(shutdown * 1000), "--queues", *queues]
+                   "--worker-shutdown-timeout", str(shutdown * 1000), "--worker-fork-timeout", "650000", "--queues", *queues]
+        # Dramatiq starts the health server (a fork process) after the fork
+        # timeout at the latest: the wait is as long as the startup probe.
+        startup = container.get("startupProbe") or {}
+        check(startup.get("periodSeconds", 0) * startup.get("failureThreshold", 0) * 1000 == 650000,
+              f"the startup probe of the {component} pods does not give the 650 s of --worker-fork-timeout")
         check(container.get("command") == command, f"the {component} pods have the command {container.get('command')}")
         check(deploy["spec"]["replicas"] == replicas, f"the {component} Deployment has {deploy['spec']['replicas']} replicas, not {replicas}")
         check(pod.get("terminationGracePeriodSeconds") == grace, f"the {component} pods have the grace period {pod.get('terminationGracePeriodSeconds')}, not {grace}")
