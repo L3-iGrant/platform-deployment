@@ -1,8 +1,9 @@
 # iGrant.io platform: Docker Compose
 
 This folder installs the iGrant.io platform on one Docker host. Use it for
-tests and for small production installations. For a Kubernetes cluster, use
-the Helm chart of this repository.
+development and tests. For a Kubernetes cluster, use the Helm chart of this
+repository. For production, use the enterprise installation (on request:
+support@igrant.io).
 
 Do the steps of [Installation](#installation) one by one. Each step has a
 check: do the next step only when you see the result of the check.
@@ -109,7 +110,7 @@ installations:
 - `PLATFORM_TAG`: set the release tag. The value `2026.10.x` is a
   placeholder: `make secrets` and `make check` stop until you replace it.
 
-For a production installation, also set:
+For an installation behind your reverse proxy (not only on localhost), also set:
 
 - `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL`: the
   `https://` URLs of your reverse proxy.
