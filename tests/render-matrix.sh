@@ -428,6 +428,11 @@ guard "existing platform operator organisation id with a space" "organisationId"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
 guard "worker /tmp size not a size" "organisationWallet.workers.tmp.sizeLimit" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10GB
 guard "worker /tmp without a size" "sizeLimit is required" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=null
+# A path that a process writes must be on an emptyDir of its pod (the root
+# file system is read-only).
+guard "wallet log file outside /tmp" "has log_file.path \"/var/log/ows.log\"" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" "${shamir[@]}" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
+guard "api log file outside /tmp" "api.extraConfig sets Log.file.path" "${shamir[@]}" --set api.extraConfig.Log.file.path=/var/log/api.log
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -1193,6 +1198,7 @@ lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}
 # The /tmp folder of the workers (organisationWallet.workers.tmp): an
 # emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
 # size; the tmp of a group replaces the keys of workers.tmp.
+renders "wallet log file below /tmp" "path: /tmp/ows.log" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
 renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
 renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
 renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
@@ -1213,11 +1219,11 @@ expected = {
     ("Deployment", "t-api"): {"/tmp": {"sizeLimit": "64Mi"}},
     ("Deployment", "t-webhook"): {"/tmp": {"sizeLimit": "64Mi"}},
     ("Deployment", "t-dashboard"): {"/tmp": {"sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-service"): {"/tmp": {"sizeLimit": "256Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-config"): {"/tmp": {"sizeLimit": "256Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-service"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-config"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-worker-main"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-clock"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-clock"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("StatefulSet", "t-postgres"): {"/tmp": {"sizeLimit": "64Mi"}, "/var/run/postgresql": {"medium": "Memory", "sizeLimit": "1Mi"}},
     ("StatefulSet", "t-nats"): {"/var/run/nats": {"medium": "Memory", "sizeLimit": "1Mi"}},
 }

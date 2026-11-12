@@ -795,6 +795,8 @@ api:
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
+  # The root file system is read-only: a log file (Log.file.path) must be
+  # below /tmp/.
   # Not Installation: the chart writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables (for example
@@ -1988,7 +1990,8 @@ organisationWallet:
         drop: ["ALL"]
   # -- Extra keys of the wallet configuration, deep-merged over the keys of
   # the chart in the files of all roles (nested keys). Do not put a secret
-  # here.
+  # here. The root file system is read-only: a log file (log_file.path)
+  # must be below /tmp.
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables: the wallet reads
   # no configuration from the environment (only EUDI_WALLET_CONFIG).
