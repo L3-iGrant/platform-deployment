@@ -10,17 +10,19 @@ metadata:
 {{- /*
 baseUrl: the api (the CSP connect-src of the dashboard also comes from it).
 walletUrl: the organisation wallet (vct metadata of the credential types).
-Empty: the public URLs of api.host and organisationWallet.host.
+Empty: the public URLs of api.host and organisationWallet.host. Without the
+wallet (ow.installation.has), no walletUrl: the dashboard shows no wallet
+area, and the chart needs no organisationWallet.host.
 */}}
 {{- $baseUrl := $d.configuration.baseUrl }}
 {{- if not $baseUrl }}{{- $baseUrl = include "ow.publicUrlOf" (list . "api") }}{{- end }}
 {{- $walletUrl := $d.configuration.walletUrl }}
-{{- if not $walletUrl }}{{- $walletUrl = include "ow.publicUrlOf" (list . "organisationWallet") }}{{- end }}
+{{- if and (not $walletUrl) (include "ow.installation.has" (list . "wallet")) }}{{- $walletUrl = include "ow.publicUrlOf" (list . "organisationWallet") }}{{- end }}
+{{- $config := dict
+  "baseUrl" $baseUrl
+  "appVersion" ($d.configuration.appVersion | default ($d.image.tag | toString | default (.Values.global.imageTag | toString))) }}
+{{- with $walletUrl }}{{- $_ := set $config "walletUrl" . }}{{- end }}
 data:
   config.json: |
-    {{- dict
-      "baseUrl" $baseUrl
-      "walletUrl" $walletUrl
-      "appVersion" ($d.configuration.appVersion | default ($d.image.tag | toString | default (.Values.global.imageTag | toString)))
-      | toPrettyJson | nindent 4 }}
+    {{- $config | toPrettyJson | nindent 4 }}
 {{- end }}

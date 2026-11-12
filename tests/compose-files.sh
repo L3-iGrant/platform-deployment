@@ -23,6 +23,8 @@
 #     clock (no NATS seed, no OpenBao password);
 #   - the limits of the installation (MAX_ORGANISATIONS,
 #     MAX_ORGANISATION_WALLET_UNITS): the keys only with a value;
+#   - the webhooks of the api files (no Webhooks.events) and no
+#     Installation key (Compose installs all services);
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -459,6 +461,42 @@ PY
       fi
       rm -f "$project_file"
     done
+  fi
+
+  # The webhooks and the services of the installation: Webhooks of the api
+  # and webhook files has only DeliveryRetentionDays (the effective
+  # features of each organisation select the event types), and no file has
+  # Installation (Compose installs all services).
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    if ! json="$(docker compose config --format json 2>&1)"; then
+      bad "webhooks and services: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+for name in ("api-config", "webhook-config"):
+    webhooks = yaml.safe_load(project["configs"][name]["content"]).get("Webhooks")
+    if webhooks != {"DeliveryRetentionDays": 10}:
+        sys.exit(f"{name}: Webhooks {webhooks!r}, not only DeliveryRetentionDays")
+for name, config in sorted(project["configs"].items()):
+    if "Installation" in config.get("content", ""):
+        sys.exit(f"{name} has Installation")
+print("Webhooks without events, no Installation")
+PY
+)"; then
+        ok "webhooks and services: $output"
+      else
+        bad "webhooks and services: $output"
+      fi
+      rm -f "$project_file"
+    fi
   fi
 
   # The platform operator targets of the Makefile (make -n: no container):

@@ -11,7 +11,10 @@ counts the rate limits and writes the action log; it resolves the client
 address with ClientAddress and sends it in the token (claim cip). Features
 is only in this file: the feature gate (gateway.features.enforce). It sends
 the consent routes to the consent service, the wallet config routes to the
-wallet config role and all other routes to the api core.
+wallet config role and all other routes to the api core. Installation is
+in this file and in the api file (ow.installation.config) only when a
+service is not installed; the file then has no upstream of that service,
+and the gateway answers 404 to its routes.
 */}}
 {{- define "ow.gateway.config" -}}
 {{- $root := . -}}
@@ -20,16 +23,18 @@ wallet config role and all other routes to the api core.
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
 {{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
+{{- /* The upstream of consent and of the wallet config role: the URL of the
+service of another release, else the Service of this release. A service
+that is not installed (enabled false and no URL) has no upstream. */ -}}
+{{- $installation := include "ow.installation.config" $root | fromJson -}}
 {{- $consentUrl := $g.upstreams.consent.url -}}
 {{- if and (not $consentUrl) $v.consent.enabled -}}
 {{- $consentUrl = printf "http://%s.%s.svc:80" (include "ow.name" (list $root "consent")) $root.Release.Namespace -}}
 {{- end -}}
-{{- $consentUrl = required "gateway.upstreams.consent.url is required when consent.enabled is false: the gateway sends the consent routes to the consent service" $consentUrl -}}
 {{- $walletConfigUrl := $g.upstreams.walletConfig.url -}}
 {{- if and (not $walletConfigUrl) $v.organisationWallet.enabled -}}
 {{- $walletConfigUrl = printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- end -}}
-{{- $walletConfigUrl = required "gateway.upstreams.walletConfig.url is required when organisationWallet.enabled is false: the gateway sends the wallet config routes to the wallet config role" $walletConfigUrl -}}
 {{- /* The file body limit of the gateway must not refuse an image that the
 api accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), else the
 client gets the 413 of the gateway with another text. 0 = the defaults
@@ -59,14 +64,7 @@ values file without the key keeps the default of the gateway). */ -}}
     "listenPort" ($g.listenPort | int)
     "drainSeconds" ($g.drainSeconds | int)
     "gracefulShutdownSeconds" ($g.gracefulShutdownSeconds | int)
-    "upstreams" (dict
-      "core" (dict "url" $coreUrl)
-      "consent" (dict
-        "url" $consentUrl
-        "requestTimeoutSeconds" ($g.upstreams.consent.requestTimeoutSeconds | int))
-      "walletConfig" (dict
-        "url" $walletConfigUrl
-        "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)))
+    "upstreams" (dict "core" (dict "url" $coreUrl))
     "internalToken" (dict
       "issuer" $g.internalToken.issuer
       "signingJwksFile" (printf "%s/internal-token-jwks.json" $dir)
@@ -84,7 +82,23 @@ values file without the key keeps the default of the gateway). */ -}}
         "file" ($g.proxy.maxBodyBytes.file | int64)
         "large" ($g.proxy.maxBodyBytes.large | int64))))
 -}}
+{{- if $consentUrl -}}
+{{- $_ := set $config.Gateway.upstreams "consent" (dict
+    "url" $consentUrl
+    "requestTimeoutSeconds" ($g.upstreams.consent.requestTimeoutSeconds | int)) -}}
+{{- end -}}
+{{- if $walletConfigUrl -}}
+{{- $_ := set $config.Gateway.upstreams "walletConfig" (dict
+    "url" $walletConfigUrl
+    "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)) -}}
+{{- end -}}
+{{- with $installation -}}
+{{- $_ := set $config "Installation" . -}}
+{{- end -}}
 {{- $shared := pick ($api.extraConfig | default dict) "IndividualAuth" "Cors" "OutboundHttp" -}}
 {{- $config = mustMergeOverwrite $config (deepCopy $shared) -}}
-{{- mustMergeOverwrite $config (deepCopy ($g.extraConfig | default dict)) | toYaml -}}
+{{- /* gateway.extraConfig cannot set Installation (ow.installation.config). */ -}}
+{{- $extra := deepCopy ($g.extraConfig | default dict) -}}
+{{- $_ := unset $extra "Installation" -}}
+{{- mustMergeOverwrite $config $extra | toYaml -}}
 {{- end }}

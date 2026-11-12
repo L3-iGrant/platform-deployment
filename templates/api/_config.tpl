@@ -31,12 +31,8 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "mode" "builtin")
   "AdminAuth" (dict
     "walletLogin" (dict "organisationId" $api.adminAuth.walletLogin.organisationId))
-  "Webhooks" (dict
-    "events" $api.webhooks.events
-    "DeliveryRetentionDays" ($api.webhooks.deliveryRetentionDays | int))
+  "Webhooks" (dict "DeliveryRetentionDays" ($api.webhooks.deliveryRetentionDays | int))
   "ActionLogs" (dict "RetentionDays" ($api.actionLogRetentionDays | int))
-  "OpenIdDeployment" (dict
-    "OpenIdServiceEndpoint" (include "ow.publicUrlOf" (list $root "organisationWallet")))
   "Extensions" (dict
     "oidc" (dict
       "issuer" $apiUrl
@@ -59,6 +55,17 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" $api.logLevel)
 -}}
+{{- /* The services of the installation (ow.installation.config): the
+section only when a service is not installed. */ -}}
+{{- with include "ow.installation.config" $root | fromJson -}}
+{{- $_ := set $config "Installation" . -}}
+{{- end -}}
+{{- /* The public URL of the wallet: only with the wallet (without it, the
+api has no wallet route and the chart needs no wallet host). */ -}}
+{{- if include "ow.installation.has" (list $root "wallet") -}}
+{{- $_ := set $config "OpenIdDeployment" (dict
+    "OpenIdServiceEndpoint" (include "ow.publicUrlOf" (list $root "organisationWallet"))) -}}
+{{- end -}}
 {{- if $api.smtp.host -}}
 {{- $smtp := dict
     "host" $api.smtp.host
@@ -79,19 +86,21 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "authTokenFile" (include "ow.api.secretFile" (list $root "twilio-auth-token"))) -}}
 {{- end -}}
 {{- /* The api signs and verifies the NATS envelopes (issuer igrant-api;
-it trusts consent, the wallet and its own internal events). Both processes
-sign with the api key. */ -}}
+it trusts its own internal events and the installed services, consent and
+the wallet: ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
 {{- $_ := set $config "ServiceEnvelope" (dict
     "signingJwksFile" (printf "%s/service-envelope-jwks.json" (include "ow.api.secretDir" $root))
     "activeKid" $signing.activeKid
     "lifetimeSeconds" ($api.serviceEnvelope.lifetimeSeconds | int)
     "clockSkewSeconds" ($api.serviceEnvelope.clockSkewSeconds | int)
-    "trustedIssuers" (include "ow.serviceKeys.trusted" (list $root "igrant-api" "igrant-consent-management" "eudi-wallet") | fromJsonArray)) -}}
+    "trustedIssuers" (include "ow.serviceKeys.trusted" (prepend (include "ow.api.trustedIssuers" $root | fromJsonArray) $root) | fromJsonArray)) -}}
 {{- if (include "ow.nats.ca" $root | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
 {{- end -}}
 {{- /* Every api process reads the views of the wallet database with the
-read-only user of the api (ReadAccess.wallet, the shape of DataBase). */ -}}
+read-only user of the api (ReadAccess.wallet, the shape of DataBase). Not
+without the wallet: then the file has no ReadAccess. */ -}}
+{{- if include "ow.installation.has" (list $root "wallet") -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $walletRead := include "ow.db.go" (dict
     "root" $root
@@ -103,6 +112,7 @@ read-only user of the api (ReadAccess.wallet, the shape of DataBase). */ -}}
     "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))
     "pool" $v.database.pools.apiReadAccess) | fromJson -}}
 {{- $_ := set $config "ReadAccess" (dict "wallet" $walletRead) -}}
+{{- end -}}
 {{- /* The api core verifies the internal token of the gateway on every
 request (start-api needs GatewayToken.jwksFile; start-webhook-api does not
 read the section). */ -}}
@@ -127,7 +137,12 @@ section. */ -}}
 {{- if $api.verifierApp.androidPackageName -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}
-{{- $config = mustMergeOverwrite $config (deepCopy ($api.extraConfig | default dict)) -}}
+{{- /* api.extraConfig cannot set Installation: ow.installation.config
+stops the render when it names other services, and the chart writes its
+own section. */ -}}
+{{- $extra := deepCopy ($api.extraConfig | default dict) -}}
+{{- $_ := unset $extra "Installation" -}}
+{{- $config = mustMergeOverwrite $config $extra -}}
 {{- $config | toYaml -}}
 {{- end }}
 
