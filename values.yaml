@@ -758,7 +758,7 @@ api:
   # installation").
   limits:
     # -- Limits.maxOrganisations: the most organisations of the
-    # installation (1 to 1000000). The create of one more organisation gets
+    # installation (1 to 100: a smaller value than the default, never a larger one). The create of one more organisation gets
     # 409 organisation_limit_reached; the organisations that exist stay.
     # Empty: the default of the api (100). An installation with more than
     # 100 organisations sets a higher value in its upgrade to the release
@@ -1628,8 +1628,9 @@ organisationWallet:
     trustAnchors:
       existingConfigMap: ""
     # -- wallet_unit.organisation_wallet_units_max: the most organisation
-    # wallet units of the wallet provider of the installation (1 to
-    # 10000000), in the files of the service, config and worker pods. The
+    # wallet units of the wallet provider of the installation (1 to 100: a
+    # smaller value than the default, never a larger one), in the files of
+    # the service, config and worker pods. The
     # create of one more organisation wallet (a new organisation) gets 409
     # organisation_wallet_unit.limit_reached; the units that exist stay.
     # Empty: the chart writes no key, and the wallet uses its default (100).
