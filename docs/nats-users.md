@@ -13,6 +13,8 @@ Every process connects to NATS with its own nkey user, with only the subjects th
 | `consent` | consent management |
 | `walletConfig`, `walletService`, `walletWorker` | the roles of the wallet (`walletWorker`: all worker groups; the clock connects to no NATS, see [Workers and clock](workers.md)) |
 
+An installation without consent or without the organisation wallet has no user of that service: `nats.conf` does not have it, also when its values are set (see [Components](components.md#the-services-of-the-installation)).
+
 The values hold only the public nkey (`nkey`, it starts with `U`) and the name of the Secret with the seed (`seedSecret`). With an external NATS (`nats.enabled: false`), the chart writes the users and `max_payload` in the ConfigMap `<release>-nats-authorization`: add them to the configuration of your server (global account). Your server needs JetStream and NATS 2.10 or later. Set `nats.jetstreamReplicas` to its cluster size.
 
 ## TLS

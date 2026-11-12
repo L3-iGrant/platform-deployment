@@ -517,3 +517,36 @@ Set each value above the number of organisations that you expect, not only above
 
 To go back to an earlier release (see [Rollback](#rollback)), first remove the two values from your values files: the chart of an earlier release does not know them, and its images refuse the keys.
 
+## The services of the installation
+
+From the release with the installation services, an installation can be without consent or without the organisation wallet (see [Components](components.md#the-services-of-the-installation)). An installation that exists keeps all services: with all services, the chart writes the same configuration files as before, and you change nothing.
+
+### Remove a service
+
+1. In your values files, set `consent.enabled: false` (or `organisationWallet.enabled: false`), and remove `gateway.upstreams.consent.url` (or `gateway.upstreams.walletConfig.url`). Without consent, also set `privacyDashboard.enabled: false`.
+2. Set `global.imageTag` to the release tag of this release or a later one: the api and the gateway of an earlier release do not start with the key `Installation`.
+3. Run the upgrade (step 3 of the procedure at the top of this page).
+
+Helm removes the pods, the Jobs, the Services and the ConfigMaps of the service. The data of the service stays: the chart deletes no database, no database user and no Secret with `helm.sh/resource-policy: keep` (for example the passwords in `<release>-postgres`). Without the wallet, the volumes of the bundled OpenBao also stay, with the keys of the wallet in them. The data of the organisations stays too:
+
+- The stored features of the service stay on the organisation record, but they are not effective: the dashboard shows no area of the service.
+- A webhook keeps its event types of the service, but gets no event of the service.
+- An API key keeps its scopes of the service, but each route of the service answers `404` (`service_not_installed`).
+
+### Add a service later
+
+1. In your values files, set `consent.enabled: true` (or `organisationWallet.enabled: true`), or set the URL of the service of another release.
+2. Run the upgrade.
+
+The stored features, the stored webhook subscriptions and the stored API keys of the service apply again. A service that was installed before finds its data in its database. With the bundled OpenBao, the OpenBao pods start with their earlier volumes: unseal each pod (install step 5, item 2), and do not initialise OpenBao again.
+
+Consent gets the events of the api from the stream `API_EVENTS`. The stream keeps an event for 8 days. When consent was not installed for more than 8 days, it does not get the older events:
+
+- The suspensions and resumptions of organisations: no action. Consent reads each organisation from the api again when its local copy expires (after at most 15 minutes), and the answer of the api has the state of today.
+- The deletions of organisations: consent keeps the consent data of each organisation that a platform admin deleted in that time. Before you add consent again, make a list of these organisations. After the upgrade, contact iGrant.io with the list to purge their consent data.
+
+## The webhook event types
+
+From the release with the installation services, the api no longer reads `Webhooks.events`. The effective features of each organisation select the webhook event types: an organisation with Consent Management gets all 9 consent event types, also `consent.auto_expiry`. An organisation whose Consent Management is off gets no `consent.*` and no `data.*` webhook events.
+
+The chart no longer has `api.webhooks.events` in `values.yaml` and does not write `Webhooks.events` into the api file. A values file that still sets `api.webhooks.events` renders: the chart does not use the value, and the notes of the release tell you to remove it. Remove the value from your values files. A later release refuses it.
