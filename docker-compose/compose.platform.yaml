@@ -18,9 +18,29 @@ x-server: &server
   # requests (Server.drainSeconds, Server.gracefulShutdownSeconds).
   stop_grace_period: 30s
 
+# The security settings of the services (README.md, "Security settings"):
+# no Linux capability, and no new privileges (setuid and setgid programs do
+# not give more rights). Each service also has its non-root user
+# (user: UID:GID) and tmpfs or volumes for the paths that it writes. A
+# service has a read-only root file system (read_only: true) only when it
+# has no configuration of "content" (the configs at the end of this file):
+# Compose writes such a file into the container before the start, and it
+# cannot do that in a read-only container.
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
 x-wallet: &wallet
   image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/eudi-wallet:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
   restart: unless-stopped
+  # The security settings, and the user ows of the image. The processes
+  # write only to /tmp (the temporary files of Python, for example a part of
+  # a multipart form that is larger than 1 MB). Not read-only: the
+  # configuration file is a config of "content".
+  <<: *hardened
+  user: "65532:65532"
+  tmpfs:
+    - /tmp:size=64m
   # The wallet waits at most 20 s for open requests and 10 s for background
   # tasks (its defaults).
   stop_grace_period: 40s
@@ -35,8 +55,13 @@ services:
   # all database configurations.
 
   postgres:
+    <<: *hardened
+    read_only: true
     image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
     profiles: [postgresql]
+    # The user postgres of the image. It owns the data folder (the image
+    # gives the volume to it when Docker makes the volume).
+    user: "999:999"
     # The server logs each DDL statement (log_statement=ddl: CREATE, ALTER,
     # DROP, GRANT, REVOKE and the role statements) and each connection and
     # disconnection to the container log (docker compose logs postgres).
@@ -52,6 +77,11 @@ services:
     volumes:
       # PostgreSQL 18 images keep the data in /var/lib/postgresql/18/docker.
       - postgres-data:/var/lib/postgresql
+    # The socket and the lock file of the server, and the temporary files of
+    # the entrypoint of the image.
+    tmpfs:
+      - /var/run/postgresql:size=1m,uid=999,gid=999,mode=0775
+      - /tmp:size=64m
     networks:
       default:
         aliases: [database]
@@ -69,9 +99,13 @@ services:
   # wallet-database-roles makes; no process of the wallet logs in as the
   # owner user igrant_wallet.
   database-init:
-    <<: *job
+    <<: [*job, *hardened]
+    read_only: true
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
+    user: "999:999"
     entrypoint: ["bash", "/scripts/create-databases.sh"]
+    tmpfs:
+      - /tmp:size=16m
     environment:
       DB_ENGINE: ${DB_ENGINE}
       DB_PORT: ${DB_PORT}
@@ -90,8 +124,28 @@ services:
 
   # --- NATS JetStream: one nkey user for each process --------------------------
 
-  nats:
+  # The NATS image has no user, and Docker makes the volume nats-data for
+  # root. This one-shot service gives the JetStream store to the user of
+  # NATS (1000:1000), then stops: root, with only the capabilities to change
+  # the owner of the files (CHOWN) and to read each folder (DAC_READ_SEARCH),
+  # and no network.
+  nats-data-owner:
+    <<: [*job, *hardened]
+    read_only: true
     image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
+    user: "0:0"
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    network_mode: none
+    entrypoint: ["chown", "-R", "1000:1000", "/data"]
+    volumes:
+      - nats-data:/data
+
+  nats:
+    <<: *hardened
+    read_only: true
+    image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
+    # Any user that is not root: the image has no user.
+    user: "1000:1000"
     command: ["--config", "/etc/nats/nats.conf"]
     configs:
       - {source: nats-conf, target: /etc/nats/nats.conf}
@@ -104,6 +158,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 30
+    depends_on:
+      nats-data-owner: {condition: service_completed_successfully}
     restart: unless-stopped
 
   # --- OpenBao: the KMS of the wallet (Transit engine) -------------------------
@@ -217,9 +273,14 @@ services:
   # --- Migrations and read access (one-shot) -----------------------------------
 
   api-migrate:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/api:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
+    # The user nonroot of the image. The image has no shell: each command
+    # of the api is the program itself.
+    user: "65532:65532"
     command: ["/app/bin/igrant-api", "migrate", "--config", "/etc/igrant-api/database-jobs.yaml"]
+    tmpfs:
+      - /tmp:size=16m
     configs:
       - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
     secrets:
@@ -229,9 +290,12 @@ services:
       database-init: {condition: service_completed_successfully}
 
   consent-migrate:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/consent-management-backend:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
+    user: "65532:65532"
     command: ["migrate", "schema", "--config", "/etc/consent/migrate.yaml"]
+    tmpfs:
+      - /tmp:size=16m
     configs:
       - {source: consent-migrate-config, target: /etc/consent/migrate.yaml}
     secrets:
@@ -246,8 +310,12 @@ services:
   # objects of an older release given to the owner role, and the grants.
   # The prefix igrant_wallet is the name of the wallet database.
   wallet-database-roles:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    # The user ows of the image.
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
     entrypoint: ["/app/.venv/bin/database-roles"]
     command:
       - apply
@@ -282,8 +350,11 @@ services:
   # grant step gives the database roles their grants on the new objects.
   # Only this service changes the schema of the wallet.
   wallet-migrate:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
     entrypoint: ["/app/.venv/bin/migrate-database"]
     environment:
       EUDI_WALLET_CONFIG: /etc/eudi-wallet/migrate.yaml
@@ -296,19 +367,17 @@ services:
 
   # The owner of a database makes the read-only users of the other services
   # on its views (rule <reader>_<owner>_reader) with its read-access command.
-  # The admin user (DB_ADMIN_USER) makes the users.
-  api-read-access:
-    <<: *job
+  # The admin user (DB_ADMIN_USER) makes the users. The api image has no
+  # shell: one service for each reader of the api database.
+  api-read-access-wallet:
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - |
-        for reader in wallet consent; do
-          /app/bin/igrant-api read-access apply --config /etc/igrant-api/database-jobs.yaml \
-            --reader "$$reader" --user "$${reader}_api_reader" \
-            --password-file "/run/secrets/read-access/$${reader}_api_reader" \
-            --admin-user "${DB_ADMIN_USER}" --admin-password-file /run/secrets/database/admin-password
-        done
+    user: "65532:65532"
+    command: ["/app/bin/igrant-api", "read-access", "apply", "--config", "/etc/igrant-api/database-jobs.yaml",
+              "--reader", "wallet", "--user", "wallet_api_reader", "--password-file", "/run/secrets/read-access/wallet_api_reader",
+              "--admin-user", "${DB_ADMIN_USER}", "--admin-password-file", "/run/secrets/database/admin-password"]
+    tmpfs:
+      - /tmp:size=16m
     configs:
       - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
     secrets:
@@ -316,13 +385,34 @@ services:
       - {source: db-igrant-oidc-password, target: /run/secrets/igrant-api/oidc-db-password}
       - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: reader-wallet-api-password, target: /run/secrets/read-access/wallet_api_reader}
+    depends_on:
+      api-migrate: {condition: service_completed_successfully}
+
+  api-read-access-consent:
+    <<: [*job, *hardened]
+    image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
+    user: "65532:65532"
+    command: ["/app/bin/igrant-api", "read-access", "apply", "--config", "/etc/igrant-api/database-jobs.yaml",
+              "--reader", "consent", "--user", "consent_api_reader", "--password-file", "/run/secrets/read-access/consent_api_reader",
+              "--admin-user", "${DB_ADMIN_USER}", "--admin-password-file", "/run/secrets/database/admin-password"]
+    tmpfs:
+      - /tmp:size=16m
+    configs:
+      - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
+    secrets:
+      - {source: db-igrant-api-password, target: /run/secrets/igrant-api/db-password}
+      - {source: db-igrant-oidc-password, target: /run/secrets/igrant-api/oidc-db-password}
+      - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: reader-consent-api-password, target: /run/secrets/read-access/consent_api_reader}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
 
   consent-read-access:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=16m
     command:
       - read-access
       - apply
@@ -348,8 +438,11 @@ services:
       consent-migrate: {condition: service_completed_successfully}
 
   wallet-read-access:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -375,8 +468,10 @@ services:
   # request and sends it to the component that owns the route: the api
   # core, consent or the config role of the wallet.
   gateway:
-    <<: *server
+    <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/gateway:${PLATFORM_TAG}
+    # The user nonroot of the image. The gateway writes no file.
+    user: "65532:65532"
     command: ["--config", "/etc/igrant-gateway/config.yaml"]
     ports:
       - "${PUBLISH_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8070"
@@ -396,9 +491,17 @@ services:
       valkey-sentinel: {condition: service_started}
 
   api:
-    <<: *server
+    <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
+    # The user nonroot of the image. It listens on port 80: the sysctl lets
+    # a non-root user open a port below 1024 (also the default of Docker).
+    user: "65532:65532"
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     command: ["/app/bin/igrant-api", "start-api", "--config", "/etc/igrant-api/config.yaml"]
+    # The temporary files of the multipart parser of Go.
+    tmpfs:
+      - /tmp:size=64m
     configs:
       - {source: api-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -424,9 +527,17 @@ services:
   # start-webhook-api: the NATS consumers of the webhooks and of the
   # passwordless login events (its own NATS user api-webhook).
   webhook:
-    <<: *server
+    <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
+    # The user nonroot of the image. It listens on port 80: the sysctl lets
+    # a non-root user open a port below 1024 (also the default of Docker).
+    user: "65532:65532"
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     command: ["/app/bin/igrant-api", "start-webhook-api", "--config", "/etc/igrant-api/config.yaml"]
+    # The temporary files of the multipart parser of Go.
+    tmpfs:
+      - /tmp:size=64m
     configs:
       - {source: webhook-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -452,9 +563,15 @@ services:
   # --- Consent --------------------------------------------------------------------
 
   consent:
-    <<: *server
+    <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
+    # The user nonroot of the image. It listens on port 80 (see api).
+    user: "65532:65532"
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     command: ["serve", "--config", "/etc/consent/config.yaml"]
+    tmpfs:
+      - /tmp:size=64m
     configs:
       - {source: consent-config, target: /etc/consent/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -468,7 +585,7 @@ services:
       - {source: reader-consent-wallet-password, target: /run/secrets/consent/read-access-wallet-password}
     depends_on:
       consent-migrate: {condition: service_completed_successfully}
-      api-read-access: {condition: service_completed_successfully}
+      api-read-access-consent: {condition: service_completed_successfully}
       wallet-read-access: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
@@ -503,7 +620,7 @@ services:
       start_period: 30s
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
-      api-read-access: {condition: service_completed_successfully}
+      api-read-access-wallet: {condition: service_completed_successfully}
       consent-read-access: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
@@ -550,7 +667,13 @@ services:
     # The heartbeat and metric files of the worker processes
     # (worker.state_directory).
     tmpfs:
-      - /run/ows-worker
+      - /run/ows-worker:size=64m
+    # /tmp on the disk of the host, not in memory: the monthly audit export
+    # (only with AUDIT_BUCKET_NAME) writes one month of the audit log of one
+    # data scope two times to /tmp/ows-audit-export-* (README.md, "Security
+    # settings").
+    volumes:
+      - wallet-worker-tmp:/tmp
     # /readyz of the health port: Valkey and the database.
     healthcheck:
       <<: *wallet-healthcheck
@@ -564,6 +687,8 @@ services:
     <<: *wallet
     command: ["/app/.venv/bin/start-clock"]
     stop_grace_period: 30s
+    tmpfs:
+      - /tmp:size=64m
     configs:
       - {source: wallet-clock-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
@@ -579,11 +704,20 @@ services:
   # --- Dashboard ----------------------------------------------------------------
 
   dashboard:
+    <<: *hardened
     image: ${IMAGE_REGISTRY}/dashboard:${PLATFORM_TAG}
+    # The user nginx of the image. It listens on port 80 (see api).
+    user: "101:101"
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     ports:
       - "${PUBLISH_ADDRESS:-127.0.0.1}:${DASHBOARD_PORT:-3000}:80"
     configs:
       - {source: dashboard-config, target: /usr/share/nginx/html/config/config.json}
+    # The pid file and the temporary files of nginx, and the files of the
+    # start scripts of the image (/tmp/dashboard).
+    tmpfs:
+      - /tmp:size=64m
     depends_on:
       gateway: {condition: service_started}
     restart: unless-stopped
@@ -592,6 +726,8 @@ volumes:
   postgres-data:
   nats-data:
   openbao-data:
+  # /tmp of the wallet worker (the files of the audit export).
+  wallet-worker-tmp:
   # The AOF files of the Valkey primary and replica.
   valkey-data:
   valkey-replica-data:

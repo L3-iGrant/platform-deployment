@@ -143,6 +143,12 @@ own section. */ -}}
 {{- $extra := deepCopy ($api.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
+{{- /* The root file system of the api pods is read-only: a log file
+(Log.file.path of api.extraConfig) must be on the emptyDir /tmp. */ -}}
+{{- $logFile := (((get $config "Log") | default dict).file | default dict).path | default "" | toString -}}
+{{- if and $logFile (not (hasPrefix "/tmp/" (clean $logFile))) -}}
+{{- fail (printf "api.extraConfig sets Log.file.path %q: the root file system of the api pods is read-only; give a path below /tmp/ (an emptyDir of the pod)" $logFile) -}}
+{{- end -}}
 {{- $config | toYaml -}}
 {{- end }}
 

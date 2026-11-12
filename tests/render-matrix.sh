@@ -426,6 +426,13 @@ guard "existing platform operator without organisation id" "api.jobs.platformOpe
 guard "existing platform operator without admin e-mail" "api.jobs.platformOperator.adminEmail" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.adminEmail=
 guard "existing platform operator organisation id with a space" "organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set-string "api.jobs.platformOperator.organisationId=6731 --allow-last"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
+guard "worker /tmp size not a size" "organisationWallet.workers.tmp.sizeLimit" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10GB
+guard "worker /tmp without a size" "sizeLimit is required" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=null
+# A path that a process writes must be on an emptyDir of its pod (the root
+# file system is read-only).
+guard "wallet log file outside /tmp" "has log_file.path \"/var/log/ows.log\"" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" "${shamir[@]}" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
+guard "api log file outside /tmp" "api.extraConfig sets Log.file.path" "${shamir[@]}" --set api.extraConfig.Log.file.path=/var/log/api.log
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -1188,6 +1195,60 @@ else
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
 fi
 lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}"
+# The /tmp folder of the workers (organisationWallet.workers.tmp): an
+# emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
+# size; the tmp of a group replaces the keys of workers.tmp.
+renders "wallet log file below /tmp" "path: /tmp/ows.log" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
+renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
+renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
+renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
+  --set organisationWallet.workers.tmp.volume.storageClass=fast
+renders "worker /tmp volume storage class" "storageClassName: fast" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
+  --set organisationWallet.workers.tmp.volume.storageClass=fast
+worker_group='{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430'
+renders "worker /tmp of a group" "sizeLimit: 300Gi" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"
+# The writable paths of the pods that run as a non-root user with a
+# read-only root file system: /tmp of each api, webhook, dashboard and wallet
+# pod (the worker /tmp on disk), the socket folder of the bundled server.
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
+  bad "writable paths: $(head -c 200 "$out/writable.err")"
+elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+expected = {
+    ("Deployment", "t-api"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-webhook"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-dashboard"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-service"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-config"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-main"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-clock"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("StatefulSet", "t-postgres"): {"/tmp": {"sizeLimit": "64Mi"}, "/var/run/postgresql": {"medium": "Memory", "sizeLimit": "1Mi"}},
+    ("StatefulSet", "t-nats"): {"/var/run/nats": {"medium": "Memory", "sizeLimit": "1Mi"}},
+}
+for (kind, name), paths in expected.items():
+    doc = next((d for d in docs if d["kind"] == kind and d["metadata"]["name"] == name), None)
+    if doc is None:
+        print(f"{kind} {name} is missing")
+        continue
+    spec = doc["spec"]["template"]["spec"]
+    volumes = {v["name"]: v for v in spec["volumes"]}
+    for container in spec.get("initContainers", []) + spec["containers"]:
+        mounts = {m["mountPath"]: m["name"] for m in container.get("volumeMounts", [])}
+        for path, empty_dir in paths.items():
+            if name == "t-nats" and container["name"] == "reloader" and path != "/var/run/nats":
+                continue
+            volume = volumes.get(mounts.get(path), {})
+            if volume.get("emptyDir") != empty_dir:
+                print(f"{name}:{container['name']}: {path} is {volume or 'not mounted'}, not the emptyDir {empty_dir}")
+PY
+)" && [ -z "$problems" ]; then
+  ok "writable paths: the emptyDir volumes of the pods with a read-only root file system"
+else
+  bad "writable paths"
+  printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+fi
 
 # --- 6. Install and upgrade --------------------------------------------------------
 # The order of the hooks (tests/check_hook_order.py, no cluster): the Jobs
@@ -1381,6 +1442,29 @@ if not gateway or gateway in earlier["t-redis-users"]["data"].values():
   else
     bad "upgrade keeps the Valkey Secrets and the NATS TLS Secret: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
+fi
+
+# --- 7. The security settings of the containers -------------------------------
+# Each container of each render of this test (the matrix, the other cases
+# above, and one render with the optional containers: the metrics exporter
+# of Valkey, the operator Jobs of the api, the /tmp volume claims of the
+# workers): a non-root user with a UID and a GID other than 0, no privilege
+# escalation, a read-only root file system, all capabilities dropped and
+# none added, not privileged, seccomp RuntimeDefault, no host namespace
+# (tests/check_security.py).
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
+    -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true \
+    --set organisationWallet.workers.tmp.volume.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
+  bad "security settings: helm template with the optional containers"
+  sed 's/^/  /' "$out/security-options.err" | head -10
+fi
+renders_of_test=()
+while IFS= read -r -d '' file; do renders_of_test+=("$file"); done < <(find "$out" -maxdepth 1 -type f -name '*.yaml' -print0 | sort -z)
+if result="$(python3 "$here/check_security.py" "${renders_of_test[@]}" 2>&1)"; then
+  ok "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
+else
+  bad "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
+  printf '%s\n' "$result" | head -20
 fi
 
 echo "result: ${pass} passed, ${fail} failed"

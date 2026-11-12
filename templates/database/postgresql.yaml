@@ -93,8 +93,23 @@ spec:
             - name: tls
               mountPath: /etc/pg-tls
               readOnly: true
+            # The root file system is read-only: the socket and the lock
+            # file of the server, and the temporary files of the entrypoint
+            # of the image.
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
       volumes:
-        # PostgreSQL accepts a key file with mode 0640 that root owns.
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        # PostgreSQL accepts a key file with mode 0640 that root owns (the
+        # group of the file is fsGroup).
         - name: tls
           secret:
             secretName: {{ include "ow.db.tlsSecretName" . }}

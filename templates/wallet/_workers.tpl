@@ -41,6 +41,51 @@ pod (worker.state_directory): an emptyDir in memory.
 /run/ows-worker
 {{- end }}
 
+{{/*
+The /tmp settings of one worker group: organisationWallet.workers.tmp, with
+the keys of the tmp of the group over them. Call with (list $ <group>).
+Output: JSON.
+*/}}
+{{- define "ow.wallet.workerTmp" -}}
+{{- $root := index . 0 -}}
+{{- $g := index . 1 -}}
+{{- toJson (mergeOverwrite (deepCopy ($root.Values.organisationWallet.workers.tmp | default dict)) (deepCopy ($g.tmp | default dict))) -}}
+{{- end }}
+
+{{/*
+The /tmp volume of the pods of one worker group (the root file system is
+read-only): the temporary files of Python, and the files of the monthly
+audit export (/tmp/ows-audit-export-*: one month of the audit log of one
+data scope, two times). On disk, never in memory: an emptyDir with
+sizeLimit, or a generic ephemeral volume (a PersistentVolumeClaim of
+sizeLimit that lives with the pod). Call with (list $ <group>). Output: a
+list at column 0.
+*/}}
+{{- define "ow.wallet.workerTmpVolume" -}}
+{{- $root := index . 0 -}}
+{{- $g := index . 1 -}}
+{{- $tmp := include "ow.wallet.workerTmp" . | fromJson -}}
+{{- $volume := $tmp.volume | default dict -}}
+# The temporary files of Python and of the audit export.
+- name: tmp
+{{- if $volume.enabled }}
+  ephemeral:
+    volumeClaimTemplate:
+      metadata:
+        labels:
+          {{- include "ow.labels" (list $root (include "ow.wallet.workerComponent" $g)) | nindent 10 }}
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- include "ow.storageClass" (list $root $volume.storageClass) | nindent 8 }}
+        resources:
+          requests:
+            storage: {{ $tmp.sizeLimit }}
+{{- else }}
+  emptyDir:
+    sizeLimit: {{ $tmp.sizeLimit }}
+{{- end }}
+{{- end }}
+
 {{/* The component (and the name suffix) of the Deployment of one worker group. Call with the group. */}}
 {{- define "ow.wallet.workerComponent" -}}
 wallet-worker-{{ .name }}
@@ -102,6 +147,10 @@ Call with the root context. Output: nothing.
 {{- end -}}
 {{- if lt ($g.terminationGracePeriodSeconds | int) (add $shutdown 30) -}}
 {{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least shutdownTimeoutSeconds (%v) + 30: Kubernetes would kill the worker while it waits for its running actors" $key $g.terminationGracePeriodSeconds $g.shutdownTimeoutSeconds) -}}
+{{- end -}}
+{{- $tmp := include "ow.wallet.workerTmp" (list $ $g) | fromJson -}}
+{{- if not (regexMatch "^[1-9][0-9]*(Ki|Mi|Gi|Ti)$" (toString ($tmp.sizeLimit | default ""))) -}}
+{{- fail (printf "%s: the sizeLimit of /tmp (organisationWallet.workers.tmp.sizeLimit, or the tmp of the group) %q is not a size such as 10Gi (a number with Ki, Mi, Gi or Ti): the audit export writes its files to /tmp" $key (toString ($tmp.sizeLimit | default ""))) -}}
 {{- end -}}
 {{- end -}}
 {{- $missing := list -}}

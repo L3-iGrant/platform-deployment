@@ -302,7 +302,40 @@ gateway ends quiet streams. */ -}}
 builds the public image URIs of the routes that the gateway sends to it. */ -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
-{{- mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) | toYaml -}}
+{{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
+{{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
+{{- $config | toYaml -}}
+{{- end }}
+
+{{/*
+Render guard of the writable paths of one wallet file: the root file system
+of the wallet pods is read-only, so each path that a process writes
+(log_file.path, server.metrics_directory, worker.state_directory; also from
+organisationWallet.extraConfig) must be on an emptyDir of its pod: /tmp of
+each pod, /run/ows-server of the service and config pods, /run/ows-worker of
+the worker pods. Call with (list <config> "<role>"). Output: nothing.
+*/}}
+{{- define "ow.wallet.checkWritablePaths" -}}
+{{- $config := index . 0 -}}
+{{- $role := index . 1 -}}
+{{- $mounts := list "/tmp" -}}
+{{- if has $role (list "service" "config") -}}{{- $mounts = append $mounts (include "ow.wallet.serverMetricsDir" .) -}}{{- end -}}
+{{- if eq $role "worker" -}}{{- $mounts = append $mounts (include "ow.wallet.workerStateDir" .) -}}{{- end -}}
+{{- $paths := dict
+    "log_file.path" (((get $config "log_file") | default dict).path | default "" | toString)
+    "server.metrics_directory" (((get $config "server") | default dict).metrics_directory | default "" | toString)
+    "worker.state_directory" (((get $config "worker") | default dict).state_directory | default "" | toString) -}}
+{{- range $key, $path := $paths -}}
+{{- if $path -}}
+{{- $ok := false -}}
+{{- range $mount := $mounts -}}
+{{- if or (eq (clean $path) $mount) (hasPrefix (printf "%s/" $mount) (clean $path)) -}}{{- $ok = true -}}{{- end -}}
+{{- end -}}
+{{- if not $ok -}}
+{{- fail (printf "the %s file of the wallet has %s %q: the root file system of the wallet pods is read-only; give a path below %s (an emptyDir of the pod)" $role $key $path (join " or " $mounts)) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{/*
