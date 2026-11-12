@@ -718,18 +718,10 @@ api:
     androidPackageName: ""
     androidSha256CertFingerprints: []
     appleAppIds: []
+  # The effective features of each organisation select its webhook event
+  # types: the chart has no list of event types (docs/upgrade.md, "The
+  # webhook event types").
   webhooks:
-    # -- The consent.* event types that the api sends to the webhooks of the
-    # organisations. The api always sends the data.* types.
-    events:
-      - consent.allowed
-      - consent.disallowed
-      - data.delete.initiated
-      - data.download.initiated
-      - data.update.initiated
-      - data.delete.cancelled
-      - data.download.cancelled
-      - data.update.cancelled
     # -- Days that the api keeps webhook delivery records.
     deliveryRetentionDays: 10
   # -- Days that the api keeps the action logs of each organisation.
