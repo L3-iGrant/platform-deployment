@@ -21,6 +21,8 @@
 #   - the worker and the clock: their commands, the health port of each
 #     healthcheck, the state folder of the worker, and the files of the
 #     clock (no NATS seed, no OpenBao password);
+#   - the limits of the installation (MAX_ORGANISATIONS,
+#     MAX_ORGANISATION_WALLET_UNITS): the keys only with a value;
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -395,6 +397,65 @@ PY
         ok "feature gate ${gate:-default}: $output"
       else
         bad "feature gate ${gate:-default}: $output"
+      fi
+      rm -f "$project_file"
+    done
+  fi
+
+  # The limits of the installation (MAX_ORGANISATIONS,
+  # MAX_ORGANISATION_WALLET_UNITS): Limits.maxOrganisations in the api and
+  # webhook files and wallet_unit.organisation_wallet_units_max in the
+  # config, service and worker files, as integers, only when the setting
+  # has a value (an api or a wallet of an earlier release refuses the
+  # keys). No other file has them: not the gateway file (the gateway
+  # refuses the section) or the clock file.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local organisations units
+    for case_name in default set; do
+      case "$case_name" in
+        default) organisations="" units="" ;;
+        set) organisations=250 units=300 ;;
+      esac
+      if ! json="$(MAX_ORGANISATIONS="$organisations" MAX_ORGANISATION_WALLET_UNITS="$units" docker compose config --format json 2>&1)"; then
+        bad "installation limits $case_name: docker compose config: $json"
+        continue
+      fi
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" "$organisations" "$units" 2>&1 <<'PY'
+import json
+import sys
+
+import yaml
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+organisations = int(sys.argv[2]) if sys.argv[2] else None
+units = int(sys.argv[3]) if sys.argv[3] else None
+checked = set()
+for name in ("api-config", "webhook-config"):
+    limits = yaml.safe_load(project["configs"][name]["content"]).get("Limits")
+    want = {"maxOrganisations": organisations} if organisations else None
+    if limits != want or (limits and type(limits["maxOrganisations"]) is not int):
+        sys.exit(f"{name}: Limits {limits!r}, not {want!r}")
+    checked.add(name)
+for role in ("config", "service", "worker"):
+    name = f"wallet-{role}-config"
+    unit = yaml.safe_load(project["configs"][name]["content"]).get("wallet_unit") or {}
+    got = unit.get("organisation_wallet_units_max")
+    if got != units or (got is not None and type(got) is not int):
+        sys.exit(f"{name}: wallet_unit.organisation_wallet_units_max {got!r}, not {units!r}")
+    checked.add(name)
+for name, config in project["configs"].items():
+    for word in ("maxOrganisations", "organisation_wallet_units_max"):
+        if name not in checked and word in config.get("content", ""):
+            sys.exit(f"{name} has {word}")
+print(f"Limits.maxOrganisations {organisations}, wallet_unit.organisation_wallet_units_max {units}")
+PY
+)"; then
+        ok "installation limits $case_name: $output"
+      else
+        bad "installation limits $case_name: $output"
       fi
       rm -f "$project_file"
     done
