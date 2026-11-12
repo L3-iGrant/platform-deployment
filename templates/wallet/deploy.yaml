@@ -131,7 +131,8 @@ spec:
         # than 1 MB.
         - name: tmp
           emptyDir:
-            sizeLimit: 256Mi
+            medium: Memory
+            sizeLimit: 64Mi
         {{- if $gatewayKeys }}
         {{- include "ow.gateway.keysVolume" $ | nindent 8 }}
         {{- include "ow.serviceKeys.volume" (list $ "igrant-api") | nindent 8 }}
