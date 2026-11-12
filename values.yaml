@@ -750,6 +750,20 @@ api:
     drainSeconds: 5
     gracefulShutdownSeconds: 20
     terminationGracePeriodSeconds: 35
+  # -- The limits of the installation that the api checks (the section
+  # Limits of the api and webhook files). An empty value writes no key, and
+  # the api uses its default. Set a value only with the images of the
+  # release with the input limits: an api of an earlier release does not
+  # know the key and does not start (docs/upgrade.md, "The limits of the
+  # installation").
+  limits:
+    # -- Limits.maxOrganisations: the most organisations of the
+    # installation (1 to 1000000). The create of one more organisation gets
+    # 409 organisation_limit_reached; the organisations that exist stay.
+    # Empty: the default of the api (100). An installation with more than
+    # 100 organisations sets a higher value in its upgrade to the release
+    # with the input limits.
+    maxOrganisations: ""
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
@@ -1613,6 +1627,18 @@ organisationWallet:
     # installation gives its test roots here.
     trustAnchors:
       existingConfigMap: ""
+    # -- wallet_unit.organisation_wallet_units_max: the most organisation
+    # wallet units of the wallet provider of the installation (1 to
+    # 10000000), in the files of the service, config and worker pods. The
+    # create of one more organisation wallet (a new organisation) gets 409
+    # organisation_wallet_unit.limit_reached; the units that exist stay.
+    # Empty: the chart writes no key, and the wallet uses its default (100).
+    # Set a value only with the images of the release with the input
+    # limits: a wallet of an earlier release does not know the key and does
+    # not start (docs/upgrade.md, "The limits of the installation"). An
+    # installation with more than 100 organisation wallets sets a higher
+    # value in its upgrade to that release.
+    organisationWalletUnitsMax: ""
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
   # hourly anchor of each scope signed with an installation key (the
