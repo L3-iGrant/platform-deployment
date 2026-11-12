@@ -58,6 +58,8 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.api.volumeMounts" $ | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
       {{- end }}
       containers:
         - name: {{ $component }}
@@ -105,7 +107,15 @@ spec:
           {{- end }}
           volumeMounts:
             {{- include "ow.api.volumeMounts" $ | nindent 12 }}
+            - name: tmp
+              mountPath: /tmp
       volumes:
         {{- include "ow.api.volumes" (list $ $role) | nindent 8 }}
+        # The only writable path (the root file system is read-only): the
+        # temporary files of the multipart parser of Go (a large file part
+        # of an upload).
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
 {{- end }}
 {{- end }}

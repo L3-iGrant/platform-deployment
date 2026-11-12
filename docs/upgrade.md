@@ -557,3 +557,31 @@ Consent and the organisation wallet get the events of the api from the stream `A
 From the release with the installation services, the api no longer reads `Webhooks.events`. The effective features of each organisation select the webhook event types: an organisation with Consent Management gets all 9 consent event types, also `consent.auto_expiry`. An organisation whose Consent Management is off gets no `consent.*` and no `data.*` webhook events.
 
 The chart no longer has `api.webhooks.events` in `values.yaml` and does not write `Webhooks.events` into the api file. A values file that still sets `api.webhooks.events` renders: the chart does not use the value, and the notes of the release tell you to remove it. Remove the value from your values files. A later release refuses it.
+
+## The non-root containers
+
+From the release with the hardened images, each container of the chart runs as a non-root user with a read-only root file system, no capability and the seccomp profile `RuntimeDefault` (see [Security settings of the containers](security-context.md)). The images of the api, the wallet and the dashboard of this release run as a non-root user, and the chart gives each pod the user, `fsGroup`, the sysctl of port 80 and the `emptyDir` volumes of its writable paths.
+
+The chart and the images of this release belong together. Set `global.imageTag` and upgrade the chart in one step. Do not mix them:
+
+| Combination | Result |
+| --- | --- |
+| This chart with the images of an earlier release | The dashboard does not start: its earlier image runs nginx as root and writes to its root file system (`mkdir() "/var/cache/nginx/client_temp" failed (30: Read-only file system)`). The api and the wallet of an earlier release run as the user 65532: the hooks of earlier chart versions run them so already. |
+| An earlier chart version (or your values without the new settings) with the images of this release | The api and the wallet pods do not start: the user 65532 cannot read the Secret files (mode `0440`) without `fsGroup`. The api, the webhook handler and the dashboard cannot open port 80 without the sysctl `net.ipv4.ip_unprivileged_port_start=0`. |
+
+Before step 2:
+
+1. Your values files: when you set `podSecurityContext` or `containerSecurityContext` of `api`, `organisationWallet`, `enterpriseDashboard`, `nats` or `database`, Helm merges your keys into the new defaults. Remove a key that sets the user 0 or adds a capability. `global.podSecurityContext` and `global.containerSecurityContext` no longer apply to these components: each has its own default now. On OpenShift, set `runAsUser`, `runAsGroup` and `fsGroup` of each component to `null`.
+2. A policy engine of your cluster (for example Kyverno or Gatekeeper) that refuses sysctls: allow `net.ipv4.ip_unprivileged_port_start` for the pods of the api, the webhook handler, consent and the dashboard. Kubernetes allows it without a kubelet setting (a safe sysctl).
+3. The workers: the `/tmp` of each worker pod is an `emptyDir` on the disk of the node with `organisationWallet.workers.tmp.sizeLimit` (default `10Gi`). With an audit bucket, the monthly export writes one month of one data scope two times to it. Check that the nodes have the free ephemeral storage, or use a volume (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
+
+During step 3:
+
+- The bundled PostgreSQL restarts as the user `postgres` (999) with its data volume. The files of the data folder belong to this user already (the earlier image changed to it at the start).
+- The bundled NATS pods restart one at a time as the user 1000. At the first start, the kubelet gives the group 1000 (`fsGroup`) and the group write right to each file of the JetStream store, which root wrote. A large store takes more time to start. Later starts do not change the files (`fsGroupChangePolicy: OnRootMismatch`).
+
+Check after step 3: all pods are `Running` and `READY`, and `kubectl -n ows get pod ows-nats-0 -o jsonpath='{.spec.securityContext.runAsUser}'` shows `1000`.
+
+Docker Compose: the one-shot service `api-read-access` is now two services, `api-read-access-wallet` and `api-read-access-consent` (the api image has no shell). Change your scripts and your monitoring that name `api-read-access`, and run `docker compose up -d --remove-orphans` (see the [Compose README](../docker-compose/README.md#change-to-the-release-with-the-non-root-services)).
+
+When you go back to an earlier release (see [Rollback](#rollback)), use its chart and its images together. The NATS store keeps the group 1000: NATS of the earlier release runs as root and can use it.

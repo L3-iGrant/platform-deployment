@@ -105,6 +105,8 @@ spec:
             {{- end }}
             - name: server-metrics
               mountPath: {{ include "ow.wallet.serverMetricsDir" $ }}
+            - name: tmp
+              mountPath: /tmp
             {{- if $gatewayKeys }}
             - name: gateway-keys
               mountPath: {{ include "ow.gateway.keysDir" $ }}
@@ -121,6 +123,13 @@ spec:
         # The metrics files of the processes of the server
         # (server.metrics_directory).
         - name: server-metrics
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        # The temporary files of Python (tempfile; the root file system is
+        # read-only), for example a part of a multipart form that is larger
+        # than 1 MB.
+        - name: tmp
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
