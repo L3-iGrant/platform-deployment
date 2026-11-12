@@ -16,6 +16,17 @@ Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names p
 {{- if .Values.enterpriseDashboard.enabled }}
   Dashboard:           {{ include "ow.publicUrlOf" (list . "enterpriseDashboard") }}
 {{- end }}
+{{- $services := include "ow.installation.services" . | fromJsonArray }}
+{{- if lt (len $services) 2 }}
+
+Services of the installation: {{ join ", " $services }} (Installation.services of the api and gateway files).
+{{- if not (has "consent" $services) }}
+  Consent is not installed: the gateway answers 404 to the consent routes, and the dashboard shows no consent area (docs/components.md).
+{{- end }}
+{{- if not (has "wallet" $services) }}
+  The organisation wallet is not installed: the gateway answers 404 to the wallet routes, and the dashboard shows no wallet area (docs/components.md).
+{{- end }}
+{{- end }}
 
 Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
 {{- $budget := include "ow.db.budget" . | fromJson }}

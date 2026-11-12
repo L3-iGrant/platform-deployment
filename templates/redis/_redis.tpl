@@ -62,12 +62,13 @@ Redis (the requirements are in docs/redis.md).
 
 {{/*
 The ACL users of the processes (values keys of redis.users): one user for
-each wallet process kind and one for the gateway. The bundled Valkey also
-has the users replication (the replicas), sentinel (the Sentinels) and
-probe (the probes), with the passwords of the Secret of the chart.
+each wallet process kind (when the wallet is installed) and one for the
+gateway. The bundled Valkey also has the users replication (the replicas),
+sentinel (the Sentinels) and probe (the probes), with the passwords of the
+Secret of the chart.
 */}}
 {{- define "ow.redis.processUsers" -}}
-walletService,walletConfig,walletWorker,walletClock,gateway
+{{- if include "ow.installation.has" (list . "wallet") -}}walletService,walletConfig,walletWorker,walletClock,{{- end -}}gateway
 {{- end }}
 
 {{/*
