@@ -659,7 +659,8 @@ services = project["services"]
 problems = []
 worker, clock = services.get("wallet-worker", {}), services.get("wallet-clock", {})
 command = ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", "1", "--threads", "8",
-           "--worker-shutdown-timeout", "3600000", "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
+           "--worker-shutdown-timeout", "3600000", "--worker-fork-timeout", "600000",
+           "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
 if worker.get("command") != command:
     problems.append(f"wallet-worker: command {worker.get('command')}")
 if clock.get("command") != ["/app/.venv/bin/start-clock"]:
