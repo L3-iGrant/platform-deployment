@@ -24,7 +24,11 @@ the service; no process reads its views (ReadAccess, read_access, the read
 access Secret, the mounted password files); no process trusts its keys (the
 trusted issuers and the service keys volumes); nats.conf has no user of the
 service; the bundled Valkey has no user of the wallet. Without the wallet,
-the api file has no OpenIdDeployment and the dashboard has no walletUrl.
+the consent file has no key ReadAccess.wallet, the NATS user of consent has
+no rights of the consumers of the wallet events (consent-dda-present-proof,
+consent-dda-presentation), consent has no read access Job for the reader
+wallet, the api file has no OpenIdDeployment and the dashboard has no
+walletUrl.
 """
 
 import json
@@ -110,8 +114,13 @@ def main() -> int:
         check(owners == (["wallet"] if wallet else []), f"{key} ReadAccess is {owners}")
     consent_file = config_map(f"{RELEASE}-consent").get("config.yaml")
     if consent == "here":
-        owners = sorted(yaml.safe_load(consent_file)["ReadAccess"])
+        read_access = yaml.safe_load(consent_file)["ReadAccess"]
+        owners = sorted(read_access)
         check(owners == (["api", "wallet"] if wallet else ["api"]), f"consent ReadAccess is {owners}")
+        # Without the wallet, no key ReadAccess.wallet at all: consent
+        # refuses a key without a value.
+        check(("wallet" in read_access) == bool(wallet), f"consent ReadAccess.wallet: {'wallet' in read_access}")
+        check(wallet is None or read_access.get("wallet"), "consent ReadAccess.wallet has no value")
     wallet_file = config_map(f"{RELEASE}-wallet").get("config.yaml")
     if wallet == "here":
         owners = sorted(yaml.safe_load(wallet_file)["read_access"])
@@ -172,6 +181,25 @@ def main() -> int:
     for user, where in (("# consent", consent), ("# wallet-config", wallet), ("# wallet-service", wallet),
                         ("# wallet-worker", wallet)):
         check((user in nats) == bool(where), f"nats.conf: the user {user[2:]} is {'missing' if where else 'there'}")
+    # The rights of the consent user: the consumers of the wallet events
+    # (consent-dda-present-proof, consent-dda-presentation) only with the
+    # wallet.
+    lines = nats.split("\n")
+    consent_rights = next((lines[i + 1] for i, line in enumerate(lines) if line.strip() == "# consent"), "")
+    if consent:
+        check(bool(consent_rights), "nats.conf: no rights of the user consent")
+        for durable in ("consent-dda-present-proof", "consent-dda-presentation"):
+            check((f"OWS_MICROSERVICE.{durable}" in consent_rights) == bool(wallet),
+                  f"nats.conf: the user consent {'has no' if wallet else 'has the'} rights of {durable}")
+        check("API_EVENTS.consent-api-organisation" in consent_rights, "nats.conf: the user consent cannot read API_EVENTS")
+
+    # The read access Job of consent for the reader wallet (consent
+    # read-access apply --reader wallet): only when this release runs
+    # consent and the wallet.
+    jobs = sorted(d["metadata"]["name"] for d in docs if d["kind"] == "Job")
+    reader_jobs = [name for name in jobs if name.startswith(f"{RELEASE}-consent-read-access-wallet")]
+    check(bool(reader_jobs) == (consent == "here" and wallet == "here"),
+          f"the read access Jobs of consent for the wallet are {reader_jobs}")
 
     # The bundled Valkey: the users of the wallet only with the wallet.
     users = sorted((find("Secret", f"{RELEASE}-redis-users") or {}).get("data") or {})

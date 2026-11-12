@@ -735,6 +735,9 @@ webhook events of the wallet have one consumer, api-webhook-event. */ -}}
   "consent" (dict
     "streams" (list "CONSENT_EVENTS")
     "pull" (list "API_EVENTS/consent-api-organisation" "OWS_MICROSERVICE/consent-dda-present-proof" "OWS_MICROSERVICE/consent-dda-presentation"))
+  "consentWithoutWallet" (dict
+    "streams" (list "CONSENT_EVENTS")
+    "pull" (list "API_EVENTS/consent-api-organisation"))
   "walletConfig" (dict
     "streams" (list "OWS_MICROSERVICE")
     "pull" (list "API_EVENTS/eudi-wallet-api-triggers")
@@ -810,6 +813,10 @@ the stream or the consumers of another service. Output: JSON list.
 {{- $users := $v.nats.auth.users -}}
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
+{{- /* Without the wallet, consent has no consumer of the wallet events
+(consent-dda-present-proof, consent-dda-presentation). */ -}}
+{{- $consent := include "ow.installation.has" (list . "consent") -}}
+{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
@@ -821,7 +828,7 @@ the stream or the consumers of another service. Output: JSON list.
     "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "consent" "key" "consent" "inbox" "_INBOX_consent" "enabled" $v.consent.enabled "allowResponses" false
-    "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" "consent" | fromJsonArray))
+    "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" (ternary "consent" "consentWithoutWallet" (eq $wallet "true")) | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
@@ -834,8 +841,6 @@ the stream or the consumers of another service. Output: JSON list.
     "subscribe" (list)) -}}
 {{- /* installed: the service of the user is installed (ow.installation.has).
 nats.conf has no user of a service that is not installed. */ -}}
-{{- $consent := include "ow.installation.has" (list . "consent") -}}
-{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
 {{- $installed := dict "consent" $consent "walletConfig" $wallet "walletService" $wallet "walletWorker" $wallet -}}
 {{- $out := list -}}
 {{- range $user := $table -}}
