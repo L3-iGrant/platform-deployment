@@ -8,7 +8,7 @@ The wallet runs its background work as actors on the queues of Valkey. An actor 
 
 | Deployment | Command | Replicas (default) | Database role | NATS user | Valkey user | Port |
 | --- | --- | --- | --- | --- | --- | --- |
-| `<release>-wallet-worker-<group>` | `dramatiq ows.worker.run:start` with the processes, threads, shutdown timeout and queues of the group | the group | `<prefix>_jobs` | `walletWorker` | `walletWorker` (`wallet-worker`) | 9191 |
+| `<release>-wallet-worker-<group>` | `dramatiq ows.worker.run:start` with the processes, threads, shutdown timeout and queues of the group, and `--worker-fork-timeout 650000` (the time of the startup probe: Dramatiq then always starts the health server) | the group | `<prefix>_jobs` | `walletWorker` | `walletWorker` (`wallet-worker`) | 9191 |
 | `<release>-wallet-clock` | `start-clock` | 2 | `<prefix>_clock` (CONNECT only) | none | `walletClock` (`wallet-clock`) | 9192 |
 
 ## Queues and worker groups
