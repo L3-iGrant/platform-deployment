@@ -1664,6 +1664,21 @@
             }
           }
         },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxOrganisations": {
+              "type": [
+                "string",
+                "integer"
+              ],
+              "maxLength": 0,
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
         "extraConfig": {
           "type": "object"
         },
@@ -3109,6 +3124,15 @@
                   "type": "string"
                 }
               }
+            },
+            "organisationWalletUnitsMax": {
+              "type": [
+                "string",
+                "integer"
+              ],
+              "maxLength": 0,
+              "minimum": 1,
+              "maximum": 100
             }
           }
         },

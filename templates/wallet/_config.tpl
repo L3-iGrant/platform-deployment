@@ -108,6 +108,14 @@ writes its purge date, the workers purge. */ -}}
     "issued_credential_token_days" ($r.issuedCredentialTokenDays | int)
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
+{{- /* The most organisation wallet units of the installation
+(organisationWallet.walletUnit.organisationWalletUnitsMax): the key only
+when the installer sets a value; without it the wallet uses its default. A
+wallet of a release before the input limits does not know the key and does
+not start with it. The clock has no wallet_unit section. */ -}}
+{{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
+{{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
+{{- end -}}
 {{- $p := $w.walletUnit.playIntegrity -}}
 {{- $digests := $w.walletUnit.androidSigningCertificateDigests -}}
 {{- if and $p.existingSecret (not $digests) -}}

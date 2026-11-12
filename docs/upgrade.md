@@ -491,3 +491,29 @@ After the upgrade:
 
 A rollback of the images to the release before needs the 9 keys again: with the records of this release, the earlier gateway refuses the routes of Account, Webhooks and Activity Logs. Apply the down file `0029_four_product_features.down.sql` of the API and set the version of `schema_migrations` back to 28, in one transaction, before the earlier images start; or set `gateway.features.enforce: false` for the earlier release. The down file cannot restore the values from before the upgrade (see [Rollback](#rollback)).
 
+## The limits of the installation
+
+From the release with the input limits, the platform has a limit of the organisations of the installation and a limit of the organisation wallet units of the wallet provider. The default of each limit is 100. A limit refuses only a new organisation: the organisations and the organisation wallets that exist stay and work as before.
+
+| Value | Configuration key | Range | At the limit |
+| --- | --- | --- | --- |
+| `api.limits.maxOrganisations` | `Limits.maxOrganisations` of the api and webhook files | 1 to 100 | The api refuses the create of one more organisation: `409` `organisation_limit_reached` |
+| `organisationWallet.walletUnit.organisationWalletUnitsMax` | `wallet_unit.organisation_wallet_units_max` of the service, config and worker files | 1 to 1000 | The wallet refuses the organisation wallet of one more organisation: `409` `organisation_wallet_unit.limit_reached` |
+
+The two values are empty by default. With an empty value, the chart writes no key, and the api or the wallet uses its default (100). Set a value only with the images of the release with the input limits: an api or a wallet of an earlier release does not know the key and does not start with it.
+
+An installation with more than 100 organisations, or more than 100 organisation wallets, must set the values before the upgrade to the release with the input limits. Without them, no new organisation can be made after the upgrade. Put the values in your values file (for example `my-site.yaml`) with the new `global.imageTag`, and run one upgrade:
+
+```yaml
+api:
+  limits:
+    maxOrganisations: 500
+organisationWallet:
+  walletUnit:
+    organisationWalletUnitsMax: 500
+```
+
+Set each value above the number of organisations that you expect, not only above the number of today. To change a value later, change your values file and run the upgrade again: the api, webhook, wallet service, config and worker pods restart with the new configuration file.
+
+To go back to an earlier release (see [Rollback](#rollback)), first remove the two values from your values files: the chart of an earlier release does not know them, and its images refuse the keys.
+
