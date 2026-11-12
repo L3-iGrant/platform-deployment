@@ -15,12 +15,14 @@ check: do the next step only when you see the result of the check.
 - [Installation](#installation)
 - [Operation](#operation)
 - [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)
+- [Change to the release with the non-root services](#change-to-the-release-with-the-non-root-services)
 - [Settings](#settings)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
 - [Audit log](#audit-log)
 - [Worker and clock](#worker-and-clock)
 - [Valkey](#valkey)
+- [Security settings](#security-settings)
 - [Secrets](#secrets)
 - [Reverse proxy](#reverse-proxy)
 - [Privacy dashboard](#privacy-dashboard)
@@ -44,10 +46,12 @@ check: do the next step only when you see the result of the check.
 
 Some services run one time at each start and then stop:
 `database-init`, `wallet-database-roles`, `api-migrate`,
-`consent-migrate`, `wallet-migrate`, `api-read-access`,
-`consent-read-access`, `wallet-read-access` and `openbao-init`. They create
-the databases, the database roles of the wallet, the database tables, the
-read-only database users and the configuration of OpenBao.
+`consent-migrate`, `wallet-migrate`, `api-read-access-wallet`,
+`api-read-access-consent`, `consent-read-access`, `wallet-read-access`,
+`openbao-init` and `nats-data-owner`. They create the databases, the
+database roles of the wallet, the database tables, the read-only database
+users and the configuration of OpenBao, and give the NATS volume to the
+user of NATS.
 
 For HSM support and larger installations, see the chart pages [Connect your on-premise HSM](../docs/on-premise-hsm.md), [DPoD key stores](../docs/dpod-key-stores.md) and [Scaled deployments](../docs/scaled-deployments.md).
 
@@ -470,6 +474,33 @@ again with the new file (the data of NATS is in its volume and stays).
 Without it, the API cannot publish the deletion of an organisation, and
 consent and the wallet keep the data of a deleted organisation.
 
+## Change to the release with the non-root services
+
+From this release, the services run as non-root users without
+capabilities (see [Security settings](#security-settings)). The images of
+this release need these settings, and the earlier dashboard image does
+not start with them: change `PLATFORM_TAG` and the Compose files
+together.
+
+```bash
+# PLATFORM_TAG in .env is the tag of the new release
+make secrets
+make check
+docker compose up -d --remove-orphans
+```
+
+- `--remove-orphans` removes the container of the service
+  `api-read-access` of the earlier release. The api image has no shell:
+  the services `api-read-access-wallet` and `api-read-access-consent`
+  replace it.
+- `nats-data-owner` gives the files of the volume `nats-data` (root wrote
+  them) to the user of NATS, then `nats` starts.
+- The data folder of `postgres` belongs to the user `postgres` already
+  (the earlier image changed to it at the start).
+
+Check: `make status` shows the services as `running` (healthy), and the
+one-shot services, also `nats-data-owner`, as `exited (0)`.
+
 ## Settings
 
 `.env.example` is the reference of all settings: each setting has its
@@ -697,6 +728,55 @@ user of the role and its password file.
 
 Check: `docker compose exec valkey-sentinel sh -c 'REDISCLI_AUTH="$(cat /run/secrets/valkey/sentinel)" valkey-cli -p 26379 --user sentinel SENTINEL get-master-addr-by-name ows'`
 shows the primary (`valkey` at the first start) and `6379`.
+
+## Security settings
+
+The services run as a non-root user with no Linux capability
+(`cap_drop: [ALL]`) and `no-new-privileges`. Each service writes only to
+a tmpfs (in memory, with a size) or to a volume:
+
+| Service | User (UID:GID) | Writable paths |
+| --- | --- | --- |
+| `api`, `webhook` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `api-migrate`, `api-read-access-wallet`, `api-read-access-consent` | `65532:65532` | `/tmp` (tmpfs, 16 MB) |
+| `gateway` | `65532:65532` | none |
+| `consent` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `consent-migrate`, `consent-read-access` | `65532:65532` | `/tmp` (tmpfs, 16 MB) |
+| `wallet-config`, `wallet-service` | `65532:65532` | `/tmp` (tmpfs, 256 MB) |
+| `wallet-worker` | `65532:65532` | `/tmp` (the volume `wallet-worker-tmp`, on disk), `/run/ows-worker` (tmpfs, 64 MB) |
+| `wallet-clock` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `wallet-database-roles`, `wallet-migrate`, `wallet-read-access` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `dashboard` | `101:101` | `/tmp` (tmpfs, 64 MB): the pid file and the temporary files of nginx |
+| `postgres` | `999:999` (the user `postgres` of the image) | the volume `postgres-data`, `/var/run/postgresql` and `/tmp` (tmpfs) |
+| `database-init` | `999:999` | `/tmp` (tmpfs, 16 MB) |
+| `nats` | `1000:1000` | the volume `nats-data` |
+
+- `postgres`, `database-init`, `nats` and `nats-data-owner` also have a
+  read-only root file system (`read_only: true`). The other services read
+  a configuration file that Compose makes from the values of `.env` (a
+  config with `content`). Compose writes such a file into the container
+  before the start, and it cannot do that in a read-only container. These
+  services cannot change the files of their image (the files belong to
+  root), but they can write to their own temporary folders. The Helm chart
+  gives each container a read-only root file system.
+- `api`, `webhook`, `consent` and `dashboard` listen on port 80 in their
+  containers. The sysctl `net.ipv4.ip_unprivileged_port_start=0` (also
+  the default of Docker) lets a non-root user open it.
+- The NATS image has no user, and Docker makes the volume `nats-data` for
+  root. The one-shot service `nats-data-owner` gives the volume to the
+  user 1000 before `nats` starts. It runs as root with only the
+  capabilities `CHOWN` and `DAC_READ_SEARCH` and without a network.
+- The monthly audit export (only with `AUDIT_BUCKET_NAME`) writes one
+  month of the audit log of one data scope two times to `/tmp` of
+  `wallet-worker`: the volume `wallet-worker-tmp` is on the disk of this
+  computer. Keep free disk space for it (two times the largest month of
+  one data scope). The files stay only while the export runs.
+- The api image has no shell: each service of the api image runs the
+  program `/app/bin/igrant-api` directly.
+- `openbao`, `openbao-init` and the Valkey services keep their earlier
+  settings: `openbao` runs as the user `openbao` of its image,
+  `openbao-init` as your user, and the Valkey services as the user
+  `valkey`.
 
 ## Secrets
 

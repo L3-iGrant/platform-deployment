@@ -20,6 +20,8 @@ The images of iGrant.io come from the registry of iGrant.io (`global.imageRegist
 | `redis.image` | `docker.io/valkey/valkey` | `8.1.10-alpine`, with its digest | `redis.mode: bundled` |
 | `redis.metrics.image` | `docker.io/oliver006/redis_exporter` | `v1.94.0`, with its digest | `redis.metrics.enabled` |
 
+The chart runs each image as a non-root user with a read-only root file system (see [Security settings of the containers](security-context.md)). A mirror must keep the images as they are.
+
 With your own mirror:
 
 1. Copy each image with all its platforms and its digest, for example with skopeo:

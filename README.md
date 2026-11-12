@@ -34,6 +34,7 @@ This documentation is for the developers and IT operations teams who install and
 - [Redis](docs/redis.md): Valkey with Sentinel for the work queue, the single-use values and the caches of the wallet, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.
+- [Security settings of the containers](docs/security-context.md): the non-root user, the writable paths and the sysctls of each container, and the Pod Security Standard `restricted`.
 - [Values reference](docs/values-reference.md): the main values and their defaults.
 
 ### Keys and HSM

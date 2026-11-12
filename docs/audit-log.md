@@ -37,6 +37,8 @@ The chart writes the retention to the configuration of each wallet role (not of 
 
 The audit bucket keeps a copy of each hourly anchor and the monthly exports out of the reach of a database owner. A person who can change the wallet database cannot then rewrite the log without a trace: `audit verify` compares the anchors with their copies, and the exports keep the months that the migration hook drops.
 
+The export of a month writes the month of one data scope two times to `/tmp` of the worker pod (the export, and the download that checks it). Give the workers a `/tmp` that holds it: see [Workers and clock](workers.md#the-tmp-folder-of-the-workers).
+
 The wallet writes each object once with a create-only write (it never overwrites an object), reads it back, and never deletes an object or makes a bucket. Each object must stay unchanged for at least `organisationWallet.audit.retentionYears`: set a retention period of at least that value.
 
 ### Type s3: an S3 store with Object Lock
@@ -133,6 +135,8 @@ kubectl -n ows exec deploy/ows-wallet-worker-maintenance -- /app/.venv/bin/audit
 ```
 
 Exit code 0: the log is verified. Exit code 1: evidence of change; the output names the first bad row of each chain and the first bad anchor of each scope. Exit code 2: an input, configuration or connection error. For support, `audit timeline --request-id <id>` (or `--object <type>:<id>`, or `--organisation <id> --from <time> --to <time>`) gives the events in time order.
+
+The root file system of the wallet pods is read-only. A command that writes a file, for example `audit export --organisation` or `audit anchor-keys ensure --jwks`, writes to the folder or the file that you give: give a path below `/tmp`, then copy the file with `kubectl cp`.
 
 The roles hook also makes the audit reader `<prefix>_audit_reader`: it can read the audit tables and nothing else. Its password is the key `audit_reader` of the Secret `<release>-wallet-database-roles` (see [Database](database.md#database-roles-of-the-wallet)). No pod of the chart uses it: give it to an auditor who runs `audit verify` from the wallet image with a configuration file that has only `database` (the audit reader) and `audit` (the bucket).
 
