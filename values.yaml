@@ -759,6 +759,7 @@ api:
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
+  # Not Installation: the chart writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables (for example
   # GOMEMLIMIT): the api reads no configuration from the environment.
@@ -962,7 +963,8 @@ api:
 # version cannot deploy them in your cluster: keep enabled false
 # (docs/privacy-dashboard.md). With enabled, the chart only gives the api
 # pods a ServiceAccount with a Role in the namespace (get, create, update,
-# delete of ConfigMaps, Services, Deployments and Ingresses).
+# delete of ConfigMaps, Services, Deployments and Ingresses). The privacy
+# dashboard needs consent: without consent, enabled true stops the render.
 privacyDashboard:
   enabled: false
   # -- The namespace of the privacy dashboards. It must exist.
@@ -1008,16 +1010,18 @@ gateway:
       # -- Base URL of the api core. Empty: the api Service of the chart.
       url: ""
     consent:
-      # -- Base URL of the consent service. Empty: the consent Service of
-      # the chart. Required when consent.enabled is false.
+      # -- Base URL of the consent service of another release. Empty: the
+      # consent Service of the chart; with consent.enabled false, the
+      # installation has no consent (docs/components.md).
       url: ""
       # -- Time limit of a request to the consent service; after it the
       # client gets 504 (0: 30 s).
       requestTimeoutSeconds: 30
     walletConfig:
-      # -- Base URL of the wallet config role. Empty: the wallet-config
-      # Service of the chart. Required when organisationWallet.enabled is
-      # false.
+      # -- Base URL of the wallet config role of another release. Empty:
+      # the wallet-config Service of the chart; with
+      # organisationWallet.enabled false, the installation has no wallet
+      # (docs/components.md).
       url: ""
       # -- Time limit of a request to the wallet config role; after it the
       # client gets 504 (0: 60 s).
@@ -1085,7 +1089,8 @@ gateway:
     # feature gate").
     enforce: true
   # -- Extra keys of the gateway configuration, deep-merged over the keys of
-  # the chart (exact key names; no secrets).
+  # the chart (exact key names; no secrets). Not Installation: the chart
+  # writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
   extraEnv: []
@@ -1354,6 +1359,9 @@ readAccess:
 # Consent management (data agreements, consent records, data sharing).
 # The auth gateway sends the consent routes to this service.
 consent:
+  # -- Run consent in this release. false with gateway.upstreams.consent.url:
+  # the consent service of another release. false without the URL: the
+  # installation has no consent (docs/components.md).
   enabled: true
   image:
     registry: ""
@@ -1540,14 +1548,17 @@ openbao:
 # actors of the queues) and the clock (it sends the cron actors;
 # docs/workers.md).
 organisationWallet:
+  # -- Run the organisation wallet in this release. false with
+  # gateway.upstreams.walletConfig.url: the wallet of another release. false
+  # without the URL: the installation has no wallet (docs/components.md).
   enabled: true
   image:
     registry: ""
     repository: eudi-wallet
     # -- Empty: global.imageTag.
     tag: ""
-  # -- Public host name of the wallet (required; the "domain" of the
-  # wallet).
+  # -- Public host name of the wallet (required when the installation has
+  # the wallet; the "domain" of the wallet).
   host: ""
   # -- The exposure of the wallet host (the same fields as api.exposure).
   # The wallet accepts bodies of up to 10 MiB.
