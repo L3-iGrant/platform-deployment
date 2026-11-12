@@ -25,6 +25,10 @@
 #     MAX_ORGANISATION_WALLET_UNITS): the keys only with a value;
 #   - the webhooks of the api files (no Webhooks.events) and no
 #     Installation key (Compose installs all services);
+#   - the security settings of the services: a non-root user, no
+#     capability, no new privileges, the tmpfs and volumes of the writable
+#     paths, a read-only root file system for each service without a config
+#     of content, no shell in the api image;
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -732,6 +736,119 @@ PY
         ok "worker and clock: $output"
       else
         bad "worker and clock: $output"
+      fi
+      rm -f "$project_file"
+    fi
+  fi
+
+  # The security settings of the services (README.md, "Security settings"):
+  # each long-running service and each one-shot service of the platform
+  # images, of PostgreSQL and of NATS runs as its non-root user with no
+  # capability and no new privileges, and has tmpfs or a volume for each
+  # path that it writes. A service is read-only when it has no config of
+  # "content" (Compose cannot write such a file into a read-only container). The ports below 1024
+  # come with the sysctl net.ipv4.ip_unprivileged_port_start. The api image
+  # has no shell: no service of the api image starts a shell.
+  # nats-data-owner is the only service of root: it has only CHOWN and
+  # DAC_READ_SEARCH, and no network.
+  if command -v python3 > /dev/null; then
+    local output project_file
+    if ! json="$(DB_ENGINE=postgresql COMPOSE_PROFILES=postgresql docker compose config --format json 2>&1)"; then
+      bad "security settings: docker compose config: $json"
+    else
+      project_file="$(mktemp)"
+      printf '%s' "$json" > "$project_file"
+      if output="$(python3 - "$project_file" 2>&1 <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as project_file:
+    project = json.load(project_file)
+services = project["services"]
+problems = []
+API, WALLET, CONSENT = "65532:65532", "65532:65532", "65532:65532"
+# Each service: its user, and the tmpfs paths (and volume paths) that it
+# writes.
+expected = {
+    "postgres": ("999:999", ["/var/run/postgresql", "/tmp"], []),
+    "database-init": ("999:999", ["/tmp"], []),
+    "nats": ("1000:1000", [], ["/data"]),
+    "api-migrate": (API, ["/tmp"], []),
+    "api-read-access-wallet": (API, ["/tmp"], []),
+    "api-read-access-consent": (API, ["/tmp"], []),
+    "api": (API, ["/tmp"], []),
+    "webhook": (API, ["/tmp"], []),
+    "gateway": (API, [], []),
+    "consent-migrate": (CONSENT, ["/tmp"], []),
+    "consent-read-access": (CONSENT, ["/tmp"], []),
+    "consent": (CONSENT, ["/tmp"], []),
+    "wallet-database-roles": (WALLET, ["/tmp"], []),
+    "wallet-migrate": (WALLET, ["/tmp"], []),
+    "wallet-read-access": (WALLET, ["/tmp"], []),
+    "wallet-config": (WALLET, ["/tmp"], []),
+    "wallet-service": (WALLET, ["/tmp"], []),
+    "wallet-worker": (WALLET, ["/run/ows-worker"], ["/tmp"]),
+    "wallet-clock": (WALLET, ["/tmp"], []),
+    "dashboard": ("101:101", ["/tmp"], []),
+}
+low_ports = {"api", "webhook", "consent", "dashboard"}
+for name, (user, tmpfs, volumes) in expected.items():
+    service = services.get(name)
+    if service is None:
+        problems.append(f"no service {name}")
+        continue
+    if service.get("user") != user:
+        problems.append(f"{name}: user {service.get('user')!r}, not {user!r}")
+    content = [config["source"] for config in service.get("configs") or [] if "content" in project["configs"].get(config["source"], {})]
+    if content and service.get("read_only"):
+        problems.append(f"{name}: read_only with the configs of content {content} (Compose cannot write them)")
+    if not content and service.get("read_only") is not True:
+        problems.append(f"{name}: read_only is not true")
+    if service.get("cap_drop") != ["ALL"] or service.get("cap_add"):
+        problems.append(f"{name}: cap_drop {service.get('cap_drop')}, cap_add {service.get('cap_add')}")
+    if "no-new-privileges:true" not in (service.get("security_opt") or []):
+        problems.append(f"{name}: no no-new-privileges:true")
+    if service.get("privileged"):
+        problems.append(f"{name}: privileged")
+    mounted = [entry.split(":", 1)[0] for entry in service.get("tmpfs") or []]
+    if sorted(mounted) != sorted(tmpfs):
+        problems.append(f"{name}: tmpfs {mounted}, not {tmpfs}")
+    for entry in service.get("tmpfs") or []:
+        if "size=" not in entry:
+            problems.append(f"{name}: the tmpfs {entry} has no size")
+    targets = [volume.get("target") for volume in service.get("volumes") or [] if volume.get("type") == "volume"]
+    for path in volumes:
+        if path not in targets:
+            problems.append(f"{name}: no volume at {path}")
+    sysctl = str((service.get("sysctls") or {}).get("net.ipv4.ip_unprivileged_port_start"))
+    if (name in low_ports) != (sysctl == "0"):
+        problems.append(f"{name}: sysctl net.ipv4.ip_unprivileged_port_start {sysctl}")
+for name, service in services.items():
+    if "/api:" in service.get("image", "") and any(part in ("/bin/sh", "sh", "bash", "/bin/bash") for part in (service.get("entrypoint") or [])):
+        problems.append(f"{name}: a shell in the api image (the image has no shell)")
+    if "/api:" in service.get("image", "") and name not in expected:
+        problems.append(f"{name}: a service of the api image without the security settings")
+owner = services.get("nats-data-owner", {})
+if (owner.get("user") != "0:0" or sorted(owner.get("cap_add") or []) != ["CHOWN", "DAC_READ_SEARCH"] or owner.get("cap_drop") != ["ALL"]
+        or owner.get("network_mode") != "none" or owner.get("read_only") is not True
+        or owner.get("entrypoint") != ["chown", "-R", "1000:1000", "/data"]):
+    problems.append(f"nats-data-owner: {owner}")
+if (services.get("nats", {}).get("depends_on") or {}).get("nats-data-owner", {}).get("condition") != "service_completed_successfully":
+    problems.append("nats does not wait for nats-data-owner")
+if "wallet-worker-tmp" not in project.get("volumes", {}):
+    problems.append("no volume wallet-worker-tmp")
+if "api-read-access" in services:
+    problems.append("the service api-read-access is still there (it ran a shell in the api image)")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+read_only = sorted(name for name in expected if services.get(name, {}).get("read_only"))
+print(f"{len(expected)} services: non-root user, no capability, no new privileges, tmpfs and volumes; read-only: {', '.join(read_only)}")
+PY
+)"; then
+        ok "security settings: $output"
+      else
+        bad "security settings: $output"
       fi
       rm -f "$project_file"
     fi
