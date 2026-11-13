@@ -1365,15 +1365,27 @@ networkPolicy:
   egress:
     # -- External targets: cidrs (with except) and/or namespaceSelector +
     # podSelector; ports [] = all ports. A profile without a target renders
-    # no rule.
+    # no rule. The except list of the internet profiles: the private,
+    # shared and link-local IPv4 ranges; the unique local, link-local and
+    # multicast IPv6 ranges; and in the NAT64 prefix 64:ff9b::/96 only the
+    # images of the IPv4 ranges that are never public (10/8, 172.16/12,
+    # 192.168/16, 100.64/10, 169.254/16, 127/8, 0/8). Thus an IPv6-only
+    # cluster with DNS64 reaches the public IPv4 addresses through NAT64.
+    # With a NAT64 prefix of your network, add the images of these ranges in
+    # that prefix (docs/network-policies.md). The list has no ::ffff:0:0/96:
+    # Kubernetes refuses an IPv4-mapped address, and a packet never has one.
     profiles:
       internet:
         cidrs: ["0.0.0.0/0", "::/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "fc00::/7", "fe80::/10"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: [443, 80]
       internet-any-port:
         cidrs: ["0.0.0.0/0", "::/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "fc00::/7", "fe80::/10"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: []
       # -- The metadata server of a cloud (for example the default
       # credentials of the client of a cloud service).

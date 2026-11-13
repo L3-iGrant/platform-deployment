@@ -42,7 +42,7 @@ A wallet role reads URLs on the public hosts of this platform: the status list o
 
 ## Other vendors and the specifications
 
-The issuer, the verifier and the holder of the wallet call other vendors: credential issuers and their metadata, verifiers, trust lists, status lists and JWKS on the public internet. The specifications allow a URL with any port and a host with an IPv4 or IPv6 address. Thus the wallet roles (`wallet-service`, `wallet-config`, `wallet-worker`) have the egress profile `internet-any-port` by default: any port of each public IPv4 and IPv6 address (`0.0.0.0/0` and `::/0` less the private, link-local and shared ranges and `networkPolicy.clusterCidrs`). The SSRF guard of the wallet keeps the private addresses closed in the wallet itself. Do not remove `internet-any-port` from these roles: a call to a vendor on a port other than 443 or 80 would fail. On a cluster without IPv6, the IPv6 block has no effect (the network policy controller of k3s logs that it ignores it).
+The issuer, the verifier and the holder of the wallet call other vendors: credential issuers and their metadata, verifiers, trust lists, status lists and JWKS on the public internet. The specifications allow a URL with any port and a host with an IPv4 or IPv6 address. Thus the wallet roles (`wallet-service`, `wallet-config`, `wallet-worker`) have the egress profile `internet-any-port` by default: any port of each public IPv4 and IPv6 address (`0.0.0.0/0` and `::/0` less the private, link-local, shared and multicast ranges, the NAT64 images of the IPv4 ranges that are never public, and `networkPolicy.clusterCidrs`; see [IPv6 and NAT64](#ipv6-and-nat64)). The SSRF guard of the wallet keeps the private addresses closed in the wallet itself. Do not remove `internet-any-port` from these roles: a call to a vendor on a port other than 443 or 80 would fail. On a cluster without IPv6, the IPv6 block has no effect (the network policy controller of k3s logs that it ignores it).
 
 ### The egress of each role
 
@@ -58,6 +58,24 @@ Each role that calls a URL that an organisation, a customer or another vendor co
 | `dashboard`, `wallet-clock`, `db`, `nats`, `redis`, `job` | none | No call outside the cluster. |
 
 The network policy is not the only protection: a cluster can run without network policies. Each of these callers also has an SSRF guard in its code that refuses the private, loopback, link-local and metadata addresses: the wallet (`ssrf_protection`), the api and the webhook handler (`OutboundHttp.ssrfProtectionDisabled: false`, the default) and consent (`OutboundHttp.ssrfProtectionDisabled: false`, the default).
+
+### IPv6 and NAT64
+
+The `::/0` block of the `internet` profiles excludes `fc00::/7` (unique local), `fe80::/10` (link-local), `ff00::/8` (multicast) and the IPv6 ranges of `networkPolicy.clusterCidrs`. In an IPv6-only cluster with DNS64, the DNS server gives a host that has only an IPv4 address an address in the NAT64 prefix `64:ff9b::/96` (RFC 6052), and the NAT64 gateway sends the traffic to the IPv4 address in the last 32 bits. A vendor with only a public IPv4 address is then at such an address, so the profiles do not exclude the full prefix. They exclude only the NAT64 images of the IPv4 ranges that are never public:
+
+| IPv4 range | Its NAT64 image in `64:ff9b::/96` |
+| --- | --- |
+| `10.0.0.0/8` | `64:ff9b::a00:0/104` |
+| `172.16.0.0/12` | `64:ff9b::ac10:0/108` |
+| `192.168.0.0/16` | `64:ff9b::c0a8:0/112` |
+| `100.64.0.0/10` | `64:ff9b::6440:0/106` |
+| `169.254.0.0/16` (also the metadata server) | `64:ff9b::a9fe:0/112` |
+| `127.0.0.0/8` | `64:ff9b::7f00:0/104` |
+| `0.0.0.0/8` | `64:ff9b::/104` |
+
+A NAT64 prefix of your network (RFC 6052, section 2.2) is not in the list: the excepts of the chart do not cover it. Add the images of the same IPv4 ranges in your prefix to the `except` of both `internet` profiles. A list in your values replaces the default list, so give each entry of the default list (in `values.yaml`) and then the new entries. For the prefix `2001:db8:64::/96`, the new entries are `2001:db8:64::a00:0/104`, `2001:db8:64::ac10:0/108`, `2001:db8:64::c0a8:0/112`, `2001:db8:64::6440:0/106`, `2001:db8:64::a9fe:0/112`, `2001:db8:64::7f00:0/104` and `2001:db8:64::/104`. With a prefix shorter than /96, the IPv4 address is not in the last 32 bits (RFC 6052, section 2.2): calculate the images for that format.
+
+The lists have no `::ffff:0:0/96` (the IPv4-mapped addresses): the API server refuses an IPv4-mapped address in a NetworkPolicy, and a packet never has one (a dual-stack socket sends IPv4 packets, and the IPv4 block applies to them).
 
 ## Jobs and new pods
 

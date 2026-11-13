@@ -1085,11 +1085,27 @@ dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.
 # The egress to the public internet (the conformance with other vendors):
 # 0.0.0.0/0 and ::/0, each with the excepts of its family (also of
 # networkPolicy.clusterCidrs); the wallet roles reach any port by default.
+# IPv6: no multicast, and in the NAT64 prefix 64:ff9b::/96 only the images
+# of the IPv4 ranges that are never public: a public IPv4 vendor through
+# NAT64 (an IPv6-only cluster with DNS64) stays open, the NAT64 images of a
+# private, loopback or metadata address are closed. No IPv4-mapped address
+# (the API server refuses it).
 if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
     --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
 import sys, yaml
+import ipaddress
 want = {"0.0.0.0/0": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"],
-        "::/0": ["fc00::/7", "fe80::/10", "fd00:10::/56"]}
+        "::/0": ["fc00::/7", "fe80::/10", "ff00::/8", "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112",
+                 "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104", "fd00:10::/56"]}
+# address: open (True) or closed (False) in each internet profile
+probes = {"93.184.215.14": True, "2001:db8:ffff::1": True, "64:ff9b::5db8:d70e": True, "64:ff9b::808:808": True,
+          "64:ff9b::a00:1": False, "64:ff9b::ac1f:ffff": False, "64:ff9b::c0a8:101": False, "64:ff9b::6440:1": False,
+          "64:ff9b::a9fe:a9fe": False, "64:ff9b::7f00:1": False, "64:ff9b::1": False, "ff02::1": False,
+          "fd00:10::5": False, "fe80::1": False, "10.1.2.3": False, "169.254.169.254": False}
+def is_open(blocks, address):
+    address = ipaddress.ip_address(address)
+    return any(address in ipaddress.ip_network(cidr) and not any(address in ipaddress.ip_network(e) for e in (excepts or []))
+               for cidr, excepts in blocks.items() if ipaddress.ip_network(cidr).version == address.version)
 seen, roles = {}, set()
 for doc in yaml.safe_load_all(sys.stdin):
     if not doc:
@@ -1098,6 +1114,12 @@ for doc in yaml.safe_load_all(sys.stdin):
         blocks = {peer["ipBlock"]["cidr"]: peer["ipBlock"].get("except") for peer in doc["spec"]["egress"][0]["to"]}
         if blocks != want:
             print(doc["metadata"]["name"], blocks)
+        for address, expect in probes.items():
+            if is_open(blocks, address) != expect:
+                print(doc["metadata"]["name"], address, "open" if expect else "closed", "expected")
+        mapped = [e for c in blocks.values() for e in (c or []) if ipaddress.ip_network(e).version == 6 and ipaddress.ip_network(e).network_address.ipv4_mapped]
+        if mapped:
+            print(doc["metadata"]["name"], "IPv4-mapped excepts", mapped)
         seen[doc["metadata"]["name"]] = doc["spec"]["egress"][0].get("ports")
     labels = (((doc.get("spec") or {}).get("template") or {}).get("metadata") or {}).get("labels") or {}
     if labels.get("netpol.igrant.io/egress-internet-any-port") == "true":
@@ -1107,7 +1129,7 @@ if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
 if sorted(roles) != ["api", "consent", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
     print("roles with any port", sorted(roles))
 ' 2>&1)" && [ -z "$problems" ]; then
-  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family; any port for the api, the webhook handler, consent and the wallet roles"
+  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family (NAT64: only the never-public images); any port for the api, the webhook handler, consent and the wallet roles"
 else
   bad "the internet profiles: $(printf '%s' "$problems" | head -c 400)"
 fi
