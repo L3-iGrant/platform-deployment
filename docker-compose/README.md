@@ -17,6 +17,7 @@ check: do the next step only when you see the result of the check.
 - [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)
 - [Change to the release with the non-root services](#change-to-the-release-with-the-non-root-services)
 - [Settings](#settings)
+- [Configuration files](#configuration-files)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
 - [Audit log](#audit-log)
@@ -58,7 +59,9 @@ For HSM support and larger installations, see the chart pages [Connect your on-p
 ## Prerequisites
 
 - A Linux host with Docker Engine and Docker Compose 2.24 or newer, GNU
-  Make, Bash, OpenSSL and curl.
+  Make, Bash, OpenSSL, curl and Python 3.8 or newer (`python3`, only the
+  standard library: `make configs` writes the configuration files with
+  it, see [Configuration files](#configuration-files)).
 - Access to the image registry of iGrant.io for customers (`IMAGE_REGISTRY`,
   default `europe-docker.pkg.dev/jenkins-189019/igrantio`), and the tag of
   your release (`PLATFORM_TAG`). Ask support@igrant.io for a key file
@@ -142,8 +145,11 @@ Check: you see `secrets: secrets/: 36 new, 0 kept (no value printed)`
 make check
 ```
 
-This command checks the values of `.env`, the files in `secrets/` and the
-Compose files for your `DB_ENGINE`. It starts no container.
+This command writes the configuration files of the components to
+`generated/` from your `.env` (`make configs`, see
+[Configuration files](#configuration-files)), then checks the values of
+`.env`, the files in `secrets/` and `generated/`, and the Compose files for
+your `DB_ENGINE`. It starts no container.
 
 Check: the last line is
 `check: the configuration is valid (DB_ENGINE=postgresql, <n> warning(s))`.
@@ -157,8 +163,9 @@ work with mobile wallets.
 make up
 ```
 
-This command does `make check` again, then starts the services. The first
-start pulls the images and creates the databases; it can take some minutes.
+This command does `make check` again (with `make configs`), then starts
+the services. The first start pulls the images and creates the databases;
+it can take some minutes.
 
 Check: you see `up: started. make status shows the state of the services.`
 Then wait two minutes and do:
@@ -170,12 +177,12 @@ make status
 Check: you see one line for each service.
 
 - `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
-  `wallet-service`, `wallet-worker`, `wallet-clock`,
-  `dashboard`, `nats`, `openbao` and `postgres`: `running`. The services with a health check also
-  show `(healthy)`.
+  `wallet-service`, `wallet-worker`, `wallet-clock`, `dashboard`, `nats`,
+  `openbao`, `valkey`, `valkey-replica`, `valkey-sentinel` and `postgres`:
+  `running`. The services with a health check also show `(healthy)`.
 - `database-init`, `wallet-database-roles`, the three `*-migrate`
-  services, the three `*-read-access` services and `openbao-init`:
-  `exited`, with the status `Exited (0)`.
+  services, the four `*-read-access` services, `openbao-init` and
+  `nats-data-owner`: `exited`, with the status `Exited (0)`.
 
 If a service has another state, see [Troubleshooting](#troubleshooting).
 
@@ -302,8 +309,8 @@ installation.
 | Follow the logs | `make logs` |
 | Stop the platform (the data stays) | `make down` |
 | Start the platform again | `make up` |
-| Change a setting | Change `.env`, then `make check` and `make up` (Compose starts the changed services again) |
-| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)). From the release with the input limits, an installation has at most 100 organisations and 100 organisation wallets: an installation with more keeps them, but it cannot make a new organisation (see [Settings](#settings)). For the release with the platform operator, see [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator) |
+| Change a setting | Change `.env`, then `make check` and `make up` (`make configs` writes the configuration files again, and Compose starts the services whose file or setting changed) |
+| Use a new release | Set its tag in `PLATFORM_TAG` in `.env`, then `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)) |
 | Show the platform operator organisation and the platform admins | `make platform-status` |
 | Delete all data and start again | `make reset`, then `make up`, then step 8 |
 | OpenBao seal status | `make openbao-status` |
@@ -317,189 +324,6 @@ used:
   that unseals OpenBao, and `secrets/openbao/init.json`, the root token and
   the recovery key of OpenBao);
 - the Docker volumes of the project `igrant-platform`.
-
-## Change to the release with the platform operator
-
-From this release, an installation has one platform operator organisation
-(see [step 8](#step-8-make-the-platform-operator-organisation-and-the-first-platform-admin)).
-An installation that exists has none after the change to this release: the organisations
-and their admins work as before, but the functions of a platform admin
-stay hidden in the dashboard until you do the steps below. Do not use
-`make platform-operator` for an installation that exists: with an e-mail
-address that no admin has, it makes a new organisation with the platform
-operator mark, and then no organisation that exists can get the mark.
-
-Removed in this release of the API: the command `igrant-api iam
-set-organisation-login` (a platform admin suspends and resumes an
-organisation in the dashboard), the route `POST
-/v4/onboard/platform/organisation` and the API key scope
-`organisation:create` (a platform admin adds an organisation in the
-dashboard). Change each script that uses them.
-
-Before you start the new release, with the earlier release:
-
-1. Choose the organisation that becomes the platform operator. The platform
-   operator is always the wallet provider organisation of the installation.
-   When one organisation is the wallet provider, only this organisation can
-   be the platform operator. When no organisation is the wallet provider,
-   choose an organisation with no wallet, or do item 2 for the organisation
-   that you choose. To read the id of an organisation and the state of its
-   wallet, use an API key of the organisation with the scopes `onboard` and
-   `config`:
-
-   ```text
-   GET <API_PUBLIC_URL>/v4/onboard/platform/organisation
-   GET <API_PUBLIC_URL>/v4/config/ows/wallet/deployment
-   ```
-
-   A release without the `/v4` routes has them at `GET
-   /v2/onboard/organisation` and `GET /v2/config/digital-wallet/openid`.
-   The first answer has the `id` of the organisation. The second answer
-   has `statusStr` (`Deployed` for a deployed wallet) and
-   `isWalletProvider`. An organisation with `"isWalletProvider": true`, or
-   with a wallet that is not deployed, needs no more work before the new
-   release.
-
-2. Only for an organisation whose wallet is deployed and is not the wallet
-   provider (and no other organisation is the wallet provider): make its
-   wallet the wallet provider with the earlier release. The new release has
-   no route and no command for this. An admin of that organisation, or an
-   API key of it with the scope `config`, sends this request one time:
-
-   ```text
-   PUT <API_PUBLIC_URL>/v4/config/ows/wallet/deployment
-   Content-Type: application/json
-
-   {"isWalletProvider": true}
-   ```
-
-   A release without the routes `/v4/config/ows/...` has the same route at
-   `PUT /v2/config/digital-wallet/openid`. A build of the API that has the
-   command `platform set-operator` and still sets the flag in this route
-   takes the body `{}` for the organisation with the platform operator
-   mark. Check: the answer shows `"isWalletProvider": true`. If you did not
-   do this item with the earlier release, the organisation cannot become
-   the platform operator in the new release: contact iGrant.io.
-
-3. Decide the first value of the feature gate (`FEATURES_ENFORCE`). With
-   the default `true`, an organisation that uses the routes of a feature
-   that is off for it gets `403` `feature_disabled` from the first request
-   with the new release. To check the features first, set
-   `FEATURES_ENFORCE=false` before you start the new release.
-
-4. From the release with the four feature switches, an organisation has
-   four product features: Issuer & Verifier, Wallet Unit (Holder), Consent
-   Management and Data Marketplace. `api-migrate` of the new release
-   changes the stored features of each organisation: Consent Management is
-   on for an organisation that had the consent management, the data
-   agreements, the personal data or the privacy dashboard on, and the three
-   other switches keep their values. Nothing that an organisation can use
-   goes off. Stop the gateway container of the earlier release before you
-   start the new release, or set `FEATURES_ENFORCE=false` for the earlier
-   release: with the changed records, a gateway of the earlier release
-   refuses the routes of Account, Webhooks and Activity Logs. With the new
-   release, a new organisation has only Issuer & Verifier on: a platform
-   admin turns the other areas on in "Manage Features".
-
-The start of the new release. A release that changes the messages between the services has a
-release order: consent, then the wallet, then the API and the gateway. A
-plain `make up` starts the new services in the order of their dependencies,
-which is not this order: for some seconds, a container of the earlier
-consent release can refuse the answers of the new API. To keep the order,
-start the services in steps (the services lose their NATS connection for
-some seconds and connect again):
-
-```bash
-# PLATFORM_TAG in .env is the tag of the new release
-make secrets
-make check
-docker compose up -d --force-recreate nats
-docker compose up -d consent
-docker compose up -d wallet-config wallet-service wallet-worker wallet-clock
-make up
-```
-
-Each step first runs the one-shot services that its services wait for (the
-migrations and the read access). Check after each step: `make status`
-shows the services of the step as `running`, and the one-shot services as
-`exited` with the code 0.
-
-After the start of the new release:
-
-1. Give the organisation the platform operator mark, then give one of its
-   admins the platform admin right:
-
-   ```bash
-   make platform-set-operator ORGANISATION_ID=6731f0c2a1b2c3d4e5f60789
-   make platform-grant-admin ADMIN_EMAIL=admin@example.com
-   ```
-
-   Check: each command shows one JSON line with `"changed":true` (or
-   `"changed":false` when the result exists), with a status line after it. `platform-set-operator`
-   exits 1 for an organisation whose wallet is deployed and is not the
-   wallet provider, and when a different organisation is the wallet
-   provider or has the mark. `platform-grant-admin` exits 1 for an admin
-   who is not an admin of the platform operator organisation.
-
-2. `make platform-status` shows `operatorOrganisationId` with the id of
-   your organisation, and the admin in `platformAdmins`.
-
-3. The admin logs in on the dashboard (the gateway and the API read the
-   platform operator again within 60 seconds). A platform admin needs a
-   password of 15 characters or more: an admin with a shorter password sets
-   a new password at this login. Each new password also needs at least one
-   special character. This rule applies only when a password is set or
-   changed: the accounts of today continue to log in, with no forced change.
-
-4. With `FEATURES_ENFORCE=false`: a platform admin opens "Manage Features"
-   of each organisation in the dashboard and reads the features that are
-   off. Decide with the organisation: an organisation that uses the routes
-   of a feature (for example with an API key) needs the feature on. The
-   features with routes in the gate are the data agreements, the data
-   disclosure agreements, issuer and verifier, the wallet units, consent
-   management, the privacy dashboard, the account, the action logs and the
-   webhooks. Then set `FEATURES_ENFORCE=true`, and do `make check` and
-   `make up`.
-
-5. An organisation that you stopped with `iam set-organisation-login`
-   with the earlier release stays suspended in the API, but consent and the
-   wallet do not know it. A platform admin sends the suspend request for it
-   one time in the dashboard.
-
-`config/nats/users.conf` of this release gives the API the right to publish
-`api.v1.evt.organisation.deleted` (the deletion of an organisation). The
-NATS server reads the file only when its container is made: the command
-`docker compose up -d --force-recreate nats` above makes the container
-again with the new file (the data of NATS is in its volume and stays).
-Without it, the API cannot publish the deletion of an organisation, and
-consent and the wallet keep the data of a deleted organisation.
-
-## Change to the release with the non-root services
-
-From this release, the services run as non-root users without
-capabilities (see [Security settings](#security-settings)). The images of
-this release need these settings, and the earlier dashboard image does
-not start with them: change `PLATFORM_TAG` and the Compose files
-together.
-
-```bash
-# PLATFORM_TAG in .env is the tag of the new release
-make secrets
-make check
-docker compose up -d --remove-orphans
-```
-
-- `--remove-orphans` removes the container of the service
-  `api-read-access` of the earlier release. The api image has no shell:
-  the services `api-read-access-wallet` and `api-read-access-consent`
-  replace it.
-- `nats-data-owner` gives the files of the volume `nats-data` (root wrote
-  them) to the user of NATS, then `nats` starts.
-- The data folder of `postgres` belongs to the user `postgres` already
-  (the earlier image changed to it at the start).
-
-Check: `make status` shows the services as `running` (healthy), and the
-one-shot services, also `nats-data-owner`, as `exited (0)`.
 
 ## Settings
 
@@ -532,8 +356,41 @@ in data scopes: schemas in `igrant_wallet` (for example `issuer`), which
 its own database role (see
 [Database roles of the wallet](#database-roles-of-the-wallet)).
 
-The configuration files of the components are in `compose.platform.yaml`
-(section `configs`). Compose writes the values of `.env` into them.
+The configuration files of the components come from the templates of
+`compose.configs.yaml` with the values of `.env` (see
+[Configuration files](#configuration-files)).
+
+## Configuration files
+
+Each service runs with a read-only root file system. Compose gives a
+configuration to such a service only from a file (a config of `file`), not
+from a text in the Compose file (a config of `content`). Thus:
+
+1. `compose.configs.yaml` has the templates of the configuration files of
+   the components, with the values of `.env` as variables (for example
+   `${API_PUBLIC_URL}`).
+2. `make configs` (`render-configs.py`) reads the templates with
+   `docker compose -f compose.render.yaml config`: Compose writes the
+   values of `.env` and of `config/engine/<DB_ENGINE>.env` into them, with
+   the same rules and the same files as for the services. The script
+   writes each file to `generated/` (mode `0644`), and
+   `generated/configs.env` with the SHA-256 of each file.
+3. The services of `compose.platform.yaml` read the files of `generated/`.
+   Each one has the SHA-256 of its file in a label: when a file changes,
+   `docker compose up` starts the service again.
+
+`make check` and `make up` run `make configs` first: after a change of
+`.env`, use them, not `docker compose up` alone (that keeps the earlier
+files). `make check` stops when `generated/` is not the render of the
+current values. The templates have no secret value: each secret is a file
+of `secrets/`, and the configurations give only its path. Git ignores
+`generated/`.
+
+Each file is written to a temporary file and then renamed, and
+`generated/configs.env` is written last: a stop of `make configs` at any
+point leaves complete files, and the next `make configs` writes all of
+them. A missing value with `${VAR:?...}` stops `make configs` before it
+writes a file.
 
 ## Database roles of the wallet
 
@@ -554,8 +411,9 @@ each one starts only when the one before it stopped with exit code 0:
    applies the migrations of the wallet as the owner role, then gives the
    database roles their grants on the new tables. It is the only service
    that changes the schema of the wallet.
-4. `wallet-read-access` (as the admin user) creates the read-only users of
-   the api and of consent on the wallet views. The wallet processes start
+4. `wallet-read-access-api` and `wallet-read-access-consent` (as the admin
+   user) create the read-only users of the api and of consent on the wallet
+   views (one service for each reader: the wallet image has no shell). The wallet processes start
    after `wallet-migrate`.
 
 | Process | Service | Database role |
@@ -731,9 +589,12 @@ shows the primary (`valkey` at the first start) and `6379`.
 
 ## Security settings
 
-The services run as a non-root user with no Linux capability
-(`cap_drop: [ALL]`) and `no-new-privileges`. Each service writes only to
-a tmpfs (in memory, with a size) or to a volume:
+Each service runs with a read-only root file system (`read_only: true`),
+no Linux capability (`cap_drop: [ALL]`) and `no-new-privileges`, and each
+one but the one-shot services of root below runs as a non-root user. Each
+service writes only to a tmpfs (in memory, with a size) or to a volume.
+`tests/compose-files.sh` of this repository checks each service of all
+profiles: a service without these settings fails the test.
 
 | Service | User (UID:GID) | Writable paths |
 | --- | --- | --- |
@@ -749,23 +610,27 @@ a tmpfs (in memory, with a size) or to a volume:
 | `dashboard` | `101:101` | `/tmp` (tmpfs, 64 MB): the pid file and the temporary files of nginx |
 | `postgres` | `999:999` (the user `postgres` of the image) | the volume `postgres-data`, `/var/run/postgresql` and `/tmp` (tmpfs) |
 | `database-init` | `999:999` | `/tmp` (tmpfs, 16 MB) |
-| `nats` | `1000:1000` | the volume `nats-data` |
+| `nats` | `65532:65532` | the volume `nats-data` |
+| `openbao` | `100:1000` (the user `openbao` of the image) | the volume `openbao-data`, `/tmp` (tmpfs, 64 MB) |
+| `openbao-init` | your user (`HOST_UID:HOST_GID`) | `secrets/openbao/` (`init.json`), `/tmp` (tmpfs, 1 MB) |
+| `valkey`, `valkey-replica` | `999:1000` (the user `valkey` of the image) | the volumes `valkey-data` and `valkey-replica-data`, `/run/valkey` (tmpfs, 8 MB) and `/tmp` (tmpfs, 16 MB) |
+| `valkey-sentinel` | `999:1000` | `/run/valkey` (tmpfs, 8 MB) and `/tmp` (tmpfs, 16 MB) |
 
-- `postgres`, `database-init`, `nats` and `nats-data-owner` also have a
-  read-only root file system (`read_only: true`). The other services read
-  a configuration file that Compose makes from the values of `.env` (a
-  config with `content`). Compose writes such a file into the container
-  before the start, and it cannot do that in a read-only container. These
-  services cannot change the files of their image (the files belong to
-  root), but they can write to their own temporary folders. The Helm chart
-  gives each container a read-only root file system.
+- The configuration files are files of `generated/` (see
+  [Configuration files](#configuration-files)): Compose gives a
+  configuration to a read-only service only from a file.
 - `api`, `webhook`, `consent` and `dashboard` listen on port 80 in their
   containers. The sysctl `net.ipv4.ip_unprivileged_port_start=0` (also
   the default of Docker) lets a non-root user open it.
 - The NATS image has no user, and Docker makes the volume `nats-data` for
-  root. The one-shot service `nats-data-owner` gives the volume to the
-  user 1000 before `nats` starts. It runs as root with only the
-  capabilities `CHOWN` and `DAC_READ_SEARCH` and without a network.
+  root. The one-shot service `nats-data-owner` gives each file and folder
+  of the volume with another owner or group to the user 65532 before
+  `nats` starts (`find` with `-user` and `-group`, then `chown`). It runs
+  as root with only the capabilities `CHOWN` and `DAC_READ_SEARCH` and
+  without a network. A start with a correct store reads the owner of each
+  file and writes nothing (measured on a store of 1,000,000 files: about
+  3 seconds and no write). A stop at any point is safe: the next start
+  changes the rest.
 - The monthly audit export (only with `AUDIT_BUCKET_NAME`) writes one
   month of the audit log of one data scope two times to `/tmp` of
   `wallet-worker`: the volume `wallet-worker-tmp` is on the disk of this
@@ -773,10 +638,14 @@ a tmpfs (in memory, with a size) or to a volume:
   one data scope). The files stay only while the export runs.
 - The api image has no shell: each service of the api image runs the
   program `/app/bin/igrant-api` directly.
-- `openbao`, `openbao-init` and the Valkey services keep their earlier
-  settings: `openbao` runs as the user `openbao` of its image,
-  `openbao-init` as your user, and the Valkey services as the user
-  `valkey`.
+- `openbao`, `openbao-init` and the Valkey services: `openbao` runs as the
+  user `openbao` of its image (100:1000) and the Valkey services as the
+  user `valkey` of their image (999:1000), the owners of their volumes.
+  OpenBao needs no
+  capability (`disable_mlock`). `openbao-init` runs as your user
+  (`HOST_UID` and `HOST_GID`, which `make` sets), so that `init.json`
+  belongs to you; without them it runs as root without capabilities, and
+  it stops with "cannot open secrets/openbao/": use `make up`.
 
 ## Secrets
 
@@ -866,7 +735,8 @@ the function is off, and the api answers that it is not configured.
 |---|---|
 | `make env` | Create `.env` from `.env.example` (keeps a `.env` that exists). |
 | `make secrets` | Create all secrets and keys in `secrets/` (keeps the files that exist). |
-| `make check` | Check `.env`, `secrets/` and the Compose files. No container starts. |
+| `make configs` | Write the configuration files of the components to `generated/` from `.env` (see [Configuration files](#configuration-files)). `make check` and `make up` do it. |
+| `make check` | Write the configuration files, then check `.env`, `secrets/`, `generated/` and the Compose files. No container starts. |
 | `make up` | Check, then start the platform. |
 | `make status` | The state of all services. |
 | `make logs` | Follow the logs. |
@@ -885,6 +755,13 @@ the function is off, and the api answers that it is not configured.
 
 - `stat .../.env: no such file or directory`: do step 2 (`make env`).
 - `make check` shows `missing: secrets/...`: do step 3 (`make secrets`).
+- `stat .../generated/configs.env: no such file or directory`, or `make
+  check` shows `generated/ is not the render of the current values`: do
+  `make configs` (`make check` and `make up` do it), see
+  [Configuration files](#configuration-files).
+- `openbao-init` shows `cannot open secrets/openbao/`: it ran without your
+  user (`HOST_UID` and `HOST_GID`), for example after `docker compose up`
+  without `make`. Do `make up`.
 - `stat .../config/engine/<value>.env: no such file or directory`:
   `DB_ENGINE` (in `.env` or in your shell) is not `postgresql`.
 - A one-shot service shows an exit code other than 0, or a service does not

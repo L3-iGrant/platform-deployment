@@ -2,10 +2,14 @@
 # Test of the Valkey services of docker-compose/ (valkey, valkey-replica,
 # valkey-sentinel) against a real server. The script reads the services
 # from "docker compose config" (the image, the user, the entrypoint and
-# command, the tmpfs, the configuration files and the healthchecks) and
-# runs each in a container of a local image, with test passwords in place
-# of secrets/valkey/ and the service names in /etc/hosts. It starts them in
-# the order of depends_on.
+# command, the tmpfs, the configuration files, the healthchecks and the
+# security settings: the read-only root file system, the dropped
+# capabilities and no-new-privileges) and runs each in a container of a
+# local image with these settings, with test passwords in place of
+# secrets/valkey/, a new volume of the test for each volume of the service
+# (the root file system is read-only), on a network of the test where each
+# container has its service name. It starts them in the order of
+# depends_on.
 #
 # The checks:
 # 1. The start: each service is healthy (its healthcheck), the replica is
@@ -38,6 +42,7 @@ fail=0
 ok() { pass=$((pass + 1)); echo "ok   $1"; }
 bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 created_env=""
+created_generated=""
 
 cleanup() {
   local service
@@ -48,7 +53,12 @@ cleanup() {
     fi
     docker rm -f "$prefix-$service" > /dev/null 2>&1 || true
   done
+  docker network rm "$prefix" > /dev/null 2>&1 || true
+  if [ -f "$work/volumes" ]; then
+    xargs -r docker volume rm < "$work/volumes" > /dev/null 2>&1 || true
+  fi
   [ -z "$created_env" ] || rm -f "$compose/.env"
+  [ -z "$created_generated" ] || rm -rf "$compose/generated"
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -59,21 +69,36 @@ if [ ! -f "$compose/.env" ]; then
   cp "$compose/.env.example" "$compose/.env"
   created_env=1
 fi
+# The project needs the files of make configs (generated/configs.env).
+[ -d "$compose/generated" ] || created_generated=1
+(cd "$compose" && python3 -I ./render-configs.py > /dev/null)
 (cd "$compose" && VALKEY_IMAGE="$image" docker compose config --format json) > "$work/project.json"
 
 # The arguments of docker run and of docker exec of each service: one file
 # of lines for each. The secret files of the services are test passwords.
-python3 - "$work" <<'PY'
+python3 - "$work" "$prefix" <<'PY'
 import json, os, secrets, sys
-work = sys.argv[1]
+work, prefix = sys.argv[1], sys.argv[2]
+volumes = []
 project = json.load(open(f"{work}/project.json"))
 os.makedirs(f"{work}/secrets")
 os.chmod(f"{work}/secrets", 0o755)
 for name in ("valkey", "valkey-replica", "valkey-sentinel"):
     service = project["services"][name]
-    run = ["--user", service["user"]]
+    run = ["--user", service["user"], "--network-alias", name]
+    if service.get("read_only"):
+        run += ["--read-only"]
+    for capability in service.get("cap_drop", []):
+        run += ["--cap-drop", capability]
+    for capability in service.get("cap_add", []):
+        run += ["--cap-add", capability]
+    for option in service.get("security_opt", []):
+        run += ["--security-opt", option]
     for tmpfs in service.get("tmpfs", []):
         run += ["--tmpfs", tmpfs]
+    for index, volume in enumerate(v for v in service.get("volumes", []) if v.get("type") == "volume"):
+        volumes.append(f"{prefix}-{name}-{index}")
+        run += ["-v", f"{volumes[-1]}:{volume['target']}"]
     for config in service.get("configs", []):
         run += ["-v", f"{project['configs'][config['source']]['file']}:{config['target']}:ro"]
     for secret in service.get("secrets", []):
@@ -92,21 +117,23 @@ for name in ("valkey", "valkey-replica", "valkey-sentinel"):
     # docker compose config writes $$ for the $ of the healthcheck.
     with open(f"{work}/{name}.health", "w") as handle:
         handle.write(test[1].replace("$$", "$"))
+with open(f"{work}/volumes", "w") as handle:
+    handle.write("".join(f"{volume}\n" for volume in volumes))
 PY
 
+# A network of the test: each container has its service name (the DNS of
+# Docker), as in the Compose network.
+docker network create "$prefix" > /dev/null
 for service in "${services[@]}"; do
   run=()
   while IFS= read -r line; do run+=("$line"); done < "$work/$service.run"
-  docker run -d --pull never --name "$prefix-$service" --memory 128m "${run[@]}" --entrypoint sh "$image" -c 'sleep infinity' > /dev/null
-done
-entries=""
-for service in "${services[@]}"; do
-  entries="$entries$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$prefix-$service") $service"$'\n'
-done
-for service in "${services[@]}"; do
-  docker exec -u root "$prefix-$service" sh -c "printf '%s' '$entries' >> /etc/hosts"
+  docker run -d --pull never --name "$prefix-$service" --network "$prefix" --memory 128m "${run[@]}" --entrypoint sh "$image" -c 'sleep infinity' > /dev/null
 done
 echo "server: $(docker exec "$prefix-valkey" valkey-server --version)"
+docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}} {{.Config.User}}' "$prefix-valkey" \
+  | grep -q -F 'true [ALL] [no-new-privileges:true] 999:1000' \
+  && ok "start: the containers have the settings of the services (read-only, no capability, no new privileges, 999:1000)" \
+  || bad "start: the containers have not the settings of the services"
 
 start() {
   local start_args=() line
@@ -162,7 +189,7 @@ if problems="$(python3 - "$work/project.json" <<'PY' 2>&1
 import json, sys, yaml
 project = json.load(open(sys.argv[1]))
 for role in ("config", "service", "worker", "clock"):
-    redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"])["redis"]
+    redis = yaml.safe_load(open(project["configs"][f"wallet-{role}-config"]["file"], encoding="utf-8"))["redis"]
     user = f"wallet-{role}"
     expected = {"queue": {"sentinels": ["valkey-sentinel:26379"], "master_name": "ows", "username": user,
                           "password_file": "/run/secrets/eudi-wallet/redis-password", "sentinel_username": user,
@@ -185,8 +212,9 @@ wait_until "failover: the Sentinel promotes valkey-replica" 60 '[ "$(primary)" =
 [ "$(role_of valkey-replica)" = master ] && ok "failover: valkey-replica is the primary" || bad "failover: valkey-replica is $(role_of valkey-replica)"
 docker unpause "$prefix-valkey" > /dev/null
 wait_until "failover: valkey comes back as a replica" 60 '[ "$(role_of valkey)" = slave ]'
-# A new start of valkey (the service restarts): it asks the Sentinel.
-docker exec -u root "$prefix-valkey" sh -c 'pkill -9 -f "[v]alkey-server" || true; sleep 1; rm -rf /run/valkey/*'
+# A new start of valkey (the service restarts): it asks the Sentinel. The
+# user of the service stops its own server (no capability for root).
+docker exec "$prefix-valkey" sh -c 'pkill -9 -f "[v]alkey-server" || true; sleep 1; rm -rf /run/valkey/*'
 start valkey
 # in_sync <service>: the data server is a replica with its primary link up.
 in_sync() { as valkey-sentinel probe "$1" 6379 INFO replication | grep -q "^master_link_status:up"; }

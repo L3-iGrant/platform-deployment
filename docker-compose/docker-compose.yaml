@@ -2,18 +2,29 @@
 #
 #   make env       make .env from .env.example, then set your values
 #   make secrets   make all secrets and keys in secrets/
-#   make check     check the configuration (no container starts)
+#   make check     write the configuration files to generated/ (make
+#                  configs), then check the configuration (no container
+#                  starts)
 #   make up        start the platform
 #
-# The services are in compose.platform.yaml. This file loads it with two
+# The services are in compose.platform.yaml. This file loads it with these
 # files of values:
 #   - .env: your settings, for example DB_ENGINE (postgresql), the public
 #     URLs and the images;
 #   - config/engine/<DB_ENGINE>.env: the values that follow from the engine
-#     (database port, admin user, client image).
+#     (database port, admin user, client image);
+#   - generated/configs.env: the SHA-256 of each configuration file (below).
 # Thus DB_ENGINE is the one choice of the database engine of all
 # components. A value in your shell has priority over the same value in
 # .env.
+#
+# The configuration files of the components are files of generated/: "make
+# configs" writes them from the templates of compose.configs.yaml with the
+# values of the first two files (compose.render.yaml). It also writes
+# generated/configs.env, the SHA-256 of each file: each service has the
+# hash of its file in a label, so that "docker compose up" starts a service
+# again when its file changes. Without generated/configs.env, docker
+# compose stops: run make configs (make check and make up do it).
 name: igrant-platform
 
 include:
@@ -21,3 +32,4 @@ include:
     env_file:
       - .env
       - config/engine/${DB_ENGINE:-postgresql}.env
+      - generated/configs.env

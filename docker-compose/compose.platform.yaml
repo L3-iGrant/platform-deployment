@@ -2,10 +2,15 @@
 #
 # Do not start this file directly: docker-compose.yaml loads it with the
 # values of .env and of config/engine/<DB_ENGINE>.env (DB_PORT,
-# DB_ADMIN_USER, DB_CLIENT_IMAGE). The configuration files of the
-# components are the "configs" at the end of this file; Compose writes the
-# values of .env into them. The secrets come from secrets/ (make secrets
-# makes them; git ignores the folder).
+# DB_ADMIN_USER, DB_CLIENT_IMAGE) and of generated/configs.env. The
+# configuration files of the components are the "configs" at the end of
+# this file: files of generated/, which make configs writes from the
+# templates of compose.configs.yaml with the values of .env. The secrets
+# come from secrets/ (make secrets makes them; git ignores the folder and
+# generated/). Each service that reads a file of generated/ has the label
+# io.igrant.config-sha256.<config> with the SHA-256 of that file (from
+# generated/configs.env): when the file changes, "docker compose up" starts
+# the service again, as it does for a changed image or setting.
 #
 # Only the public services have a host port: the auth gateway (the API),
 # the public wallet routes and the dashboard. Your reverse proxy with TLS
@@ -19,14 +24,15 @@ x-server: &server
   stop_grace_period: 30s
 
 # The security settings of the services (README.md, "Security settings"):
-# no Linux capability, and no new privileges (setuid and setgid programs do
-# not give more rights). Each service also has its non-root user
-# (user: UID:GID) and tmpfs or volumes for the paths that it writes. A
-# service has a read-only root file system (read_only: true) only when it
-# has no configuration of "content" (the configs at the end of this file):
-# Compose writes such a file into the container before the start, and it
-# cannot do that in a read-only container.
+# a read-only root file system, no Linux capability, and no new privileges
+# (setuid and setgid programs do not give more rights). Each service also
+# has its non-root user (user: UID:GID) and tmpfs or volumes for the paths
+# that it writes. Only the one-shot services that change the owner of
+# files in a volume (nats-data-owner) run as root, with only the
+# capabilities that they need and no network. tests/compose-files.sh
+# checks each service.
 x-hardened: &hardened
+  read_only: true
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
 
@@ -35,8 +41,7 @@ x-wallet: &wallet
   restart: unless-stopped
   # The security settings, and the user ows of the image. The processes
   # write only to /tmp (the temporary files of Python, for example a part of
-  # a multipart form that is larger than 1 MB). Not read-only: the
-  # configuration file is a config of "content".
+  # a multipart form that is larger than 1 MB).
   <<: *hardened
   user: "65532:65532"
   tmpfs:
@@ -56,7 +61,6 @@ services:
 
   postgres:
     <<: *hardened
-    read_only: true
     image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
     profiles: [postgresql]
     # The user postgres of the image. It owns the data folder (the image
@@ -100,7 +104,6 @@ services:
   # owner user igrant_wallet.
   database-init:
     <<: [*job, *hardened]
-    read_only: true
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
     user: "999:999"
     entrypoint: ["bash", "/scripts/create-databases.sh"]
@@ -126,26 +129,31 @@ services:
 
   # The NATS image has no user, and Docker makes the volume nats-data for
   # root. This one-shot service gives the JetStream store to the user of
-  # NATS (1000:1000), then stops: root, with only the capabilities to change
-  # the owner of the files (CHOWN) and to read each folder (DAC_READ_SEARCH),
-  # and no network.
+  # NATS (65532:65532), then stops: root, with only the capabilities to
+  # change the owner of the files (CHOWN) and to read each folder
+  # (DAC_READ_SEARCH), and no network. It changes only the files and
+  # folders with another owner or group: the files of an earlier release
+  # (root, or the user 1000) and the files that NATS of an earlier release
+  # wrote after a change back to it. A start with a correct store reads the
+  # owner of each file and writes nothing. A stop at any point is safe: the
+  # next start changes the rest.
   nats-data-owner:
     <<: [*job, *hardened]
-    read_only: true
     image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
     user: "0:0"
     cap_add: [CHOWN, DAC_READ_SEARCH]
     network_mode: none
-    entrypoint: ["chown", "-R", "1000:1000", "/data"]
+    entrypoint: ["find", "/data", "(", "!", "-user", "65532", "-o", "!", "-group", "65532", ")",
+                 "-exec", "chown", "-h", "65532:65532", "{}", "+"]
     volumes:
       - nats-data:/data
 
   nats:
     <<: *hardened
-    read_only: true
     image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
-    # Any user that is not root: the image has no user.
-    user: "1000:1000"
+    # Any user that is not root: the image has no user. The same user as the
+    # NATS of the Helm chart.
+    user: "65532:65532"
     command: ["--config", "/etc/nats/nats.conf"]
     configs:
       - {source: nats-conf, target: /etc/nats/nats.conf}
@@ -167,14 +175,23 @@ services:
   # unseals it at each start with secrets/openbao/static-seal.key.
 
   openbao:
+    <<: *hardened
     image: ${OPENBAO_IMAGE:?set OPENBAO_IMAGE in .env}
+    # The user openbao of the image (100:1000): the volume openbao-data gets
+    # the owner of the image folder /openbao/file when Docker makes it, and
+    # the data of an earlier release belongs to this user. The entrypoint of
+    # the image starts the server directly as this user (no su-exec).
+    user: "100:1000"
     command: ["server"]
     environment:
       BAO_ADDR: http://127.0.0.1:8200
       # The image entrypoint must not chown the mounted configuration file
-      # (a file of this folder). The volume gets the owner of the image
-      # folder /openbao/file when Docker makes it.
+      # (a file of this folder).
       SKIP_CHOWN: "true"
+    # The temporary files of OpenBao. OpenBao writes its data only to the
+    # volume (disable_mlock: no IPC_LOCK capability).
+    tmpfs:
+      - /tmp:size=64m
     configs:
       - {source: openbao-config, target: /openbao/config/openbao.hcl}
     secrets:
@@ -196,8 +213,10 @@ services:
   # your user (HOST_UID, HOST_GID; the Makefile sets them), so that init.json
   # belongs to you.
   openbao-init:
-    <<: *job
+    <<: [*job, *hardened]
     image: ${OPENBAO_IMAGE}
+    # Your user (make sets HOST_UID and HOST_GID; README.md, "Security
+    # settings"): it writes init.json to your folder secrets/openbao/.
     user: "${HOST_UID:-0}:${HOST_GID:-0}"
     entrypoint: ["/bin/sh", "/openbao/bootstrap/bootstrap.sh"]
     environment:
@@ -205,6 +224,8 @@ services:
       OPENBAO_STATE_DIR: /openbao/state
       # The bao client writes no file; HOME must exist for any user.
       HOME: /tmp
+    tmpfs:
+      - /tmp:size=1m
     configs:
       - {source: openbao-bootstrap, target: /openbao/bootstrap/bootstrap.sh}
     volumes:
@@ -220,8 +241,11 @@ services:
 
   valkey:
     <<: &valkey
+      <<: *hardened
       image: ${VALKEY_IMAGE:?set VALKEY_IMAGE in .env}
-      user: valkey
+      # The user valkey of the image (999:1000, as in the Helm chart). The
+      # data volume gets its owner from the image folder /data.
+      user: "999:1000"
       entrypoint: ["/bin/sh", "/etc/valkey/start.sh"]
       configs:
         - {source: valkey-start, target: /etc/valkey/start.sh}
@@ -238,8 +262,11 @@ services:
         - {source: valkey-sentinel-password, target: /run/secrets/valkey/sentinel}
         - {source: valkey-probe-password, target: /run/secrets/valkey/probe}
       # The configuration with the passwords: in memory, never on a volume.
+      # /tmp: the temporary files of the shells of start.sh and of the
+      # healthchecks (the Helm chart gives the same sizes).
       tmpfs:
-        - /run/valkey:uid=999,gid=1000,mode=0700
+        - /run/valkey:size=8m,uid=999,gid=1000,mode=0700
+        - /tmp:size=16m
       restart: unless-stopped
     command: ["primary"]
     volumes:
@@ -281,6 +308,8 @@ services:
     command: ["/app/bin/igrant-api", "migrate", "--config", "/etc/igrant-api/database-jobs.yaml"]
     tmpfs:
       - /tmp:size=16m
+    labels:
+      io.igrant.config-sha256.api-database-jobs-config: ${CONFIG_SHA256_API_DATABASE_JOBS_CONFIG:?run make configs}
     configs:
       - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
     secrets:
@@ -296,6 +325,8 @@ services:
     command: ["migrate", "schema", "--config", "/etc/consent/migrate.yaml"]
     tmpfs:
       - /tmp:size=16m
+    labels:
+      io.igrant.config-sha256.consent-migrate-config: ${CONFIG_SHA256_CONSENT_MIGRATE_CONFIG:?run make configs}
     configs:
       - {source: consent-migrate-config, target: /etc/consent/migrate.yaml}
     secrets:
@@ -327,6 +358,8 @@ services:
       - /run/secrets/database/admin-password
     environment:
       EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
+    labels:
+      io.igrant.config-sha256.wallet-database-admin-config: ${CONFIG_SHA256_WALLET_DATABASE_ADMIN_CONFIG:?run make configs}
     configs:
       - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
     secrets:
@@ -358,6 +391,8 @@ services:
     entrypoint: ["/app/.venv/bin/migrate-database"]
     environment:
       EUDI_WALLET_CONFIG: /etc/eudi-wallet/migrate.yaml
+    labels:
+      io.igrant.config-sha256.wallet-migrate-config: ${CONFIG_SHA256_WALLET_MIGRATE_CONFIG:?run make configs}
     configs:
       - {source: wallet-migrate-config, target: /etc/eudi-wallet/migrate.yaml}
     secrets:
@@ -378,6 +413,8 @@ services:
               "--admin-user", "${DB_ADMIN_USER}", "--admin-password-file", "/run/secrets/database/admin-password"]
     tmpfs:
       - /tmp:size=16m
+    labels:
+      io.igrant.config-sha256.api-database-jobs-config: ${CONFIG_SHA256_API_DATABASE_JOBS_CONFIG:?run make configs}
     configs:
       - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
     secrets:
@@ -397,6 +434,8 @@ services:
               "--admin-user", "${DB_ADMIN_USER}", "--admin-password-file", "/run/secrets/database/admin-password"]
     tmpfs:
       - /tmp:size=16m
+    labels:
+      io.igrant.config-sha256.api-database-jobs-config: ${CONFIG_SHA256_API_DATABASE_JOBS_CONFIG:?run make configs}
     configs:
       - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
     secrets:
@@ -428,6 +467,8 @@ services:
       - ${DB_ADMIN_USER}
       - --admin-password-file
       - /run/secrets/database/admin-password
+    labels:
+      io.igrant.config-sha256.consent-migrate-config: ${CONFIG_SHA256_CONSENT_MIGRATE_CONFIG:?run make configs}
     configs:
       - {source: consent-migrate-config, target: /etc/consent/migrate.yaml}
     secrets:
@@ -437,31 +478,71 @@ services:
     depends_on:
       consent-migrate: {condition: service_completed_successfully}
 
-  wallet-read-access:
+  wallet-read-access-api:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
-    entrypoint: ["/bin/sh", "-ec"]
+    # The wallet image has no shell: one service for each reader, which runs
+    # the program read-access directly.
+    entrypoint: ["/app/.venv/bin/read-access"]
     command:
-      - |
-        for reader in api consent; do
-          /app/.venv/bin/read-access apply --reader "$$reader" --user "$${reader}_wallet_reader" \
-            --password-file "/run/secrets/read-access/$${reader}_wallet_reader" \
-            --admin-user "${DB_ADMIN_USER}" --admin-password-file /run/secrets/database/admin-password
-        done
+      - apply
+      - --reader
+      - api
+      - --user
+      - api_wallet_reader
+      - --password-file
+      - /run/secrets/read-access/api_wallet_reader
+      - --admin-user
+      - ${DB_ADMIN_USER}
+      - --admin-password-file
+      - /run/secrets/database/admin-password
     environment:
       EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
+    labels:
+      io.igrant.config-sha256.wallet-database-admin-config: ${CONFIG_SHA256_WALLET_DATABASE_ADMIN_CONFIG:?run make configs}
     configs:
       - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
     secrets:
       - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: reader-api-wallet-password, target: /run/secrets/read-access/api_wallet_reader}
-      - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
 
+  wallet-read-access-consent:
+    <<: [*job, *hardened]
+    image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
+    # The wallet image has no shell: one service for each reader, which runs
+    # the program read-access directly.
+    entrypoint: ["/app/.venv/bin/read-access"]
+    command:
+      - apply
+      - --reader
+      - consent
+      - --user
+      - consent_wallet_reader
+      - --password-file
+      - /run/secrets/read-access/consent_wallet_reader
+      - --admin-user
+      - ${DB_ADMIN_USER}
+      - --admin-password-file
+      - /run/secrets/database/admin-password
+    environment:
+      EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
+    labels:
+      io.igrant.config-sha256.wallet-database-admin-config: ${CONFIG_SHA256_WALLET_DATABASE_ADMIN_CONFIG:?run make configs}
+    configs:
+      - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
+    secrets:
+      - {source: database-admin-password, target: /run/secrets/database/admin-password}
+      - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
+    depends_on:
+      wallet-migrate: {condition: service_completed_successfully}
   # --- api core, webhook handler and auth gateway ------------------------------
 
   # The auth gateway: the only public entry of the API. It checks each
@@ -475,6 +556,8 @@ services:
     command: ["--config", "/etc/igrant-gateway/config.yaml"]
     ports:
       - "${PUBLISH_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:8070"
+    labels:
+      io.igrant.config-sha256.gateway-config: ${CONFIG_SHA256_GATEWAY_CONFIG:?run make configs}
     configs:
       - {source: gateway-config, target: /etc/igrant-gateway/config.yaml}
       - {source: token-verification-jwks, target: /etc/igrant-gateway/token-verification-jwks.json}
@@ -502,6 +585,8 @@ services:
     # The temporary files of the multipart parser of Go.
     tmpfs:
       - /tmp:size=64m
+    labels:
+      io.igrant.config-sha256.api-config: ${CONFIG_SHA256_API_CONFIG:?run make configs}
     configs:
       - {source: api-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -521,7 +606,7 @@ services:
       - {source: smtp-password, target: /run/secrets/igrant-api/smtp-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # start-webhook-api: the NATS consumers of the webhooks and of the
@@ -538,6 +623,8 @@ services:
     # The temporary files of the multipart parser of Go.
     tmpfs:
       - /tmp:size=64m
+    labels:
+      io.igrant.config-sha256.webhook-config: ${CONFIG_SHA256_WEBHOOK_CONFIG:?run make configs}
     configs:
       - {source: webhook-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -557,7 +644,7 @@ services:
       - {source: smtp-password, target: /run/secrets/igrant-api/smtp-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # --- Consent --------------------------------------------------------------------
@@ -572,6 +659,8 @@ services:
     command: ["serve", "--config", "/etc/consent/config.yaml"]
     tmpfs:
       - /tmp:size=64m
+    labels:
+      io.igrant.config-sha256.consent-config: ${CONFIG_SHA256_CONSENT_CONFIG:?run make configs}
     configs:
       - {source: consent-config, target: /etc/consent/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -586,7 +675,7 @@ services:
     depends_on:
       consent-migrate: {condition: service_completed_successfully}
       api-read-access-consent: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-consent: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # --- Organisation wallet: config, service, worker and clock roles of one image
@@ -600,6 +689,8 @@ services:
   # The config routes: only the gateway calls them (internal token).
   wallet-config:
     <<: *wallet
+    labels:
+      io.igrant.config-sha256.wallet-config-config: ${CONFIG_SHA256_WALLET_CONFIG_CONFIG:?run make configs}
     configs:
       - {source: wallet-config-config, target: /etc/eudi-wallet/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
@@ -631,6 +722,8 @@ services:
     <<: *wallet
     ports:
       - "${PUBLISH_ADDRESS:-127.0.0.1}:${WALLET_PORT:-8090}:8080"
+    labels:
+      io.igrant.config-sha256.wallet-service-config: ${CONFIG_SHA256_WALLET_SERVICE_CONFIG:?run make configs}
     configs:
       - {source: wallet-service-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
@@ -656,6 +749,8 @@ services:
     command: ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", "1", "--threads", "8",
               "--worker-shutdown-timeout", "3600000", "--worker-fork-timeout", "600000", "--queues", "realtime", "attestation", "status", "kms", "maintenance"]
     stop_grace_period: 3630s
+    labels:
+      io.igrant.config-sha256.wallet-worker-config: ${CONFIG_SHA256_WALLET_WORKER_CONFIG:?run make configs}
     configs:
       - {source: wallet-worker-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
@@ -689,6 +784,8 @@ services:
     stop_grace_period: 30s
     tmpfs:
       - /tmp:size=64m
+    labels:
+      io.igrant.config-sha256.wallet-clock-config: ${CONFIG_SHA256_WALLET_CLOCK_CONFIG:?run make configs}
     configs:
       - {source: wallet-clock-config, target: /etc/eudi-wallet/config.yaml}
     secrets:
@@ -712,6 +809,8 @@ services:
       net.ipv4.ip_unprivileged_port_start: 0
     ports:
       - "${PUBLISH_ADDRESS:-127.0.0.1}:${DASHBOARD_PORT:-3000}:80"
+    labels:
+      io.igrant.config-sha256.dashboard-config: ${CONFIG_SHA256_DASHBOARD_CONFIG:?run make configs}
     configs:
       - {source: dashboard-config, target: /usr/share/nginx/html/config/config.json}
     # The pid file and the temporary files of nginx, and the files of the
@@ -811,660 +910,20 @@ configs:
   service-jwks-wallet: {file: ./secrets/public/service-jwks/eudi-wallet.json}
 
   # --- Configuration files of the components ----------------------------------
-  # The keys are the keys that each component reads; the values are the
-  # values of this Compose network. A <name>File or <name>_file key names a
-  # secret file. An unknown key stops the component. The database "port" comes from
-  # config/engine/<DB_ENGINE>.env. "tls.sslMode" is disable: the Compose
-  # network has no database TLS.
-
-  # api core (start-api).
-  api-config:
-    content: |
-      ApiBaseUrl: ${API_PUBLIC_URL}
-      ServiceName: igrant-api
-      ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
-      # The header of the client address that your reverse proxy sets
-      # (CLIENT_ADDRESS_HEADER; empty: the TCP peer). The same value as the
-      # gateway.
-      ClientAddress:
-        header: "${CLIENT_ADDRESS_HEADER}"
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_api
-        username: igrant_api
-        passwordFile: /run/secrets/igrant-api/db-password
-        tls: {sslMode: disable}
-        maxConns: 10
-        minConns: 2
-      Iam:
-        realm: igrant-users
-        IdPAlias: login-with-eudi-wallet
-        APIBaseUrl: ${API_PUBLIC_URL}
-        mode: builtin
-      # The SMTP server of your organisation (.env). The password file is
-      # used only with SMTP_USERNAME; else no SMTP authentication.
-      Smtp:
-        host: "${SMTP_HOST}"
-        port: ${SMTP_PORT:-587}
-        username: "${SMTP_USERNAME}"
-        ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
-      # The effective features of each organisation select its webhook
-      # event types: no list of event types.
-      Webhooks:
-        DeliveryRetentionDays: 10
-      ActionLogs:
-        RetentionDays: 30
-      OpenIdDeployment:
-        OpenIdServiceEndpoint: ${WALLET_PUBLIC_URL}
-      Extensions:
-        oidc:
-          apiPathBase: /v4/service/platform/extension/oidc/{organisationId}/{sandboxOrgId}
-          issuer: ${API_PUBLIC_URL}
-          qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
-          database:
-            type: ${DB_ENGINE}
-            hosts: [database]
-            port: ${DB_PORT}
-            name: igrant_oidc
-            username: igrant_oidc
-            passwordFile: /run/secrets/igrant-api/oidc-db-password
-            tls: {sslMode: disable}
-            maxConns: 5
-            minConns: 1
-      Nats:
-        url: nats://nats:4222
-        timeout: 5
-        maxConcurrentHandlers: 64
-        nkeySeedFile: /run/secrets/igrant-api/nats-seed
-        inboxPrefix: _INBOX_api
-        # One NATS server: one replica of each stream and KV bucket.
-        streamReplicas: 1
-      Dashboard:
-        url: ${DASHBOARD_PUBLIC_URL}
-      KeyStorage:
-        tokenSigningJwksFile: /run/secrets/igrant-api/token-signing-jwks.json
-        tokenSigningActiveKid: igrant-api-token-1
-        tokenHashSecretFile: /run/secrets/igrant-api/token-hash-secret.json
-        dbWrappingKeysFile: /run/secrets/igrant-api/db-wrapping-keys.json
-        allowPlaintextProviderKeys: false
-      # The api trusts only the internal token of the gateway.
-      GatewayToken:
-        jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
-      ServiceEnvelope:
-        signingJwksFile: /run/secrets/igrant-api/service-envelope-jwks.json
-        activeKid: igrant-api-1
-        trustedIssuers:
-          - issuer: igrant-api
-            jwksFile: /etc/igrant-service-keys/igrant-api.json
-          - issuer: igrant-consent-management
-            jwksFile: /etc/igrant-service-keys/igrant-consent-management.json
-          - issuer: eudi-wallet
-            jwksFile: /etc/igrant-service-keys/eudi-wallet.json
-      # The read-only user of the api on the wallet views.
-      ReadAccess:
-        wallet:
-          type: ${DB_ENGINE}
-          hosts: [database]
-          port: ${DB_PORT}
-          name: igrant_wallet
-          username: api_wallet_reader
-          passwordFile: /run/secrets/igrant-api/read-access-wallet-password
-          tls: {sslMode: disable}
-      # No load balancer: a short drain.
-      Server:
-        drainSeconds: 1
-        gracefulShutdownSeconds: 20
-      # The limits of the installation (MAX_ORGANISATIONS; README.md,
-      # "Settings"): the section only when the setting has a value.
-      ${MAX_ORGANISATIONS:+Limits:}
-        ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
-      Log:
-        level: info
-
-  # Webhook handler (start-webhook-api): the file of the api core with a
-  # smaller database pool and its own NATS inbox (user api-webhook).
-  webhook-config:
-    content: |
-      ApiBaseUrl: ${API_PUBLIC_URL}
-      ServiceName: igrant-api
-      ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
-      ClientAddress:
-        header: "${CLIENT_ADDRESS_HEADER}"
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_api
-        username: igrant_api
-        passwordFile: /run/secrets/igrant-api/db-password
-        tls: {sslMode: disable}
-        maxConns: 5
-        minConns: 1
-      Iam:
-        realm: igrant-users
-        IdPAlias: login-with-eudi-wallet
-        APIBaseUrl: ${API_PUBLIC_URL}
-        mode: builtin
-      Smtp:
-        host: "${SMTP_HOST}"
-        port: ${SMTP_PORT:-587}
-        username: "${SMTP_USERNAME}"
-        ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
-      # The effective features of each organisation select its webhook
-      # event types: no list of event types.
-      Webhooks:
-        DeliveryRetentionDays: 10
-      ActionLogs:
-        RetentionDays: 30
-      OpenIdDeployment:
-        OpenIdServiceEndpoint: ${WALLET_PUBLIC_URL}
-      Extensions:
-        oidc:
-          apiPathBase: /v4/service/platform/extension/oidc/{organisationId}/{sandboxOrgId}
-          issuer: ${API_PUBLIC_URL}
-          qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
-          database:
-            type: ${DB_ENGINE}
-            hosts: [database]
-            port: ${DB_PORT}
-            name: igrant_oidc
-            username: igrant_oidc
-            passwordFile: /run/secrets/igrant-api/oidc-db-password
-            tls: {sslMode: disable}
-            maxConns: 5
-            minConns: 1
-      Nats:
-        url: nats://nats:4222
-        timeout: 5
-        maxConcurrentHandlers: 64
-        nkeySeedFile: /run/secrets/igrant-api/nats-seed
-        inboxPrefix: _INBOX_apiwh
-        streamReplicas: 1
-      Dashboard:
-        url: ${DASHBOARD_PUBLIC_URL}
-      KeyStorage:
-        tokenSigningJwksFile: /run/secrets/igrant-api/token-signing-jwks.json
-        tokenSigningActiveKid: igrant-api-token-1
-        tokenHashSecretFile: /run/secrets/igrant-api/token-hash-secret.json
-        dbWrappingKeysFile: /run/secrets/igrant-api/db-wrapping-keys.json
-        allowPlaintextProviderKeys: false
-      GatewayToken:
-        jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
-      ServiceEnvelope:
-        signingJwksFile: /run/secrets/igrant-api/service-envelope-jwks.json
-        activeKid: igrant-api-1
-        trustedIssuers:
-          - issuer: igrant-api
-            jwksFile: /etc/igrant-service-keys/igrant-api.json
-          - issuer: igrant-consent-management
-            jwksFile: /etc/igrant-service-keys/igrant-consent-management.json
-          - issuer: eudi-wallet
-            jwksFile: /etc/igrant-service-keys/eudi-wallet.json
-      ReadAccess:
-        wallet:
-          type: ${DB_ENGINE}
-          hosts: [database]
-          port: ${DB_PORT}
-          name: igrant_wallet
-          username: api_wallet_reader
-          passwordFile: /run/secrets/igrant-api/read-access-wallet-password
-          tls: {sslMode: disable}
-      Server:
-        drainSeconds: 1
-        gracefulShutdownSeconds: 20
-      # The limits of the installation (MAX_ORGANISATIONS; README.md,
-      # "Settings"): the section only when the setting has a value.
-      ${MAX_ORGANISATIONS:+Limits:}
-        ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
-      Log:
-        level: info
-
-  # igrant-api migrate and read-access apply: only the database blocks.
-  api-database-jobs-config:
-    content: |
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_api
-        username: igrant_api
-        passwordFile: /run/secrets/igrant-api/db-password
-        tls: {sslMode: disable}
-      Extensions:
-        oidc:
-          database:
-            type: ${DB_ENGINE}
-            hosts: [database]
-            port: ${DB_PORT}
-            name: igrant_oidc
-            username: igrant_oidc
-            passwordFile: /run/secrets/igrant-api/oidc-db-password
-            tls: {sslMode: disable}
-      Log:
-        level: info
-
-  # Auth gateway (igrant-gateway): its own file, only its own secrets.
-  gateway-config:
-    content: |
-      ApiBaseUrl: ${API_PUBLIC_URL}
-      ApiSecretKeyFile: /run/secrets/igrant-gateway/api-secret-key
-      # The client address of the rate limits and of the IP allow-lists of
-      # the API keys: the header that your reverse proxy sets to the address
-      # of its client (CLIENT_ADDRESS_HEADER, for example X-Real-IP). Empty:
-      # the TCP peer of the gateway.
-      ClientAddress:
-        header: "${CLIENT_ADDRESS_HEADER}"
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_api
-        username: igrant_api
-        passwordFile: /run/secrets/igrant-gateway/db-password
-        tls: {sslMode: disable}
-        maxConns: 10
-        minConns: 2
-      KeyStorage:
-        tokenHashSecretFile: /run/secrets/igrant-gateway/token-hash-secret.json
-        # The PUBLIC keys of the api token keys (not a secret).
-        tokenVerificationJwksFile: /etc/igrant-gateway/token-verification-jwks.json
-      Gateway:
-        listenPort: 8070
-        drainSeconds: 1
-        upstreams:
-          core:
-            url: http://api:80
-          consent:
-            url: http://consent:80
-            requestTimeoutSeconds: 30
-          walletConfig:
-            url: http://wallet-config:8080
-            requestTimeoutSeconds: 60
-        internalToken:
-          signingJwksFile: /run/secrets/igrant-gateway/internal-token-jwks.json
-          activeKid: gateway-1
-      # The feature gate (FEATURES_ENFORCE; default true): the gateway
-      # refuses a route of a product feature that is off for the
-      # organisation of the credential (403 feature_disabled). Only the
-      # gateway file has this section.
-      Features:
-        enforce: ${FEATURES_ENFORCE:-true}
-      Log:
-        level: info
-
-  # Consent (serve).
-  consent-config:
-    content: |
-      Server:
-        port: 80
-        adminPort: 8081
-        drainSeconds: 1
-        gracefulShutdownSeconds: 20
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_consent
-        username: igrant_consent
-        passwordFile: /run/secrets/consent/database-password
-        tls: {sslMode: disable}
-        maxConns: 6
-        minConns: 2
-      Nats:
-        url: nats://nats:4222
-        rpcTimeoutSeconds: 15
-        readRpcTimeoutSeconds: 5
-        nkeySeedFile: /run/secrets/consent/nats-seed
-        inboxPrefix: _INBOX_consent
-        streamReplicas: 1
-      ServiceName: igrant-consent-management
-      Http:
-        maxRequestBodyBytes: 5242880
-      PublicBaseUrl: ${API_PUBLIC_URL}
-      Log:
-        level: info
-      GatewayToken:
-        trustedIssuers:
-          - issuer: igrant-gateway
-            jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
-      ServiceEnvelope:
-        signingJwksFile: /run/secrets/consent/service-envelope-jwks.json
-        activeKid: consent-1
-        trustedIssuers:
-          - issuer: igrant-api
-            jwksFile: /etc/igrant-service-keys/igrant-api.json
-          - issuer: eudi-wallet
-            jwksFile: /etc/igrant-service-keys/eudi-wallet.json
-      ReadAccess:
-        api:
-          type: ${DB_ENGINE}
-          hosts: [database]
-          port: ${DB_PORT}
-          name: igrant_api
-          username: consent_api_reader
-          passwordFile: /run/secrets/consent/read-access-api-password
-          tls: {sslMode: disable}
-        wallet:
-          type: ${DB_ENGINE}
-          hosts: [database]
-          port: ${DB_PORT}
-          name: igrant_wallet
-          username: consent_wallet_reader
-          passwordFile: /run/secrets/consent/read-access-wallet-password
-          tls: {sslMode: disable}
-
-  # consent migrate schema and read-access apply: only the database.
-  consent-migrate-config:
-    content: |
-      DataBase:
-        type: ${DB_ENGINE}
-        hosts: [database]
-        port: ${DB_PORT}
-        name: igrant_consent
-        username: igrant_consent
-        passwordFile: /run/secrets/consent/database-password
-        tls: {sslMode: disable}
-      Log:
-        level: info
-
-  # Wallet config role (the config routes; the gateway calls them).
-  wallet-config-config:
-    content: |
-      domain: ${WALLET_PUBLIC_URL}
-      log_level: INFO
-      server:
-        route_group: config
-        port: 8080
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The launcher database role: it reads and writes every data scope
-        # and cannot change the schema.
-        user: igrant_wallet_launcher_app
-        password_file: /run/secrets/eudi-wallet/database-password
-      nats:
-        url: nats://nats:4222
-        nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
-        inbox_prefix: _INBOX_wallet
-        stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the work queue, the single-use values
-      # and the caches, through the Sentinel. The Compose network has no
-      # Valkey TLS.
-      redis:
-        queue:
-          sentinels: ["valkey-sentinel:26379"]
-          master_name: ows
-          username: wallet-config
-          password_file: /run/secrets/eudi-wallet/redis-password
-          sentinel_username: wallet-config
-          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
-          tls: false
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
-      kms:
-        platform: transit
-        # The local key store: the Transit engine of OpenBao.
-        local_backend: openbao
-        organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
-        # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
-        # test certificates for development and testing only.
-        test_ca:
-          enabled: ${TEST_CA_ENABLED:-true}
-          leaf_validity_days: ${TEST_CA_LEAF_VALIDITY_DAYS:-365}
-        vault:
-          addr: http://openbao:8200
-          user: eudi-wallet
-          password_file: /run/secrets/eudi-wallet/openbao-password
-          transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
-      # "Audit log"): the same value in each wallet file.
-      audit:
-        retention_years: ${AUDIT_RETENTION_YEARS:-7}
-      service_envelope:
-        signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
-        active_kid: eudi-wallet-1
-        # The config role answers the signed NATS commands of the api.
-        trusted_issuers:
-          - issuer: igrant-api
-            jwks_file: /etc/igrant-service-keys/igrant-api.json
-      internal_auth:
-        audience: wallet-config
-        trusted_issuers:
-          - issuer: igrant-gateway
-            jwks_file: /etc/igrant-gateway-keys/gateway-jwks.json
-      read_access:
-        api:
-          type: ${DB_ENGINE}
-          host: database
-          port: ${DB_PORT}
-          name: igrant_api
-          user: wallet_api_reader
-          password_file: /run/secrets/eudi-wallet/read-access-api-password
-        consent:
-          type: ${DB_ENGINE}
-          host: database
-          port: ${DB_PORT}
-          name: igrant_consent
-          user: wallet_consent_reader
-          password_file: /run/secrets/eudi-wallet/read-access-consent-password
-      gateway_api:
-        public_api_base_url: ${API_PUBLIC_URL}
-
-  # Wallet service role (the public routes).
-  wallet-service-config:
-    content: |
-      domain: ${WALLET_PUBLIC_URL}
-      log_level: INFO
-      server:
-        route_group: service
-        port: 8080
-        # The reverse proxies that may set X-Forwarded-For and
-        # X-Forwarded-Proto (the scheme is part of the DPoP htu check): the
-        # loopback and the private address ranges, which hold the Docker
-        # networks and a proxy on the Docker host.
-        forwarded_allow_ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"]
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The launcher database role: it reads and writes every data scope
-        # and cannot change the schema.
-        user: igrant_wallet_launcher_app
-        password_file: /run/secrets/eudi-wallet/database-password
-      nats:
-        url: nats://nats:4222
-        nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
-        inbox_prefix: _INBOX_wallet
-        stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the work queue, the single-use values
-      # and the caches, through the Sentinel. The Compose network has no
-      # Valkey TLS.
-      redis:
-        queue:
-          sentinels: ["valkey-sentinel:26379"]
-          master_name: ows
-          username: wallet-service
-          password_file: /run/secrets/eudi-wallet/redis-password
-          sentinel_username: wallet-service
-          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
-          tls: false
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
-      kms:
-        platform: transit
-        # The local key store: the Transit engine of OpenBao.
-        local_backend: openbao
-        organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
-        # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
-        # test certificates for development and testing only.
-        test_ca:
-          enabled: ${TEST_CA_ENABLED:-true}
-          leaf_validity_days: ${TEST_CA_LEAF_VALIDITY_DAYS:-365}
-        vault:
-          addr: http://openbao:8200
-          user: eudi-wallet
-          password_file: /run/secrets/eudi-wallet/openbao-password
-          transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
-      # "Audit log"): the same value in each wallet file.
-      audit:
-        retention_years: ${AUDIT_RETENTION_YEARS:-7}
-      service_envelope:
-        signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
-        active_kid: eudi-wallet-1
-
-  # Wallet worker (the actors of the queues; the health port 9191).
-  wallet-worker-config:
-    content: |
-      domain: ${WALLET_PUBLIC_URL}
-      log_level: INFO
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The jobs database role: it reads and writes the data scopes of the
-        # background jobs and cannot change the schema.
-        user: igrant_wallet_jobs
-        password_file: /run/secrets/eudi-wallet/database-password
-      nats:
-        url: nats://nats:4222
-        nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
-        inbox_prefix: _INBOX_wallet
-        stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the queues of the actors, the
-      # single-use values and the caches, through the Sentinel. The Compose
-      # network has no Valkey TLS.
-      redis:
-        queue:
-          sentinels: ["valkey-sentinel:26379"]
-          master_name: ows
-          username: wallet-worker
-          password_file: /run/secrets/eudi-wallet/redis-password
-          sentinel_username: wallet-worker
-          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
-          tls: false
-      # /healthz, /readyz and /metrics on port 9191; the heartbeat and
-      # metric files of the worker processes in a tmpfs.
-      worker:
-        health_port: 9191
-        state_directory: /run/ows-worker
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
-      kms:
-        platform: transit
-        # The local key store: the Transit engine of OpenBao.
-        local_backend: openbao
-        organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
-        # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
-        # test certificates for development and testing only.
-        test_ca:
-          enabled: ${TEST_CA_ENABLED:-true}
-          leaf_validity_days: ${TEST_CA_LEAF_VALIDITY_DAYS:-365}
-        vault:
-          addr: http://openbao:8200
-          user: eudi-wallet
-          password_file: /run/secrets/eudi-wallet/openbao-password
-          transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
-      # worker signs the hourly anchors with the Transit keys of OpenBao.
-      # There is no audit bucket: Compose has no write-once store. The
-      # anchors stay in the database only, no month is exported, and no
-      # partition is dropped.
-      audit:
-        retention_years: ${AUDIT_RETENTION_YEARS:-7}
-      service_envelope:
-        signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
-        active_kid: eudi-wallet-1
-
-  # Wallet clock (start-clock; the health port 9192). The clock connects to
-  # no NATS and starts no KMS, but every wallet file names the NATS address
-  # and the OpenBao login of the KMS; the clock has no NATS seed and no
-  # OpenBao password.
-  wallet-clock-config:
-    content: |
-      log_level: INFO
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The clock database role: it only connects (the leader lock and
-        # pg_is_in_recovery()).
-        user: igrant_wallet_clock
-        password_file: /run/secrets/eudi-wallet/database-password
-      redis:
-        queue:
-          sentinels: ["valkey-sentinel:26379"]
-          master_name: ows
-          username: wallet-clock
-          password_file: /run/secrets/eudi-wallet/redis-password
-          sentinel_username: wallet-clock
-          sentinel_password_file: /run/secrets/eudi-wallet/redis-password
-          tls: false
-      clock:
-        health_port: 9192
-
-  # migrate-database of the wallet: only the database.
-  wallet-migrate-config:
-    content: |
-      log_level: INFO
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        # The migrator: it changes the schema as the owner role
-        # igrant_wallet_owner.
-        user: igrant_wallet_migrator
-        password_file: /run/secrets/eudi-wallet/database-password
-      # The partition step of migrate-database drops the months of the audit
-      # log that are older than this retention (only after a verified export).
-      audit:
-        retention_years: ${AUDIT_RETENTION_YEARS:-7}
-
-  # database-roles apply and read-access apply of the wallet: only the
-  # database, with the admin user (DB_ADMIN_USER).
-  wallet-database-admin-config:
-    content: |
-      log_level: INFO
-      database:
-        type: ${DB_ENGINE}
-        host: database
-        port: ${DB_PORT}
-        name: igrant_wallet
-        user: ${DB_ADMIN_USER}
-        password_file: /run/secrets/database/admin-password
-
-  # Runtime configuration of the dashboard: the API (the gateway) and the
-  # wallet (the vct metadata of the credential types; the
-  # Content-Security-Policy of the image allows both origins).
-  dashboard-config:
-    content: |
-      {
-        "baseUrl": "${API_PUBLIC_URL}",
-        "walletUrl": "${WALLET_PUBLIC_URL}",
-        "appVersion": "${PLATFORM_TAG}"
-      }
+  # make configs (render-configs.py) writes them from the templates of
+  # compose.configs.yaml with the values of .env (README.md, "Configuration
+  # files"). A service with a read-only root file system takes a config only
+  # from a file.
+  api-config: {file: ./generated/api-config.yaml}
+  webhook-config: {file: ./generated/webhook-config.yaml}
+  api-database-jobs-config: {file: ./generated/api-database-jobs-config.yaml}
+  gateway-config: {file: ./generated/gateway-config.yaml}
+  consent-config: {file: ./generated/consent-config.yaml}
+  consent-migrate-config: {file: ./generated/consent-migrate-config.yaml}
+  wallet-config-config: {file: ./generated/wallet-config-config.yaml}
+  wallet-service-config: {file: ./generated/wallet-service-config.yaml}
+  wallet-worker-config: {file: ./generated/wallet-worker-config.yaml}
+  wallet-clock-config: {file: ./generated/wallet-clock-config.yaml}
+  wallet-migrate-config: {file: ./generated/wallet-migrate-config.yaml}
+  wallet-database-admin-config: {file: ./generated/wallet-database-admin-config.yaml}
+  dashboard-config: {file: ./generated/dashboard-config.json}
