@@ -191,7 +191,10 @@ wallet "SENTINEL FAILOVER ows" 26379 | grep -q NOPERM && ok "wallet: no SENTINEL
 gateway "SET ows:n:wp:o1:h2 1" | grep -q NOPERM && ok "gateway: no key of the wallet" || bad "gateway: a key of the wallet"
 gateway "SENTINEL get-master-addr-by-name ows" 26379 | grep -q "^$primary$" && ok "gateway: the Sentinel gives the primary" || bad "gateway: Sentinel discovery"
 metrics() { as_user 2 metrics metrics "$primary" 6379 "$1"; }
-metrics "INFO ALL" | grep -q -E "^(redis|valkey)_version" && ok "metrics: INFO ALL (the exporter)" || bad "metrics: INFO ALL"
+# A here-string: with pipefail, "metrics | grep -q" of the long INFO ALL
+# fails when grep stops at the first line (SIGPIPE of the writer).
+info="$(metrics "INFO ALL")"
+grep -q -E "^(redis|valkey)_version" <<< "$info" && ok "metrics: INFO ALL (the exporter)" || bad "metrics: INFO ALL: $(head -c 200 <<< "$info")"
 metrics "SLOWLOG LEN" | grep -q -E "^[0-9]+$" && ok "metrics: SLOWLOG LEN" || bad "metrics: SLOWLOG LEN"
 for command in "LATENCY LATEST" "LATENCY HISTOGRAM SET" "CLIENT SETNAME redis_exporter"; do
   metrics "$command" | grep -q -E "NOPERM|ERR" && bad "metrics: $command" || ok "metrics: $command"
