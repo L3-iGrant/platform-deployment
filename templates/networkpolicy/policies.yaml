@@ -149,7 +149,7 @@ in the matrix selects no pod of the release, so it gets no policy here. */}}
 {{- $peers := list }}
 {{- range $cidr := ($profile.cidrs | default list) }}
 {{- $except := list }}
-{{- if eq $cidr "0.0.0.0/0" }}{{- $except = concat ($profile.except | default list) ($np.clusterCidrs | default list) | uniq }}{{- end }}
+{{- $except = include "ow.netpol.anyExcept" (list $cidr ($profile.except | default list) ($np.clusterCidrs | default list)) | fromJsonArray }}
 {{- if $except }}
 {{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr "except" $except)) }}
 {{- else }}

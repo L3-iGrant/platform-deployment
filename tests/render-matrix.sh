@@ -1068,6 +1068,35 @@ else:
 }
 dns_policy "the DNS pods only by default" '[]'
 dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.20.10/32"]' --set-json 'networkPolicy.dns.cidrs=["169.254.20.10/32"]'
+# The egress to the public internet (the conformance with other vendors):
+# 0.0.0.0/0 and ::/0, each with the excepts of its family (also of
+# networkPolicy.clusterCidrs); the wallet roles reach any port by default.
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+    --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
+import sys, yaml
+want = {"0.0.0.0/0": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"],
+        "::/0": ["fc00::/7", "fe80::/10", "fd00:10::/56"]}
+seen, roles = {}, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] in ("t-netpol-egress-profile-internet", "t-netpol-egress-profile-internet-any-port"):
+        blocks = {peer["ipBlock"]["cidr"]: peer["ipBlock"].get("except") for peer in doc["spec"]["egress"][0]["to"]}
+        if blocks != want:
+            print(doc["metadata"]["name"], blocks)
+        seen[doc["metadata"]["name"]] = doc["spec"]["egress"][0].get("ports")
+    labels = (((doc.get("spec") or {}).get("template") or {}).get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-internet-any-port") == "true":
+        roles.add(labels["netpol.igrant.io/role"])
+if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
+    print("internet-any-port has ports", seen.get("t-netpol-egress-profile-internet-any-port"))
+if sorted(roles) != ["api", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
+    print("roles with any port", sorted(roles))
+' 2>&1)" && [ -z "$problems" ]; then
+  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family; any port for the api, the webhook handler and the wallet roles"
+else
+  bad "the internet profiles: $(printf '%s' "$problems" | head -c 400)"
+fi
 # The egress profile platform (the public hosts of this platform): the pods
 # of networkPolicy.ingressController are always a target; the wallet roles
 # have it by default, the other roles do not.

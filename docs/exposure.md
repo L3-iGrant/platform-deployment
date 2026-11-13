@@ -57,6 +57,8 @@ Your proxy only routes the traffic: the platform does the CORS checks, the authe
 - requests of up to 60 seconds (the Envoy default is 15 seconds);
 - server-sent event streams of up to 3900 seconds, without buffering (API host);
 - the client address, for the rate limits and the IP allow-lists of the API keys.
+- request headers of up to 16 KiB each (wallet host): the wallets and the verifiers of other vendors send JWTs with certificate chains in headers (`OAuth-Client-Attestation`, `OAuth-Client-Attestation-PoP`, `DPoP`);
+- the requests of other vendors as they are: the headers, the bodies (`application/x-www-form-urlencoded`, `application/json`, `application/jwt`) and the paths below `/.well-known/`. A rule of a web application firewall or a CDN that changes or refuses them breaks the conformance with the specifications.
 
 With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (`examples/exposure-envoy-gateway.yaml` has one for Envoy Gateway). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty: then every request has the address of a Gateway pod, the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
 
@@ -66,6 +68,7 @@ With the Gateway API, the client address needs a Gateway policy that sets the he
 | --- | --- | --- |
 | Request bodies of up to 10 MiB (API and wallet hosts) | `nginx.ingress.kubernetes.io/proxy-body-size: 16m` | No setting (a route has no body limit) |
 | Requests of up to 60 s (wallet and dashboard hosts; the gateway of the API also waits 60 s) | No setting (the default `proxy-read-timeout` is 60 s) | `exposure.gatewayAPI.timeouts.request: 60s` (the Envoy default is 15 s: a slower request gets 504 "upstream request timeout") |
+| Request headers of up to 16 KiB each (wallet host) | `large-client-header-buffers: "4 16k"` in the ConfigMap of the controller (the default `4 8k` refuses a larger header line with 400) | No setting (the Envoy default is 60 KiB for all headers) |
 | Server-sent event streams of up to 3900 s (API host) | `proxy-read-timeout: "3900"`, `proxy-send-timeout: "3900"` | `api.exposure.timeouts.request: 3900s` |
 | No buffering of the event streams (API host) | `proxy-buffering: "off"` | No setting (Envoy streams the response) |
 | The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP` and a Gateway policy that sets `X-Real-IP` to the client address and replaces a value that the client sends (Envoy Gateway: the ClientTrafficPolicy in `examples/exposure-envoy-gateway.yaml`; kgateway: a header policy of your Gateway that does the same) |

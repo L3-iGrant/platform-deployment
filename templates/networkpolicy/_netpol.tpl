@@ -87,3 +87,23 @@ monitoring, dns, nats) from its values: namespaceSelector and podSelector
 {{- define "ow.netpol.selectorPeer" -}}
 {{- toYaml (list (dict "namespaceSelector" (.namespaceSelector | default dict) "podSelector" (.podSelector | default dict))) -}}
 {{- end }}
+
+{{/*
+The except list of an ipBlock of all addresses of one family (0.0.0.0/0 or
+::/0; an egress profile of the public internet): the entries of the except
+list of the profile and of networkPolicy.clusterCidrs of the same family (an
+IPv6 entry has a colon). Kubernetes refuses an except outside its cidr. Other
+cidrs get no except. Call with (list <cidr> <except list> <cluster cidrs>).
+Output: JSON list.
+*/}}
+{{- define "ow.netpol.anyExcept" -}}
+{{- $cidr := index . 0 -}}
+{{- $except := list -}}
+{{- if or (eq $cidr "0.0.0.0/0") (eq $cidr "::/0") -}}
+{{- $v6 := contains ":" $cidr -}}
+{{- range $entry := concat (index . 1) (index . 2) | uniq -}}
+{{- if eq $v6 (contains ":" $entry) -}}{{- $except = append $except $entry -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $except -}}
+{{- end }}

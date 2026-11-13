@@ -1359,7 +1359,8 @@ networkPolicy:
   # Example: [{hosts: ["redis-1.example.org"], cidrs: ["192.0.2.50/32"], ports: [6379, 26379]}]
   externalRedis: []
   # -- Pod and Service CIDRs of the cluster, excluded from the internet
-  # profiles.
+  # profiles (0.0.0.0/0 and ::/0; each block excludes the entries of its
+  # family). A dual-stack cluster: give its IPv6 ranges too.
   clusterCidrs: []
   egress:
     # -- External targets: cidrs (with except) and/or namespaceSelector +
@@ -1367,12 +1368,12 @@ networkPolicy:
     # no rule.
     profiles:
       internet:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "fc00::/7", "fe80::/10"]
         ports: [443, 80]
       internet-any-port:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16", "fc00::/7", "fe80::/10"]
         ports: []
       # -- The metadata server of a cloud (for example the default
       # credentials of the client of a cloud service).
@@ -1425,9 +1426,13 @@ networkPolicy:
       webhook: [internet-any-port]
       gateway: [internet]
       consent: [internet]
-      wallet-service: [internet, platform, kms, cloudKms]
-      wallet-config: [internet, platform, kms, cloudKms]
-      wallet-worker: [internet, platform, kms, cloudKms, auditBucket]
+      # The wallet roles reach any port of a public address: an issuer, a
+      # verifier, a trust list, a status list, a JWKS or the metadata of
+      # another vendor can have a URL with a port (the specifications allow
+      # it). The SSRF guard of the wallet keeps the private addresses out.
+      wallet-service: [internet-any-port, platform, kms, cloudKms]
+      wallet-config: [internet-any-port, platform, kms, cloudKms]
+      wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
       wallet-clock: []
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
   monitoring:
