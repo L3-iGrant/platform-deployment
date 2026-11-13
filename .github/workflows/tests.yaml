@@ -61,6 +61,8 @@ jobs:
       # The NATS of the earlier release (the upgrade and the rollback).
       NATS_EARLIER_IMAGE: nats:2.12.3-alpine
       NATS_BOX_IMAGE: natsio/nats-box:0.18.1
+      # Python 3.13 (the strict TLS checks of the wallet).
+      PYTHON_IMAGE: python:3.13-slim-trixie
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the tools
@@ -74,5 +76,7 @@ jobs:
         run: tests/valkey-pods.sh "$VALKEY_IMAGE"
       - name: tests/compose-valkey.sh
         run: tests/compose-valkey.sh "$VALKEY_IMAGE"
+      - name: tests/tls-strict.sh
+        run: tests/tls-strict.sh "$PYTHON_IMAGE"
       - name: tests/nats-store.sh
         run: tests/nats-store.sh "$NATS_IMAGE" "$NATS_BOX_IMAGE" --files 200000 --earlier-image "$NATS_EARLIER_IMAGE"

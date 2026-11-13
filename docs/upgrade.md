@@ -578,6 +578,13 @@ Before step 2:
 5. The workers: the `/tmp` of each worker pod is an `emptyDir` on the disk of the node with `organisationWallet.workers.tmp.sizeLimit` (default `10Gi`). With an audit bucket, the monthly export writes one month of one data scope two times to it. Check that the nodes have the free ephemeral storage, or use a volume (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
 6. Kubernetes 1.30 or later: the pods stop with the sleep action of the preStop hooks (the images have no shell and no `sleep` program). Helm refuses the chart on an older cluster (`kubeVersion`).
 7. Your own stop settings: each HTTP pod now sleeps `preStopSeconds` (10 s) before its stop signal, and the render stops when `terminationGracePeriodSeconds` does not cover the sleep and the stop of the server (see [Security settings of the containers](security-context.md#the-stop-of-a-pod)). The defaults are 40 s for the api, the gateway and consent. A values file that sets `terminationGracePeriodSeconds` to 35 gets the message of the budget: raise it.
+8. Your own TLS certificates: the wallet of this release (Python 3.13) checks each TLS certificate strictly (RFC 5280). It refuses a server certificate without an authority key identifier, and a CA without a subject key identifier, the key usage `keyCertSign` or critical basic constraints. The certificates that the chart makes have them. Check each certificate that you give: the CA of an external PostgreSQL (`database.tls.caSecret`), your NATS certificate or the CA of an external NATS (`nats.tls.existingSecret`, `nats.tlsCa`), your Valkey certificate or the CA of an external Valkey or Redis, the CA of an external OpenBao:
+
+   ```bash
+   openssl verify -x509_strict -purpose sslserver -CAfile ca.crt server.crt   # "server.crt: OK"
+   ```
+
+   A certificate that fails needs a new certificate from its CA with the extensions `subjectKeyIdentifier = hash` and `authorityKeyIdentifier = keyid` (and a CA with `basicConstraints = critical, CA:true` and `keyUsage = critical, keyCertSign, cRLSign`).
 
 During step 3:
 
