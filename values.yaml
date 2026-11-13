@@ -318,10 +318,18 @@ nats:
   image:
     registry: docker.io
     repository: library/nats
-    # -- 2.12.15: the fixes of GO-2026-4826 to GO-2026-4837 (2.12.6 and
-    # later). The digest pins the image index of the tag.
-    tag: 2.12.15-alpine
-    digest: "sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6"
+    # -- 2.14.10. The 2.12 line gets no more fixes (the last release is
+    # 2.12.15): 2.14.10 has the fixes of the published advisories, also of
+    # those of the cluster routes (GHSA-5v9x-4f9q-q7qj, GHSA-27c4-m7hq-v6pw,
+    # GHSA-4fpp-8grw-j976), and 2.14.6 fixed the stop of the writes of an
+    # R3 stream after a restart of 2 of its 3 servers (nats-server #8501,
+    # #8519). Not 2.15 or later: 2.15 changes the default subject of the
+    # JetStream acks to the format v2, and the users of the chart have the
+    # permissions $JS.ACK.<stream>.<consumer>.> of the format v1 (the render
+    # stops). A rollback of NATS works only to 2.11.9 or later
+    # (docs/upgrade.md). The digest pins the image index of the tag.
+    tag: 2.14.10-alpine
+    digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
   external:
     url: ""
   # NATS users: one nkey user per service process in the global account,

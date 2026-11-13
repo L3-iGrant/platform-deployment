@@ -127,6 +127,10 @@ From the release with the TLS of NATS, the bundled NATS uses TLS for the clients
 
 The service and config pods of the wallet get a memory limit of 1 GiB (`organisationWallet.service.resources`, `.config.resources`).
 
+## NATS 2.14
+
+From this chart version, the bundled NATS is 2.14.10 (before: 2.12.3): the 2.12 line gets no more fixes. The upgrade restarts the NATS pods one at a time; the JetStream store stays (2.14 reads the store of 2.12). A rollback of the chart takes NATS back to the version of the earlier release: NATS supports a downgrade of its store only to 2.11.9 or later. The rollback from 2.14.10 to 2.12.3 and the roll forward were tested with all streams, consumers and messages (`tests/nats-store.sh --earlier-image`). Do not set a tag of 2.15 or later (see [NATS users](nats-users.md#the-version-of-nats)).
+
 ## The TLS of the database
 
 The bundled PostgreSQL always serves TLS from this release, also with `database.tls.enabled: false`. A release before it served TLS only with `database.tls.enabled: true`. To turn the TLS of the components on for a bundled server that runs without TLS:

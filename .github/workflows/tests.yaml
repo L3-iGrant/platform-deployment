@@ -57,7 +57,7 @@ jobs:
     env:
       # The images of values.yaml (redis.image, nats.image) and a NATS client.
       VALKEY_IMAGE: valkey/valkey:8.1.10-alpine
-      NATS_IMAGE: nats:2.12.15-alpine@sha256:b270f5e2428354c0335612694d7dd2fb588148e567a5757fdff325ef9c9332e6
+      NATS_IMAGE: nats:2.14.10-alpine@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e
       # The NATS of the earlier release (the upgrade and the rollback).
       NATS_EARLIER_IMAGE: nats:2.12.3-alpine
       NATS_BOX_IMAGE: natsio/nats-box:0.18.1

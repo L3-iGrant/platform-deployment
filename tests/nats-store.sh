@@ -43,7 +43,7 @@
 #   NATS as root), for example nats:2.12.3-alpine; default: <nats image>.
 #   The store must stay readable across the change of the version.
 #   The images must be local (the script never pulls), for example the
-#   image of nats.image (nats:2.12.15-alpine) and natsio/nats-box. The
+#   image of nats.image (nats:2.14.10-alpine) and natsio/nats-box. The
 #   containers, the volumes and the network have unique names, and the
 #   script removes them at the end. On a shared Docker host, run it inside
 #   your lock of the Docker tests.
