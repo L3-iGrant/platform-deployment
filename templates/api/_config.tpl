@@ -165,6 +165,32 @@ of the release change, so it cannot read the new ConfigMaps of the release.
 {{- end }}
 
 {{/*
+Render guard of the memory of the uploads of the api core (api.extraConfig
+Uploads and ImageUpload, api-gateway#2408): each upload in progress (an
+image or a CSV import of individuals) holds its file in memory, at most
+Uploads.maxInProgress of them (default 8). The memory request of the
+container (the memory of the process without uploads) and maxInProgress x
+the largest file must fit below the memory limit. Call with the root
+context. Output: nothing.
+*/}}
+{{- define "ow.api.checkUploads" -}}
+{{- $api := .Values.api -}}
+{{- $config := $api.extraConfig | default dict -}}
+{{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}
+{{- $image := (dig "ImageUpload" "maxBytes" 0 $config) | int64 | default 5242880 -}}
+{{- $import := (dig "Uploads" "individualImportMaxFileBytes" 0 $config) | int64 | default 5242880 -}}
+{{- $largest := max $image $import -}}
+{{- $limit := (($api.resources | default dict).limits | default dict).memory -}}
+{{- if $limit -}}
+{{- $request := (($api.resources | default dict).requests | default dict).memory | default "0" -}}
+{{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $largest) -}}
+{{- if gt $need (include "ow.quantityBytes" $limit | int64) -}}
+{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest upload file (%d bytes: the larger of ImageUpload.maxBytes and Uploads.individualImportMaxFileBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or the file limits of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $largest $need $limit) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Render guard of /tmp of the api and webhook pods (api.tmp.sizeLimit, an
 emptyDir in memory). The multipart parser of Go (r.FormFile, 32 MiB in
 memory) writes a file part above 32 MiB whole to /tmp. The largest body

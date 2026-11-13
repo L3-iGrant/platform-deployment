@@ -1,6 +1,7 @@
 {{- if .Values.api.enabled }}
 {{- $api := .Values.api }}
 {{- include "ow.api.checkTmp" . }}
+{{- include "ow.api.checkUploads" . }}
 {{- range $role := list "api" "webhook" }}
 {{- $component := ternary "api" "webhook" (eq $role "api") }}
 ---

@@ -94,6 +94,8 @@ The render stops when:
 
 - the largest body that the gateway sends to the api (the larger of `gateway.proxy.maxBodyBytes.default` and `.file`; the class `large` goes only to the wallet) is above 32 MiB and above `api.tmp.sizeLimit`: give `api.tmp.sizeLimit` at least that size;
 - the memory request and `api.tmp.sizeLimit` together are above the memory limit of the api or of the webhook container (`api.resources`, `api.webhook.resources`): raise the memory limit by the size of `/tmp`.
+- the memory request of the api and `Uploads.maxInProgress` x the largest upload file (the larger of `ImageUpload.maxBytes` and `Uploads.individualImportMaxFileBytes` of `api.extraConfig`) together are above the memory limit of the api (`api.resources`): each upload in progress holds its file in memory (8 x 5 MiB = 40 MiB with the defaults). Lower `Uploads.maxInProgress` or the file limits, or raise the memory limit;
+- `gateway.proxy.maxBodyBytes.file` is below `ImageUpload.maxBytes` + 65536 or below `Uploads.individualImportMaxFileBytes` + 65536: the gateway would refuse an upload that the api accepts.
 
 For example, for uploads of 100 MiB: `gateway.proxy.maxBodyBytes.file: 104857600` and `api.tmp.sizeLimit: 100Mi`. Each upload above 32 MiB then holds its size in `/tmp` while the request runs, so `/tmp` takes one such upload at a time; a second upload at the same time fails with an error, the pod stays.
 
