@@ -122,7 +122,7 @@ redis:
   replica_wait_milliseconds: 100
 ```
 
-`redis.client.connectTimeoutSeconds`, `.timeoutSeconds` and `.replicaWaitMilliseconds` set the last three values. `replicaWaitMilliseconds` must be at most half of `timeoutSeconds` (`timeoutSeconds` x 500 milliseconds; the defaults 100 and 2 pass): a longer `WAIT` ends as a socket timeout, the client drops the connection, and while a replica stalls each request with a proof or a nonce opens a new TLS connection to the primary. The wallet refuses such a configuration (organisation-wallet-suite#749), and the render stops before it. The gateway gets the password file of its user (`redis-password`) and the CA (`redis-ca.crt`) in its secret folder.
+`redis.client.connectTimeoutSeconds`, `.timeoutSeconds` and `.replicaWaitMilliseconds` set the last three values. `timeoutSeconds` has at most 3 decimals (whole milliseconds), and `replicaWaitMilliseconds` must be at most half of it: 2 x `replicaWaitMilliseconds` <= `timeoutSeconds` x 1000, in whole milliseconds (the defaults 100 and 2 pass; 2.01 s allows 1005 ms): a longer `WAIT` ends as a socket timeout, the client drops the connection, and while a replica stalls each request with a proof or a nonce opens a new TLS connection to the primary. The wallet refuses such a configuration (organisation-wallet-suite#749), and the render stops before it. The gateway gets the password file of its user (`redis-password`) and the CA (`redis-ca.crt`) in its secret folder.
 
 ## External Valkey or Redis
 

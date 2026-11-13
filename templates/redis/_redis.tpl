@@ -300,10 +300,17 @@ the state endpoint (organisation-wallet-suite#749): a longer WAIT ends as
 a socket timeout, the client drops the connection, and while a replica
 stalls each request with a proof or a nonce opens a new TLS connection to
 the primary. All endpoints get redis.client.timeoutSeconds. */ -}}
-{{- $wait := $r.client.replicaWaitMilliseconds | float64 -}}
-{{- $half := mulf ($r.client.timeoutSeconds | float64) 500 -}}
-{{- if gt $wait $half -}}
-{{- fail (printf "redis.client.replicaWaitMilliseconds (%v) must be at most half of redis.client.timeoutSeconds (%v s), that is at most %v ms: the wallet accepts replica_wait_milliseconds at most half of timeout_seconds of the state endpoint (a longer WAIT ends as a socket timeout, and then each request with a proof or a nonce opens a new connection to the primary)" $r.client.replicaWaitMilliseconds $r.client.timeoutSeconds $half) -}}
+{{- /* The exact rule of the wallet, in integer milliseconds: timeout_ms
+= round(timeoutSeconds x 1000) (at most 3 decimals), refused when 2 x wait >
+timeout_ms. */ -}}
+{{- $product := mulf ($r.client.timeoutSeconds | float64) 1000 -}}
+{{- $timeoutMs := round $product 0 | int -}}
+{{- if ne ($timeoutMs | float64) $product -}}
+{{- fail (printf "redis.client.timeoutSeconds (%v) has more than 3 decimals: the wallet takes the timeout in whole milliseconds" $r.client.timeoutSeconds) -}}
+{{- end -}}
+{{- $wait := $r.client.replicaWaitMilliseconds | int -}}
+{{- if gt (mul 2 $wait) $timeoutMs -}}
+{{- fail (printf "redis.client.replicaWaitMilliseconds (%d) must be at most half of redis.client.timeoutSeconds (%v s = %d ms), that is at most %d ms: the wallet accepts replica_wait_milliseconds at most half of timeout_seconds of the state endpoint (a longer WAIT ends as a socket timeout, and then each request with a proof or a nonce opens a new connection to the primary)" $wait $r.client.timeoutSeconds $timeoutMs (div $timeoutMs 2)) -}}
 {{- end -}}
 {{- range $name := list "state" "cache" -}}
 {{- $g := index $r $name -}}

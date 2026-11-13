@@ -1012,7 +1012,8 @@
             "timeoutSeconds": {
               "type": "number",
               "exclusiveMinimum": 0,
-              "maximum": 60
+              "maximum": 60,
+              "multipleOf": 0.001
             },
             "replicaWaitMilliseconds": {
               "type": "integer",

@@ -1277,16 +1277,29 @@ guard "redis user name of the bundled Valkey" 'redis.users.gateway.username "sen
 guard "redis unknown value" "Additional property" "${shamir[@]}" --set redis.cluster=true
 guard "redis client timeout" "redis.client.timeoutSeconds" "${shamir[@]}" --set redis.client.timeoutSeconds=0
 guard "redis replica wait" "redis.client.replicaWaitMilliseconds" "${shamir[@]}" --set redis.client.replicaWaitMilliseconds=20000
-# The replica wait is at most half of the timeout (the check of the wallet,
-# organisation-wallet-suite#749): 1001 ms with 2 s stops the render, 1000
-# ms renders; also with a timeout below one second, and not without the
-# wallet (only the wallet reads the wait).
-guard "redis replica wait above half of the timeout" "redis.client.replicaWaitMilliseconds (1001) must be at most half of redis.client.timeoutSeconds (2 s), that is at most 1000 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
-renders "redis replica wait of half of the timeout" "replica_wait_milliseconds: 1000" "${shamir[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1000 --show-only templates/wallet/configmap.yaml
-guard "redis replica wait above half of a short timeout" "must be at most half of redis.client.timeoutSeconds (0.5 s), that is at most 250 ms" "${shamir[@]}" --set-json redis.client.timeoutSeconds=0.5 --set redis.client.replicaWaitMilliseconds=251
-renders "redis replica wait of half of a short timeout" "replica_wait_milliseconds: 250" "${shamir[@]}" --set-json redis.client.timeoutSeconds=0.5 --set redis.client.replicaWaitMilliseconds=250 --show-only templates/wallet/configmap.yaml
-renders "redis replica wait of 10000 ms with 20 s" "replica_wait_milliseconds: 10000" "${shamir[@]}" --set redis.client.timeoutSeconds=20 --set redis.client.replicaWaitMilliseconds=10000 --show-only templates/wallet/configmap.yaml
-guard "redis replica wait of 10000 ms with 19 s" "must be at most half of redis.client.timeoutSeconds (19 s), that is at most 9500 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
+# The replica wait is at most half of the timeout, in whole milliseconds
+# (the exact rule of the wallet, organisation-wallet-suite#749: timeout_ms =
+# round(timeoutSeconds x 1000), refused when 2 x wait > timeout_ms). The
+# vectors of the wallet, also timeouts whose float product is not exact
+# (2.01 x 1000 / 2 = 1004.9999999999999): each renders, and +1 ms stops.
+# A timeout with more than 3 decimals stops (the schema, and the template
+# without it). Not without the wallet (only the wallet reads the wait).
+replica_wait() {
+  local seconds="$1" wait="$2" limit="$3"
+  renders "redis replica wait $wait ms with $seconds s" "replica_wait_milliseconds: $wait" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$wait" --show-only templates/wallet/configmap.yaml
+  guard "redis replica wait $((wait + 1)) ms with $seconds s" "redis.client.replicaWaitMilliseconds ($((wait + 1))) must be at most half of redis.client.timeoutSeconds ($seconds s = $limit ms), that is at most $wait ms" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$((wait + 1))"
+}
+replica_wait 2 1000 2000
+replica_wait 2.01 1005 2010
+replica_wait 2.03 1015 2030
+replica_wait 4.02 2010 4020
+replica_wait 8.03 4015 8030
+replica_wait 0.5 250 500
+renders "redis replica wait 10000 ms (the largest) with 20 s" "replica_wait_milliseconds: 10000" "${shamir[@]}" --set redis.client.timeoutSeconds=20 --set redis.client.replicaWaitMilliseconds=10000 --show-only templates/wallet/configmap.yaml
+replica_wait 0.003 1 3
+guard "redis replica wait of 10000 ms with 19 s" "redis.client.replicaWaitMilliseconds (10000) must be at most half of redis.client.timeoutSeconds (19 s = 19000 ms), that is at most 9500 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
+guard "redis timeout with 4 decimals" "redis.client.timeoutSeconds" "${shamir[@]}" --set-json redis.client.timeoutSeconds=2.0005
+guard "redis timeout with 4 decimals without the schema" "redis.client.timeoutSeconds (2.0005) has more than 3 decimals" "${shamir[@]}" --skip-schema-validation --set-json redis.client.timeoutSeconds=2.0005
 renders "redis replica wait without the wallet" "kind: Deployment" "${shamir[@]}" --set organisationWallet.enabled=false --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=("${shamir[@]}" -f "$examples/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
