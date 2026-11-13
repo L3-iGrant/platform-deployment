@@ -2230,6 +2230,16 @@ organisationWallet:
     enabled: false
     interval: 15s
     labels: {}
+  # -- The alert rules of the wallet as a PrometheusRule of the Prometheus
+  # Operator (the CRD must exist; docs/workers.md, "Alerts"): the stopped
+  # audit exports (critical), the partitions of the next months, the late
+  # writes of the issuer and the age of the Android attestation status list.
+  # The rules read the targets of serviceMonitor (turn it on too). labels:
+  # for the ruleSelector of your Prometheus. With other monitoring, take the
+  # rules of the docs.
+  prometheusRule:
+    enabled: false
+    labels: {}
   # -- The service, config, worker and clock pods. The image runs as the
   # user ows (UID 65532, GID 65532). fsGroup: the group of the secret files
   # (mode 0440; with 0400 the user cannot read them). The processes write

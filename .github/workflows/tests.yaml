@@ -8,7 +8,9 @@ name: Tests
 # - compose: tests/compose-files.sh (no container);
 # - containers: the tests against real servers in containers of the images
 #   of the chart: tests/valkey-pods.sh, tests/compose-valkey.sh and
-#   tests/nats-store.sh (the JetStream store across a rollback).
+#   tests/nats-store.sh (the JetStream store across a rollback),
+#   tests/nats-routes.sh (only the NATS servers of the chart open a route),
+#   tests/alert-rules.sh (the alert rules of the wallet with promtool).
 on:
   pull_request:
     branches: [main]
@@ -63,13 +65,15 @@ jobs:
       NATS_BOX_IMAGE: natsio/nats-box:0.18.1
       # Python 3.13 (the strict TLS checks of the wallet).
       PYTHON_IMAGE: python:3.13-slim-trixie
+      # promtool (the alert rules of the wallet).
+      PROMETHEUS_IMAGE: prom/prometheus:v3.5.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the tools
         run: tests/ci-tools.sh "$RUNNER_TEMP/tools"
       - name: Pull the images
         run: |
-          for image in "$VALKEY_IMAGE" "$NATS_IMAGE" "$NATS_EARLIER_IMAGE" "$NATS_BOX_IMAGE" "$PYTHON_IMAGE"; do
+          for image in "$VALKEY_IMAGE" "$NATS_IMAGE" "$NATS_EARLIER_IMAGE" "$NATS_BOX_IMAGE" "$PYTHON_IMAGE" "$PROMETHEUS_IMAGE"; do
             docker pull --quiet "$image"
           done
       - name: tests/valkey-pods.sh
@@ -80,3 +84,7 @@ jobs:
         run: tests/tls-strict.sh "$PYTHON_IMAGE"
       - name: tests/nats-store.sh
         run: tests/nats-store.sh "$NATS_IMAGE" "$NATS_BOX_IMAGE" --files 200000 --earlier-image "$NATS_EARLIER_IMAGE"
+      - name: tests/nats-routes.sh
+        run: tests/nats-routes.sh "$NATS_IMAGE"
+      - name: tests/alert-rules.sh
+        run: tests/alert-rules.sh "$PROMETHEUS_IMAGE"
