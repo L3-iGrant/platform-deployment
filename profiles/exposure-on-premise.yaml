@@ -1,9 +1,9 @@
 # On-premise exposure with ingress-nginx: only the wallet host is public
-# (docs/exposure.md, "On-premise installation"). Two ingress-nginx
+# (docs/exposure.md, "On-premise installation"). It uses two ingress-nginx
 # controllers: the public one (IngressClass nginx, namespace ingress-nginx)
 # and an internal one on your internal network (IngressClass
-# nginx-internal, namespace ingress-nginx-internal). Each host is on the
-# internal IngressClass, except the wallet host. The Service
+# nginx-internal, namespace ingress-nginx-internal). Every host uses the
+# internal IngressClass except the wallet host. The Service
 # <fullname>-wallet-config has no route. The TLS Secrets (type
 # kubernetes.io/tls) are yours, in the release namespace.
 exposure:
@@ -13,7 +13,7 @@ exposure:
     annotations:
       nginx.ingress.kubernetes.io/proxy-body-size: 16m
 api:
-  # Internal: the admins and the dashboard on the internal network.
+  # Internal: for the admins and the dashboard on the internal network.
   exposure:
     annotations:
       nginx.ingress.kubernetes.io/proxy-read-timeout: "3900"
@@ -22,8 +22,8 @@ api:
     tls:
       secretName: api-tls
 organisationWallet:
-  # Public: the public routes of the wallet (the service role), for
-  # example the wallet unit flow of the phone apps.
+  # Public: the wallet's public routes (the service role), for example
+  # the wallet unit flow of the phone apps.
   exposure:
     className: nginx
     tls:
@@ -33,12 +33,12 @@ enterpriseDashboard:
   exposure:
     tls:
       secretName: dashboard-tls
-# Both controllers set X-Real-IP to the address of their TCP peer, and they
-# replace a value that the client sends.
+# Both controllers set X-Real-IP to their TCP peer's address and overwrite
+# any value that the client sends.
 clientAddress:
   header: X-Real-IP
 networkPolicy:
-  # The pods of both controllers: the one source of the gateway, wallet
+  # The pods of both controllers: the only source for the gateway, wallet
   # service and dashboard pods.
   ingressController:
     namespaceSelector:

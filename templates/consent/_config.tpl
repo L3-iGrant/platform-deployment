@@ -1,13 +1,15 @@
 {{/*
 config.yaml of the consent service (koanf, exact key names; an unknown key
-stops the service). It has no secret: each *File key names a file of the
-projected secret volume /run/secrets/consent (see deploy.yaml). Consent
-always verifies the internal token of the gateway (GatewayToken: the gateway
-of the chart is the trusted issuer), connects to NATS with its nkey user and
-signs and verifies the NATS envelopes (ServiceEnvelope; it trusts igrant-api
-and, when the wallet is installed, eudi-wallet). It reads the views of the
-api database, and of the wallet database when the wallet is installed, with
-its own read-only users (ReadAccess; readAccess.consent.*).
+stops the service). It holds no secrets: each *File key names a file in the
+projected secret volume /run/secrets/consent (see deploy.yaml). Consent:
+- always verifies the gateway's internal token (GatewayToken; the chart's
+  gateway is the trusted issuer);
+- connects to NATS with its nkey user;
+- signs and verifies NATS envelopes (ServiceEnvelope; it trusts igrant-api
+  and, when the wallet is installed, eudi-wallet);
+- reads the api database views, and the wallet database views when the
+  wallet is installed, with its own read-only users (ReadAccess;
+  readAccess.consent.*).
 */}}
 {{- define "ow.consent.config" -}}
 {{- $c := .Values.consent -}}
@@ -67,16 +69,16 @@ its own read-only users (ReadAccess; readAccess.consent.*).
 {{- $config | toYaml }}
 {{- end }}
 
-{{/* The DataBase section of consent (the service, its Jobs and the migration hook). */}}
+{{/* DataBase section of consent (the service, its Jobs and the migration hook). */}}
 {{- define "ow.consent.database" -}}
 {{- include "ow.db.goOwner" (dict "root" . "db" "consent" "secretDir" (include "ow.consent.secretDir" .) "passwordFile" "database-password" "pool" .Values.database.pools.consent) -}}
 {{- end }}
 
 {{/*
 config.yaml of the consent migration hook (migrate-hook.yaml): only the
-database and the log level. The hook runs before the resources of the
-release change, so it cannot read the new ConfigMaps of the gateway and
-service keys; the migrate commands need only the database.
+database and the log level. The hook runs before the release's resources
+change, so it cannot read the new ConfigMaps of the gateway and service
+keys; the migrate commands only need the database.
 */}}
 {{- define "ow.consent.migrateConfig" -}}
 {{- toYaml (dict

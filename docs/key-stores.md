@@ -1,13 +1,13 @@
 # Key stores
 
-This page explains where the organisation wallet keeps its signing keys, and which key stores the organisation admins can add.
+Where the organisation wallet keeps its signing keys, and which key stores organisation admins can add.
 
 [Back to the contents](../README.md#contents)
 
 The organisation wallet signs with the keys of key stores.
 
 - **The local key store** belongs to the installation, and every organisation can use it. Its keys are in the Transit engine of OpenBao.
-- **Organisation key stores:** the organisation admins can add key stores of their own in the dashboard. `organisationWallet.keyStores.types` sets the types that they can add:
+- **Organisation key stores:** organisation admins can add key stores of their own in the dashboard. `organisationWallet.keyStores.types` sets the types that they can add:
 
 | Type | Key store | What the installation needs |
 | --- | --- | --- |
@@ -19,8 +19,8 @@ The organisation wallet signs with the keys of key stores.
 
 The default is `[vault, csc, gcp-kms, aws-kms, azure-key-vault]`. `[]` allows only the local key store.
 
-The local keys of the organisations can also be in an HSM (see [Connect your on-premise HSM](on-premise-hsm.md) and [Thales Luna Cloud HSM (DPoD)](dpod.md)), and organisations can use their own Thales Luna Cloud HSM partitions (see [DPoD key stores](dpod-key-stores.md)).
+The organisations' local keys can also be in an HSM (see [Connect your on-premise HSM](on-premise-hsm.md) and [Thales Luna Cloud HSM (DPoD)](dpod.md)), and organisations can use their own Thales Luna Cloud HSM partitions (see [DPoD key stores](dpod-key-stores.md)).
 
-The cloud key stores call only the official endpoints of their cloud: an organisation cannot set an endpoint. The wallet keeps their credentials encrypted with OpenBao Transit. With network policies, the egress profile `internet-any-port` of the wallet allows these endpoints; for a private endpoint in your network, set `networkPolicy.egress.profiles.cloudKms`. An HSM of a cloud KMS is not a certified QSCD.
+The cloud key stores call only the official endpoints of their cloud: an organisation cannot set an endpoint. The wallet keeps their credentials encrypted with OpenBao Transit. With network policies, the wallet's egress profile `internet-any-port` allows these endpoints; for a private endpoint in your network, set `networkPolicy.egress.profiles.cloudKms`. An HSM of a cloud KMS is not a certified QSCD.
 
-The built-in test CA issues test certificates for development and testing (up to three test root CAs for each organisation). They are not on any trusted list. The test CA is on by default: turn it off (`organisationWallet.keyStores.testCa.enabled: false`) when the installation must not offer it. Without a validity in the request, a test certificate is valid for `organisationWallet.keyStores.testCa.leafValidityDays` days (default 365).
+The built-in test CA issues test certificates for development and testing (up to three test root CAs per organisation). They are not on any trusted list. The test CA is on by default: turn it off (`organisationWallet.keyStores.testCa.enabled: false`) if the installation must not offer it. If a request gives no validity, a test certificate is valid for `organisationWallet.keyStores.testCa.leafValidityDays` days (default 365).

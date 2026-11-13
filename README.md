@@ -1,22 +1,22 @@
 # iGrant.io platform deployment
 
-This repository holds the Helm chart and the Docker Compose files that install the iGrant.io platform. With the platform, an organisation issues, holds and verifies verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
+This repository holds the Helm chart and the Docker Compose files of the iGrant.io platform. Organisations use the platform to issue, hold and verify verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
 
-The Helm chart installs the platform on Kubernetes, with the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
+The Helm chart installs the platform on Kubernetes, together with the services it depends on: a database server, NATS, OpenBao, and Valkey with Sentinel. You can use your own database server, your own OpenBao, and your own Valkey or Redis instead. Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
 
-The name of the Helm chart is `platform`.
+The Helm chart is called `platform`.
 
-This is the community installation of the platform: use it for development, tests and evaluation, and as the reference architecture and setup. For production, use the enterprise installation: the enterprise Helm chart and its installation guide, with your HSM, the automatic unseal of OpenBao, high availability and sizing for your load. iGrant.io gives access on request: contact support@igrant.io.
+This is the community installation. Use it for development, testing and evaluation, and as the reference architecture. For production, use the enterprise installation: the enterprise Helm chart and its installation guide, with your HSM, automatic OpenBao unseal, high availability and sizing for your load. To get access, contact support@igrant.io.
 
-This documentation is for the developers and IT operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host, use the [Docker Compose files](docker-compose/README.md).
+These docs are for the developers and operations teams who install and run the platform, and for the architects and CIOs who plan an installation. To run the platform on a single Docker host, use the [Docker Compose files](docker-compose/README.md).
 
 ## Contents
 
 ### Get started
 
-- [Components](docs/components.md): what the chart installs, how your values files describe an installation, and an installation without consent or without the organisation wallet.
-- [Prerequisites](docs/prerequisites.md): what your cluster, your network and your workstation need.
-- [Install](docs/install.md): the installation in seven steps, each with a check.
+- [Components](docs/components.md): what the chart installs, how your values files describe an installation, and how to install without consent or without the organisation wallet.
+- [Prerequisites](docs/prerequisites.md): what your cluster, network and workstation need.
+- [Install](docs/install.md): seven steps, each with a check.
 
 ### Operate
 
@@ -26,32 +26,32 @@ This documentation is for the developers and IT operations teams who install and
 
 ### Configure
 
-- [Exposure](docs/exposure.md): the three hosts, the hosts that are public on premise (only the wallet host), and the settings of your ingress controller or Gateway.
-- [Database](docs/database.md): PostgreSQL for the whole platform, on a bundled or an external server, the database roles and hooks of the wallet, and the logs of the server.
-- [Audit log](docs/audit-log.md): the audit log of the wallet, its write-once bucket, the check of the log, and the retention purge of the wallet data.
-- [Workers and clock](docs/workers.md): the background work of the wallet: the worker groups and their queues, the clock, the stops, the probes and the metrics.
-- [OpenBao](docs/openbao.md): the bundled OpenBao and its Shamir seal, or your own OpenBao.
-- [Redis](docs/redis.md): Valkey with Sentinel for the work queue, the single-use values and the caches of the wallet, or your own Valkey or Redis.
+- [Exposure](docs/exposure.md): the three hosts, which host is public on premise (only the wallet host), and what your ingress controller or Gateway must do.
+- [Database](docs/database.md): PostgreSQL for the whole platform (bundled or external), the wallet's database roles and hooks, and the server logs.
+- [Audit log](docs/audit-log.md): the wallet's audit log, its write-once bucket, how to verify the log, and the retention purge of wallet data.
+- [Workers and clock](docs/workers.md): the wallet's background work: worker groups and queues, the clock, shutdowns, probes and metrics.
+- [OpenBao](docs/openbao.md): the bundled OpenBao with its Shamir seal, or your own OpenBao.
+- [Redis](docs/redis.md): Valkey with Sentinel for the wallet's work queue, single-use values and caches, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.
-- [Security settings of the containers](docs/security-context.md): the non-root user, the writable paths and the sysctls of each container, and the Pod Security Standard `restricted`.
-- [Values reference](docs/values-reference.md): the main values and their defaults.
+- [Security settings of the containers](docs/security-context.md): the non-root user, writable paths and sysctls of each container, and the Pod Security Standard `restricted`.
+- [Values reference](docs/values-reference.md): every value and its default.
 
 ### Keys and HSM
 
-- [Connect your on-premise HSM](docs/on-premise-hsm.md): use a Thales Luna Network HSM for the OpenBao seal and for the local keys of the organisations.
+- [Connect your on-premise HSM](docs/on-premise-hsm.md): use a Thales Luna Network HSM for the OpenBao seal and for the organisations' local keys.
 - [Thales Luna Cloud HSM (DPoD)](docs/dpod.md): use a DPoD partition for the same purposes.
 - [DPoD key stores](docs/dpod-key-stores.md): let organisations use their own DPoD partitions.
-- [Keys](docs/keys.md): the keys of the platform and the Secrets that hold them.
+- [Keys](docs/keys.md): the platform keys and the Secrets that hold them.
 
 ### Reference
 
-- [Chart objects](docs/chart-objects.md): the objects that the chart creates for OpenBao.
-- [NATS users](docs/nats-users.md): the NATS users of the processes, and an external NATS server.
+- [Chart objects](docs/chart-objects.md): the objects that the chart creates for OpenBao, Valkey, NATS and the wallet's workers and clock.
+- [NATS users](docs/nats-users.md): the NATS user of each process, and how to use an external NATS server.
 - [Read access](docs/read-access.md): the read-only database users of the services.
 - [Privacy dashboard](docs/privacy-dashboard.md): the status of this feature in the chart.
-- [Tests](docs/tests.md): the tests of the chart, which run without a cluster.
-- [Images](docs/images.md): the images of the chart, for your own mirror.
+- [Tests](docs/tests.md): the chart tests, which run without a cluster.
+- [Images](docs/images.md): the chart's images, for your own mirror.
 
 ## Licence
 

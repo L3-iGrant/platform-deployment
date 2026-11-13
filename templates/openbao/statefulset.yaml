@@ -14,17 +14,18 @@ metadata:
 spec:
   serviceName: {{ $headless }}
   replicas: {{ $ob.replicas }}
-  # All pods start at the same time (a full restart needs the majority of
-  # the raft nodes).
+  # All pods start together (a full restart needs a majority of the raft
+  # nodes).
   podManagementPolicy: Parallel
-  # OnDelete: a new pod template waits until the operator deletes each pod
-  # and unseals it (docs/upgrade.md).
+  # OnDelete: a new pod template only applies when the operator deletes and
+  # unseals each pod (docs/upgrade.md).
   {{- $updateStrategy := include "ow.openbao.updateStrategy" . }}
   updateStrategy:
     type: {{ $updateStrategy }}
     {{- if eq $updateStrategy "OnDelete" }}
     # Removes the rollingUpdate default (partition 0) that the API server
-    # wrote under RollingUpdate: with OnDelete it refuses the field.
+    # wrote under RollingUpdate; with OnDelete the API server refuses that
+    # field.
     rollingUpdate: null
     {{- end }}
   selector:
@@ -52,14 +53,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # The values of this raft node.
+            # This raft node's values.
             - name: BAO_RAFT_NODE_ID
               value: "$(POD_NAME)"
             - name: BAO_API_ADDR
               value: "https://$(POD_NAME).{{ $headless }}.{{ .Release.Namespace }}.svc:8200"
             - name: BAO_CLUSTER_ADDR
               value: "https://$(POD_NAME).{{ $headless }}.{{ .Release.Namespace }}.svc:8201"
-            # The bao commands of the operator (kubectl exec).
+            # For the operator's bao commands (kubectl exec).
             - name: BAO_ADDR
               value: https://127.0.0.1:8200
             - name: BAO_CACERT
@@ -70,7 +71,7 @@ spec:
               value: {{ $paths.config }}
             - name: OPENBAO_DATA_DIR
               value: {{ $paths.data }}
-            # The bootstrap script (bootstrap.sh).
+            # For the bootstrap script (bootstrap.sh).
             - name: OPENBAO_KMS_TRANSIT_MOUNT
               value: {{ include "ow.openbao.transitMount" . | quote }}
             - name: OPENBAO_WALLET_USER
@@ -92,9 +93,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # Startup and liveness: the server answers (also sealed or not
-          # initialised). Readiness: initialised and unsealed (active or
-          # standby): a pod is ready only after the manual unseal.
+          # Startup and liveness: the server answers (even when sealed or
+          # not initialised). Readiness: initialised and unsealed (active or
+          # standby), so a pod is only ready after the manual unseal.
           startupProbe:
             httpGet:
               path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
@@ -119,8 +120,8 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
-          # The Service removes the pod before OpenBao stops (the sleep
-          # action of Kubernetes: no sleep program needed in the image).
+          # The Service drops the pod before OpenBao stops (the Kubernetes
+          # sleep action, so the image needs no sleep program).
           {{- include "ow.preStopSleep" 5 | nindent 10 }}
           volumeMounts:
             - name: config
@@ -137,7 +138,7 @@ spec:
               readOnly: true
             - name: data
               mountPath: {{ $paths.data }}
-            # The temporary files of OpenBao (read-only root file system).
+            # OpenBao temp files (read-only root file system).
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -167,8 +168,8 @@ spec:
                 path: tls.key
               - key: ca.crt
                 path: ca.crt
-        # The password of the wallet user: only bootstrap.sh reads it.
-        # OpenBao keeps a hash of this password anyway.
+        # The wallet user's password: only bootstrap.sh reads it. OpenBao
+        # keeps a hash of this password anyway.
         {{- $walletSecret := include "ow.openbao.walletSecret" . | fromJson }}
         - name: bootstrap
           secret:

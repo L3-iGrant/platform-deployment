@@ -1,13 +1,13 @@
 {{- /*
-The ServiceMonitor of /metrics of the servers, the workers and the clock
-(organisationWallet.serviceMonitor.enabled; the CRD of the Prometheus
-Operator must exist; docs/workers.md). A headless Service for the service
-and config roles (the port metrics), for each worker group and for the
-clock (the port health) gives the pods as the targets, also the pods that
-are not ready (a worker is not ready while Valkey does not answer, and its
-metrics show it). The label metrics.igrant.io/job of each Service is the
-job of its targets: wallet-server, wallet-worker, wallet-clock (the job
-names of the alerts of organisation-wallet-suite).
+ServiceMonitor for /metrics of the servers, the workers and the clock
+(organisationWallet.serviceMonitor.enabled; the Prometheus Operator CRD
+must exist; docs/workers.md). Headless Services for the service and config
+roles (port metrics), each worker group and the clock (port health) expose
+the pods as targets, including pods that are not ready (a worker is not
+ready while Valkey does not answer, and its metrics show that). Each
+Service's metrics.igrant.io/job label sets the job of its targets:
+wallet-server, wallet-worker, wallet-clock (the job names that the
+alert rules of the wallet use).
 */}}
 {{- if and .Values.organisationWallet.enabled .Values.organisationWallet.serviceMonitor.enabled }}
 {{- $w := .Values.organisationWallet }}

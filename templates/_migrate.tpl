@@ -1,25 +1,26 @@
 {{/*
-Migration hook of one owner service (helm pre-upgrade): the schema migrations of the owner (with
-the views of the read-only users) and its backfills run to the end BEFORE any
-Deployment of the release changes. So a new reader never starts before the
-views and rows that it reads exist. A failed hook stops the upgrade: the old
-pods stay. The hook runs at each upgrade; the commands are idempotent.
+Migration hook of one owner service (helm pre-upgrade). The owner's schema
+migrations (including the views for the read-only users) and its backfills
+run to the end BEFORE any Deployment of the release changes, so a new reader
+never starts before the views and rows it reads exist. A failed hook stops
+the upgrade and the old pods stay. The hook runs on every upgrade; the
+commands are idempotent.
 
-A new installation has no pre-install hook (the bundled database server
-does not exist yet when a pre-install hook runs). The api and consent
-migrate when their pods start, and the /readyz of each reader checks that
-the views that it reads exist, so a reader gets no traffic before the owner
-has migrated. The wallet pods never migrate: the wallet hook is also
-post-install (after the resources of the release exist), and the wallet
+A new installation has no pre-install hook, because the bundled database
+server does not exist yet when a pre-install hook runs. The api and consent
+migrate when their pods start, and each reader's /readyz checks that the
+views it reads exist, so a reader gets no traffic before the owner has
+migrated. The wallet pods never migrate: the wallet hook is also
+post-install (it runs after the release's resources exist), and the wallet
 pods wait for the schema head.
 
-The hook has its own configuration file with only the database (a
-pre-upgrade hook cannot read the new ConfigMaps of the release) and only the
-database passwords.
+The hook has its own config file with only the database settings and
+passwords, because a pre-upgrade hook cannot read the release's new
+ConfigMaps.
 
 A service can also run the same command after the upgrade (hook
-"post-upgrade"): consent writes the read model of the revisions that a pod
-of the earlier release wrote during the rolling update.
+"post-upgrade"): consent uses it to write the read model of the revisions
+that pods of the earlier release wrote during the rolling update.
 
 Call with (dict
   "root" $
@@ -78,7 +79,7 @@ metadata:
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
-  # OnFailure counts the restarts of the container: 3 gives two retries.
+  # With OnFailure this counts container restarts: 3 gives two retries.
   backoffLimit: 3
   ttlSecondsAfterFinished: {{ $jobs.ttlSecondsAfterFinished | default 86400 }}
   template:
@@ -87,10 +88,10 @@ spec:
         {{- include "ow.labels" (list $root .component) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $root "job" list) | nindent 8 }}
     spec:
-      # OnFailure: a retry restarts the container in the same pod. With
-      # network policies, the first connection of a new pod can fail until
-      # the network policy controller knows the pod; a retry in a new pod
-      # (Never) would meet the same delay each time.
+      # OnFailure retries by restarting the container in the same pod. With
+      # network policies, a new pod's first connection can fail until the
+      # policy controller knows the pod; a retry in a new pod (Never) would
+      # hit the same delay every time.
       restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -125,8 +126,8 @@ spec:
 {{- end }}
 
 {{/*
-The "secrets" list of ow.migrateHook from a file map ("<file name>" ->
-{secret, key}, for example ow.db.secretFiles). Output: JSON list.
+Builds the "secrets" list of ow.migrateHook from a file map ("<file name>"
+-> {secret, key}, for example ow.db.secretFiles). Output: JSON list.
 */}}
 {{- define "ow.migrateHook.secrets" -}}
 {{- $out := list -}}

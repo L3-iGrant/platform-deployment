@@ -25,8 +25,8 @@ spec:
       {{- if lt ($d.terminationGracePeriodSeconds | int) (add ($d.preStopSeconds | int) 10) }}
       {{- fail (printf "enterpriseDashboard.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + 10: nginx needs the time to end the requests in progress" $d.terminationGracePeriodSeconds $d.preStopSeconds) }}
       {{- end }}
-      # The stop: the preStop sleep, then SIGQUIT (the stop signal of the
-      # image): nginx ends the requests in progress, then stops.
+      # Stop: the preStop sleep, then SIGQUIT (the image's stop signal), so
+      # nginx finishes the requests in progress and stops.
       terminationGracePeriodSeconds: {{ $d.terminationGracePeriodSeconds | int }}
       containers:
         - name: dashboard
@@ -64,8 +64,8 @@ spec:
           configMap:
             name: {{ include "ow.name" (list . "dashboard") }}
         # The only writable path (the root file system is read-only): the
-        # pid file and the temporary files of nginx, and the files that the
-        # start scripts of the image write (/tmp/dashboard).
+        # nginx pid and temp files, and the files that the image's start
+        # scripts write (/tmp/dashboard).
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi

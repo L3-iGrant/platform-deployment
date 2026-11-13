@@ -32,7 +32,7 @@ spec:
     spec:
       {{- include "ow.podSpecCommon" (list $ $api) | nindent 6 }}
       {{- if and (eq $role "api") $.Values.privacyDashboard.enabled }}
-      # The ServiceAccount with the Role of the privacy dashboards.
+      # ServiceAccount with the privacy dashboards Role.
       serviceAccountName: {{ include "ow.name" (list $ "api") }}
       automountServiceAccountToken: true
       {{- if and $.Values.networkPolicy.enabled (not (or $.Values.networkPolicy.egress.profiles.kubeApi.cidrs $.Values.networkPolicy.egress.profiles.kubeApi.namespaceSelector $.Values.networkPolicy.egress.profiles.kubeApi.podSelector)) }}
@@ -43,7 +43,7 @@ spec:
       automountServiceAccountToken: false
       {{- end }}
       {{- include "ow.checkStopBudget" (list "api.server" $api.server 5 20) }}
-      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
+      # Stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $api.server.terminationGracePeriodSeconds | int }}
       {{- if eq $role "api" }}
       initContainers:
@@ -114,10 +114,10 @@ spec:
               mountPath: /tmp
       volumes:
         {{- include "ow.api.volumes" (list $ $role) | nindent 8 }}
-        # The only writable path (the root file system is read-only): the
-        # temporary files of the multipart parser of Go (a file part of an
-        # upload above 32 MiB). In memory: a full /tmp stops one upload, not
-        # the pod (ow.api.checkTmp).
+        # The only writable path (the root file system is read-only): temp
+        # files of Go's multipart parser (upload file parts above 32 MiB).
+        # In memory, so a full /tmp fails one upload, not the pod
+        # (ow.api.checkTmp).
         - name: tmp
           emptyDir:
             medium: Memory

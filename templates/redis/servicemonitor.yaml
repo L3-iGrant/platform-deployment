@@ -1,8 +1,8 @@
 {{- /*
-The ServiceMonitor of the exporters of the bundled Valkey
-(redis.metrics.serviceMonitor; the CRD of the Prometheus Operator must
-exist; docs/redis.md#metrics). A headless Service gives the pods as the
-targets, also the pods that are not ready.
+ServiceMonitor for the bundled Valkey exporters
+(redis.metrics.serviceMonitor; the Prometheus Operator CRD must exist;
+docs/redis.md#metrics). A headless Service exposes the pods as targets,
+including pods that are not ready.
 */}}
 {{- if and (include "ow.redis.bundled" .) .Values.redis.metrics.enabled .Values.redis.metrics.serviceMonitor.enabled }}
 {{- $m := .Values.redis.metrics }}

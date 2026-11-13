@@ -29,14 +29,14 @@ metadata:
 spec:
   serviceName: {{ include "ow.redis.headlessName" . }}
   replicas: {{ $r.replicas }}
-  # All pods start at the same time. Each pod finds the primary from the
-  # Sentinels of the group; the first start of a new group makes pod 0 the
-  # primary (files/redis/common.sh, find_primary).
+  # All pods start together. Each pod finds the primary through the group's
+  # Sentinels; on the first start of a new group, pod 0 becomes the primary
+  # (files/redis/common.sh, find_primary).
   podManagementPolicy: Parallel
-  # One pod at a time, from the last pod to pod 0. The next pod waits until
-  # the new pod is ready (a replica in sync); the primary moves to a replica
-  # before it stops (prestop.sh). redis.affinity can put each pod on its own
-  # node (docs/redis.md).
+  # One pod at a time, from the last pod down to pod 0. The next pod waits
+  # until the new pod is ready (an in-sync replica); the primary hands over
+  # to a replica before it stops (prestop.sh). redis.affinity can place each
+  # pod on its own node (docs/redis.md).
   updateStrategy:
     type: RollingUpdate
   selector:
@@ -54,7 +54,7 @@ spec:
       {{- include "ow.podSpecCommon" (list . $r) | nindent 6 }}
       # Valkey does not call the Kubernetes API.
       automountServiceAccountToken: false
-      # The stop of the primary waits up to 30 seconds for the failover
+      # When the primary stops, it waits up to 30 seconds for the failover
       # (prestop.sh), then the server writes its data.
       terminationGracePeriodSeconds: 60
       containers:
@@ -72,9 +72,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # Startup and liveness: the server answers (also while it loads
+          # Startup and liveness: the server answers (even while it loads
           # its data). Readiness: the data is loaded, and the server is the
-          # primary or a replica in sync.
+          # primary or an in-sync replica.
           startupProbe:
             exec:
               command: ["/bin/sh", "/etc/valkey/probe.sh", "alive", "6379"]
@@ -118,8 +118,8 @@ spec:
               command: ["/bin/sh", "/etc/valkey/probe.sh", "alive", "26379"]
             periodSeconds: 5
             timeoutSeconds: 5
-            # The Sentinel waits up to 120 seconds for the DNS name of the
-            # primary.
+            # The Sentinel waits up to 120 seconds for the primary's DNS
+            # name.
             failureThreshold: 36
           readinessProbe:
             exec:
@@ -136,9 +136,9 @@ spec:
           volumeMounts:
             {{- toYaml $mounts | nindent 12 }}
         {{- if $r.metrics.enabled }}
-        # The Prometheus exporter of the data server of the pod
-        # (redis.metrics). It logs in with the ACL user metrics, over TLS to
-        # 127.0.0.1 (a name of the certificate).
+        # Prometheus exporter for the pod's data server (redis.metrics). It
+        # logs in as the ACL user metrics, over TLS to 127.0.0.1 (a name in
+        # the certificate).
         - name: metrics
           image: {{ include "ow.image" (list . $r.metrics.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $r.metrics.image) }}
@@ -147,11 +147,11 @@ spec:
             - --redis.user=metrics
             - --tls-ca-cert-file=/etc/valkey-metrics/ca.crt
             - --web.listen-address=:9121
-            # No CONFIG GET: the user metrics cannot read the configuration.
+            # No CONFIG GET: the metrics user cannot read the config.
             - --config-command=-
           env:
-            # The exporter reads a password only from an environment
-            # variable or from a JSON file.
+            # The exporter only reads a password from an environment
+            # variable or a JSON file.
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -193,7 +193,7 @@ spec:
               - key: ca.crt
                 path: ca.crt
         {{- if $r.metrics.enabled }}
-        # Only the CA of the TLS Secret for the exporter.
+        # Only the CA from the TLS Secret, for the exporter.
         - name: metrics-ca
           secret:
             secretName: {{ include "ow.redis.tlsSecretName" . }}
@@ -202,8 +202,8 @@ spec:
               - key: ca.crt
                 path: ca.crt
         {{- end }}
-        # One password file for each ACL user (the file name is the user
-        # key of the templates: {password:<key>}, {hash:<key>}).
+        # One password file per ACL user (the file name is the user key in
+        # the templates: {password:<key>}, {hash:<key>}).
         - name: users
           projected:
             defaultMode: 0440
@@ -215,8 +215,8 @@ spec:
                     - key: {{ $user.key }}
                       path: {{ $user.path }}
               {{- end }}
-        # The configuration files with the passwords and the Sentinel state:
-        # in memory, never on the data volume.
+        # Config files with the passwords, and the Sentinel state: in
+        # memory, never on the data volume.
         - name: run
           emptyDir:
             medium: Memory

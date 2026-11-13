@@ -8,8 +8,8 @@ metadata:
     {{- include "ow.labels" (list . "wallet") | nindent 4 }}
 data:
   # Each wallet Deployment mounts its key as /etc/eudi-wallet/config.yaml:
-  # <role>.yaml, and worker-<group>.yaml for each worker group. No secret
-  # is in them.
+  # <role>.yaml, and worker-<group>.yaml for each worker group. No secrets
+  # here.
   {{- $files := list (dict "key" "service.yaml" "role" "service") (dict "key" "config.yaml" "role" "config") }}
   {{- range $g := .Values.organisationWallet.workers.groups }}
   {{- $files = append $files (dict "key" (printf "worker-%s.yaml" $g.name) "role" "worker" "group" $g) }}

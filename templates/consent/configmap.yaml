@@ -9,7 +9,7 @@ metadata:
 data:
   config.yaml: |
     {{- include "ow.consent.config" . | nindent 4 }}
-  # Only the database: the file of the consent Jobs (the migrate and
+  # Database only: the file for the consent Jobs (the migrate and
   # read-access commands read only DataBase and Log; config.LoadDatabase).
   migrate.yaml: |
     {{- include "ow.consent.migrateConfig" . | nindent 4 }}

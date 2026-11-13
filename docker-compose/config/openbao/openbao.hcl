@@ -1,11 +1,11 @@
-# OpenBao of the Docker Compose platform: the KMS of the wallet (the Transit
+# OpenBao for the Docker Compose platform: the wallet's KMS (the Transit
 # engine; the wallet logs in with userpass). One node with integrated
 # storage (raft) in the volume openbao-data.
 #
-# Unseal: the static seal unseals OpenBao at each start with the key file of
-# make secrets (secrets/openbao/static-seal.key, 32 random bytes). No person
-# has to unseal it. Keep that file safe: without it, nobody can read the
-# data of OpenBao (the signing keys of the organisations).
+# Unseal: the static seal unseals OpenBao at each start with the key file
+# from make secrets (secrets/openbao/static-seal.key, 32 random bytes), so
+# nobody has to unseal it by hand. Keep that file safe: without it, nobody
+# can read OpenBao's data (the signing keys of the organisations).
 #
 # No TLS: port 8200 is only on the Compose network (no host port).
 ui            = false

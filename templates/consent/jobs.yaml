@@ -1,12 +1,12 @@
 {{- /*
-The read access Job of consent (readAccess.jobs): "read-access apply" for
-the reader wallet (the data agreement view), when the wallet is on. It applies the schema
-migrations first (init container "migrate schema"). The migrate and
-read-access commands read only the database (config.LoadDatabase), so the
-Job mounts the file migrate.yaml of the consent ConfigMap and only the
-database password and CA, the password of the read-only user and of the
-admin user. The name has the release revision: the Job runs at each install
-and upgrade (idempotent).
+Read access Job of consent (readAccess.jobs): "read-access apply" for the
+wallet reader (the data agreement view), when the wallet is on. It first
+applies the schema migrations (init container "migrate schema"). The
+migrate and read-access commands read only the database
+(config.LoadDatabase), so the Job mounts migrate.yaml from the consent
+ConfigMap and only the database password and CA, plus the passwords of the
+read-only user and the admin user. The Job name includes the release
+revision, so it runs on every install and upgrade (idempotent).
 */}}
 {{- if .Values.consent.enabled }}
 {{- $c := .Values.consent }}
@@ -21,8 +21,8 @@ and upgrade (idempotent).
 {{- end }}
 {{- end }}
 {{- /* The Jobs run as a non-root user with a read-only root file system
-(consent.jobs.podSecurityContext, .containerSecurityContext; empty: the
-values of the consent pods). They write only to the /tmp memory volume. */}}
+(consent.jobs.podSecurityContext, .containerSecurityContext; empty means
+the consent pod values). They only write to the in-memory /tmp volume. */}}
 {{- $jobPod := deepCopy $c }}
 {{- $_ := set $jobPod "podSecurityContext" ($c.jobs.podSecurityContext | default $c.podSecurityContext) }}
 {{- $_ := set $jobPod "containerSecurityContext" ($c.jobs.containerSecurityContext | default $c.containerSecurityContext) }}
@@ -36,9 +36,9 @@ metadata:
   labels:
     {{- include "ow.labels" (list $ $job.name) | nindent 4 }}
 spec:
-  {{- /* The read access Jobs are idempotent: they try again while the
-  database starts (a new installation). */}}
-  # OnFailure counts the restarts of the container: 3 gives two retries.
+  {{- /* The read access Jobs are idempotent: they retry while the database
+  starts (on a new installation). */}}
+  # With OnFailure this counts container restarts: 3 gives two retries.
   backoffLimit: {{ $job.backoffLimit | default 3 }}
   ttlSecondsAfterFinished: {{ $job.ttl }}
   template:
@@ -47,10 +47,10 @@ spec:
         {{- include "ow.labels" (list $ $job.name) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
     spec:
-      # OnFailure: a retry restarts the container in the same pod. With
-      # network policies, the first connection of a new pod can fail until
-      # the network policy controller knows the pod; a retry in a new pod
-      # (Never) would meet the same delay each time.
+      # OnFailure retries by restarting the container in the same pod. With
+      # network policies, a new pod's first connection can fail until the
+      # policy controller knows the pod; a retry in a new pod (Never) would
+      # hit the same delay every time.
       restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -96,9 +96,9 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- if $job.admin }}
-            # The password of the new read-only user (--password-file) and
-            # of the admin user (--admin-password-file): files of their own
-            # Secrets, never arguments or variables.
+            # The passwords of the new read-only user (--password-file) and
+            # the admin user (--admin-password-file) are files from their own
+            # Secrets, never arguments or environment variables.
             - name: read-access
               mountPath: /run/secrets/read-access
               readOnly: true

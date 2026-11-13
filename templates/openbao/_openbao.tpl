@@ -1,8 +1,8 @@
 {{/*
-OpenBao helpers. The key management service of the wallet is always the
-Transit engine of OpenBao: the bundled OpenBao of the chart
-(openbao.mode bundled; raft storage and the Shamir seal) or an external
-OpenBao (openbao.mode external). See docs/openbao.md.
+OpenBao helpers. The wallet's key management service is always the OpenBao
+Transit engine: either the chart's bundled OpenBao (openbao.mode bundled,
+with raft storage and the Shamir seal) or an external OpenBao (openbao.mode
+external). See docs/openbao.md.
 */}}
 
 {{/* "true" when the chart runs OpenBao (openbao.mode bundled and the wallet is enabled), else "". */}}
@@ -14,7 +14,7 @@ OpenBao (openbao.mode external). See docs/openbao.md.
 {{- if and (eq $mode "bundled") .Values.organisationWallet.enabled -}}true{{- end -}}
 {{- end }}
 
-{{/* The seal of the bundled OpenBao, validated. */}}
+{{/* Seal of the bundled OpenBao, validated. */}}
 {{- define "ow.openbao.seal" -}}
 {{- $seal := .Values.openbao.seal | default "shamir" -}}
 {{- if ne $seal "shamir" -}}
@@ -23,12 +23,12 @@ OpenBao (openbao.mode external). See docs/openbao.md.
 {{ $seal }}
 {{- end }}
 
-{{/* The updateStrategy type of the StatefulSet: openbao.updateStrategy, else OnDelete (a restarted pod waits sealed for an operator). */}}
+{{/* updateStrategy type of the StatefulSet: openbao.updateStrategy, else OnDelete (a restarted pod stays sealed until an operator unseals it). */}}
 {{- define "ow.openbao.updateStrategy" -}}
 {{ .Values.openbao.updateStrategy | default "OnDelete" }}
 {{- end }}
 
-{{/* The address of OpenBao that the wallet uses. */}}
+{{/* OpenBao address that the wallet uses. */}}
 {{- define "ow.openbao.address" -}}
 {{- if eq (.Values.openbao.mode | default "bundled") "external" -}}
 {{- $address := .Values.openbao.external.address | default "" -}}
@@ -41,7 +41,7 @@ OpenBao (openbao.mode external). See docs/openbao.md.
 {{- end -}}
 {{- end }}
 
-{{/* The userpass user of the wallet. */}}
+{{/* The wallet's userpass user. */}}
 {{- define "ow.openbao.walletUser" -}}
 {{- $user := .Values.openbao.wallet.user | default "wallet" -}}
 {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._@-]*$" $user) -}}
@@ -51,9 +51,9 @@ OpenBao (openbao.mode external). See docs/openbao.md.
 {{- end }}
 
 {{/*
-The Secret with the password of the wallet user: openbao.wallet.existingSecret
-(required with an external OpenBao), else <fullname>-openbao-wallet of the
-chart. Output: JSON {secret, key}.
+Secret with the wallet user's password: openbao.wallet.existingSecret
+(required with an external OpenBao), else the chart's
+<fullname>-openbao-wallet. Output: JSON {secret, key}.
 */}}
 {{- define "ow.openbao.walletSecret" -}}
 {{- $w := .Values.openbao.wallet -}}
@@ -66,7 +66,7 @@ chart. Output: JSON {secret, key}.
 {{- end -}}
 {{- end }}
 
-{{/* The CA of the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* CA for the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.caSecret. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.openbao.ca" -}}
 {{- $external := .Values.openbao.external -}}
 {{- if include "ow.openbao.bundled" . -}}
@@ -78,7 +78,7 @@ chart. Output: JSON {secret, key}.
 {{- end -}}
 {{- end }}
 
-{{/* The mount path of the Transit engine, validated. */}}
+{{/* Mount path of the Transit engine, validated. */}}
 {{- define "ow.openbao.transitMount" -}}
 {{- $mount := .Values.openbao.transitMount | default "transit" -}}
 {{- if or (not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._/-]*$" $mount)) (hasSuffix "/" $mount) -}}
@@ -87,7 +87,7 @@ chart. Output: JSON {secret, key}.
 {{ $mount }}
 {{- end }}
 
-{{/* The OpenBao namespace of the wallet ("" with the bundled OpenBao: the root namespace). */}}
+{{/* The wallet's OpenBao namespace ("" with the bundled OpenBao, which uses the root namespace). */}}
 {{- define "ow.openbao.namespace" -}}
 {{- if eq (.Values.openbao.mode | default "bundled") "external" -}}
 {{ .Values.openbao.external.namespace | default "" }}
@@ -104,7 +104,7 @@ chart. Output: JSON {secret, key}.
 {{ include "ow.name" (list . "openbao-headless") }}
 {{- end }}
 
-{{/* Name of the TLS Secret (tls.crt, tls.key, ca.crt) of the listener. */}}
+{{/* TLS Secret of the listener (tls.crt, tls.key, ca.crt). */}}
 {{- define "ow.openbao.tlsSecretName" -}}
 {{- .Values.openbao.tls.existingSecret | default (include "ow.name" (list . "openbao-tls")) -}}
 {{- end }}
@@ -131,9 +131,8 @@ https://{{ include "ow.openbao.name" . }}.{{ .Release.Namespace }}.svc:8200
 {{- end }}
 
 {{/*
-Render guards of the chart OpenBao. The values go into the HCL
-configuration, so the guards also allow only safe characters. Output:
-nothing.
+Render guards for the chart's OpenBao. The values end up in the HCL config,
+so the guards also allow only safe characters. Output: nothing.
 */}}
 {{- define "ow.openbao.check" -}}
 {{- $v := .Values -}}
@@ -150,23 +149,23 @@ nothing.
 {{- end }}
 
 {{/*
-The server configuration of OpenBao (HCL, ConfigMap key openbao.hcl). No
-secret is in it. The values of each pod come from the environment
-(BAO_RAFT_NODE_ID, BAO_API_ADDR, BAO_CLUSTER_ADDR). OpenBao 2.7 has no
-mlock: no disable_mlock.
+OpenBao server config (HCL, ConfigMap key openbao.hcl). It holds no
+secrets. Per-pod values come from the environment (BAO_RAFT_NODE_ID,
+BAO_API_ADDR, BAO_CLUSTER_ADDR). OpenBao 2.7 has no mlock, so there is no
+disable_mlock.
 */}}
 {{- define "ow.openbao.config" -}}
 {{- $ob := .Values.openbao -}}
 {{- $seal := include "ow.openbao.seal" . -}}
 {{- $paths := include "ow.openbao.paths" . | fromJson -}}
-# OpenBao server configuration of the chart (seal {{ $seal }}). No secret is
-# in this file. Per pod: BAO_RAFT_NODE_ID, BAO_API_ADDR, BAO_CLUSTER_ADDR.
+# The chart's OpenBao server config (seal {{ $seal }}). No secrets in this
+# file. Per pod: BAO_RAFT_NODE_ID, BAO_API_ADDR, BAO_CLUSTER_ADDR.
 ui        = false
 log_level = {{ $ob.logLevel | quote }}
 
-# Standby nodes send every request to the active node. The wallet reads a
-# key just after it makes it; a standby that answers reads itself can be
-# behind the active node and answers "not found".
+# Standby nodes forward every request to the active node. The wallet reads a
+# key right after it creates it, and a standby that served reads itself
+# could lag behind and answer "not found".
 disable_standby_reads = true
 
 listener "tcp" {
@@ -188,13 +187,13 @@ storage "raft" {
   {{- end }}
 }
 
-# No seal stanza: the Shamir seal. An operator unseals each pod after each
-# start (bao operator unseal).
+# No seal stanza means the Shamir seal: an operator unseals each pod after
+# every start (bao operator unseal).
 {{- if $ob.audit.stdout }}
 
-# Audit device: one JSON line per request and response on stdout (the
-# values are HMAC-SHA256 hashes). OpenBao 2.7 enables audit devices only
-# from the configuration file.
+# Audit device: one JSON line per request and response on stdout (values
+# are HMAC-SHA256 hashes). OpenBao 2.7 only enables audit devices from the
+# config file.
 audit "file" "stdout" {
   description = "Audit log on stdout"
   options {

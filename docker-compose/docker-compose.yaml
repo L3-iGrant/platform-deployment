@@ -1,30 +1,29 @@
-# The iGrant.io platform for Docker Compose. README.md has the procedure:
+# The iGrant.io platform on Docker Compose. See README.md for the steps:
 #
-#   make env       make .env from .env.example, then set your values
-#   make secrets   make all secrets and keys in secrets/
+#   make env       create .env from .env.example, then set your values
+#   make secrets   create all secrets and keys in secrets/
 #   make check     write the configuration files to generated/ (make
-#                  configs), then check the configuration (no container
-#                  starts)
+#                  configs), then check the configuration (starts no
+#                  container)
 #   make up        start the platform
 #
 # The services are in compose.platform.yaml. This file loads it with these
-# files of values:
+# values files:
 #   - .env: your settings, for example DB_ENGINE (postgresql), the public
 #     URLs and the images;
 #   - config/engine/<DB_ENGINE>.env: the values that follow from the engine
 #     (database port, admin user, client image);
 #   - generated/configs.env: the SHA-256 of each configuration file (below).
-# Thus DB_ENGINE is the one choice of the database engine of all
-# components. A value in your shell has priority over the same value in
-# .env.
+# So DB_ENGINE alone picks the database engine of all components. A value
+# set in your shell overrides the same value in .env.
 #
-# The configuration files of the components are files of generated/: "make
-# configs" writes them from the templates of compose.configs.yaml with the
-# values of the first two files (compose.render.yaml). It also writes
-# generated/configs.env, the SHA-256 of each file: each service has the
-# hash of its file in a label, so that "docker compose up" starts a service
-# again when its file changes. Without generated/configs.env, docker
-# compose stops: run make configs (make check and make up do it).
+# The components' configuration files are in generated/: "make configs"
+# writes them from the compose.configs.yaml templates with the values of the
+# first two files (compose.render.yaml). It also writes generated/configs.env
+# with the SHA-256 of each file. Each service has its file's hash in a
+# label, so "docker compose up" restarts a service when its file changes.
+# Without generated/configs.env, docker compose stops: run make configs
+# (make check and make up run it).
 name: igrant-platform
 
 include:

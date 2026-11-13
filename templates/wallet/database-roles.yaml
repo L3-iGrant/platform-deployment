@@ -1,23 +1,22 @@
 {{- /*
 Roles hook of the organisation wallet (helm post-install and pre-upgrade,
-before the migration hook): "database-roles apply" with the admin user of
-the database server (ow.db.admin). It makes the database roles of the wallet
-(<prefix>_owner, <prefix>_migrator and the roles of the processes; the
-prefix is the wallet database name) with the passwords of the role Secret,
-gives the objects of the wallet database to <prefix>_owner, makes the
-missing data scope schemas and gives the grants. The command is idempotent.
+before the migration hook): runs "database-roles apply" as the admin user
+of the database server (ow.db.admin). It creates the wallet database roles
+(<prefix>_owner, <prefix>_migrator and the process roles; the prefix is the
+wallet database name) with the passwords from the role Secret, hands the
+wallet database objects to <prefix>_owner, creates any missing data scope
+schemas and applies the grants. The command is idempotent.
 
-Its configuration has only the database, with the admin user and its
-password file (a pre-upgrade hook cannot read the new ConfigMaps of the
-release). The admin password is a file of this hook only: no wallet pod and
-no other wallet Job mounts it, and no wallet pod or Job mounts the password
-of the database owner user.
+Its config has only the database, with the admin user and its password file
+(a pre-upgrade hook cannot read the release's new ConfigMaps). Only this
+hook mounts the admin password: no wallet pod or other wallet Job does, and
+no wallet pod or Job mounts the password of the database owner user.
 
-It runs after the init hook (templates/database/init.yaml, weight -28 and
--27), which waits for the server and makes the wallet database and its
+It runs after the init hook (templates/database/init.yaml, weights -28 and
+-27), which waits for the server and creates the wallet database and its
 owner user, on a new installation and on an upgrade. A failed run stops the
-install or the upgrade, as a failed migration hook does: the log of its pod
-has the message of database-roles.
+install or upgrade, like a failed migration hook; its pod log shows the
+database-roles message.
 */}}
 {{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
@@ -56,7 +55,7 @@ metadata:
     helm.sh/hook-weight: "-20"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
-  # OnFailure counts the restarts of the container: 3 gives two retries.
+  # With OnFailure this counts container restarts: 3 gives two retries.
   backoffLimit: 3
   ttlSecondsAfterFinished: {{ $w.jobs.ttlSecondsAfterFinished | default 86400 }}
   template:
@@ -65,10 +64,10 @@ spec:
         {{- include "ow.labels" (list . "wallet-database-roles") | nindent 8 }}
         {{- include "ow.netpol.labels" (list . "job" list) | nindent 8 }}
     spec:
-      # OnFailure: a retry restarts the container in the same pod. With
-      # network policies, the first connection of a new pod can fail until
-      # the network policy controller knows the pod; a retry in a new pod
-      # (Never) would meet the same delay each time.
+      # OnFailure retries by restarting the container in the same pod. With
+      # network policies, a new pod's first connection can fail until the
+      # policy controller knows the pod; a retry in a new pod (Never) would
+      # hit the same delay every time.
       restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -77,9 +76,9 @@ spec:
         - name: database-roles
           image: {{ include "ow.image" (list . $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $w.image) }}
-          # The passwords are files: --password-dir has one file per login
-          # role (the key of the role Secret), --admin-password-file the
-          # password of the admin user.
+          # Passwords are files: --password-dir has one file per login role
+          # (its key in the role Secret), and --admin-password-file holds
+          # the admin user's password.
           command:
             {{- toYaml (list "/app/.venv/bin/database-roles" "apply" "--password-dir" $rolesDir "--admin-user" $admin.user "--admin-password-file" (printf "%s/database-admin-password" $secretDir)) | nindent 12 }}
           env:

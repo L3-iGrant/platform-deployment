@@ -7,8 +7,8 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "api") | nindent 4 }}
 data:
-  # The api and the operator Jobs mount api.yaml, the webhook handler mounts
-  # webhook.yaml, each as /etc/igrant-api/config.yaml. No secret is in them.
+  # The api and the operator Jobs mount api.yaml, and the webhook handler
+  # mounts webhook.yaml, each as /etc/igrant-api/config.yaml. No secrets here.
   api.yaml: |
     {{- include "ow.api.config" (dict "root" . "role" "api") | nindent 4 }}
   webhook.yaml: |

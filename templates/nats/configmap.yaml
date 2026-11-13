@@ -1,10 +1,10 @@
 {{- if .Values.nats.enabled }}
 {{- $nats := .Values.nats }}
 {{- $name := include "ow.name" (list . "nats") }}
-{{- /* NATS 2.15 and later send the JetStream acks on subjects of the format
-v2 by default; the permissions of the users ($JS.ACK.<stream>.<consumer>.>)
-are of the format v1, so the acks would fail. A tag without a version (a
-digest or an own tag) gets no check. */}}
+{{- /* NATS 2.15 and later send JetStream acks on v2-format subjects by
+default, but the user permissions ($JS.ACK.<stream>.<consumer>.>) use the
+v1 format, so the acks would fail. A tag without a version (a digest or a
+custom tag) is not checked. */}}
 {{- $version := regexFind "^[0-9]+\\.[0-9]+" (toString $nats.image.tag) }}
 {{- if $version }}
 {{- $major := index (splitList "." $version) 0 | int }}
@@ -29,7 +29,7 @@ data:
     lame_duck_duration: "30s"
     lame_duck_grace_period: "10s"
     max_payload: {{ .Values.nats.maxPayload }}
-    # TLS for the clients (each process verifies the server with ca.crt).
+    # TLS for clients (each process verifies the server with ca.crt).
     tls {
       cert_file: "/etc/nats-tls/tls.crt"
       key_file: "/etc/nats-tls/tls.key"
@@ -46,9 +46,9 @@ data:
       name: {{ $name }}
       port: 6222
       no_advertise: true
-      # Mutual TLS of the routes: a server accepts a route only with a
-      # certificate of the CA of the chart (verify), and the route checks
-      # the name of the server.
+      # Mutual TLS on the routes: a server only accepts a route with a
+      # certificate from the chart's CA (verify), and the route checks the
+      # server name.
       tls {
         cert_file: "/etc/nats-tls/tls.crt"
         key_file: "/etc/nats-tls/tls.key"
@@ -68,8 +68,8 @@ data:
 {{- if not .Values.nats.enabled }}
 {{- /*
 External NATS (nats.external.url): the chart does not run the server, so it
-renders the authorization block for the operator, who adds it to the server
-configuration (nats.conf) of the customer NATS.
+renders the authorization block for the operator to add to the server
+config (nats.conf) of your NATS.
 */}}
 apiVersion: v1
 kind: ConfigMap
@@ -80,8 +80,8 @@ metadata:
     {{- include "ow.labels" (list . "nats") | nindent 4 }}
 data:
   authorization.conf: |
-    # Add these lines to the server configuration of your NATS (global
-    # account). See docs/nats-users.md.
+    # Add these lines to your NATS server config (global account). See
+    # docs/nats-users.md.
     max_payload: {{ .Values.nats.maxPayload }}
     {{- include "ow.nats.authorization" . | nindent 4 }}
 {{- end }}

@@ -20,15 +20,15 @@ spec:
         {{- include "ow.labels" (list . "nats") | nindent 8 }}
         {{- include "ow.netpol.labels" (list . "nats" list) | nindent 8 }}
       annotations:
-        {{- /* The reloader applies a change of the users and of max_payload
-        without a restart; without it the pods restart. */}}
+        {{- /* The reloader applies user and max_payload changes without a
+        restart; without the reloader, the pods restart. */}}
         {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream" "tls") (pick $nats "replicas" "jetstream" "tls" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $nats) | nindent 6 }}
       # NATS does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- if $nats.reloader.enabled }}
-      # The reloader sends SIGHUP to nats-server (the pid file).
+      # The reloader sends SIGHUP to nats-server (via the pid file).
       shareProcessNamespace: true
       {{- end }}
       terminationGracePeriodSeconds: 60
@@ -102,9 +102,9 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          # The reloader reads nats.conf and watches each file that it names
-          # (the TLS certificate, key and CA): it stops when one is missing,
-          # and a renewed certificate reloads the server.
+          # The reloader reads nats.conf and watches every file it names
+          # (TLS certificate, key and CA): it stops when one is missing, and
+          # a renewed certificate reloads the server.
           volumeMounts:
             - name: config
               mountPath: /etc/nats-config
@@ -123,7 +123,7 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Mi
-        # The group of the files is fsGroup.
+        # The files' group is fsGroup.
         - name: tls
           secret:
             secretName: {{ include "ow.nats.tlsSecretName" . }}

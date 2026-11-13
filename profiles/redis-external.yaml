@@ -1,11 +1,11 @@
-# Your Valkey or Redis (redis.mode external), in place of the bundled
-# Valkey. It must meet the requirements of docs/redis.md: Valkey or Redis
+# Your own Valkey or Redis (redis.mode external) instead of the bundled
+# Valkey. It must meet the requirements in docs/redis.md: Valkey or Redis
 # 7.2 or later, Sentinel or one primary with replicas (not Redis Cluster),
 # TLS, maxmemory-policy noeviction, AOF everysec, min-replicas-to-write 1,
-# and the ACL users below with the rights of docs/redis.md.
+# and the ACL users below with the rights from docs/redis.md.
 #
-# Before the install, create one Secret for each user with its password
-# (letters, digits and . _ ~ + / = -), and the Secret with the CA of your
+# Before the install, create one Secret per user with its password
+# (letters, digits and . _ ~ + / = -), and a Secret with the CA of your
 # servers, for example:
 #   kubectl -n ows create secret generic ows-redis-wallet-service --from-file=password=./wallet-service-password
 #   kubectl -n ows create secret generic ows-redis-ca --from-file=ca.crt=./redis-ca.crt
@@ -13,9 +13,9 @@ redis:
   mode: external
   masterName: ows
   external:
-    # The Sentinels of your group (or "address" for one primary without
-    # Sentinel). The certificates must name these hosts and the hosts of
-    # the primary and the replicas that the Sentinels give.
+    # Your group's Sentinels (or "address" for one primary without
+    # Sentinel). The certificates must name these hosts, and the primary
+    # and replica hosts that the Sentinels return.
     sentinels:
       - redis-1.example.org:26379
       - redis-2.example.org:26379
@@ -30,8 +30,8 @@ redis:
     walletWorker: {username: wallet-worker, passwordSecret: ows-redis-wallet-worker, passwordKey: password}
     walletClock: {username: wallet-clock, passwordSecret: ows-redis-wallet-clock, passwordKey: password}
     gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
-# With network policies (profiles/network-policies.yaml): the addresses of your
-# servers and Sentinels.
+# With network policies (profiles/network-policies.yaml): the addresses of
+# your servers and Sentinels.
 networkPolicy:
   externalRedis:
     - hosts: [redis-1.example.org, redis-2.example.org, redis-3.example.org]

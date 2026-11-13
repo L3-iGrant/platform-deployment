@@ -8,12 +8,12 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "gateway") | nindent 4 }}
 data:
-  # The gateway mounts it as /etc/igrant-gateway/config.yaml. No secret is
-  # in it.
+  # The gateway mounts it as /etc/igrant-gateway/config.yaml. No secrets
+  # here.
   config.yaml: |
     {{- include "ow.gateway.config" . | nindent 4 }}
-  {{- /* The public keys of the api tokens (only the gateway reads them),
-  unless gateway.publicKeys.existingTokenVerificationConfigMap is set. */}}
+  {{- /* Public keys for api tokens (only the gateway reads them), unless
+  gateway.publicKeys.existingTokenVerificationConfigMap is set. */}}
   {{- if and (not $keys.existingTokenVerificationConfigMap) $keys.tokenVerificationJwks }}
   {{ $keys.tokenVerificationJwksKey }}: |
     {{- $keys.tokenVerificationJwks | nindent 4 }}
@@ -21,9 +21,9 @@ data:
 ---
 {{- end }}
 {{- /*
-The shared ConfigMap <fullname>-igrant-gateway-jwks (no secret): the public
-keys of the gateway, which the api core, consent and the wallet config role
-mount. The chart makes it from the values when
+The shared ConfigMap <fullname>-igrant-gateway-jwks (no secrets): the
+gateway public keys that the api core, consent and the wallet config role
+mount. The chart builds it from the values when
 gateway.publicKeys.existingConfigMap is empty.
 */}}
 {{- if and (not $keys.existingConfigMap) $keys.gatewayJwks }}

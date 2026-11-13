@@ -1,16 +1,17 @@
 # Exposure with Envoy Gateway (Gateway API): one HTTPRoute per public host,
-# attached to your Gateway. The TLS ends at the Gateway (its listener has
-# the certificate). Envoy streams the server-sent events and does not limit
-# the body size of a route; the api route gets a request timeout above the
+# attached to your Gateway. TLS ends at the Gateway (its listener holds the
+# certificate). Envoy streams server-sent events and does not limit the
+# body size of a route; the api route gets a request timeout above the
 # longest stream (3900 s).
 #
-# The client address (rate limits, the IP allow-list of the API keys): your
-# Gateway sets X-Real-IP to the address of the client and replaces a value
-# that a client sends. Without this policy, do NOT set clientAddress.header
-# (a client could then choose its own address); the services then see the
-# address of an Envoy pod for every client. When a load balancer is in front
-# of Envoy, it must pass the client address too (for example the PROXY
-# protocol of the load balancer and `proxyProtocol: {}` in the same policy).
+# Client address (for rate limits and the API key IP allow-list): with the
+# policy below, your Gateway sets X-Real-IP to the client address and
+# overwrites any value that a client sends. Without this policy, do NOT set
+# clientAddress.header (a client could then pick its own address); the
+# services then see an Envoy pod address for every client. If a load
+# balancer sits in front of Envoy, it must pass on the client address too
+# (for example with the load balancer's PROXY protocol and
+# `proxyProtocol: {}` in the same policy).
 #   apiVersion: gateway.envoyproxy.io/v1alpha1
 #   kind: ClientTrafficPolicy
 #   metadata: {name: platform-client-address, namespace: envoy-gateway-system}
@@ -28,9 +29,9 @@ exposure:
       - name: platform                     # your Gateway
         namespace: envoy-gateway-system
         sectionName: https                 # its HTTPS listener
-    # A request may take up to 60 s, as the gateway of the api allows (the
-    # default of the proxy is 15 s; ingress-nginx waits 60 s). The api route
-    # waits longer (below).
+    # A request may take up to 60 s, as the auth gateway allows (the proxy
+    # default is 15 s; ingress-nginx waits 60 s). The api route waits
+    # longer (below).
     timeouts:
       request: 60s
 api:

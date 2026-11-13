@@ -1,17 +1,17 @@
 {{/*
-config.json of the dashboard (the ConfigMap <release>-dashboard; the
-checksum of the pods is of this text, so a change restarts them: the start
-scripts of the image read the file at the start, for example for the
-Content-Security-Policy).
-baseUrl: the api (the CSP connect-src of the dashboard also comes from it).
+config.json of the dashboard (ConfigMap <release>-dashboard). The pod
+checksum is taken from this text, so a change restarts the pods: the
+image's start scripts read the file at start, for example for the
+Content-Security-Policy.
+baseUrl: the api (the dashboard's CSP connect-src also comes from it).
 walletUrl: the organisation wallet (vct metadata of the credential types).
-Empty: the public URLs of api.host and organisationWallet.host. Without the
-wallet (ow.installation.has), no walletUrl: the dashboard shows no wallet
-area, and the chart needs no organisationWallet.host.
-individualImportMaxFileBytes, individualImportMaxRows: the limits of the CSV
-import of individuals of the api (api.extraConfig.Uploads, one source),
-only when they are set: without them the dashboard
-uses the defaults of the api.
+Empty means the public URLs of api.host and organisationWallet.host.
+Without the wallet (ow.installation.has) there is no walletUrl: the
+dashboard shows no wallet area and the chart needs no
+organisationWallet.host.
+individualImportMaxFileBytes, individualImportMaxRows: the api's limits for
+the CSV import of individuals (api.extraConfig.Uploads, the single source),
+set only when configured; otherwise the dashboard uses the api defaults.
 Call with the root context. Output: the JSON text.
 */}}
 {{- define "ow.dashboard.config" -}}

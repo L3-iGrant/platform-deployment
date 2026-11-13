@@ -1,12 +1,12 @@
 {{/*
-config.yaml of the api (start-api, the operator Jobs) and of the webhook
-handler (start-webhook-api). The api reads it with koanf: the key names are
-exact and an unknown key stops the api. The file has no secret: each
-<Name>File key names a file in ow.api.secretDir (the projected volume of
-deploy.yaml, see ow.api.secretFiles). The two roles have the same file,
-except the size of the database pool and the NATS user (api, api-webhook).
-The api is the IAM (Iam.mode "builtin"). The database sections come from
-ow.db.go (the engine of database.*).
+config.yaml of the api (start-api and the operator Jobs) and of the webhook
+handler (start-webhook-api). The api reads it with koanf: key names are
+exact and an unknown key stops the api. The file holds no secrets: each
+<Name>File key names a file in ow.api.secretDir (the projected volume in
+deploy.yaml, see ow.api.secretFiles). Both roles get the same file except
+for the database pool size and the NATS user (api, api-webhook). The api is
+the IAM (Iam.mode "builtin"). The database sections come from ow.db.go (the
+database.* engine).
 Call with (dict "root" $ "role" "api"|"webhook").
 */}}
 {{- define "ow.api.config" -}}
@@ -55,13 +55,13 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" $api.logLevel)
 -}}
-{{- /* The services of the installation (ow.installation.config): the
-section only when a service is not installed. */ -}}
+{{- /* Services of the installation (ow.installation.config): the section
+is only set when a service is not installed. */ -}}
 {{- with include "ow.installation.config" $root | fromJson -}}
 {{- $_ := set $config "Installation" . -}}
 {{- end -}}
-{{- /* The public URL of the wallet: only with the wallet (without it, the
-api has no wallet route and the chart needs no wallet host). */ -}}
+{{- /* Public URL of the wallet, only with the wallet (without it the api
+has no wallet routes and the chart needs no wallet host). */ -}}
 {{- if include "ow.installation.has" (list $root "wallet") -}}
 {{- $_ := set $config "OpenIdDeployment" (dict
     "OpenIdServiceEndpoint" (include "ow.publicUrlOf" (list $root "organisationWallet"))) -}}
@@ -85,9 +85,9 @@ api has no wallet route and the chart needs no wallet host). */ -}}
     "accountSidFile" .
     "authTokenFile" (include "ow.api.secretFile" (list $root "twilio-auth-token"))) -}}
 {{- end -}}
-{{- /* The api signs and verifies the NATS envelopes (issuer igrant-api;
-it trusts its own internal events and the installed services, consent and
-the wallet: ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
+{{- /* The api signs and verifies NATS envelopes (issuer igrant-api). It
+trusts its own internal events and the installed services, consent and the
+wallet (ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
 {{- $_ := set $config "ServiceEnvelope" (dict
     "signingJwksFile" (printf "%s/service-envelope-jwks.json" (include "ow.api.secretDir" $root))
     "activeKid" $signing.activeKid
@@ -97,9 +97,9 @@ the wallet: ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
 {{- if (include "ow.nats.ca" $root | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
 {{- end -}}
-{{- /* Every api process reads the views of the wallet database with the
-read-only user of the api (ReadAccess.wallet, the shape of DataBase). Not
-without the wallet: then the file has no ReadAccess. */ -}}
+{{- /* Every api process reads the wallet database views with the api's
+read-only user (ReadAccess.wallet, same shape as DataBase). Without the
+wallet the file has no ReadAccess. */ -}}
 {{- if include "ow.installation.has" (list $root "wallet") -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $walletRead := include "ow.db.go" (dict
@@ -113,22 +113,21 @@ without the wallet: then the file has no ReadAccess. */ -}}
     "pool" $v.database.pools.apiReadAccess) | fromJson -}}
 {{- $_ := set $config "ReadAccess" (dict "wallet" $walletRead) -}}
 {{- end -}}
-{{- /* The api core verifies the internal token of the gateway on every
-request (start-api needs GatewayToken.jwksFile; start-webhook-api does not
-read the section). */ -}}
+{{- /* The api core verifies the gateway's internal token on every request
+(start-api needs GatewayToken.jwksFile; start-webhook-api does not read the
+section). */ -}}
 {{- $_ := set $config "GatewayToken" (dict
     "issuer" $v.gateway.internalToken.issuer
     "audiences" $v.gateway.internalToken.audiences
     "jwksFile" (printf "%s/gateway-jwks.json" (include "ow.api.configPath" $root | dir))) -}}
-{{- /* The stop of the two server processes: drain, then the
-wait for the requests in progress. The operator Jobs do not read this
-section. */ -}}
+{{- /* How the two server processes stop: drain, then wait for the requests
+in progress. The operator Jobs do not read this section. */ -}}
 {{- $_ := set $config "Server" (dict
     "drainSeconds" ($api.server.drainSeconds | int)
     "gracefulShutdownSeconds" ($api.server.gracefulShutdownSeconds | int)) -}}
-{{- /* The limits of the installation (api.limits): the key only when the
-installer sets a value; without it the api uses its default. The gateway
-file never has it: the gateway refuses the section. */ -}}
+{{- /* The installation limits (api.limits): the key is set only when the
+installer gives a value; otherwise the api uses its default. The gateway
+file never has it, because the gateway refuses the section. */ -}}
 {{- with dig "limits" "maxOrganisations" "" $api -}}
 {{- $_ := set $config "Limits" (dict "maxOrganisations" (. | int)) -}}
 {{- end -}}
@@ -136,7 +135,7 @@ file never has it: the gateway refuses the section. */ -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}
 {{- /* api.extraConfig cannot set Installation: ow.installation.config
-stops the render when it names other services, and the chart writes its
+fails the render when it names other services, and the chart writes its
 own section. */ -}}
 {{- $extra := deepCopy ($api.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
@@ -148,11 +147,11 @@ stdout. */ -}}
 {{- end }}
 
 {{/*
-config.yaml of the api migration hook (migrate-hook.yaml): only the database
-of the api and the database of the OIDC provider (igrant-api migrate
-migrates both) and the log level (config.LoadDatabase: no other key is
-required, no other secret file is read). The hook runs before the resources
-of the release change, so it cannot read the new ConfigMaps of the release.
+config.yaml of the api migration hook (migrate-hook.yaml): only the api
+database, the OIDC provider database (igrant-api migrate migrates both)
+and the log level. config.LoadDatabase requires no other key and reads no
+other secret file. The hook runs before the release's resources change, so
+it cannot read the release's new ConfigMaps.
 */}}
 {{- define "ow.api.migrateConfig" -}}
 {{- $dir := include "ow.api.secretDir" . -}}
@@ -163,15 +162,15 @@ of the release change, so it cannot read the new ConfigMaps of the release.
 {{- end }}
 
 {{/*
-The limits of the CSV import of individuals that the api reads from
-api.extraConfig.Uploads: individualImportMaxFileBytes
-(65536 to 20971520) and individualImportMaxRows (1 to 9000); absent or 0 is
-the default of the api (5 MiB, 5000). The dashboard gets the same values in
-its config.json, so that it refuses only the files
-that the api refuses. The render stops for a value that the api refuses at
-its start: a text (also a text of digits: the api decodes its file without
-type conversion), not a whole number, or out of its range. Call with the root
-context. Output: JSON with the keys that are set (as whole numbers).
+Limits for the CSV import of individuals that the api reads from
+api.extraConfig.Uploads: individualImportMaxFileBytes (65536 to 20971520)
+and individualImportMaxRows (1 to 9000); absent or 0 means the api default
+(5 MiB, 5000). The dashboard gets the same values in its config.json, so it
+refuses exactly the files that the api refuses. The render fails on any
+value that the api would refuse at start: a string (even a string of
+digits, because the api decodes its file without type conversion), a
+non-integer, or a value out of range. Call with the root context. Output:
+JSON with the keys that are set (as integers).
 */}}
 {{- define "ow.api.importLimits" -}}
 {{- $uploads := dig "Uploads" dict (.Values.api.extraConfig | default dict) -}}
@@ -205,13 +204,12 @@ context. Output: JSON with the keys that are set (as whole numbers).
 {{- end }}
 
 {{/*
-Render guard of the memory of the uploads of the api core (api.extraConfig
-Uploads and ImageUpload): each upload in progress (an
-image or a CSV import of individuals) holds its file in memory, at most
-Uploads.maxInProgress of them (default 8). The memory request of the
-container (the memory of the process without uploads) and maxInProgress x
-the largest file must fit below the memory limit. Call with the root
-context. Output: nothing.
+Render guard for the upload memory of the api core (api.extraConfig Uploads
+and ImageUpload). Each upload in progress (an image or a CSV import of
+individuals) holds its file in memory, with at most Uploads.maxInProgress
+of them (default 8). The container's memory request (the process memory
+without uploads) plus maxInProgress x the largest file must fit below the
+memory limit. Call with the root context. Output: nothing.
 */}}
 {{- define "ow.api.checkUploads" -}}
 {{- $_ := include "ow.api.importLimits" . -}}
@@ -232,17 +230,17 @@ context. Output: nothing.
 {{- end }}
 
 {{/*
-Render guard of /tmp of the api and webhook pods (api.tmp.sizeLimit, an
-emptyDir in memory). The multipart parser of Go (r.FormFile, 32 MiB in
-memory) writes a file part above 32 MiB whole to /tmp. The largest body
-that reaches the multipart parser of the api is the larger body limit of
-the gateway classes default and file (gateway.proxy.maxBodyBytes; the
-class large goes only to the wallet). Thus:
-- when that limit is above 32 MiB, /tmp must hold one upload of it, else
-  each such upload fails;
-- the memory request and /tmp together must fit below the memory limit of
-  the container (the files of /tmp count against it), else a full /tmp can
-  make the kernel stop the process.
+Render guard for /tmp in the api and webhook pods (api.tmp.sizeLimit, an
+in-memory emptyDir). Go's multipart parser (r.FormFile, 32 MiB in memory)
+writes any file part above 32 MiB to /tmp in full. The largest body that
+reaches the api's multipart parser is the larger of the gateway body limits
+for the classes default and file (gateway.proxy.maxBodyBytes; the large
+class only goes to the wallet). So:
+- when that limit is above 32 MiB, /tmp must hold one upload of that size,
+  or every such upload fails;
+- the memory request plus /tmp must fit below the container's memory limit
+  (files in /tmp count against it), or a full /tmp can make the kernel
+  stop the process.
 Call with the root context. Output: nothing.
 */}}
 {{- define "ow.api.checkTmp" -}}

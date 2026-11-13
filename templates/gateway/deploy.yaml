@@ -1,16 +1,15 @@
 {{- /*
-Auth gateway (its own image igrant-gateway: a static
-binary on a distroless base, non-root, read-only root file system, port
-8070): authenticates every request of the api host and forwards it to the
-owner service (api core, consent, wallet-config) with a signed internal
-token. It is part of every installation with the api. It runs no migration, no NATS, no
-cron and no OIDC provider; it writes no file, so it runs as a non-root user
-with a read-only root file system.
+Auth gateway (its own igrant-gateway image: a static binary on a distroless
+base, port 8070). It authenticates every request to the api host and
+forwards it to the owner service (api core, consent, wallet-config) with a
+signed internal token. Every installation with the api has it. It runs no
+migrations, NATS, cron or OIDC provider, and writes no files, so it runs as
+a non-root user with a read-only root file system.
 */}}
 {{- if .Values.api.enabled }}
 {{- $g := .Values.gateway }}
-{{- /* The own gateway image: an empty registry,
-tag or pull policy takes the value of api.image (one release train). */}}
+{{- /* The gateway's own image: an empty registry, tag or pull policy takes
+the value from api.image (one release train). */}}
 {{- $image := deepCopy .Values.api.image }}
 {{- range $key, $value := ($g.image | default dict) }}
 {{- if $value }}{{- $_ := set $image $key $value }}{{- end }}
@@ -52,7 +51,7 @@ spec:
       # The gateway does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.checkStopBudget" (list "gateway" $g 5 20) }}
-      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
+      # Stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds | int }}
       containers:
         - name: gateway
@@ -93,7 +92,7 @@ spec:
               mountPath: {{ include "ow.gateway.secretDir" . }}
               readOnly: true
       volumes:
-        # The configuration and the public keys of the api tokens.
+        # The config and the public keys for api tokens.
         - name: config
           projected:
             sources:

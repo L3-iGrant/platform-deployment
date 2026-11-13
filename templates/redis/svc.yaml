@@ -1,7 +1,7 @@
 {{- if include "ow.redis.bundled" . }}
-# The pod DNS names (<fullname>-redis-<n>.<fullname>-redis-headless): the
-# Sentinels give them to the clients, the replicas use them for the
-# primary. Also before the pods are ready.
+# Pod DNS names (<fullname>-redis-<n>.<fullname>-redis-headless): the
+# Sentinels give them to clients, and replicas use them to reach the
+# primary. They resolve before the pods are ready too.
 apiVersion: v1
 kind: Service
 metadata:
@@ -22,7 +22,7 @@ spec:
   selector:
     {{- include "ow.selectorLabels" (list . "redis") | nindent 4 }}
 ---
-# The Sentinels of the ready pods: one address for a client that asks a
+# Sentinels of the ready pods: one address for a client that asks a
 # Sentinel for the primary. The wallet gets the pod names of all Sentinels.
 apiVersion: v1
 kind: Service

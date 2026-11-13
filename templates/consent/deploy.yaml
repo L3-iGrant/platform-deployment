@@ -27,7 +27,7 @@ spec:
       # Consent does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.checkStopBudget" (list "consent.server" $c.server 5 20) }}
-      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
+      # Stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $c.server.terminationGracePeriodSeconds | int }}
       containers:
         - name: consent

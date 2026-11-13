@@ -1,16 +1,16 @@
 {{- /*
-Migration hook of the organisation wallet (ow.migrateHook, helm post-install
-and pre-upgrade, after the roles hook): "migrate-database" (the wallet
-migrations with the views of the read-only users, then the grant step) as
-the migrator <prefix>_migrator, before any Deployment of the release changes.
-The migrator is a member of the owner role: the migrations make the objects
-as <prefix>_owner. On a new installation the hook runs after the resources
-of the release exist; the wallet pods wait for the schema head. Its
-configuration has only the database and the retention of the audit log
-(ow.wallet.migrateConfig; the wallet reads the file of EUDI_WALLET_CONFIG):
-after the grant step, the partition step makes the monthly partitions of
-the audit events and drops the months that are older than the retention.
-It mounts only the key migrator of the role Secret.
+Migration hook of the organisation wallet (ow.migrateHook, helm
+post-install and pre-upgrade, after the roles hook): runs "migrate-database"
+(the wallet migrations with the read-only user views, then the grant step)
+as the migrator <prefix>_migrator, before any Deployment of the release
+changes. The migrator is a member of the owner role, so the migrations
+create objects as <prefix>_owner. On a new installation the hook runs after
+the release's resources exist, and the wallet pods wait for the schema
+head. Its config has only the database and the audit log retention
+(ow.wallet.migrateConfig; the wallet reads the file named by
+EUDI_WALLET_CONFIG). After the grant step, the partition step creates the
+monthly audit event partitions and drops the months older than the
+retention. It mounts only the migrator key of the role Secret.
 */}}
 {{- if .Values.organisationWallet.enabled }}
 {{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" .) "key" "migrator" }}

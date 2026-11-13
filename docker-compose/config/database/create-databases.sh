@@ -1,25 +1,24 @@
 #!/bin/bash
-# The service database-init: makes one database and one owner user for each
-# component on the database server of DB_ENGINE (postgresql). The user name
-# is the database name. The script is idempotent: it makes a user or a
-# database only when it does not exist, and it sets the password of each
-# user each time. The data scopes of the wallet are schemas in
-# igrant_wallet: the service wallet-database-roles makes them, with the
-# database roles of the wallet. No process of the wallet logs in as the
-# owner user igrant_wallet.
+# The database-init service: creates one database and one owner user per
+# component on the DB_ENGINE server (postgresql). The user name is the
+# database name. Idempotent: it creates a user or a database only when it is
+# missing, and sets every user's password on each run. The wallet's data
+# scopes are schemas in igrant_wallet, which the wallet-database-roles
+# service creates together with the wallet's database roles. No wallet
+# process logs in as the owner user igrant_wallet.
 #
 # Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)
 # and <database>-password for each database. No password goes on a command
-# line or into a statement: psql \password sends the SCRAM-SHA-256 verifier
-# of the password, so the DDL log of the server does not show it.
+# line or into a statement: psql \password sends the SCRAM-SHA-256
+# verifier, so the server's DDL log never shows the password.
 set -euo pipefail
 
 DATABASES="igrant_api igrant_oidc igrant_consent igrant_wallet"
 SECRETS=/run/secrets/database
 HOST=database
 
-# The text of a secret file without its trailing line breaks.
+# The content of a secret file, without trailing line breaks.
 secret() {
   local value
   value="$(< "${SECRETS}/$1")"
@@ -39,10 +38,10 @@ wait_for() {
   done
 }
 
-# Sets the password of the user $1 with psql \password: psql reads the
-# password twice from its standard input (the service has no terminal), and
-# printf is a shell builtin. The output (the two prompts) shows only on an
-# error.
+# Sets the password of the user $1 with psql \password. psql reads the
+# password twice from stdin (the service has no terminal), and printf is a
+# shell builtin, so no process gets the password as an argument. The output
+# (the two prompts) is shown only on an error.
 set_password() {
   local role="$1" password output
   password="$(secret "${role}-password")"

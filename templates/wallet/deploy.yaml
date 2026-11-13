@@ -4,8 +4,8 @@
 {{- range $role := $roles }}
 {{- $settings := index $w $role }}
 {{- $component := printf "wallet-%s" $role }}
-{{- /* The config pods verify the internal token of the gateway and the
-signed NATS commands of the api; they mount the public keys of both. */}}
+{{- /* The config pods verify the gateway's internal token and the api's
+signed NATS commands, so they mount the public keys of both. */}}
 {{- $gatewayKeys := eq $role "config" }}
 ---
 apiVersion: apps/v1
@@ -32,7 +32,7 @@ spec:
         {{- include "ow.checksum" (list "keys" (list $.Values.gateway.publicKeys $.Values.serviceKeys $w.serviceEnvelope (index $.Values.nats.auth.users (include "ow.wallet.natsUser" $role)) (include "ow.nats.ca" $) (ternary $.Values.readAccess.wallet dict (eq $role "config")))) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
-      {{- /* The service and config pods: the stop budget of
+      {{- /* Service and config pods: the stop budget from
       organisationWallet.server (ow.wallet.checkServer). */}}
       terminationGracePeriodSeconds: {{ $w.server.terminationGracePeriodSeconds | int }}
       containers:
@@ -42,8 +42,8 @@ spec:
           # The full command: the image has no entrypoint script.
           command: ["/app/.venv/bin/start-server"]
           env:
-            # The only environment variable of the wallet configuration: the
-            # path of the file (the image has the same default).
+            # The only wallet config environment variable: the file path
+            # (the image has the same default).
             - name: EUDI_WALLET_CONFIG
               value: {{ include "ow.wallet.configPath" $ | quote }}
             {{- with $w.extraEnv }}
@@ -52,16 +52,16 @@ spec:
           ports:
             - name: http
               containerPort: 8080
-            # The Prometheus metrics of the server (/metrics only): the
-            # monitoring namespace scrapes it; no Service of the routes and
-            # no Ingress has it.
+            # Server Prometheus metrics (/metrics only), scraped from the
+            # monitoring namespace; no route Service and no Ingress exposes
+            # this port.
             - name: metrics
               containerPort: {{ include "ow.wallet.serverMetricsPort" $ }}
-          # The server answers /healthz only when the database schema is at
-          # the head of its code: it waits up to 600 s (on a new
-          # installation the post-install hooks migrate while the pods
-          # start), then stops, and Kubernetes starts it again. The startup
-          # probe covers the wait: 5 s x 130 = 650 s.
+          # The server only answers /healthz once the database schema is at
+          # its code's head. It waits up to 600 s (on a new installation the
+          # post-install hooks migrate while the pods start), then exits and
+          # Kubernetes restarts it. The startup probe covers the wait:
+          # 5 s x 130 = 650 s.
           startupProbe:
             httpGet:
               path: /healthz
@@ -69,8 +69,8 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 130
-          # Liveness: /healthz (the process runs; it never waits for a
-          # dependency after the start). Readiness: /readyz (the config role
+          # Liveness: /healthz (the process is up; after start it never
+          # waits for a dependency). Readiness: /readyz (the config role
           # waits for the api and consent views).
           readinessProbe:
             httpGet:
@@ -86,9 +86,9 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 4
-          # The preStop sleep (the sleep action: the image has no shell and no
+          # The preStop sleep (the sleep action, as the image has no shell or
           # sleep program), then SIGTERM: the server waits for its requests
-          # and its background tasks (ow.wallet.checkServer).
+          # and background tasks (ow.wallet.checkServer).
           {{- include "ow.preStopSleep" $w.server.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list $ $w) | nindent 10 }}
           {{- with $settings.resources }}
@@ -117,15 +117,13 @@ spec:
         {{- with include "ow.wallet.trustAnchorsVolume" (list $ $role) }}
         {{- . | nindent 8 }}
         {{- end }}
-        # The metrics files of the processes of the server
-        # (server.metrics_directory).
+        # Metrics files of the server processes (server.metrics_directory).
         - name: server-metrics
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-        # The temporary files of Python (tempfile; the root file system is
-        # read-only), for example a part of a multipart form that is larger
-        # than 1 MB.
+        # Python temp files (tempfile; the root file system is read-only),
+        # for example a multipart form part larger than 1 MB.
         - name: tmp
           emptyDir:
             medium: Memory

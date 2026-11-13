@@ -1,6 +1,6 @@
 {{- if include "ow.openbao.bundled" . }}
-# The client Service: only the unsealed pods (ready). A standby node sends
-# each request to the active node (disable_standby_reads in openbao.hcl).
+# Client Service: only unsealed (ready) pods. A standby node forwards every
+# request to the active node (disable_standby_reads in openbao.hcl).
 apiVersion: v1
 kind: Service
 metadata:
@@ -16,8 +16,8 @@ spec:
   selector:
     {{- include "ow.selectorLabels" (list . "openbao") | nindent 4 }}
 ---
-# The raft peers: the pod DNS names of retry_join, api_addr and
-# cluster_addr, also before the pods are ready.
+# Raft peers: the pod DNS names for retry_join, api_addr and cluster_addr,
+# also before the pods are ready.
 apiVersion: v1
 kind: Service
 metadata:

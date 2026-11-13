@@ -1,22 +1,23 @@
 #!/bin/sh
-# The service openbao-init: the bootstrap of the wallet KMS in the OpenBao of
-# the Docker Compose platform. The same steps as the bootstrap of the Helm
-# chart (files/openbao/bootstrap.sh), in POSIX sh for the OpenBao image (no
-# bash, no jq). Idempotent: a second run changes nothing that is correct.
+# The openbao-init service: bootstraps the wallet KMS in the OpenBao of the
+# Docker Compose platform. Same steps as the Helm chart's bootstrap
+# (files/openbao/bootstrap.sh), in POSIX sh because the OpenBao image has no
+# bash and no jq. Idempotent: a second run changes nothing that is already
+# correct.
 #
-# 1. The first time: "bao operator init" with one recovery key. The root
+# 1. First run only: "bao operator init" with one recovery key. The root
 #    token and the recovery key go to init.json in OPENBAO_STATE_DIR
 #    (secrets/openbao/, mode 0600). The static seal unseals OpenBao.
 # 2. The Transit engine at transit/.
 # 3. The userpass auth method at userpass/ (the wallet logs in at
 #    auth/userpass/login/eudi-wallet).
-# 4. The policy wallet-kms: the Transit paths of the wallet (signing keys,
-#    and the key wallet-key-store-credentials that encrypts the credentials
-#    of the organisation key stores), no other path.
-# 5. The user eudi-wallet with the password of OPENBAO_STATE_DIR/
-#    wallet-password (make secrets) and only that policy.
+# 4. The policy wallet-kms: only the wallet's Transit paths (the signing
+#    keys, and the key wallet-key-store-credentials that encrypts the
+#    credentials of the organisation key stores).
+# 5. The user eudi-wallet, with the password from
+#    OPENBAO_STATE_DIR/wallet-password (make secrets) and only that policy.
 #
-# It prints no secret value.
+# Prints no secret values.
 set -eu
 
 : "${OPENBAO_STATE_DIR:=/openbao/state}"
@@ -28,16 +29,16 @@ INIT_FILE="${OPENBAO_STATE_DIR}/init.json"
 say() { printf 'openbao-init: %s\n' "$*"; }
 fail() { printf 'openbao-init: ERROR: %s\n' "$*" >&2; exit 1; }
 
-# The state folder is your folder secrets/openbao/ (mode 0700). This service
-# runs as your user without capabilities: make sets HOST_UID and HOST_GID.
-# Another user (for example root, when HOST_UID is not set) cannot open it.
-# The test of the owner and a list of the folder, not "test -r": the test of
-# BusyBox gives true to root for each file.
+# The state folder is your secrets/openbao/ folder (mode 0700). This service
+# runs as your user without capabilities (make sets HOST_UID and HOST_GID);
+# any other user, for example root when HOST_UID is not set, cannot open it.
+# Check the owner and list the folder instead of "test -r": the BusyBox test
+# returns true for root on every file.
 if [ ! -O "$OPENBAO_STATE_DIR" ] || ! ls "$OPENBAO_STATE_DIR" > /dev/null 2>&1; then
   fail "the user $(id -u):$(id -g) cannot open secrets/openbao/: start the platform with make up (it sets HOST_UID and HOST_GID to your user), or set HOST_UID and HOST_GID in your shell"
 fi
 
-# The exit code of "bao status": 0 unsealed, 2 sealed (or not initialised),
+# Exit code of "bao status": 0 unsealed, 2 sealed (or not initialised),
 # 1 no answer.
 status_code() {
   rc=0
@@ -96,7 +97,7 @@ else
   say "auth method userpass/: enabled"
 fi
 
-# 4. Policy (the same paths as the Helm chart).
+# 4. Policy (the same paths as in the Helm chart).
 bao policy write "$POLICY" - > /dev/null <<EOF
 path "${MOUNT}/keys" {
   capabilities = ["list"]
@@ -124,7 +125,7 @@ path "${MOUNT}/decrypt/wallet-key-store-credentials" {
 EOF
 say "policy ${POLICY}: written"
 
-# 5. The wallet user. The password goes to bao on stdin, never as an
+# 5. The wallet user. The password reaches bao on stdin, never as an
 # argument.
 [ -s "${OPENBAO_STATE_DIR}/wallet-password" ] || fail "secrets/openbao/wallet-password is missing (run make secrets)"
 tr -d '\r\n' < "${OPENBAO_STATE_DIR}/wallet-password" \

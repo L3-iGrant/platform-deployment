@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# Makes the keys of an installation of the chart, with the igrant-api "keys"
-# commands of the api image:
-# - the key files of the api (token hash secret, token signing JWKS,
-#   database wrapping keys), the private JWKS of the gateway and of the
-#   signed NATS envelopes of each service, and one nkey seed per NATS user;
-# - <out>/secrets.yaml: the Kubernetes Secrets of these files, with the
-#   default names of the chart (<release>-...). It holds private keys: apply
-#   it, then keep a copy in your password safe and delete the folder;
-# - <out>/values-keys.yaml: the values of the keys (key ids, public JWKS,
-#   public nkeys, Secret names). It holds no secret. Give it to helm with -f.
+# Creates the keys for an installation of the chart, with the igrant-api
+# "keys" commands from the api image:
+# - the api key files (token hash secret, token signing JWKS, database
+#   wrapping keys), the private JWKS of the gateway and of each service's
+#   signed NATS envelopes, and one nkey seed per NATS user;
+# - <out>/secrets.yaml: the Kubernetes Secrets for these files, with the
+#   chart's default names (<release>-...). It holds private keys: apply it,
+#   then keep a copy in your password safe and delete the folder;
+# - <out>/values-keys.yaml: the key values (key ids, public JWKS, public
+#   nkeys, Secret names). It holds no secrets. Pass it to helm with -f.
 #
 # Usage: scripts/make-keys.sh [options]
-#   -r, --release NAME     the Helm release name (default: ows). With
-#                          fullnameOverride, give that value.
-#   -n, --namespace NS     the namespace of the release (default: ows)
-#   -o, --out DIR          the output folder; it must not exist (default:
+#   -r, --release NAME     Helm release name (default: ows). With
+#                          fullnameOverride, use that value.
+#   -n, --namespace NS     namespace of the release (default: ows)
+#   -o, --out DIR          output folder; it must not exist yet (default:
 #                          ./<release>-keys)
-#   -t, --tag TAG          the release tag of the iGrant.io images (the
-#                          value global.imageTag of your installation;
-#                          required without --api-image or --igrant-api)
-#   --api-image IMAGE      the full api image (default: <global.imageRegistry
-#                          of the values.yaml of the chart>/api:<tag>); the
-#                          commands run in it with docker. With your own
-#                          mirror, give this option.
-#   --igrant-api PATH      a local igrant-api program in place of docker
+#   -t, --tag TAG          release tag of the iGrant.io images (your
+#                          global.imageTag; required unless you give
+#                          --api-image or --igrant-api)
+#   --api-image IMAGE      full api image (default: <global.imageRegistry
+#                          from the chart's values.yaml>/api:<tag>); the
+#                          commands run in it with docker. Use this option
+#                          with your own mirror.
+#   --igrant-api PATH      a local igrant-api program instead of docker
 #
-# The script needs bash, base64, and docker (or --igrant-api). It does not
-# call the cluster.
+# Needs bash, base64, and docker (or --igrant-api). It does not call the
+# cluster.
 set -euo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -55,7 +55,7 @@ if [ -e "$out" ]; then
   exit 1
 fi
 
-# The api image: global.imageRegistry of values.yaml, the repository "api"
+# The api image: global.imageRegistry from values.yaml, the repository "api"
 # and the release tag.
 if [ -z "$local_program" ] && [ -z "$image" ]; then
   if [ -z "$tag" ]; then
@@ -70,8 +70,8 @@ umask 077
 mkdir -p "$out/files"
 files="$(cd "$out/files" && pwd)"
 
-# igrant-api <arguments>, in the folder of the key files. The api image is
-# linux/amd64: on an Arm workstation, Docker runs it with emulation.
+# igrant-api <arguments>, run in the key files folder. The api image is
+# linux/amd64; on an Arm workstation, Docker runs it under emulation.
 igrant_api() {
   if [ -n "$local_program" ]; then
     (cd "$files" && "$local_program" "$@")
@@ -102,16 +102,16 @@ for service in api consent wallet; do
 done
 
 echo "make-keys: the NATS users"
-# walletWorker: the workers of the wallet (the clock connects to no NATS).
+# walletWorker: the wallet workers (the clock does not use NATS).
 nats_users="api:api apiWebhook:api-webhook consent:consent walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
 for entry in $nats_users; do
   name="${entry#*:}"
   igrant_api keys generate-nats-seed --file "nats-${name}.seed" > "$files/nats-${name}.nkey"
 done
 
-# One Secret manifest (type Opaque) with the files. Call with
+# One Secret manifest (type Opaque) with the given files. Call with
 # <name> <key>=<file> ...
-# The labels select the key Secrets of the release (docs/uninstall.md).
+# The labels select the release's key Secrets (docs/uninstall.md).
 secret() {
   local name="$1" pair key file
   shift
@@ -138,7 +138,7 @@ secret() {
   done
 } > "$out/secrets.yaml"
 
-# A JSON file as an indented YAML block (the public JWKS).
+# A JSON file as an indented YAML block (for the public JWKS).
 block() {
   sed "s/^/$1/" "$files/$2"
 }

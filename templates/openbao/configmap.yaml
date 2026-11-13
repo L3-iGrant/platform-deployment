@@ -8,9 +8,9 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "openbao") | nindent 4 }}
 data:
-  # The server configuration (no secret) and the scripts: entrypoint.sh
-  # (starts "bao server") and bootstrap.sh (the operator
-  # runs it once after "bao operator init"; see docs/install.md, step 5).
+  # The server config (no secrets) and the scripts: entrypoint.sh (starts
+  # "bao server") and bootstrap.sh (the operator runs it once after "bao
+  # operator init"; see docs/install.md, step 5).
   openbao.hcl: |
     {{- include "ow.openbao.config" . | nindent 4 }}
   {{- (.Files.Glob "files/openbao/*.sh").AsConfig | nindent 2 }}

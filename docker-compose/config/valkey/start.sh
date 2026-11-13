@@ -1,16 +1,16 @@
 #!/bin/sh
-# Start one Valkey service of this folder: start.sh primary | replica |
+# Starts one Valkey service of this folder: start.sh primary | replica |
 # sentinel (the services valkey, valkey-replica and valkey-sentinel).
 #
-# The script writes the configuration from the templates of /etc/valkey
-# (valkey.conf, users.acl, sentinel.conf) to /run/valkey (a tmpfs; the files
-# have the mode 600). The fields of the templates: {password:<user>} and
-# {hash:<user>} (the SHA-256 of the password in the ACL syntax) from the
-# secret files /run/secrets/valkey/<user>, {self} (the service name) and
-# {primary}. A password has only letters, digits and . _ ~ + / = -.
+# Writes the configuration from the templates in /etc/valkey (valkey.conf,
+# users.acl, sentinel.conf) to /run/valkey (a tmpfs; the files have mode
+# 600). Template fields: {password:<user>} and {hash:<user>} (the SHA-256 of
+# the password in ACL syntax) from the secret files
+# /run/secrets/valkey/<user>, {self} (the service name) and {primary}. A
+# password can contain only letters, digits and . _ ~ + / = -.
 #
-# The primary: the one that the Sentinel gives (after a failover), else a
-# data server with the role master, else valkey (the first start). A data
+# The primary is the one that the Sentinel reports (after a failover), else
+# a data server with the role master, else valkey (the first start). A data
 # server that is not the primary starts as its replica.
 set -eu
 umask 077
@@ -23,7 +23,7 @@ case "$role" in
   *) echo "valkey: unknown role $role" >&2; exit 2 ;;
 esac
 
-# ask <host> <port> <command>...: one command as the user sentinel.
+# ask <host> <port> <command>...: runs one command as the sentinel user.
 ask() {
   _host=$1
   _port=$2

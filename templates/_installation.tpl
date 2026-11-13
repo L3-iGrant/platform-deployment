@@ -1,16 +1,16 @@
 {{/*
 The services of the installation (docs/components.md, "The services of the
-installation"). An installation has the consent service, the organisation
-wallet, or both. A service is installed when this release runs it
-(consent.enabled, organisationWallet.enabled) or when the gateway sends its
-routes to the service of another release (gateway.upstreams.consent.url,
-gateway.upstreams.walletConfig.url). A service is not installed when both
-are empty: the gateway answers 404 to its routes, and no process of the
-release reads its views or trusts its keys.
+installation"). An installation has consent, the organisation wallet, or
+both. A service is installed when this release runs it (consent.enabled,
+organisationWallet.enabled) or when the gateway routes to it in another
+release (gateway.upstreams.consent.url, gateway.upstreams.walletConfig.url).
+When both are empty, the service is not installed: the gateway answers 404
+on its routes, and no process in the release reads its views or trusts its
+keys.
 
 A release without the api (api.enabled false) has no gateway and no
-upstream URL, so it cannot see which services the installation has: it
-keeps all services, as in the earlier releases.
+upstream URLs, so it cannot tell which services are installed. It keeps
+all services, as earlier releases did.
 */}}
 
 {{/*
@@ -45,14 +45,14 @@ The installed services, in the order wallet, consent. Output: JSON list.
 {{- end }}
 
 {{/*
-The section Installation of the api file and of the gateway file: {} when
-all services are installed (the files do not change, and an image of an
-earlier release still starts), else {"services": [...]}. The chart has no
-value for the list. It stops the render when:
+The Installation section of the api and gateway files: {} when all services
+are installed (the files stay the same, so an image from an earlier release
+still starts), else {"services": [...]}. There is no value for the list.
+The render fails when:
 - no service is installed (an installation needs consent or the wallet);
 - privacyDashboard.enabled is true and consent is not installed;
 - api.extraConfig.Installation or gateway.extraConfig.Installation names
-  other services than the chart.
+  other services than the chart does.
 Output: JSON.
 */}}
 {{- define "ow.installation.config" -}}
@@ -85,8 +85,8 @@ Output: JSON.
 {{- end }}
 
 {{/*
-The issuers of the signed NATS envelopes that the api, consent or the wallet
-trusts: the given issuers of the installed services (igrant-api always,
+Issuers of signed NATS envelopes that the api, consent or the wallet trusts:
+the given issuers, limited to the installed services (igrant-api always,
 igrant-consent-management with consent, eudi-wallet with the wallet). Call
 with (list $ "<issuer>" ...). Output: JSON list.
 */}}

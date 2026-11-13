@@ -1,8 +1,7 @@
 {{/*
-NetworkPolicy helpers. The rules come from
-policies/network-matrix.yaml; the platform data (the selectors of the Ingress controller and
-of DNS, external databases and NATS, the egress profiles) comes from
-networkPolicy.*.
+NetworkPolicy helpers. The rules come from policies/network-matrix.yaml;
+the platform data (Ingress controller and DNS selectors, external databases
+and NATS, egress profiles) comes from networkPolicy.*.
 */}}
 
 {{/* The connection matrix (policies/network-matrix.yaml) as a dict. */}}
@@ -15,10 +14,10 @@ networkPolicy.*.
 {{- end }}
 
 {{/*
-The network labels of one pod template: the role and one label per egress
-profile (networkPolicy.egress.roles.<role>, plus the profiles of the call).
-They are rendered always, so turning the policies on restarts no pod. The
-render stops when the matrix does not allow a profile for the role.
+Network labels of one pod template: the role, plus one label per egress
+profile (networkPolicy.egress.roles.<role> and the profiles passed in).
+They are always rendered, so turning the policies on restarts no pods. The
+render fails when the matrix does not allow a profile for the role.
 Call with (list $ "<role>" (list "<profile>" ...)). Output: label lines at
 column 0.
 */}}
@@ -47,8 +46,7 @@ netpol.igrant.io/egress-{{ $profile }}: "true"
 {{- end }}
 
 {{/*
-The roles that run in this release (the pods of the chart). Output: JSON
-list.
+Roles that run in this release (the chart's pods). Output: JSON list.
 */}}
 {{- define "ow.netpol.presentRoles" -}}
 {{- $v := .Values -}}
@@ -65,10 +63,10 @@ list.
 {{- end }}
 
 {{/*
-The port number or name of one connection of the matrix: the database port
-is the port of database.engine (a number, so it does not depend on the
-container port name of the server). Call with (list $ "<role>" "<port
-name>"). Output: the port.
+Port number or name of one connection in the matrix. The database port is
+the database.engine port (a number, so it does not depend on the server's
+container port name). Call with (list $ "<role>" "<port name>"). Output:
+the port.
 */}}
 {{- define "ow.netpol.port" -}}
 {{- $root := index . 0 -}}
@@ -80,21 +78,21 @@ name>"). Output: the port.
 {{- end }}
 
 {{/*
-The peer of an external source or destination (ingressController,
-monitoring, dns, nats) from its values: namespaceSelector and podSelector
-(empty: all). Call with the values dict. Output: one list item at column 0.
+Peer for an external source or destination (ingressController, monitoring,
+dns, nats) from its values: namespaceSelector and podSelector (empty means
+all). Call with the values dict. Output: one list item at column 0.
 */}}
 {{- define "ow.netpol.selectorPeer" -}}
 {{- toYaml (list (dict "namespaceSelector" (.namespaceSelector | default dict) "podSelector" (.podSelector | default dict))) -}}
 {{- end }}
 
 {{/*
-The except list of an ipBlock of all addresses of one family (0.0.0.0/0 or
-::/0; an egress profile of the public internet): the entries of the except
-list of the profile and of networkPolicy.clusterCidrs of the same family (an
-IPv6 entry has a colon). Kubernetes refuses an except outside its cidr. Other
-cidrs get no except. Call with (list <cidr> <except list> <cluster cidrs>).
-Output: JSON list.
+The except list for an ipBlock that covers a whole address family
+(0.0.0.0/0 or ::/0, as in a public internet egress profile): the profile's
+except entries plus networkPolicy.clusterCidrs, limited to that family (an
+IPv6 entry has a colon). Kubernetes rejects an except outside its cidr.
+Other cidrs get no except. Call with (list <cidr> <except list> <cluster
+cidrs>). Output: JSON list.
 */}}
 {{- define "ow.netpol.anyExcept" -}}
 {{- $cidr := index . 0 -}}

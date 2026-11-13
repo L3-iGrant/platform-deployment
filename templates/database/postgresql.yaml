@@ -1,7 +1,7 @@
 {{- /*
 The bundled PostgreSQL server (database.engine postgresql, database.mode
-bundled): one server for all components. Do not change the object names
-and labels: an upgrade must keep the volume.
+bundled): one server for all components. Do not change the object names or
+labels: an upgrade must keep the volume.
 */}}
 {{- if and (include "ow.db.bundled" .) (eq (include "ow.db.engine" .) "postgresql") }}
 {{- include "ow.db.check" . }}
@@ -9,9 +9,9 @@ and labels: an upgrade must keep the volume.
 {{- $db := .Values.database }}
 {{- $pg := $db.postgresql }}
 {{- /*
-The server parameters: database.postgresql.parameters, and the DDL and
-connection logs (database.postgresql.logDdlAndConnections). A parameter of
-the same name wins over a log parameter, so each name has one -c.
+Server parameters: database.postgresql.parameters plus the DDL and
+connection logs (database.postgresql.logDdlAndConnections). A parameter
+with the same name overrides a log parameter, so each name gets one -c.
 */}}
 {{- $parameters := deepCopy ($pg.parameters | default dict) }}
 {{- if $pg.logDdlAndConnections }}
@@ -49,9 +49,9 @@ spec:
             - -c
             - {{ printf "%s=%v" $name $value | quote }}
             {{- end }}
-            # The server always serves TLS (database.tls.enabled: the
-            # components use it), so an upgrade that turns the TLS of the
-            # components on finds a server with TLS.
+            # The server always serves TLS (database.tls.enabled only makes
+            # the components use it), so an upgrade that turns on TLS for the
+            # components finds a server that already has it.
             - -c
             - ssl=on
             - -c
@@ -93,9 +93,9 @@ spec:
             - name: tls
               mountPath: /etc/pg-tls
               readOnly: true
-            # The root file system is read-only: the socket and the lock
-            # file of the server, and the temporary files of the entrypoint
-            # of the image.
+            # The root file system is read-only: this holds the server's
+            # socket and lock file, and the temp files of the image's
+            # entrypoint.
             - name: run
               mountPath: /var/run/postgresql
             - name: tmp
@@ -108,8 +108,8 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
-        # PostgreSQL accepts a key file with mode 0640 that root owns (the
-        # group of the file is fsGroup).
+        # PostgreSQL accepts a root-owned key file with mode 0640 (the
+        # file's group is fsGroup).
         - name: tls
           secret:
             secretName: {{ include "ow.db.tlsSecretName" . }}

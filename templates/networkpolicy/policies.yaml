@@ -1,8 +1,8 @@
 {{- /*
 NetworkPolicies of the suite (networkPolicy.enabled;
-docs/network-policies.md). From policies/network-matrix.yaml: one ingress
-policy per destination role (an allow-list of source roles), one egress
-policy per source role, DNS for every pod, and one policy per egress
+docs/network-policies.md), built from policies/network-matrix.yaml: one
+ingress policy per destination role (an allow-list of source roles), one
+egress policy per source role, DNS for every pod, and one policy per egress
 profile (pods with netpol.igrant.io/egress-<profile>). The default deny is
 the last template file (zz-default-deny.yaml), so the allow policies exist
 first.
@@ -83,10 +83,10 @@ spec:
 {{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
 {{- end }}
 {{- end }}
-{{- /* A Valkey or Redis outside the chart: the group of redis.mode external
+{{- /* A Valkey or Redis outside the chart: the redis.mode external group
 (all its users), and the separate groups redis.state and redis.cache (the
-wallet roles). The data port and the Sentinel port, one rule for each
-entry. */}}
+wallet roles). One rule per entry, for the data port and the Sentinel
+port. */}}
 {{- $separateGroups := and $root.Values.organisationWallet.enabled (or $root.Values.redis.state.enabled $root.Values.redis.cache.enabled) }}
 {{- if and (eq $c.to "redis") (eq $c.port "redis") (include "ow.redis.enabled" $root) (or (not (include "ow.redis.bundled" $root)) (and $separateGroups (hasPrefix "wallet-" $role))) }}
 {{- range $r := $np.externalRedis }}
@@ -134,16 +134,16 @@ spec:
   egress:
     - to:
         {{- include "ow.netpol.selectorPeer" $np.dns | nindent 8 }}
-        {{- /* DNS servers outside the pod network (NodeLocal DNSCache, a
-        resolver of the node or of the network): networkPolicy.dns.cidrs. */}}
+        {{- /* DNS servers outside the pod network (NodeLocal DNSCache, or a
+        node or network resolver): networkPolicy.dns.cidrs. */}}
         {{- range $cidr := ($np.dns.cidrs | default list) }}
         - ipBlock:
             cidr: {{ $cidr }}
         {{- end }}
       ports:
         {{- toYaml $np.dns.ports | nindent 8 }}
-{{- /* One policy per egress profile with a target. A profile that is not
-in the matrix selects no pod of the release, so it gets no policy here. */}}
+{{- /* One policy per egress profile that has a target. A profile that is
+not in the matrix selects no pod in the release, so it gets no policy. */}}
 {{- range $name, $profile := $np.egress.profiles }}
 {{- if hasKey $matrix.profiles $name }}
 {{- $peers := list }}
@@ -159,10 +159,10 @@ in the matrix selects no pod of the release, so it gets no policy here. */}}
 {{- if or $profile.namespaceSelector $profile.podSelector }}
 {{- $peers = append $peers (dict "namespaceSelector" ($profile.namespaceSelector | default dict) "podSelector" ($profile.podSelector | default dict)) }}
 {{- end }}
-{{- /* platform: the public hosts of this platform. In the cluster, the
-address of the load balancer of the ingress controller often goes directly to
-the pods of the ingress controller (kube-proxy, Cilium): they are always a
-target (networkPolicy.ingressController). */}}
+{{- /* platform: this platform's public hosts. In the cluster, traffic to
+the ingress controller's load balancer address often goes straight to the
+ingress controller pods (kube-proxy, Cilium), so they are always a target
+(networkPolicy.ingressController). */}}
 {{- if eq $name "platform" }}
 {{- $peers = append $peers (dict "namespaceSelector" ($np.ingressController.namespaceSelector | default dict) "podSelector" ($np.ingressController.podSelector | default dict)) }}
 {{- end }}

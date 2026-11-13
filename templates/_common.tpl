@@ -2,7 +2,7 @@
 Common helpers: names, labels, images, scheduling and the exposure of the
 public services.
 
-Each object name is "<fullname>-<component>". The fullname is
+Object names are "<fullname>-<component>", where fullname is
 fullnameOverride, else the release name.
 */}}
 
@@ -17,10 +17,10 @@ fullnameOverride, else the release name.
 {{- end }}
 
 {{/*
-The value of the label app.kubernetes.io/name: nameOverride, else the chart
-name. The label is in the selectors, which an upgrade cannot change: a
-release that was installed from the chart organisationwallet sets
-nameOverride organisationwallet.
+Value of the app.kubernetes.io/name label: nameOverride, else the chart
+name. The selectors use this label and an upgrade cannot change a selector,
+so a release installed from the organisationwallet chart sets nameOverride
+organisationwallet.
 */}}
 {{- define "ow.chartName" -}}
 {{- .Values.nameOverride | default .Chart.Name -}}
@@ -48,10 +48,10 @@ helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace 
 
 {{/*
 Container image. Call with (list $ .Values.<component>.image).
-The registry is image.registry, else global.imageRegistry; the tag is
-image.tag, else global.imageTag (the release tag of the iGrant.io images). An
-empty registry gives "repository:tag". An image without a tag and a digest
-stops the render.
+Registry: image.registry, else global.imageRegistry. Tag: image.tag, else
+global.imageTag (the release tag of the iGrant.io images). An empty registry
+gives "repository:tag". The render fails when an image has neither a tag
+nor a digest.
 */}}
 {{- define "ow.image" -}}
 {{- $root := index . 0 -}}
@@ -77,10 +77,11 @@ stops the render.
 {{- end }}
 
 {{/*
-Pod-level fields that every workload shares: image pull secrets, priority
-class, scheduling and pod security context (global.podSecurityContext under
-the podSecurityContext of the component, ow.securityContext). Call with
-(list $ .Values.<component>). Output starts at the pod spec indentation.
+Pod fields that every workload shares: image pull secrets, priority class,
+scheduling, and the pod security context (the component's
+podSecurityContext over global.podSecurityContext, see ow.securityContext).
+Call with (list $ .Values.<component>). Output starts at the pod spec
+indentation.
 */}}
 {{- define "ow.podSpecCommon" -}}
 {{- $root := index . 0 -}}
@@ -114,8 +115,8 @@ affinity:
 {{- end }}
 
 {{/*
-Container security context: global.containerSecurityContext under the
-containerSecurityContext of the component (ow.securityContext). Call with
+Container security context: the component's containerSecurityContext over
+global.containerSecurityContext (see ow.securityContext). Call with
 (list $ .Values.<component>).
 */}}
 {{- define "ow.containerSecurityContext" -}}
@@ -128,15 +129,14 @@ securityContext:
 {{- end }}
 
 {{/*
-A security context of a pod or of a container: the keys of the global value
-(global.podSecurityContext, global.containerSecurityContext), and over them
-the keys of the component. A key of the component replaces the same key of
-the global value as a whole (a map such as seccompProfile, or a list such as
-sysctls); a key that only the global value has stays, for example
-seLinuxOptions or supplementalGroups of your cluster. A key of the defaults
-of a component that you set to null is not in the values: the global key
-then applies. Call with (list <global value> <component value>). Output:
-JSON.
+Merges a pod or container security context: the component's keys over the
+global value (global.podSecurityContext, global.containerSecurityContext).
+A component key replaces the same global key as a whole (a map such as
+seccompProfile, or a list such as sysctls). A key that only the global value
+has stays, for example the seLinuxOptions or supplementalGroups of your
+cluster. A component default that you set to null drops out of the values,
+so the global key applies. Call with (list <global value> <component value>).
+Output: JSON.
 */}}
 {{- define "ow.securityContext" -}}
 {{- $context := deepCopy ((index . 0) | default dict) -}}
@@ -188,11 +188,11 @@ Public host name of one public component (required). Call with (list $
 {{- end }}
 
 {{/*
-The exposure of one public component (exposure.type, or
+Exposure of one public component (exposure.type, or
 <component>.exposure.type): "ingress" renders a networking.k8s.io/v1
 Ingress, "gatewayAPI" a gateway.networking.k8s.io/v1 HTTPRoute to the
-Gateway of the admin, "none" nothing (only the Service). The chart never
-renders a controller-specific setting: the annotations are free form. Call
+admin's Gateway, and "none" renders nothing (only the Service). The chart
+never renders controller-specific settings: annotations are free form. Call
 with (dict "root" $ "key" "<values key>" "component" "<name suffix>"
 "service" "<Service name>" "port" <Service port>).
 */}}
@@ -284,16 +284,16 @@ spec:
 {{- end }}
 {{- end }}
 
-{{/* checksum annotation of a values block. Call with (list "<name>" <value>). */}}
+{{/* Checksum annotation for a values block. Call with (list "<name>" <value>). */}}
 {{- define "ow.checksum" -}}
 checksum/{{ index . 0 }}: {{ index . 1 | toYaml | sha256sum }}
 {{- end }}
 
 {{/*
-The security contexts of the components that run pods, for the notes:
-each values path and its podSecurityContext and containerSecurityContext
-(a Jobs value that is empty: the value of the component). Call with the
-root context. Output: JSON.
+Security contexts of the components that run pods, for the notes: each
+values path with its podSecurityContext and containerSecurityContext (an
+empty Jobs value means the component's value). Call with the root context.
+Output: JSON.
 */}}
 {{- define "ow.securityContextsOfComponents" -}}
 {{- $v := .Values -}}
@@ -309,10 +309,10 @@ root context. Output: JSON.
 {{- end }}
 
 {{/*
-The keys of global.podSecurityContext and global.containerSecurityContext
-that do not apply to a component, because the security context of the
-component sets the same key (ow.securityContext). Call with the root
-context. Output: a JSON list of texts.
+Keys of global.podSecurityContext and global.containerSecurityContext that
+do not apply to a component, because the component's own security context
+sets the same key (see ow.securityContext). Call with the root context.
+Output: a JSON list of texts.
 */}}
 {{- define "ow.securityContextShadowed" -}}
 {{- $root := . -}}
@@ -336,13 +336,13 @@ context. Output: a JSON list of texts.
 {{- end }}
 
 {{/*
-Render guard: the chart writes no log file. In Kubernetes each process logs
-to stdout and stderr: the container log, which the kubelet rotates
-(containerLogMaxSize, containerLogMaxFiles) and which your log agent
-collects. A log file in a pod has no reader, it is lost with the pod, and a
-full volume evicts the pod (the defaults of a rotating log file are 100 MB
-x 6 files). Call with (list "<values key>" "<config key>" <path>). Output:
-nothing; the render stops when the path is not empty.
+Render guard: the chart never writes log files. In Kubernetes every process
+logs to stdout and stderr; the kubelet rotates that container log
+(containerLogMaxSize, containerLogMaxFiles) and your log agent collects it.
+A log file in a pod has no reader, is lost with the pod, and a full volume
+gets the pod evicted (a rotating log file defaults to 100 MB x 6 files).
+Call with (list "<values key>" "<config key>" <path>). Output: nothing; the
+render fails when the path is not empty.
 */}}
 {{- define "ow.noLogFile" -}}
 {{- $path := (index . 2) | default "" | toString -}}
@@ -352,8 +352,8 @@ nothing; the render stops when the path is not empty.
 {{- end }}
 
 {{/*
-The bytes of a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or
-1048576. Call with the quantity. Output: the number of bytes (an integer).
+Bytes in a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or 1048576.
+Call with the quantity. Output: the number of bytes (an integer).
 */}}
 {{- define "ow.quantityBytes" -}}
 {{- $text := toString . -}}
@@ -367,10 +367,11 @@ The bytes of a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or
 {{- end }}
 
 {{/*
-The rollout of the Deployment of an HTTP component (docs/security-context.md,
-"The stop of a pod"): minReadySeconds and the strategy of its values
-(default: RollingUpdate, maxSurge 25 %, maxUnavailable 0). Call with the
-values of the component. Output at the indentation of the Deployment spec.
+Rollout settings for the Deployment of an HTTP component
+(docs/security-context.md, "The stop of a pod"): minReadySeconds and the
+strategy from its values (default RollingUpdate, maxSurge 25 %,
+maxUnavailable 0). Call with the component's values. Output at the
+Deployment spec indentation.
 */}}
 {{- define "ow.rollout" -}}
 minReadySeconds: {{ .minReadySeconds | int }}
@@ -381,12 +382,11 @@ strategy:
 {{- end }}
 
 {{/*
-The preStop of the container of an HTTP component: the sleep action of
-Kubernetes (1.30 or later; no shell and no sleep program in the image). The
-pod serves on for these seconds while Kubernetes removes it from the
-endpoints, the Services and the proxies; then the container gets its stop
-signal. Call with the seconds (1 or more). Output at the indentation of the
-container.
+preStop of an HTTP component's container: the Kubernetes sleep action (1.30
+or later; the image has no shell or sleep program). The pod keeps serving
+for these seconds while Kubernetes removes it from the endpoints, Services
+and proxies; then the container gets its stop signal. Call with the seconds
+(1 or more). Output at the container indentation.
 */}}
 {{- define "ow.preStopSleep" -}}
 {{- if lt (. | int) 1 -}}

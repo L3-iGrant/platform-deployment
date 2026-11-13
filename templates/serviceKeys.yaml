@@ -1,8 +1,8 @@
 {{- /*
-Public JWKS of the signed NATS envelopes of each service (no secret): the
-receivers verify the senders with them. The chart makes the ConfigMap from
-serviceKeys.publicJwks when serviceKeys.existingConfigMap is empty. The
-private JWKS of each service is its own Secret (the operator makes it).
+Public JWKS for each service's signed NATS envelopes (no secrets):
+receivers verify senders with them. The chart builds the ConfigMap from
+serviceKeys.publicJwks when serviceKeys.existingConfigMap is empty. Each
+service's private JWKS is its own Secret, created by the operator.
 */}}
 {{- $keys := .Values.serviceKeys }}
 {{- if not $keys.existingConfigMap }}

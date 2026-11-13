@@ -1,7 +1,7 @@
-# Your settings (a copy of .env.example) and the secrets of make secrets:
+# Your settings (a copy of .env.example) and the output of make secrets:
 # never commit them.
 .env
 secrets/
-# The configuration files of make configs (render-configs.py): no secret, but
-# they follow from your .env.
+# The configuration files from make configs (render-configs.py): no secrets,
+# but they depend on your .env.
 generated/

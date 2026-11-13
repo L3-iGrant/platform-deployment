@@ -1,5 +1,5 @@
-# NetworkPolicy (only when your cluster enforces it). Give the addresses of
-# the services outside the cluster. kubeApi: only with the privacy
+# NetworkPolicy (only when your cluster enforces it). Fill in the addresses
+# of the services outside the cluster. kubeApi: only with the privacy
 # dashboards.
 networkPolicy:
   enabled: true

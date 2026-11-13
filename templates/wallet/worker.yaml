@@ -1,10 +1,10 @@
 {{- /*
-The workers of the organisation wallet (docs/workers.md): one Deployment
-for each group of organisationWallet.workers.groups. A worker runs the
-actors of the queues of its group: "dramatiq ows.worker.run:start" with
---processes worker processes of --threads threads each. It connects as the
-jobs role, with the NATS user walletWorker and the Valkey user
-walletWorker, and reads the configuration key worker-<group>.yaml.
+The organisation wallet's workers (docs/workers.md): one Deployment per
+group in organisationWallet.workers.groups. A worker runs the actors of its
+group's queues: "dramatiq ows.worker.run:start" with --processes worker
+processes of --threads threads each. It connects as the jobs role, with the
+NATS user walletWorker and the Valkey user walletWorker, and reads the
+config key worker-<group>.yaml.
 */}}
 {{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
@@ -46,23 +46,23 @@ spec:
       # The worker does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
-      # A stop: Dramatiq stops the consumers of the queues, then waits at
-      # most shutdownTimeoutSeconds for the running actors. An actor that
-      # does not end in that time runs again from its message (each actor is
+      # On stop, Dramatiq stops the queue consumers, then waits at most
+      # shutdownTimeoutSeconds for running actors. An actor that does not
+      # finish in time runs again from its message (every actor is
       # idempotent).
       terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds }}
       containers:
         - name: {{ $component }}
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
-          # The program of the worker (the image starts the server). The
+          # The worker program (by default the image starts the server). The
           # Dramatiq main process is process 1 and gets SIGTERM.
-          # --worker-fork-timeout: the health server is a fork process of
-          # Dramatiq. Dramatiq starts the fork processes when the worker
-          # processes are online, or after this timeout (30 s by default)
-          # with the list that the worker processes gave until then. A
-          # slow start gave no list: no health server, and the pod never
-          # passed its probes. The value is the time of the startup probe
+          # --worker-fork-timeout: the health server is a Dramatiq fork
+          # process. Dramatiq starts fork processes once the worker processes
+          # are online, or after this timeout (default 30 s) with the list
+          # the workers have reported by then. A slow start reported no
+          # list, so there was no health server and the pod never passed its
+          # probes. The value is the startup probe time
           # (periodSeconds x failureThreshold).
           command:
             {{- toYaml (concat (list "/app/.venv/bin/dramatiq" "ows.worker.run:start"
@@ -71,8 +71,8 @@ spec:
                 "--worker-fork-timeout" "650000"
                 "--queues") $g.queues) | nindent 12 }}
           env:
-            # The only environment variable of the wallet configuration: the
-            # path of the file (the image has the same default).
+            # The only wallet config environment variable: the file path
+            # (the image has the same default).
             - name: EUDI_WALLET_CONFIG
               value: {{ include "ow.wallet.configPath" $ | quote }}
             {{- with $w.extraEnv }}
@@ -82,8 +82,8 @@ spec:
             - name: health
               containerPort: {{ $port }}
           # The health server starts after the worker processes boot, and
-          # each worker process waits up to 600 s for the database schema
-          # at the head of its code (on a new installation the post-install
+          # each worker process waits up to 600 s for the database schema to
+          # reach its code's head (on a new installation the post-install
           # hooks migrate while the pods start): 5 s x 130 = 650 s.
           startupProbe:
             httpGet:
@@ -92,11 +92,11 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 130
-          # Liveness: /healthz, the heartbeat of the event loop of each
-          # worker process, never Valkey (a failover of Valkey must not
-          # restart the workers). Readiness: /readyz, Valkey and the
-          # database (no Service sends traffic to a worker; the rollout waits
-          # for a ready pod).
+          # Liveness: /healthz, the event loop heartbeat of each worker
+          # process, never Valkey (a Valkey failover must not restart the
+          # workers). Readiness: /readyz, Valkey and the database (no
+          # Service sends traffic to a worker; the rollout waits for a ready
+          # pod).
           livenessProbe:
             httpGet:
               path: /healthz
@@ -136,9 +136,9 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-        # The temporary files of Python (tempfile; the root file system is
-        # read-only), as in the other wallet pods. The monthly audit export
-        # writes no local file: it sends its parts to the bucket.
+        # Python temp files (tempfile; the root file system is read-only),
+        # as in the other wallet pods. The monthly audit export writes no
+        # local file: it sends its parts to the bucket.
         - name: tmp
           emptyDir:
             medium: Memory

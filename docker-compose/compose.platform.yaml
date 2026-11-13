@@ -1,36 +1,35 @@
-# The services of the iGrant.io platform for Docker Compose (README.md).
+# The services of the iGrant.io platform on Docker Compose (README.md).
 #
 # Do not start this file directly: docker-compose.yaml loads it with the
-# values of .env and of config/engine/<DB_ENGINE>.env (DB_PORT,
-# DB_ADMIN_USER, DB_CLIENT_IMAGE) and of generated/configs.env. The
-# configuration files of the components are the "configs" at the end of
-# this file: files of generated/, which make configs writes from the
-# templates of compose.configs.yaml with the values of .env. The secrets
-# come from secrets/ (make secrets makes them; git ignores the folder and
-# generated/). Each service that reads a file of generated/ has the label
-# io.igrant.config-sha256.<config> with the SHA-256 of that file (from
-# generated/configs.env): when the file changes, "docker compose up" starts
-# the service again, as it does for a changed image or setting.
+# values of .env, config/engine/<DB_ENGINE>.env (DB_PORT, DB_ADMIN_USER,
+# DB_CLIENT_IMAGE) and generated/configs.env. The components' configuration
+# files are the "configs" at the end of this file: files in generated/, which
+# make configs writes from the compose.configs.yaml templates with the
+# values of .env. The secrets come from secrets/ (written by make secrets;
+# git ignores it and generated/). Each service that reads a file in
+# generated/ has the label io.igrant.config-sha256.<config> with that file's
+# SHA-256 (from generated/configs.env), so when the file changes, "docker
+# compose up" restarts the service, as it does for a changed image or
+# setting.
 #
 # Only the public services have a host port: the auth gateway (the API),
-# the public wallet routes and the dashboard. Your reverse proxy with TLS
-# sends the traffic of your public host names to these ports. The other
-# services are only on the Compose network.
+# the public wallet routes and the dashboard. Your TLS reverse proxy sends
+# the traffic of your public host names to these ports. All other services
+# are only on the Compose network.
 
 x-server: &server
   restart: unless-stopped
-  # The Go servers drain for 1 s, then wait at most 20 s for the open
-  # requests (Server.drainSeconds, Server.gracefulShutdownSeconds).
+  # The Go servers drain for 1 s, then wait at most 20 s for open requests
+  # (Server.drainSeconds, Server.gracefulShutdownSeconds).
   stop_grace_period: 30s
 
-# The security settings of the services (README.md, "Security settings"):
-# a read-only root file system, no Linux capability, and no new privileges
-# (setuid and setgid programs do not give more rights). Each service also
-# has its non-root user (user: UID:GID) and tmpfs or volumes for the paths
-# that it writes. Only the one-shot services that change the owner of
-# files in a volume (nats-data-owner) run as root, with only the
-# capabilities that they need and no network. tests/compose-files.sh
-# checks each service.
+# Security settings of the services (README.md, "Security settings"): a
+# read-only root file system, no Linux capabilities, and no new privileges
+# (setuid and setgid programs gain no rights). Each service also sets its
+# non-root user (user: UID:GID) and has a tmpfs or a volume for each path it
+# writes. Only the one-shot services that change file owners in a volume
+# (nats-data-owner) run as root, with only the capabilities they need and no
+# network. tests/compose-files.sh checks every service.
 x-hardened: &hardened
   read_only: true
   cap_drop: [ALL]
@@ -38,13 +37,13 @@ x-hardened: &hardened
 
 x-wallet: &wallet
   image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/eudi-wallet:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
-  # The full command of the server (config and service): the image has no
-  # shell and no entrypoint script. The worker and the clock give their own.
+  # The full server command (config and service roles): the image has no
+  # shell and no entrypoint script. The worker and the clock set their own.
   command: ["/app/.venv/bin/start-server"]
   restart: unless-stopped
-  # The security settings, and the user ows of the image. The processes
-  # write only to /tmp (the temporary files of Python, for example a part of
-  # a multipart form that is larger than 1 MB).
+  # The security settings, and the image's ows user. The processes write
+  # only to /tmp (Python temporary files, for example a multipart form part
+  # larger than 1 MB).
   <<: *hardened
   user: "65532:65532"
   tmpfs:
@@ -58,20 +57,21 @@ x-job: &job
 
 services:
   # --- Database: one server of DB_ENGINE for all components ------------------
-  # COMPOSE_PROFILES (.env) selects the server: the profile of DB_ENGINE
-  # (postgresql). The server has the network alias "database", the host of
-  # all database configurations.
+  # COMPOSE_PROFILES (.env) picks the server: the profile of DB_ENGINE
+  # (postgresql). The server has the network alias "database", which every
+  # database configuration uses as its host.
 
   postgres:
     <<: *hardened
     image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
     profiles: [postgresql]
-    # The user postgres of the image. It owns the data folder (the image
-    # gives the volume to it when Docker makes the volume).
+    # The image's postgres user. It owns the data folder (the image hands
+    # the volume to it when Docker creates the volume).
     user: "999:999"
-    # The server logs each DDL statement (log_statement=ddl: CREATE, ALTER,
-    # DROP, GRANT, REVOKE and the role statements) and each connection and
-    # disconnection to the container log (docker compose logs postgres).
+    # The server logs every DDL statement (log_statement=ddl: CREATE, ALTER,
+    # DROP, GRANT, REVOKE and the role statements), every connection and
+    # every disconnection to the container log (docker compose logs
+    # postgres).
     command: ["postgres", "-c", "max_connections=200", "-c", "password_encryption=scram-sha-256",
               "-c", "log_statement=ddl", "-c", "log_connections=on", "-c", "log_disconnections=on"]
     environment:
@@ -84,8 +84,8 @@ services:
     volumes:
       # PostgreSQL 18 images keep the data in /var/lib/postgresql/18/docker.
       - postgres-data:/var/lib/postgresql
-    # The socket and the lock file of the server, and the temporary files of
-    # the entrypoint of the image.
+    # The server's socket and lock file, and the temporary files of the
+    # image's entrypoint.
     tmpfs:
       - /var/run/postgresql:size=1m,uid=999,gid=999,mode=0775
       - /tmp:size=64m
@@ -99,12 +99,12 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # Makes the databases igrant_api, igrant_oidc, igrant_consent and
+  # Creates the databases igrant_api, igrant_oidc, igrant_consent and
   # igrant_wallet and their owner users (the user name is the database
-  # name), then stops. Idempotent: it sets the passwords each time. The data
-  # scopes of the wallet are schemas in igrant_wallet, which
-  # wallet-database-roles makes; no process of the wallet logs in as the
-  # owner user igrant_wallet.
+  # name), then exits. Idempotent: it sets the passwords on every run. The
+  # wallet's data scopes are schemas in igrant_wallet, which
+  # wallet-database-roles creates; no wallet process logs in as the owner
+  # user igrant_wallet.
   database-init:
     <<: [*job, *hardened]
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
@@ -128,18 +128,17 @@ services:
     depends_on:
       postgres: {condition: service_healthy, required: false}
 
-  # --- NATS JetStream: one nkey user for each process --------------------------
+  # --- NATS JetStream: one nkey user per process -------------------------------
 
-  # The NATS image has no user, and Docker makes the volume nats-data for
-  # root. This one-shot service gives the JetStream store to the user of
-  # NATS (65532:65532), then stops: root, with only the capabilities to
-  # change the owner of the files (CHOWN) and to read each folder
-  # (DAC_READ_SEARCH), and no network. It changes only the files and
-  # folders with another owner or group: the files of an earlier release
-  # (root, or the user 1000) and the files that NATS of an earlier release
-  # wrote after a change back to it. A start with a correct store reads the
-  # owner of each file and writes nothing. A stop at any point is safe: the
-  # next start changes the rest.
+  # The NATS image has no user, and Docker creates the volume nats-data as
+  # root. This one-shot service hands the JetStream store to the NATS user
+  # (65532:65532), then exits. It runs as root with only the capabilities to
+  # change file owners (CHOWN) and to read every folder (DAC_READ_SEARCH),
+  # and no network. It changes only files and folders with another owner or
+  # group: files of an earlier release (root, or the user 1000) and files
+  # that the NATS of an earlier release wrote after a rollback to it. On a
+  # store that is already correct, it reads the owners and writes nothing.
+  # It is safe to stop at any point: the next start changes the rest.
   nats-data-owner:
     <<: [*job, *hardened]
     image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
@@ -154,8 +153,8 @@ services:
   nats:
     <<: *hardened
     image: ${NATS_IMAGE:?set NATS_IMAGE in .env}
-    # Any user that is not root: the image has no user. The same user as the
-    # NATS of the Helm chart.
+    # Any non-root user, as the image has none. The same user as the Helm
+    # chart's NATS.
     user: "65532:65532"
     command: ["--config", "/etc/nats/nats.conf"]
     configs:
@@ -173,26 +172,26 @@ services:
       nats-data-owner: {condition: service_completed_successfully}
     restart: unless-stopped
 
-  # --- OpenBao: the KMS of the wallet (Transit engine) -------------------------
-  # Integrated storage (raft) in the volume openbao-data; the static seal
+  # --- OpenBao: the wallet's KMS (Transit engine) ------------------------------
+  # Integrated storage (raft) in the volume openbao-data. The static seal
   # unseals it at each start with secrets/openbao/static-seal.key.
 
   openbao:
     <<: *hardened
     image: ${OPENBAO_IMAGE:?set OPENBAO_IMAGE in .env}
-    # The user openbao of the image (100:1000): the volume openbao-data gets
-    # the owner of the image folder /openbao/file when Docker makes it, and
-    # the data of an earlier release belongs to this user. The entrypoint of
-    # the image starts the server directly as this user (no su-exec).
+    # The image's openbao user (100:1000). When Docker creates the volume
+    # openbao-data, it gets the owner of the image folder /openbao/file, and
+    # the data of an earlier release belongs to this user too. The image's
+    # entrypoint starts the server directly as this user (no su-exec).
     user: "100:1000"
     command: ["server"]
     environment:
       BAO_ADDR: http://127.0.0.1:8200
       # The image entrypoint must not chown the mounted configuration file
-      # (a file of this folder).
+      # (a file in this folder).
       SKIP_CHOWN: "true"
-    # The temporary files of OpenBao. OpenBao writes its data only to the
-    # volume (disable_mlock: no IPC_LOCK capability).
+    # OpenBao's temporary files. Its data goes only to the volume
+    # (disable_mlock, so no IPC_LOCK capability).
     tmpfs:
       - /tmp:size=64m
     configs:
@@ -201,8 +200,8 @@ services:
       - {source: openbao-static-seal-key, target: /run/secrets/openbao/static-seal.key}
     volumes:
       - openbao-data:/openbao/file
-    # bao status: 0 = unsealed. Before the first initialisation (openbao-init)
-    # the check fails.
+    # bao status exits 0 when unsealed. The check fails until the first
+    # initialisation (openbao-init).
     healthcheck:
       test: ["CMD", "bao", "status"]
       interval: 5s
@@ -210,16 +209,15 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # Initialises OpenBao one time (secrets/openbao/init.json: the root token
-  # and the recovery key), then makes the Transit engine, the userpass
-  # login, the policy and the user of the wallet. Idempotent. It runs as
-  # your user (HOST_UID, HOST_GID; the Makefile sets them), so that init.json
-  # belongs to you.
+  # Initialises OpenBao once (secrets/openbao/init.json: the root token and
+  # the recovery key), then creates the Transit engine, the userpass login,
+  # the policy and the wallet's user. Idempotent. It runs as your user
+  # (HOST_UID, HOST_GID, which the Makefile sets), so you own init.json.
   openbao-init:
     <<: [*job, *hardened]
     image: ${OPENBAO_IMAGE}
     # Your user (make sets HOST_UID and HOST_GID; README.md, "Security
-    # settings"): it writes init.json to your folder secrets/openbao/.
+    # settings"), because it writes init.json to your secrets/openbao/.
     user: "${HOST_UID:-0}:${HOST_GID:-0}"
     entrypoint: ["/bin/sh", "/openbao/bootstrap/bootstrap.sh"]
     environment:
@@ -236,18 +234,18 @@ services:
     depends_on:
       openbao: {condition: service_started}
 
-  # --- Valkey: the work queue, the single-use values and the caches of the wallet
+  # --- Valkey: the wallet's work queue, single-use values and caches ----------
   # A primary (valkey), a replica (valkey-replica) and a Sentinel
   # (valkey-sentinel), with ACL users and no default user (README.md,
-  # "Valkey"). config/valkey/start.sh writes the configuration of each from
-  # the templates of config/valkey/ and the passwords of secrets/valkey/.
+  # "Valkey"). config/valkey/start.sh writes each one's configuration from
+  # the templates in config/valkey/ and the passwords in secrets/valkey/.
 
   valkey:
     <<: &valkey
       <<: *hardened
       image: ${VALKEY_IMAGE:?set VALKEY_IMAGE in .env}
-      # The user valkey of the image (999:1000, as in the Helm chart). The
-      # data volume gets its owner from the image folder /data.
+      # The image's valkey user (999:1000, as in the Helm chart). The data
+      # volume gets its owner from the image folder /data.
       user: "999:1000"
       entrypoint: ["/bin/sh", "/etc/valkey/start.sh"]
       configs:
@@ -264,9 +262,9 @@ services:
         - {source: valkey-replication-password, target: /run/secrets/valkey/replication}
         - {source: valkey-sentinel-password, target: /run/secrets/valkey/sentinel}
         - {source: valkey-probe-password, target: /run/secrets/valkey/probe}
-      # The configuration with the passwords: in memory, never on a volume.
-      # /tmp: the temporary files of the shells of start.sh and of the
-      # healthchecks (the Helm chart gives the same sizes).
+      # The configuration holds the passwords, so it stays in memory, never
+      # on a volume. /tmp holds the shell temporary files of start.sh and
+      # the healthchecks (the Helm chart uses the same sizes).
       tmpfs:
         - /run/valkey:size=8m,uid=999,gid=1000,mode=0700
         - /tmp:size=16m
@@ -305,8 +303,8 @@ services:
   api-migrate:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/api:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
-    # The user nonroot of the image. The image has no shell: each command
-    # of the api is the program itself.
+    # The image's nonroot user. The image has no shell, so each api command
+    # runs the program itself.
     user: "65532:65532"
     command: ["/app/bin/igrant-api", "migrate", "--config", "/etc/igrant-api/database-jobs.yaml"]
     tmpfs:
@@ -337,16 +335,16 @@ services:
     depends_on:
       database-init: {condition: service_completed_successfully}
 
-  # The database roles of the wallet (database-roles apply, as the admin
-  # user): the owner role igrant_wallet_owner, the login database roles
+  # The wallet's database roles (database-roles apply, as the admin user):
+  # the owner role igrant_wallet_owner, the login database roles
   # igrant_wallet_<name> with their passwords (one file each in
   # --password-dir, named without the prefix), the data scope schemas, the
-  # objects of an older release given to the owner role, and the grants.
-  # The prefix igrant_wallet is the name of the wallet database.
+  # hand-over of an older release's objects to the owner role, and the
+  # grants. The prefix igrant_wallet is the wallet database name.
   wallet-database-roles:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
-    # The user ows of the image.
+    # The image's ows user.
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
@@ -381,10 +379,10 @@ services:
     depends_on:
       database-init: {condition: service_completed_successfully}
 
-  # The migrations of the wallet (migrate-database), as the migrator
-  # igrant_wallet_migrator: the revisions run as the owner role, then the
+  # The wallet migrations (migrate-database), as the migrator
+  # igrant_wallet_migrator. The revisions run as the owner role, then the
   # grant step gives the database roles their grants on the new objects.
-  # Only this service changes the schema of the wallet.
+  # Only this service changes the wallet schema.
   wallet-migrate:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
@@ -403,10 +401,10 @@ services:
     depends_on:
       wallet-database-roles: {condition: service_completed_successfully}
 
-  # The owner of a database makes the read-only users of the other services
-  # on its views (rule <reader>_<owner>_reader) with its read-access command.
-  # The admin user (DB_ADMIN_USER) makes the users. The api image has no
-  # shell: one service for each reader of the api database.
+  # Each database owner creates the other services' read-only users on its
+  # views (named <reader>_<owner>_reader) with its read-access command, as
+  # the admin user (DB_ADMIN_USER). The api image has no shell, so there is
+  # one service per reader of the api database.
   api-read-access-wallet:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
@@ -487,8 +485,8 @@ services:
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
-    # The wallet image has no shell: one service for each reader, which runs
-    # the program read-access directly.
+    # The wallet image has no shell, so there is one service per reader, and
+    # each runs the read-access program directly.
     entrypoint: ["/app/.venv/bin/read-access"]
     command:
       - apply
@@ -520,8 +518,8 @@ services:
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
-    # The wallet image has no shell: one service for each reader, which runs
-    # the program read-access directly.
+    # The wallet image has no shell, so there is one service per reader, and
+    # each runs the read-access program directly.
     entrypoint: ["/app/.venv/bin/read-access"]
     command:
       - apply
@@ -548,13 +546,13 @@ services:
       wallet-migrate: {condition: service_completed_successfully}
   # --- api core, webhook handler and auth gateway ------------------------------
 
-  # The auth gateway: the only public entry of the API. It checks each
-  # request and sends it to the component that owns the route: the api
-  # core, consent or the config role of the wallet.
+  # The auth gateway: the only public entry point of the API. It checks
+  # every request and forwards it to the component that owns the route: the
+  # api core, consent or the wallet's config role.
   gateway:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/gateway:${PLATFORM_TAG}
-    # The user nonroot of the image. The gateway writes no file.
+    # The image's nonroot user. The gateway writes no files.
     user: "65532:65532"
     command: ["--config", "/etc/igrant-gateway/config.yaml"]
     ports:
@@ -569,8 +567,8 @@ services:
       - {source: db-igrant-api-password, target: /run/secrets/igrant-gateway/db-password}
       - {source: api-token-hash-secret, target: /run/secrets/igrant-gateway/token-hash-secret.json}
       - {source: gateway-internal-token-jwks, target: /run/secrets/igrant-gateway/internal-token-jwks.json}
-      # The password of its Valkey user (the failure counters of unknown API
-      # keys).
+      # The password of its Valkey user (it keeps the failure counters of
+      # unknown API keys there).
       - {source: valkey-gateway-password, target: /run/secrets/igrant-gateway/redis-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
@@ -579,13 +577,13 @@ services:
   api:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
-    # The user nonroot of the image. It listens on port 80: the sysctl lets
-    # a non-root user open a port below 1024 (also the default of Docker).
+    # The image's nonroot user. It listens on port 80: the sysctl lets a
+    # non-root user open a port below 1024 (also Docker's default).
     user: "65532:65532"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     command: ["/app/bin/igrant-api", "start-api", "--config", "/etc/igrant-api/config.yaml"]
-    # The temporary files of the multipart parser of Go.
+    # Temporary files of Go's multipart parser.
     tmpfs:
       - /tmp:size=64m
     labels:
@@ -612,18 +610,18 @@ services:
       wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
-  # start-webhook-api: the NATS consumers of the webhooks and of the
-  # passwordless login events (its own NATS user api-webhook).
+  # start-webhook-api: the NATS consumers for webhooks and passwordless
+  # login events (with its own NATS user, api-webhook).
   webhook:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
-    # The user nonroot of the image. It listens on port 80: the sysctl lets
-    # a non-root user open a port below 1024 (also the default of Docker).
+    # The image's nonroot user. It listens on port 80: the sysctl lets a
+    # non-root user open a port below 1024 (also Docker's default).
     user: "65532:65532"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
     command: ["/app/bin/igrant-api", "start-webhook-api", "--config", "/etc/igrant-api/config.yaml"]
-    # The temporary files of the multipart parser of Go.
+    # Temporary files of Go's multipart parser.
     tmpfs:
       - /tmp:size=64m
     labels:
@@ -655,7 +653,7 @@ services:
   consent:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
-    # The user nonroot of the image. It listens on port 80 (see api).
+    # The image's nonroot user. It listens on port 80 (see api).
     user: "65532:65532"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
@@ -681,15 +679,15 @@ services:
       wallet-read-access-consent: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
-  # --- Organisation wallet: config, service, worker and clock roles of one image
-  # The image entrypoint only starts the process (it applies no migration):
-  # wallet-migrate changes the schema before the processes start. Each
-  # process (but the clock) waits until the schema is at the head of its
-  # code, and connects with a database role that cannot change the schema:
+  # --- Organisation wallet: config, service, worker and clock roles, one image
+  # The image entrypoint only starts the process and applies no migrations:
+  # wallet-migrate changes the schema before the processes start. Every
+  # process except the clock waits until the schema reaches the head of its
+  # code. Each connects with a database role that cannot change the schema:
   # config and service as igrant_wallet_launcher_app, the worker as
   # igrant_wallet_jobs, the clock as igrant_wallet_clock.
 
-  # The config routes: only the gateway calls them (internal token).
+  # The config routes: only the gateway calls them (with the internal token).
   wallet-config:
     <<: *wallet
     labels:
@@ -742,11 +740,11 @@ services:
       openbao-init: {condition: service_completed_successfully}
       valkey-sentinel: {condition: service_started}
 
-  # The worker (README.md, "Worker and clock"): the actors of all queues of
-  # Valkey. A stop waits at most 3600 s for the running actors (the longest
+  # The worker (README.md, "Worker and clock") runs the actors of all Valkey
+  # queues. On stop, it waits at most 3600 s for running actors (the longest
   # time limit without an audit bucket: the retention purge of an
-  # organisation); an actor that does not end in that time runs again from
-  # its message.
+  # organisation); an actor that does not finish in that time runs again
+  # from its message.
   wallet-worker:
     <<: *wallet
     command: ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", "1", "--threads", "8",
@@ -762,25 +760,24 @@ services:
       - {source: nats-seed-wallet-worker, target: /run/secrets/eudi-wallet/nats-seed}
       - {source: valkey-wallet-worker-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
-    # The heartbeat and metric files of the worker processes
+    # Heartbeat and metric files of the worker processes
     # (worker.state_directory).
     tmpfs:
       - /run/ows-worker:size=64m
-    # /tmp on the disk of the host, not in memory: the monthly audit export
-    # (only with AUDIT_BUCKET_NAME) writes one month of the audit log of one
-    # data scope two times to /tmp/ows-audit-export-* (README.md, "Security
-    # settings").
+    # /tmp on the host's disk, not in memory: the monthly audit export (only
+    # with AUDIT_BUCKET_NAME) writes one month of one data scope's audit log
+    # twice to /tmp/ows-audit-export-* (README.md, "Security settings").
     volumes:
       - wallet-worker-tmp:/tmp
-    # /readyz of the health port: Valkey and the database.
+    # /readyz on the health port checks Valkey and the database.
     healthcheck:
       <<: *wallet-healthcheck
       test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9191/readyz', timeout=3)"]
     depends_on: *wallet-role-depends
 
-  # The clock (README.md, "Worker and clock"): it sends the cron actors to
-  # the queues when their time comes. It holds the leader lock of the
-  # database while it sends; it connects to no NATS and to no key store.
+  # The clock (README.md, "Worker and clock") sends the cron actors to the
+  # queues when they are due. It holds the database leader lock while it
+  # sends, and connects to neither NATS nor a key store.
   wallet-clock:
     <<: *wallet
     command: ["/app/.venv/bin/start-clock"]
@@ -806,7 +803,7 @@ services:
   dashboard:
     <<: *hardened
     image: ${IMAGE_REGISTRY}/dashboard:${PLATFORM_TAG}
-    # The user nginx of the image. It listens on port 80 (see api).
+    # The image's nginx user. It listens on port 80 (see api).
     user: "101:101"
     sysctls:
       net.ipv4.ip_unprivileged_port_start: 0
@@ -816,8 +813,8 @@ services:
       io.igrant.config-sha256.dashboard-config: ${CONFIG_SHA256_DASHBOARD_CONFIG:?run make configs}
     configs:
       - {source: dashboard-config, target: /usr/share/nginx/html/config/config.json}
-    # The pid file and the temporary files of nginx, and the files of the
-    # start scripts of the image (/tmp/dashboard).
+    # The nginx pid file and temporary files, and the files of the image's
+    # start scripts (/tmp/dashboard).
     tmpfs:
       - /tmp:size=64m
     depends_on:
@@ -828,21 +825,21 @@ volumes:
   postgres-data:
   nats-data:
   openbao-data:
-  # /tmp of the wallet worker (the files of the audit export).
+  # /tmp of the wallet worker (audit export files).
   wallet-worker-tmp:
-  # The AOF files of the Valkey primary and replica.
+  # AOF files of the Valkey primary and replica.
   valkey-data:
   valkey-replica-data:
 
-# The secret files of make secrets. A file that is missing stops "docker
-# compose up" (run make secrets; make check finds it first).
+# The secret files from make secrets. A missing file stops "docker compose
+# up" (run make secrets; make check reports it first).
 secrets:
   database-admin-password: {file: ./secrets/database/admin-password}
   db-igrant-api-password: {file: ./secrets/database/igrant_api-password}
   db-igrant-oidc-password: {file: ./secrets/database/igrant_oidc-password}
   db-igrant-consent-password: {file: ./secrets/database/igrant_consent-password}
   db-igrant-wallet-password: {file: ./secrets/database/igrant_wallet-password}
-  # The login database roles of the wallet (wallet-database-roles).
+  # The wallet's login database roles (wallet-database-roles).
   db-igrant-wallet-migrator-password: {file: ./secrets/database/igrant_wallet_migrator-password}
   db-igrant-wallet-launcher-app-password: {file: ./secrets/database/igrant_wallet_launcher_app-password}
   db-igrant-wallet-jobs-password: {file: ./secrets/database/igrant_wallet_jobs-password}
@@ -878,8 +875,8 @@ secrets:
   nats-seed-wallet-worker: {file: ./secrets/wallet/nats-wallet-worker.nk}
   openbao-wallet-password: {file: ./secrets/openbao/wallet-password}
   openbao-static-seal-key: {file: ./secrets/openbao/static-seal.key}
-  # The passwords of the ACL users of Valkey: the wallet roles, the gateway,
-  # and the users of the Valkey services (replication, sentinel, probe).
+  # Passwords of the Valkey ACL users: the wallet roles, the gateway, and the
+  # Valkey services' own users (replication, sentinel, probe).
   valkey-wallet-config-password: {file: ./secrets/valkey/wallet-config-password}
   valkey-wallet-service-password: {file: ./secrets/valkey/wallet-service-password}
   valkey-wallet-worker-password: {file: ./secrets/valkey/wallet-worker-password}
@@ -890,7 +887,7 @@ secrets:
   valkey-probe-password: {file: ./secrets/valkey/probe-password}
 
 configs:
-  # --- Files of this folder and public keys of make secrets --------------------
+  # --- Files in this folder, and public keys from make secrets -----------------
   database-init-script: {file: ./config/database/create-databases.sh}
   nats-conf: {file: ./config/nats/nats.conf}
   nats-users: {file: ./config/nats/users.conf}
@@ -900,12 +897,12 @@ configs:
   valkey-conf: {file: ./config/valkey/valkey.conf}
   valkey-users: {file: ./config/valkey/users.acl}
   valkey-sentinel-conf: {file: ./config/valkey/sentinel.conf}
-  # The public nkeys of the NATS users (make secrets writes them from the seeds).
+  # The public nkeys of the NATS users (make secrets derives them from the seeds).
   nats-nkeys: {file: ./secrets/public/nats-nkeys.conf}
-  # The public keys of the gateway (the api, consent and the wallet verify
-  # the internal token), of the api token keys (the gateway verifies the
-  # admin and individual tokens) and of the service keys (the signed NATS
-  # envelopes).
+  # Public keys: the gateway's (the api, consent and the wallet verify the
+  # internal token with them), the api token keys (the gateway verifies the
+  # admin and individual tokens with them) and the service keys (for the
+  # signed NATS envelopes).
   gateway-jwks: {file: ./secrets/public/gateway-jwks.json}
   token-verification-jwks: {file: ./secrets/public/token-verification-jwks.json}
   service-jwks-api: {file: ./secrets/public/service-jwks/igrant-api.json}
@@ -913,10 +910,10 @@ configs:
   service-jwks-wallet: {file: ./secrets/public/service-jwks/eudi-wallet.json}
 
   # --- Configuration files of the components ----------------------------------
-  # make configs (render-configs.py) writes them from the templates of
+  # make configs (render-configs.py) writes them from the templates in
   # compose.configs.yaml with the values of .env (README.md, "Configuration
-  # files"). A service with a read-only root file system takes a config only
-  # from a file.
+  # files"). A service with a read-only root file system can take a config
+  # only from a file.
   api-config: {file: ./generated/api-config.yaml}
   webhook-config: {file: ./generated/webhook-config.yaml}
   api-database-jobs-config: {file: ./generated/api-database-jobs-config.yaml}

@@ -1,14 +1,14 @@
 {{- /*
 Jobs of the api: the one-off operator Jobs (api.jobs) and the read access
-Jobs of the api database (readAccess.jobs). Each Job applies the schema
-migrations first (init container, advisory lock), then runs one igrant-api
-command with the configuration (api.yaml) and the secret files of the api.
-The name has the release revision, so an enabled Job runs at each install
-and upgrade: turn an operator Job off after the run.
+Jobs for the api database (readAccess.jobs). Each Job first applies the
+schema migrations (init container, advisory lock), then runs one igrant-api
+command with the api config (api.yaml) and secret files. The Job name
+includes the release revision, so an enabled Job runs on every install and
+upgrade: turn an operator Job off after it has run.
 
-The platform operator of an installation (an installation has one
-platform operator organisation, and only the command line makes it):
-api.jobs.bootstrapPlatform, "onboard bootstrap-platform", makes the
+The platform operator: an installation has one platform operator
+organisation, and only the command line can create it.
+api.jobs.bootstrapPlatform ("onboard bootstrap-platform") creates the
 organisation type, the first admin, the platform operator organisation and
 the platform admin right.
 */}}
@@ -16,10 +16,10 @@ the platform admin right.
 {{- $api := .Values.api }}
 {{- $config := printf "--config=%s" (include "ow.api.configPath" .) }}
 {{- $jobs := list }}
-{{- /* A new installation: the platform operator organisation and the first
-platform admin, in one command. It makes the organisation type itself. A
+{{- /* New installation: the platform operator organisation and the first
+platform admin, in one command that also creates the organisation type. A
 second run with the same values changes nothing ("created": false). The
-password (15 characters or more) is a file of its own Secret. */}}
+password (15 characters or more) is a file from its own Secret. */}}
 {{- if $api.jobs.bootstrapPlatform.enabled }}
 {{- $bootstrap := $api.jobs.bootstrapPlatform }}
 {{- $args := list "onboard" "bootstrap-platform"
@@ -34,8 +34,9 @@ password (15 characters or more) is a file of its own Secret. */}}
 {{- $password := dict "secret" (required "api.jobs.bootstrapPlatform.passwordSecret is required" $bootstrap.passwordSecret) "key" $bootstrap.passwordKey }}
 {{- $jobs = append $jobs (dict "name" "api-bootstrap-platform" "args" $args "password" $password) }}
 {{- end }}
-{{- /* The read-only users of the readers of the api database that are on: "read-access apply" connects with the DataBase section of the api
-and an admin user. */}}
+{{- /* Read-only users for the enabled readers of the api database:
+"read-access apply" connects with the api's DataBase section and an admin
+user. */}}
 {{- if .Values.readAccess.jobs.enabled }}
 {{- $admin := include "ow.readAccess.admin" (list . "api") | fromJson }}
 {{- range $reader := include "ow.readAccess.enabledReaders" (list . (list "wallet" "consent")) | splitList "," | compact }}
@@ -45,8 +46,8 @@ and an admin user. */}}
 {{- end }}
 {{- end }}
 {{- /* The Jobs run as a non-root user with a read-only root file system
-(api.jobs.podSecurityContext, .containerSecurityContext; empty: the values
-of the api pods). They write only to the /tmp memory volume. */}}
+(api.jobs.podSecurityContext, .containerSecurityContext; empty means the
+api pod values). They only write to the in-memory /tmp volume. */}}
 {{- $jobPod := deepCopy $api }}
 {{- $_ := set $jobPod "podSecurityContext" ($api.jobs.podSecurityContext | default $api.podSecurityContext) }}
 {{- $_ := set $jobPod "containerSecurityContext" ($api.jobs.containerSecurityContext | default $api.containerSecurityContext) }}
@@ -60,10 +61,10 @@ metadata:
   labels:
     {{- include "ow.labels" (list $ $job.name) | nindent 4 }}
 spec:
-  {{- /* The read access Jobs are idempotent: they try again while the
-  database starts (a new installation). */}}
-  # The operator commands are idempotent. OnFailure counts the restarts of
-  # the container: 3 gives two retries.
+  {{- /* The read access Jobs are idempotent: they retry while the database
+  starts (on a new installation). */}}
+  # The operator commands are idempotent. With OnFailure this counts
+  # container restarts: 3 gives two retries.
   backoffLimit: {{ $job.backoffLimit | default 3 }}
   ttlSecondsAfterFinished: {{ $api.jobs.ttlSecondsAfterFinished }}
   template:
@@ -72,10 +73,10 @@ spec:
         {{- include "ow.labels" (list $ $job.name) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
     spec:
-      # OnFailure: a retry restarts the container in the same pod. With
-      # network policies, the first connection of a new pod can fail until
-      # the network policy controller knows the pod; a retry in a new pod
-      # (Never) would meet the same delay each time.
+      # OnFailure retries by restarting the container in the same pod. With
+      # network policies, a new pod's first connection can fail until the
+      # policy controller knows the pod; a retry in a new pod (Never) would
+      # hit the same delay every time.
       restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -111,9 +112,9 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- if $job.adminPassword }}
-            # The password of the new read-only user (--password-file) and
-            # of the admin user (--admin-password-file): files of their own
-            # Secrets, never arguments or variables.
+            # The passwords of the new read-only user (--password-file) and
+            # the admin user (--admin-password-file) are files from their own
+            # Secrets, never arguments or environment variables.
             - name: read-access
               mountPath: /run/secrets/read-access
               readOnly: true
@@ -122,9 +123,9 @@ spec:
               readOnly: true
             {{- end }}
             {{- if $job.password }}
-            # The password of "onboard bootstrap-platform"
-            # (--password-file): a file of its own Secret, never an argument
-            # or a variable.
+            # The password for "onboard bootstrap-platform" (--password-file)
+            # is a file from its own Secret, never an argument or environment
+            # variable.
             - name: onboard-password
               mountPath: /run/secrets/onboard
               readOnly: true

@@ -1,14 +1,19 @@
 # Workers and clock
 
-This page explains the background work of the organisation wallet: the workers, the clock, their values, their stops and their checks.
+The background work of the organisation wallet: the workers, the clock, their values, how they stop, and how to check them.
 
 [Back to the contents](../README.md#contents)
 
-The wallet runs its background work as actors on the queues of Valkey. An actor is a function that a worker runs for one message. The service and config pods send the messages of their requests after the commit. A job that nothing else repairs (for example a credential offer) is also a row in the database, until a worker ran it. The clock sends the messages of the cron actors when their time comes. Valkey is never a record: after a loss of Valkey, the actors find their work again in the database.
+The wallet runs its background work as actors on Valkey queues. An actor is a function that a worker runs for one message.
+
+- The service and config pods send the messages of their requests after the commit. A job that nothing else repairs (for example a credential offer) is also a database row, until a worker has run it.
+- The clock sends the messages of the cron actors when they are due.
+
+Valkey is never a record: after a Valkey loss, the actors find their work in the database again.
 
 | Deployment | Command | Replicas (default) | Database role | NATS user | Valkey user | Port |
 | --- | --- | --- | --- | --- | --- | --- |
-| `<release>-wallet-worker-<group>` | `dramatiq ows.worker.run:start` with the processes, threads, shutdown timeout and queues of the group, and `--worker-fork-timeout 650000` (the time of the startup probe: Dramatiq then always starts the health server) | the group | `<prefix>_jobs` | `walletWorker` | `walletWorker` (`wallet-worker`) | 9191 |
+| `<release>-wallet-worker-<group>` | `dramatiq ows.worker.run:start` with the processes, threads, shutdown timeout and queues of the group, and `--worker-fork-timeout 650000` (the time of the startup probe, so that Dramatiq always starts the health server) | the group | `<prefix>_jobs` | `walletWorker` | `walletWorker` (`wallet-worker`) | 9191 |
 | `<release>-wallet-clock` | `start-clock` | 2 | `<prefix>_clock` (CONNECT only) | none | `walletClock` (`wallet-clock`) | 9192 |
 
 ## Queues and worker groups
@@ -20,8 +25,8 @@ The wallet has five queues:
 | `realtime` | the outbox relay (also the durable jobs), the audit anchors, the credential offers, the QES PDF signatures, the Android attestation status list, the writes of the issuer status lists, the issuance counters |
 | `attestation` | the WIA pools of the organisation wallet units |
 | `status` | the status refresh of the held credentials |
-| `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer they end at once) |
-| `maintenance` | the retention purge, the monthly exports of the audit log, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters, the copy of the issuances of earlier releases |
+| `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer, they end at once) |
+| `maintenance` | the retention purge, the monthly audit log exports, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters, the copy of the issuances of earlier releases |
 
 A worker group (`organisationWallet.workers.groups`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
 
@@ -34,14 +39,14 @@ One thread runs one actor at a time. A worker pod runs `processes` worker proces
 
 The value is a list: your list replaces the whole default list. The render stops when:
 
-- a group has no name, a name that is not lower-case letters, digits and `-`, or the name of another group;
+- a group has no name, a name with characters other than lower-case letters, digits and `-`, or the name of another group;
 - the Deployment name `<release>-wallet-worker-<name>` has more than 63 characters;
-- a queue is not a queue of the wallet, or a group names a queue two times;
+- a queue is not a wallet queue, or a group names a queue twice;
 - `replicas`, `processes` or `threads` is below 1;
 - `terminationGracePeriodSeconds` is below `shutdownTimeoutSeconds` + 30;
 - no group runs a queue: its messages would stay in Valkey and grow.
 
-Two groups can run the same queue. For example, give the queue `attestation` a group of its own, with more replicas:
+Two groups can run the same queue. For example, to give the queue `attestation` its own group with more replicas:
 
 ```yaml
 organisationWallet:
@@ -57,20 +62,20 @@ organisationWallet:
 
 ## Status list writes
 
-A revocation of an issued credential is final at once in its issuance and in its webhook event. The transaction of the revocation adds it to a queue in the database, and the workers write it into the published status list of the issuer: the actor `status_list.write_changes` (queue `realtime`, every 5 seconds) writes the queued revocations of each list at most once in `organisationWallet.statusList.writeIntervalSeconds` (default 30, 0 to 50; 0: at each run). A revocation is in the published list within 60 seconds. Only the files of the workers have the value (`status_list.write_interval_seconds`).
+A revocation of an issued credential is final at once, in its issuance and in its webhook event. The transaction of the revocation adds it to a queue in the database, and the workers write it into the issuer's published status list. The actor `status_list.write_changes` (queue `realtime`, every 5 seconds) writes the queued revocations of each list at most once per `organisationWallet.statusList.writeIntervalSeconds` (default 30, 0 to 50; 0: at every run). A revocation is in the published list within 60 seconds. Only the worker files have this value (`status_list.write_interval_seconds`).
 
-Without a worker group that runs the queue `realtime`, or without the clock, a revocation is final in the issuance and in its event, but the published list does not change. The same queue keeps the statistics of the issuer: the actor `issuance_counter.apply_changes` adds the count changes of the issuances to the counters every 5 seconds. The queue `maintenance` gives the status `expired` to the open issuances whose grant ended (`issuance.expiry_dispatch`, each minute) and counts all issuances again each night (`issuance_counter.reconcile`, 03:10 UTC). See the alerts in [Probes and metrics](#probes-and-metrics).
+Without a worker group that runs the queue `realtime`, or without the clock, a revocation is still final in the issuance and its event, but the published list does not change. The same queue keeps the issuer statistics: the actor `issuance_counter.apply_changes` adds the count changes of the issuances to the counters every 5 seconds. The queue `maintenance` sets the status `expired` on the open issuances whose grant ended (`issuance.expiry_dispatch`, every minute), and counts all issuances again every night (`issuance_counter.reconcile`, 03:10 UTC). See the alerts in [Probes and metrics](#probes-and-metrics).
 
 ## The copy of the issuances
 
-The wallet keeps each issuance in tables by its life cycle: the issuance, its claims, its protocol session, its evidence, each issued credential and its token. The issuances of earlier releases are rows of `issuer.credential_issuance`. Two actors of the queue `maintenance` copy these rows into the tables of the issuance:
+The wallet keeps each issuance in tables by its life cycle: the issuance, its claims, its protocol session, its evidence, each issued credential and its token. The issuances of earlier releases are rows of `issuer.credential_issuance`. Two actors on the queue `maintenance` copy these rows into the issuance tables:
 
 | Actor | When | Work |
 | --- | --- | --- |
-| `issuance.backfill` | A durable job of the upgrade, about 10 minutes after the migration (only when `issuer.credential_issuance` has rows), then one job for each next run while rows are left | Copies the rows in the order of their ids: 1,000 rows in each transaction, 20 transactions in each run. It records its position in `platform.data_migration` (`issuance backfill`). At the end it sends the reconcile. |
-| `issuance.backfill_reconcile` | Each day at 04:10 UTC, and at the end of the backfill | Copies the rows that have no copy, and the copies that wait for a change that a pod of an earlier release made. Then it writes the counts to the progress row and to the log. |
+| `issuance.backfill` | A durable job of the upgrade, about 10 minutes after the migration (only when `issuer.credential_issuance` has rows), then one job for each next run while rows are left | Copies the rows in the order of their ids: 1,000 rows per transaction, 20 transactions per run. It records its position in `platform.data_migration` (`issuance backfill`). At the end, it sends the reconcile. |
+| `issuance.backfill_reconcile` | Every day at 04:10 UTC, and at the end of the backfill | Copies the rows that have no copy, and the copies that wait for a change that a pod of an earlier release made. Then it writes the counts to the progress row and to the log. |
 
-The two actors hold the lock `issuance:backfill`: only one run at a time. A copy of a row that has a copy and did not change writes nothing. A server pod that reads an issuance that the backfill did not copy yet copies it at once, so a wallet that was in an issuance at the upgrade can complete it.
+The two actors hold the lock `issuance:backfill`, so only one runs at a time. A copy of a row that has a copy and did not change writes nothing. A server pod that reads an issuance that the backfill has not copied yet copies it at once, so a wallet that was in an issuance at the upgrade can complete it.
 
 Run the command `issuance-backfill` in a worker pod, with the configuration of the worker:
 
@@ -81,31 +86,31 @@ kubectl -n ows exec deploy/ows-wallet-worker-maintenance -- /app/.venv/bin/issua
 `status` prints JSON with two parts:
 
 - `progress`: the progress row (`applied`, `outcome`, the start and end times, and in `details` the position and the counts of the last reconcile). `null`: the installation had no issuance of an earlier release, and there is nothing to copy.
-- `counts`: the counts at this time. `source`: the rows of `issuer.credential_issuance`; `copied` and `missing`: the rows with and without a copy; `issuances`: the issuances; `changed`: the copies that wait for a copy again; `revoked` and `revokedCopies`: the revoked rows and their revoked copies.
+- `counts`: the counts at this time. `source`: the rows of `issuer.credential_issuance`; `copied` and `missing`: the rows with and without a copy; `issuances`: the issuances; `changed`: the copies that wait to be copied again; `revoked` and `revokedCopies`: the revoked rows and their revoked copies.
 
 The copy is complete when `progress.applied` is `true` and `counts.missing` and `counts.changed` are `0`.
 
-`issuance-backfill start` adds a durable job of the backfill, for example when the job stopped after its retries: the job continues after the recorded position. `issuance-backfill start --from-start` reads every row again from the first one: use it when `counts.missing` stays above 0 after a reconcile. With `--operator <id>`, the audit log names you by a pseudonymous id (never an e-mail address) in place of the command. Exit code: 0 done, 1 a database error, 2 a wrong argument.
+`issuance-backfill start` adds a durable backfill job, for example when the job stopped after its retries: the job continues from the recorded position. `issuance-backfill start --from-start` reads every row again from the first one: use it when `counts.missing` stays above 0 after a reconcile. With `--operator <id>`, the audit log names you by a pseudonymous id (never an e-mail address) instead of the command. Exit codes: 0 done, 1 a database error, 2 a wrong argument.
 
-The reconcile has no metric. When a row has no copy, it writes a warning to the log of the worker: the line has `[ows.issuance.backfill] [WARNING] Issuance backfill reconcile:`, then the counts. Make an alert on this line in your log system, for example with Loki:
+The reconcile has no metric. When a row has no copy, the reconcile writes a warning to the worker log: the line has `[ows.issuance.backfill] [WARNING] Issuance backfill reconcile:`, then the counts. Create an alert on this line in your log system, for example with Loki:
 
 ```text
 sum(count_over_time({namespace="ows", container=~"wallet-worker-.+"} |= "[ows.issuance.backfill] [WARNING]" [1d])) > 0
 ```
 
-After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete.
+After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` if rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete.
 
 ## Stops and rollouts
 
 An upgrade changes the Deployments of the servers and of the workers together. The service and config pods of a new release can depend on actors that only the workers of the same release have (for example, they queue the revocations of the issuer status lists, and only the new workers write them). Do not scale the worker groups or the clock to 0 during an upgrade, and do not hold back the workers of a new release.
 
-At SIGTERM, a worker stops the consumers of its queues, then waits at most `shutdownTimeoutSeconds` for its running actors. Each actor has a time limit. Set `shutdownTimeoutSeconds` to at least the longest time limit of the actors of the queues of the group: 600 seconds for the queues of `main`, and 4 hours for `maintenance` (the export of one month of one scope of the audit log). An actor that does not end in that time stops, and runs again from its message: each actor is idempotent.
+At SIGTERM, a worker stops consuming its queues, then waits at most `shutdownTimeoutSeconds` for its running actors. Each actor has a time limit. Set `shutdownTimeoutSeconds` to at least the longest time limit of the actors on the group's queues: 600 seconds for the queues of `main`, and 4 hours for `maintenance` (the export of one month of one audit log scope). An actor that does not end in that time stops, and runs again from its message: every actor is idempotent.
 
-A rollout starts the new pod first. The old pod takes no new message, but it can stay in the state `Terminating` until its running actors end: up to 4 hours for the group `maintenance`. A drain of a node waits for it too. With a shorter grace period, an interrupted export runs again from its start.
+A rollout starts the new pod first. The old pod takes no new messages, but it can stay `Terminating` until its running actors end: up to 4 hours for the group `maintenance`. A node drain waits for it too. With a shorter grace period, an interrupted export starts again from the beginning.
 
 ## Clock
 
-Only the clock that holds the leader lock sends messages. The lock is a session advisory lock on a direct connection to the database. A clock whose database is in recovery (a standby) never leads. The other clock tries the lock at each wake-up (at least every 5 seconds), so it takes over within seconds after a stop, and within about 25 seconds after the loss of the node of the leader. For a short time two clocks can send: each actor is idempotent.
+Only the clock that holds the leader lock sends messages. The lock is a session advisory lock on a direct database connection. A clock whose database is in recovery (a standby) never leads. The other clock tries the lock at each wake-up (at least every 5 seconds), so it takes over within seconds after a stop, and within about 25 seconds after the loss of the leader's node. For a short time, two clocks can send: every actor is idempotent.
 
 ## Probes and metrics
 
@@ -113,15 +118,15 @@ Each worker pod and each clock pod has one HTTP port (`health`): 9191 for the wo
 
 | Path | Probe | Checks |
 | --- | --- | --- |
-| `/healthz` | startup, liveness | the heartbeat of the event loop of each worker process, or of each wake-up of the clock (stale after 60 seconds). Never Valkey: a failover of Valkey does not restart the pods. |
+| `/healthz` | startup, liveness | the heartbeat of the event loop of each worker process, or of each clock wake-up (stale after 60 seconds). Never Valkey: a Valkey failover does not restart the pods. |
 | `/readyz` | readiness | Valkey (`PING`) and the database (`SELECT 1`). No Service sends traffic to a worker or a clock: the readiness only holds a rollout. |
 | `/metrics` | | the Prometheus metrics |
 
-The startup probe of a worker gives the boot 650 seconds: each worker process waits up to 600 seconds for the database schema at the head of its release.
+The startup probe of a worker gives the boot 650 seconds: each worker process waits up to 600 seconds for the database schema to be at the head of its release.
 
-The service and config pods have the port `metrics` (9190) for the metrics of the server: `/metrics` only (`server.metrics_port`). Their probes stay on the port of the routes (`/healthz`, `/readyz`). Each process of a server pod writes its metrics files to an `emptyDir` in memory (`server.metrics_directory`, `/run/ows-server`), and the port reads all of them. The Services of the routes and the exposure objects do not have the port 9190. The server metrics include the requests of each route group and the hot routes, the NATS commands, the event loop lag, the waits for a database connection (`ows_db_pool_wait_seconds`), the waits of the audit appends and the Redis commands; the docs of the organisation-wallet-suite repository list them, with the alerts.
+The service and config pods have the port `metrics` (9190) for the server metrics: `/metrics` only (`server.metrics_port`). Their probes stay on the port of the routes (`/healthz`, `/readyz`). Each process of a server pod writes its metrics files to an `emptyDir` in memory (`server.metrics_directory`, `/run/ows-server`), and the port reads all of them. The Services of the routes and the exposure objects do not have port 9190. The server metrics include the requests of each route group and of the hot routes, the NATS commands, the event loop lag, the waits for a database connection (`ows_db_pool_wait_seconds`), the waits of the audit appends, and the Redis commands.
 
-`organisationWallet.serviceMonitor.enabled: true` creates a headless Service for the service and config roles (`<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`: the port `metrics`), for each worker group and for the clock (the port `health`), also with the pods that are not ready, and the ServiceMonitor `<release>-wallet-metrics` of `/metrics` (the CRD of the Prometheus Operator must exist). The label `metrics.igrant.io/job` of each Service gives the job of its targets (`jobLabel`): `wallet-server`, `wallet-worker`, `wallet-clock`. `interval` (default 15 s) and `labels` are the values of the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches the ports 9190, 9191 and 9192.
+`organisationWallet.serviceMonitor.enabled: true` creates a headless Service for the service and config roles (`<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`: the port `metrics`), for each worker group and for the clock (the port `health`), including the pods that are not ready. It also creates the ServiceMonitor `<release>-wallet-metrics` for `/metrics` (the Prometheus Operator CRD must exist). The label `metrics.igrant.io/job` of each Service gives the job of its targets (`jobLabel`): `wallet-server`, `wallet-worker`, `wallet-clock`. `interval` (default 15 s) and `labels` go to the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches the ports 9190, 9191 and 9192.
 
 | Metric | Labels | Process |
 | --- | --- | --- |
@@ -135,42 +140,42 @@ The service and config pods have the port `metrics` (9190) for the metrics of th
 
 Each worker pod reads the queue metrics of all queues from Valkey: use `max by (queue)` for them.
 
-Each worker pod also reads gauges from the database at each scrape, so each pod gives the same values: use `max` for them. See [Alerts](#alerts) for the alert rules.
+Each worker pod also reads gauges from the database at each scrape, so every pod gives the same values: use `max` for them. See [Alerts](#alerts) for the alert rules.
 
 The copy of the issuances of earlier releases has an alert on a log line, not on a metric: see [The copy of the issuances](#the-copy-of-the-issuances).
 
 ## Alerts
 
-`organisationWallet.prometheusRule.enabled: true` (with `serviceMonitor.enabled`; the CRD of the Prometheus Operator must exist) makes the PrometheusRule `<release>-wallet-alerts` with the rules below. `prometheusRule.labels` gives the labels for the `ruleSelector` of your Prometheus. The rules read the gauges of the worker pods (the job `wallet-worker` of the ServiceMonitor, the namespace of the release); each worker pod reads them from the database at each scrape, so the rules use `max`. With other monitoring, make the same rules (change the selector of the job to the one of your scrape):
+`organisationWallet.prometheusRule.enabled: true` (with `serviceMonitor.enabled`; the Prometheus Operator CRD must exist) creates the PrometheusRule `<release>-wallet-alerts` with the rules below. `prometheusRule.labels` gives the labels for the `ruleSelector` of your Prometheus. The rules read the gauges of the worker pods (the ServiceMonitor job `wallet-worker`, in the release namespace). Each worker pod reads them from the database at each scrape, so the rules use `max`. With other monitoring, create the same rules (change the job selector to the one of your scrape):
 
 | Alert | Severity | Rule | Meaning |
 | --- | --- | --- | --- |
-| `AuditExportStopped` | critical | `max by (namespace, scope) (ows_audit_export_stopped_months{job="wallet-worker"}) > 0` for 10m | The export of a closed month of an audited scope stopped after 8 attempts. The month stays in PostgreSQL, and the partition step cannot drop its partitions (see [Audit log](audit-log.md#partitions)). Repair the cause, then run `audit export-retry` in a worker pod. |
-| `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition of the current month: an insert fails. Run the upgrade again (the partition step of the migration hook). |
+| `AuditExportStopped` | critical | `max by (namespace, scope) (ows_audit_export_stopped_months{job="wallet-worker"}) > 0` for 10m | The export of a closed month of an audited scope stopped after 8 attempts. The month stays in PostgreSQL, and the partition step cannot drop its partitions (see [Audit log](audit-log.md#partitions)). Fix the cause, then run `audit export-retry` in a worker pod. |
+| `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition for the current month: inserts fail. Run the upgrade again (the partition step of the migration hook). |
 | `PartitionMonthsAheadLow` | warning | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 2` for 1h | A table has partitions for fewer than 2 months after the current month. |
-| `IssuerStatusListWritesLate` | warning | `max by (namespace) (ows_status_list_change_age_seconds{job="wallet-worker"}) > 60` for 2m | A revocation is not in the published status list after 60 seconds. Check the worker group of the queue `realtime` and the clock. |
-| `IssuanceCountersLate` | warning | `max by (namespace) (ows_issuance_counter_change_age_seconds{job="wallet-worker"}) > 60` for 10m | The statistics of the issuer are late. |
-| `IssuanceExpiryLate` | warning | `max by (namespace) (ows_worker_schedule_overdue_rows{job="wallet-worker",schedule="issuance.expiry"}) > 0` for 15m | Open issuances whose grant ended more than two runs of `issuance.expiry_dispatch` ago. Check the worker group of the queue `maintenance` and the clock. |
-| `AndroidAttestationStatusOld` | warning | `max by (namespace) (ows_android_attestation_status_age_seconds{job="wallet-worker"}) > 7200` for 10m | The stored attestation status list of Google is older than 2 hours; a copy older than 24 hours cannot check a key attestation chain. |
+| `IssuerStatusListWritesLate` | warning | `max by (namespace) (ows_status_list_change_age_seconds{job="wallet-worker"}) > 60` for 2m | A revocation is not in the published status list after 60 seconds. Check the worker group of the queue `realtime`, and the clock. |
+| `IssuanceCountersLate` | warning | `max by (namespace) (ows_issuance_counter_change_age_seconds{job="wallet-worker"}) > 60` for 10m | The issuer statistics are late. |
+| `IssuanceExpiryLate` | warning | `max by (namespace) (ows_worker_schedule_overdue_rows{job="wallet-worker",schedule="issuance.expiry"}) > 0` for 15m | Open issuances whose grant ended more than two runs of `issuance.expiry_dispatch` ago. Check the worker group of the queue `maintenance`, and the clock. |
+| `AndroidAttestationStatusOld` | warning | `max by (namespace) (ows_android_attestation_status_age_seconds{job="wallet-worker"}) > 7200` for 10m | The stored Google attestation status list is older than 2 hours; a copy older than 24 hours cannot check a key attestation chain. |
 
-A wallet image without a metric gives no series, and its rule does not fire. `tests/alert-rules.sh` checks the rules with `promtool` (see [Tests](tests.md)).
+A wallet image without a metric gives no series, so its rule does not fire. `tests/alert-rules.sh` checks the rules with `promtool` (see [Tests](tests.md)).
 
 ## Users and files
 
-- The workers connect as the jobs role `<prefix>_jobs`, the clock as the clock role `<prefix>_clock`: it can only connect (see [Database](database.md#database-roles-of-the-wallet)).
+- The workers connect as the jobs role `<prefix>_jobs`, and the clock as the clock role `<prefix>_clock`, which can only connect (see [Database](database.md#database-roles-of-the-wallet)).
 - The NATS user `walletWorker` publishes the events of the outbox relay and of the actors (see [NATS users](nats-users.md)). The clock connects to no NATS.
 - The Valkey users `wallet-worker` and `wallet-clock` have the rights of the other wallet users (see [Redis](redis.md#acl-users)).
-- The worker pods mount the OpenBao login, the service key, the NATS seed of their user and the files of the audit bucket (the actors of the anchors and the exports write it). The clock pods mount only the password of their database role and of their Valkey user, and the CA files. The configuration of the clock has only the log level, the database, Valkey and its health port (`check-config --role clock` of the wallet checks it).
+- The worker pods mount the OpenBao login, the service key, the NATS seed of their user, and the audit bucket files (the anchor and export actors write to the bucket). The clock pods mount only the passwords of their database role and their Valkey user, and the CA files. The clock configuration has only the log level, the database, Valkey and its health port (the wallet's `check-config --role clock` checks it).
 
 ## The /tmp folder of the workers
 
-The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write only their temporary files to `/tmp`: an `emptyDir` in memory of 64Mi, the same as in the other wallet pods. The files of `/tmp` count against the memory limit of the worker container.
+The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write only their temporary files to `/tmp`: an `emptyDir` in memory of 64Mi, the same as in the other wallet pods. The files in `/tmp` count against the memory limit of the worker container.
 
-The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes no local file: it reads the month in pages and sends each chain in parts of at most 16 MiB to the bucket. Its memory peak is about 263 to 424 MiB for one export (at most 16 open parts of 16 MiB, one page and one chunk of 8 MiB), so two exports at the same time stay below 1 GiB, inside the memory limit of the workers (1536Mi).
+The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes no local file: it reads the month in pages, and sends each chain to the bucket in parts of at most 16 MiB. Its memory peak is about 263 to 424 MiB per export (at most 16 open parts of 16 MiB, one page and one chunk of 8 MiB). So two exports at the same time stay below 1 GiB, inside the memory limit of the workers (1536Mi).
 
 ## Network policies
 
-The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet-any-port`, `platform`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet-any-port` also gives the actor of the Android attestation status list its source (`android.googleapis.com`, port 443); for a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
+The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet-any-port`, `platform`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet-any-port` also lets the Android attestation status list actor reach its source (`android.googleapis.com`, port 443). For a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
 
 ## Check
 

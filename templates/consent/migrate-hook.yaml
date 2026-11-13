@@ -1,10 +1,10 @@
 {{- /*
 Migration hooks of consent (ow.migrateHook): "migrate schema" before any
-Deployment of the release changes (helm pre-upgrade), and the same command
-after the upgrade (helm post-upgrade). It applies the schema
-migrations (the views of the read-only users) and the backfill of the data
-agreement read model (idempotent; no dry run). Its configuration has only
-the database (ow.consent.migrateConfig; config.LoadDatabase).
+Deployment of the release changes (helm pre-upgrade), and again after the
+upgrade (helm post-upgrade). It applies the schema migrations (including
+the read-only user views) and backfills the data agreement read model
+(idempotent; no dry run). Its config has only the database
+(ow.consent.migrateConfig; config.LoadDatabase).
 */}}
 {{- if .Values.consent.enabled }}
 {{- $config := list "--config" "/etc/consent-migrate/config.yaml" }}
@@ -19,11 +19,11 @@ the database (ow.consent.migrateConfig; config.LoadDatabase).
   "secrets" (include "ow.migrateHook.secrets" (include "ow.db.secretFiles" (list . "consent" "database-password") | fromJson) | fromJsonArray)
   "secretDir" (include "ow.consent.secretDir" .) }}
 {{- include "ow.migrateHook" $hook }}
-{{- /* The same command after the upgrade (helm post-upgrade): during the
-rolling update a pod of the earlier release can write a data agreement
-revision without its read model after the pre-upgrade hook; this run writes
-the read model of the revisions that have none (idempotent; the migrations
-are a no-op then). */}}
+{{- /* The same command after the upgrade (helm post-upgrade). During the
+rolling update, a pod of the earlier release can write a data agreement
+revision without its read model after the pre-upgrade hook has run. This
+run writes the read model for every revision that has none (idempotent;
+the migrations are then a no-op). */}}
 ---
 {{ include "ow.migrateHook" (merge (dict "hook" "post-upgrade" "component" "consent-migrate-after") $hook) }}
 {{- end }}

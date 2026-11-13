@@ -1,36 +1,35 @@
 #!/usr/bin/env python3
-"""make configs: writes the configuration files of the components to generated/.
+"""make configs: writes the components' configuration files to generated/.
 
 Usage: python3 -I render-configs.py [--check | --print]
 
-Compose writes the values of .env into the templates of
-compose.configs.yaml: this script reads them with "docker compose -f
-compose.render.yaml --profile render config --format json" (the same
-values files as docker-compose.yaml, and the same rules: ${VAR:-default},
-${VAR:?message}, ${VAR:+value}, $$). Thus Compose stays the only template
-engine of the platform. The script writes:
+Compose fills the templates in compose.configs.yaml with the values of
+.env. This script reads the result with "docker compose -f
+compose.render.yaml --profile render config --format json", which uses the
+same values files as docker-compose.yaml and the same rules
+(${VAR:-default}, ${VAR:?message}, ${VAR:+value}, $$). So Compose stays
+the platform's only template engine. The script writes:
 
-- generated/<name> for each template <name> (mode 0644; the services read
-  the files as configs of "file", as non-root users);
+- generated/<name> for each template <name> (mode 0644, because the
+  services read the files as "file" configs, as non-root users);
 - generated/configs.env: CONFIG_SHA256_<NAME>=<SHA-256 of the file> for
-  each file. Each service has the hash of its file in a label, so "docker
-  compose up" starts the service again when its file changes.
+  each file. Each service has its file's hash in a label, so "docker
+  compose up" restarts the service when its file changes.
 
-Each file is written to a temporary file in generated/ and then renamed:
-a stop at any point leaves each file complete (the earlier or the new
-version). configs.env is written last. A run again after a stop writes all
-files. A file in generated/ that is not a template is removed.
+Each file is written to a temporary file in generated/ and then renamed,
+so a stop at any point leaves every file complete (the old or the new
+version). configs.env is written last. A run after a stop writes all files
+again. Files in generated/ that are not templates are removed.
 
 --check: write nothing; exit 1 when generated/ is not the render of the
-current values (for example after a change of .env without make configs).
+current values (for example after a change to .env without make configs).
 --print: write nothing; print the files as JSON (name: text), for the
 tests (tests/compose-files.sh).
 
-The templates have no secret value (the configurations name secret
-files), so the files of generated/ have no secret. The output of "docker
-compose config" escapes each $ of a value as $$; the script writes $.
-Needs Docker Compose 2.24 or later and Python 3.8 or later (only the
-standard library).
+The templates hold no secret values (the configurations name secret
+files), so the files in generated/ hold no secrets. "docker compose
+config" escapes each $ in a value as $$; the script writes $. Needs Docker
+Compose 2.24 or later and Python 3.8 or later (standard library only).
 """
 
 import hashlib
@@ -54,12 +53,12 @@ def fail(message: str) -> None:
 
 
 def variable(name: str) -> str:
-    """The variable of the hash of the file <name>: CONFIG_SHA256_<NAME>."""
+    """Name of the hash variable of the file <name>: CONFIG_SHA256_<NAME>."""
     return "CONFIG_SHA256_" + re.sub(r"[^A-Z0-9]", "_", name.rsplit(".", 1)[0].upper())
 
 
 def render() -> dict:
-    """The files (name: bytes) from the templates, with the values of Compose."""
+    """The files (name: bytes) rendered from the templates with the values from Compose."""
     compose = shlex.split(os.environ.get("COMPOSE") or "docker compose")
     command = compose + ["-f", os.path.join(HERE, "compose.render.yaml"), "--profile", "render", "config", "--format", "json"]
     result = subprocess.run(command, cwd=HERE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
@@ -88,7 +87,7 @@ def hashes_of(files: dict) -> bytes:
 
 
 def write(path: str, data: bytes) -> None:
-    """Write data to path: a temporary file in the same folder, then rename."""
+    """Write data to path atomically: a temporary file in the same folder, then a rename."""
     handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".render-")
     try:
         with os.fdopen(handle, "wb") as stream:

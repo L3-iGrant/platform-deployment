@@ -1,8 +1,8 @@
 {{- /*
-Migration hook of the api (ow.migrateHook, helm pre-upgrade): "igrant-api
-migrate" (the api database with the views of the read-only users, and the
-database of the OIDC provider) before any Deployment of the release changes.
-Its configuration has only the databases (ow.api.migrateConfig).
+api migration hook (ow.migrateHook, helm pre-upgrade): runs "igrant-api
+migrate" (the api database with the read-only user views, and the OIDC
+provider database) before any Deployment of the release changes. Its config
+has only the databases (ow.api.migrateConfig).
 */}}
 {{- if .Values.api.enabled }}
 {{- include "ow.migrateHook" (dict

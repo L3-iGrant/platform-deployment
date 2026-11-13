@@ -1,64 +1,64 @@
 {{/*
-Helpers of the workers and of the clock of the organisation wallet
-(docs/workers.md). A worker group of organisationWallet.workers.groups is
-one Deployment of "dramatiq ows.worker.run:start" for some of the queues;
-the clock is one Deployment of start-clock.
+Helpers for the organisation wallet's workers and clock (docs/workers.md).
+Each worker group in organisationWallet.workers.groups is one Deployment of
+"dramatiq ows.worker.run:start" for some of the queues; the clock is one
+Deployment of start-clock.
 */}}
 
-{{/* The queues of the worker kit of the wallet (ows.kit.worker.actor.QUEUES). Output: comma-separated. */}}
+{{/* Queues of the wallet's worker kit (ows.kit.worker.actor.QUEUES). Output: comma-separated. */}}
 {{- define "ow.wallet.workerQueues" -}}
 realtime,attestation,status,kms,maintenance
 {{- end }}
 
-{{/* The port of the Prometheus metrics of a server pod (server.metrics_port): /metrics only. */}}
+{{/* Prometheus metrics port of a server pod (server.metrics_port): /metrics only. */}}
 {{- define "ow.wallet.serverMetricsPort" -}}
 9190
 {{- end }}
 
 {{/*
-The folder of the metrics files of the processes of a server pod
-(server.metrics_directory): an emptyDir in memory.
+Folder for the metrics files of a server pod's processes
+(server.metrics_directory): an in-memory emptyDir.
 */}}
 {{- define "ow.wallet.serverMetricsDir" -}}
 /run/ows-server
 {{- end }}
 
-{{/* The port of the health server of a worker pod (worker.health_port): /healthz, /readyz and /metrics. */}}
+{{/* Health server port of a worker pod (worker.health_port): /healthz, /readyz and /metrics. */}}
 {{- define "ow.wallet.workerHealthPort" -}}
 9191
 {{- end }}
 
-{{/* The port of the health server of a clock pod (clock.health_port). */}}
+{{/* Health server port of a clock pod (clock.health_port). */}}
 {{- define "ow.wallet.clockHealthPort" -}}
 9192
 {{- end }}
 
 {{/*
-The folder of the heartbeat and metric files of the worker processes of a
-pod (worker.state_directory): an emptyDir in memory.
+Folder for the heartbeat and metric files of a pod's worker processes
+(worker.state_directory): an in-memory emptyDir.
 */}}
 {{- define "ow.wallet.workerStateDir" -}}
 /run/ows-worker
 {{- end }}
 
-{{/* The component (and the name suffix) of the Deployment of one worker group. Call with the group. */}}
+{{/* Component (and name suffix) of one worker group's Deployment. Call with the group. */}}
 {{- define "ow.wallet.workerComponent" -}}
 wallet-worker-{{ .name }}
 {{- end }}
 
 {{/*
-Render guards of the worker groups (organisationWallet.workers.groups),
-also without the schema:
-- a name: lower-case letters, digits and -; each name once (not in the
+Render guards for the worker groups (organisationWallet.workers.groups);
+they apply even without the schema:
+- name: lower-case letters, digits and -; each name only once (not in the
   schema); a Deployment name of at most 63 characters (not in the schema:
-  ow.name cuts a longer name, so two groups could get one name);
-- the queues of a group: queues of the kit, each once;
+  ow.name truncates a longer name, so two groups could get the same name);
+- queues of a group: queues of the kit, each only once;
 - replicas, processes and threads: 1 or more;
-- a stop: terminationGracePeriodSeconds at least shutdownTimeoutSeconds +
-  30 (not in the schema), else Kubernetes kills the worker while it waits
-  for its actors;
-- together the groups run every queue of the kit (not in the schema): the
-  messages of a queue that no group runs stay in Valkey and grow.
+- stop: terminationGracePeriodSeconds at least shutdownTimeoutSeconds + 30
+  (not in the schema), else Kubernetes kills the worker while it waits for
+  its actors;
+- together the groups run every queue of the kit (not in the schema):
+  messages in a queue that no group runs stay in Valkey and pile up.
 Call with the root context. Output: nothing.
 */}}
 {{- define "ow.wallet.checkWorkers" -}}

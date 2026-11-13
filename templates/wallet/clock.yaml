@@ -1,11 +1,11 @@
 {{- /*
-The clock of the organisation wallet (start-clock; docs/workers.md): it
-sends the messages of the cron actors to the queues when their time comes.
-Only the clock that holds the leader lock of the database (a session
-advisory lock on a direct connection) sends, and a clock on a database in
-recovery never leads, so two replicas are safe and the second takes over
-within seconds. It connects as the clock role (CONNECT only) and with the
-Valkey user walletClock; it connects to no NATS and to no key store.
+The organisation wallet's clock (start-clock; docs/workers.md): it sends
+the cron actor messages to the queues when they are due. Only the clock
+that holds the database leader lock (a session advisory lock on a direct
+connection) sends, and a clock on a database in recovery never leads. So
+two replicas are safe, and the second takes over within seconds. It
+connects as the clock role (CONNECT only) and as the Valkey user
+walletClock; it does not connect to NATS or to any key store.
 */}}
 {{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
@@ -40,19 +40,19 @@ spec:
       # The clock does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.podSpecCommon" (list . $w) | nindent 6 }}
-      # SIGTERM stops the clock and closes the leader connection: the
+      # SIGTERM stops the clock and closes the leader connection, so the
       # database frees the lock at once.
       terminationGracePeriodSeconds: 30
       containers:
         - name: {{ $component }}
           image: {{ include "ow.image" (list . $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $w.image) }}
-          # The program of the clock (the image starts the server). Python is
-          # process 1 and gets SIGTERM.
+          # The clock program (by default the image starts the server).
+          # Python is process 1 and gets SIGTERM.
           command: ["/app/.venv/bin/start-clock"]
           env:
-            # The only environment variable of the wallet configuration: the
-            # path of the file (the image has the same default).
+            # The only wallet config environment variable: the file path
+            # (the image has the same default).
             - name: EUDI_WALLET_CONFIG
               value: {{ include "ow.wallet.configPath" . | quote }}
             {{- with $w.extraEnv }}
@@ -97,8 +97,7 @@ spec:
               mountPath: /tmp
       volumes:
         {{- include "ow.wallet.volumes" (list . "clock") | nindent 8 }}
-        # The temporary files of Python (tempfile; the root file system is
-        # read-only).
+        # Python temp files (tempfile; the root file system is read-only).
         - name: tmp
           emptyDir:
             medium: Memory

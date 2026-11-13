@@ -1,12 +1,12 @@
 {{/*
-config.yaml of one organisation wallet role (pydantic-settings, nested
-keys; an unknown key stops the wallet). The wallet reads the file of
-EUDI_WALLET_CONFIG. The file has no secret: each <key>_file names a file in
-ow.wallet.secretDir (see ow.wallet.secretFiles).
-Roles: "service" (public routes), "config" (internal configuration
-routes), "worker" (a group of organisationWallet.workers.groups: the
-actors of its queues) and "clock" (it sends the cron actors).
-Call with (dict "root" $ "role" "<role>"), for a worker with (dict "root"
+config.yaml of one organisation wallet role (pydantic-settings with nested
+keys; an unknown key stops the wallet). The wallet reads the file named by
+EUDI_WALLET_CONFIG. The file holds no secrets: each <key>_file names a file
+in ow.wallet.secretDir (see ow.wallet.secretFiles).
+Roles: "service" (public routes), "config" (internal config routes),
+"worker" (one group from organisationWallet.workers.groups, running the
+actors of its queues) and "clock" (sends the cron actors).
+Call with (dict "root" $ "role" "<role>"), or for a worker with (dict "root"
 $ "role" "worker" "group" <group>).
 */}}
 {{- define "ow.wallet.config" -}}
@@ -18,9 +18,9 @@ $ "role" "worker" "group" <group>).
 {{- $files := include "ow.wallet.secretFiles" (list $root $role) | fromJson -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.wallet.natsUser" $role)) | fromJson -}}
 {{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
-{{- /* The key management service is always the Transit engine of OpenBao:
-the bundled OpenBao of the chart or an external OpenBao. The wallet config
-section of OpenBao is named "vault" (a key of the wallet code). */ -}}
+{{- /* The key management service is always the OpenBao Transit engine:
+the chart's bundled OpenBao or an external one. The wallet's config section
+for OpenBao is called "vault" (a key in the wallet code). */ -}}
 {{- $openbao := dict
     "addr" (include "ow.openbao.address" $root)
     "user" (include "ow.openbao.walletUser" $root)
@@ -32,8 +32,8 @@ section of OpenBao is named "vault" (a key of the wallet code). */ -}}
 {{- if hasKey $files "openbao-ca.crt" -}}
 {{- $_ := set $openbao "ca_cert_file" (printf "%s/openbao-ca.crt" $dir) -}}
 {{- end -}}
-{{- /* The key store providers of this installation (camelCase in the
-values, the wallet keys here); the built-in providers come from the wallet. */ -}}
+{{- /* This installation's key store providers (camelCase in the values,
+wallet keys here); the built-in providers come from the wallet. */ -}}
 {{- $added := list -}}
 {{- range $w.keyStores.providers.add -}}
 {{- $entry := dict "id" .id "category" .category "type" .type "name" .name "protection" .protection -}}
@@ -44,8 +44,7 @@ values, the wallet keys here); the built-in providers come from the wallet. */ -
 {{- if hasKey . "order" -}}{{- $_ := set $entry "order" (.order | int) -}}{{- end -}}
 {{- $added = append $added $entry -}}
 {{- end -}}
-{{- /* The local key store of the installation: the Transit engine of
-OpenBao. */ -}}
+{{- /* The installation's local key store: the OpenBao Transit engine. */ -}}
 {{- $kms := dict
     "platform" "transit"
     "local_backend" "openbao"
@@ -56,7 +55,7 @@ OpenBao. */ -}}
     "test_ca" (dict "enabled" $w.keyStores.testCa.enabled "leaf_validity_days" ($w.keyStores.testCa.leafValidityDays | int)) -}}
 {{- /* An empty eu_lotl_url switches the EU trusted list check off (null). */ -}}
 {{- $trustList := dict "eu_lotl_url" ($w.trustList.euLotlUrl | default nil) -}}
-{{- /* The refresh of the list trust sources of the organisations. */ -}}
+{{- /* Refresh of the organisations' list trust sources. */ -}}
 {{- $ts := $w.trustSources -}}
 {{- $trustSources := dict
     "refresh_max_interval_seconds" ($ts.refreshMaxIntervalSeconds | int)
@@ -64,11 +63,11 @@ OpenBao. */ -}}
     "retry_interval_seconds" ($ts.retryIntervalSeconds | int)
     "stale_grace_seconds" ($ts.staleGraceSeconds | int)
     "manual_refresh_min_interval_seconds" ($ts.manualRefreshMinIntervalSeconds | int) -}}
-{{- /* The audit log (audit.*): the retention in the file of every role,
-so that each process and the migration hook have the same values; the
-bucket of the anchor copies and of the monthly exports only in the
-workers, which write them (the actors audit.anchor and audit.export) and
-mount the credentials of the bucket (ow.wallet.secretFiles). */ -}}
+{{- /* Audit log (audit.*). The retention goes into every role's file, so
+every process and the migration hook use the same values. The bucket for
+anchor copies and monthly exports goes only to the workers, which write
+them (actors audit.anchor and audit.export) and mount the bucket
+credentials (ow.wallet.secretFiles). */ -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- $audit := include "ow.wallet.auditRetention" $root | fromJson -}}
 {{- $b := $w.audit.bucket -}}
@@ -95,8 +94,8 @@ mount the credentials of the bucket (ow.wallet.secretFiles). */ -}}
 {{- end -}}
 {{- $_ := set $audit "bucket" $bucket -}}
 {{- end -}}
-{{- /* The retention purge (retention.*): the deactivation of an organisation
-writes its purge date, the workers purge. */ -}}
+{{- /* Retention purge (retention.*): deactivating an organisation writes
+its purge date, and the workers purge. */ -}}
 {{- $r := $w.retention -}}
 {{- $retention := dict
     "soft_deleted_days" ($r.softDeletedDays | int)
@@ -108,18 +107,17 @@ writes its purge date, the workers purge. */ -}}
     "issued_credential_token_days" ($r.issuedCredentialTokenDays | int)
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
-{{- /* The most organisation wallet units of the installation
-(organisationWallet.walletUnit.organisationWalletUnitsMax): the key only
-when the installer sets a value; without it the wallet uses its default. The
-clock has no wallet_unit section. */ -}}
+{{- /* Maximum number of organisation wallet units in the installation
+(organisationWallet.walletUnit.organisationWalletUnitsMax). The key is set
+only when the installer gives a value; otherwise the wallet uses its
+default. The clock has no wallet_unit section. */ -}}
 {{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
 {{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
 {{- end -}}
-{{- /* The guard of the builds of the wallet apps (read by the config and
-service processes): wallet_unit.development_apps_allowed only when the
-installer sets true or false; empty gives no key (the default of the
-wallet, false). A text, also "true", stops the render: the wallet reads a
-boolean. */ -}}
+{{- /* wallet_unit.development_apps_allowed (read by the config and service
+processes) is set only when the installer sets true or false; empty sets no
+key (the wallet default, false). A string, even "true", fails the render
+because the wallet reads a boolean. */ -}}
 {{- $developmentApps := dig "developmentAppsAllowed" "" $w.walletUnit -}}
 {{- if kindIs "bool" $developmentApps -}}
 {{- $_ := set $walletUnit "development_apps_allowed" $developmentApps -}}
@@ -131,13 +129,13 @@ boolean. */ -}}
 {{- if and $p.existingSecret (not $digests) -}}
 {{- fail "organisationWallet.walletUnit.androidSigningCertificateDigests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
 {{- end -}}
-{{- /* The service pods answer the WIA and key attestation requests of the
-wallet units: only their file has the digests of the Android app. */ -}}
+{{- /* The service pods answer the WIA and key attestation requests of
+wallet units, so only their file gets the Android app digests. */ -}}
 {{- if and $digests (eq $role "service") -}}
 {{- $_ := set $walletUnit "android_signing_certificate_digests" $digests -}}
 {{- end -}}
-{{- /* The App IDs of the iOS wallet apps: the service pods check the App
-Attest objects of the same requests. */ -}}
+{{- /* App IDs of the iOS wallet apps: the service pods check the App Attest
+objects in the same requests. */ -}}
 {{- $appIds := $w.walletUnit.appAttest.appIds -}}
 {{- if and $w.walletUnit.productionChecksEnabled (not $appIds) -}}
 {{- fail "organisationWallet.walletUnit.appAttest.appIds needs at least one App ID (<Team ID>.<bundle id>) of the iOS wallet app when productionChecksEnabled is true" -}}
@@ -152,8 +150,8 @@ Attest objects of the same requests. */ -}}
     "package_name" $p.packageName
     "min_version_code" ($p.minVersionCode | int)) -}}
 {{- end -}}
-{{- /* The device roots of the ConfigMap (organisationWallet.walletUnit.
-trustAnchors), in the roles that mount them; else the roots of the image. */ -}}
+{{- /* Device roots from the ConfigMap (organisationWallet.walletUnit.
+trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
 {{- if include "ow.wallet.trustAnchors" (list $root $role) -}}
 {{- $_ := set $walletUnit "trust_anchors_dir" (include "ow.wallet.trustAnchorsDir" $root) -}}
 {{- end -}}
@@ -181,11 +179,11 @@ trustAnchors), in the roles that mount them; else the roots of the image. */ -}}
   "wallet_unit" $walletUnit
   "audit" $audit
   "retention" $retention -}}
-{{- /* The pools of the process (database.pools.wallet*; docs/database.md,
-"Connection budget"): the session pool and the allocation pool of a
-service, config or worker process. A worker process has one session
-connection for each thread of its group. The clock opens no session (its
-leader connection and its health check). */ -}}
+{{- /* Process pools (database.pools.wallet*; docs/database.md, "Connection
+budget"): the session pool and the allocation pool of a service, config or
+worker process. A worker process has one session connection per thread of
+its group. The clock opens no session (only its leader connection and its
+health check). */ -}}
 {{- $pools := $v.database.pools -}}
 {{- $pool := dict -}}
 {{- if eq $role "service" -}}
@@ -198,8 +196,8 @@ leader connection and its health check). */ -}}
 {{- range $key, $value := $pool -}}
 {{- $_ := set $config.database $key ($value | int) -}}
 {{- end -}}
-{{- /* The pooler (database.pooler): the engines of the sessions of the
-processes with sessions connect to it; the clock has none. */ -}}
+{{- /* Pooler (database.pooler): the session engines of processes that have
+sessions connect through it; the clock has none. */ -}}
 {{- with $v.database.pooler.host -}}
 {{- if has $role (list "service" "config" "worker") -}}
 {{- $_ := set $config.database "pooler" (dict "host" . "port" ($v.database.pooler.port | int)) -}}
@@ -207,23 +205,23 @@ processes with sessions connect to it; the clock has none. */ -}}
 {{- end -}}
 {{- /* Valkey (redis): the work queue, the single-use values and the caches. */ -}}
 {{- $_ := set $config "redis" (include "ow.wallet.redis" (list $root $role) | fromJson) -}}
-{{- /* The clock reads only the database and Valkey (load_clock_settings of
-the wallet): no domain, NATS, KMS, service envelope, trust list, trust
-sources, wallet unit, audit log or retention settings; it mounts no NATS
-seed and no OpenBao password. */ -}}
+{{- /* The clock reads only the database and Valkey settings (the wallet's
+load_clock_settings): no domain, NATS, KMS, service envelope, trust list,
+trust sources, wallet unit, audit log or retention settings. It mounts no
+NATS seed and no OpenBao password. */ -}}
 {{- if eq $role "clock" -}}
 {{- range $key := list "domain" "nats" "kms" "service_envelope" "trust_list" "trust_sources" "wallet_unit" "audit" "retention" -}}
 {{- $_ := unset $config $key -}}
 {{- end -}}
 {{- end -}}
-{{- /* The health server of the workers and of the clock: /healthz (the
-heartbeat), /readyz (Valkey and the database) and /metrics. The worker
-processes of a pod share their heartbeat and metric files in
-state_directory (an emptyDir). */ -}}
+{{- /* Health server of the workers and the clock: /healthz (heartbeat),
+/readyz (Valkey and the database) and /metrics. The worker processes of a
+pod share their heartbeat and metric files in state_directory (an
+emptyDir). */ -}}
 {{- if eq $role "worker" -}}
 {{- $_ := set $config "worker" (dict "health_port" (include "ow.wallet.workerHealthPort" $root | int) "state_directory" (include "ow.wallet.workerStateDir" $root)) -}}
-{{- /* The writes of the issuer status lists: only the actor
-status_list.write_changes of the workers reads the interval. */ -}}
+{{- /* Writes of the issuer status lists: only the workers' actor
+status_list.write_changes reads the interval. */ -}}
 {{- $_ := set $config "status_list" (dict "write_interval_seconds" ($w.statusList.writeIntervalSeconds | int)) -}}
 {{- else if eq $role "clock" -}}
 {{- $_ := set $config "clock" (dict "health_port" (include "ow.wallet.clockHealthPort" $root | int)) -}}
@@ -241,9 +239,9 @@ status_list.write_changes of the workers reads the interval. */ -}}
     "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int)
     "metrics_port" (include "ow.wallet.serverMetricsPort" $root | int)
     "metrics_directory" (include "ow.wallet.serverMetricsDir" $root) -}}
-{{- /* The service pods are behind your ingress controller or Gateway. The
-auth gateway calls the config pods directly, so they keep the wallet default
-(127.0.0.1). */ -}}
+{{- /* forwarded_allow_ips: the service pods sit behind your ingress
+controller or Gateway. The auth gateway calls the config pods directly, so
+they keep the wallet default (127.0.0.1). */ -}}
 {{- if eq $role "service" -}}
 {{- if not $w.forwardedAllowIps -}}
 {{- fail "organisationWallet.forwardedAllowIps needs at least one entry (an IP address, a network, or only \"*\")" -}}
@@ -255,10 +253,10 @@ auth gateway calls the config pods directly, so they keep the wallet default
 {{- if and (include "ow.nats.ca" $root | fromJson).secret (ne $role "clock") -}}
 {{- $_ := set $config.nats "tls_ca_file" (printf "%s/nats-ca.crt" $dir) -}}
 {{- end -}}
-{{- /* The config role always checks the internal token of the gateway
-(internal_auth; the gateway of the chart is the trusted issuer) and trusts
-the signed NATS commands of the api (service_envelope.trusted_issuers). The
-service role keeps the protocol routes public and direct. */ -}}
+{{- /* The config role always checks the gateway's internal token
+(internal_auth; the chart's gateway is the trusted issuer) and trusts the
+api's signed NATS commands (service_envelope.trusted_issuers). The service
+role keeps the protocol routes public and direct. */ -}}
 {{- if eq $role "config" -}}
 {{- include "ow.gateway.checkGatewayJwks" $root -}}
 {{- $_ := set $config "internal_auth" (dict
@@ -272,8 +270,8 @@ service role keeps the protocol routes public and direct. */ -}}
 {{- $trusted = append $trusted (dict "issuer" $item.issuer "jwks_file" $item.jwksFile) -}}
 {{- end -}}
 {{- $_ := set $config.service_envelope "trusted_issuers" $trusted -}}
-{{- /* The config role reads the views of the api and consent databases with
-the read-only users of the wallet (read_access, the shape of database). */ -}}
+{{- /* The config role reads the api and consent database views with the
+wallet's read-only users (read_access, same shape as database). */ -}}
 {{- $readAccess := dict -}}
 {{- range $owner := include "ow.wallet.readAccessOwners" $root | splitList "," -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "wallet" $owner) | fromJson -}}
@@ -287,13 +285,13 @@ the read-only users of the wallet (read_access, the shape of database). */ -}}
     "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) | fromJson) -}}
 {{- end -}}
 {{- $_ := set $config "read_access" $readAccess -}}
-{{- /* The life of a stored command reply: the same in every config pod
-(each sets the time to live of the reply bucket at its start). */ -}}
+{{- /* Lifetime of a stored command reply. It must be the same in every
+config pod, because each one sets the reply bucket's TTL at start. */ -}}
 {{- $_ := set $config.nats "command_reply_seconds" ($w.nats.commandReplySeconds | int) -}}
-{{- /* The server-sent event streams of the config routes: the
-notifications stream and its replay, the presentation-status stream. The
-keep-alive must stay well below the SSE idle cut of the gateway, else the
-gateway ends quiet streams. */ -}}
+{{- /* Server-sent event streams of the config routes: the notifications
+stream with its replay, and the presentation-status stream. The keep-alive
+must stay well below the gateway's SSE idle cut, or the gateway ends quiet
+streams. */ -}}
 {{- if lt ($v.gateway.proxy.sseIdleTimeoutSeconds | int) (mul 2 ($w.sse.keepAliveSeconds | int)) -}}
 {{- fail (printf "gateway.proxy.sseIdleTimeoutSeconds (%v) must be at least 2 x organisationWallet.sse.keepAliveSeconds (%v): the gateway would end quiet server-sent event streams" $v.gateway.proxy.sseIdleTimeoutSeconds $w.sse.keepAliveSeconds) -}}
 {{- end -}}
@@ -308,14 +306,14 @@ gateway ends quiet streams. */ -}}
 {{- $_ := set $config "presentation_status_sse" (dict
     "recheck_seconds" ($w.presentationStatusSse.recheckSeconds | int)
     "max_stream_seconds" ($w.presentationStatusSse.maxStreamSeconds | int)) -}}
-{{- /* The public base URL of the api host (api ApiBaseUrl): the wallet
-builds the public image URIs of the routes that the gateway sends to it. */ -}}
+{{- /* Public base URL of the api host (api ApiBaseUrl): the wallet builds
+public image URIs for the routes that the gateway sends to it. */ -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
-{{- /* The private hosts that the SSRF guard of the wallet allows
-(organisationWallet.ssrf.allowedPrivate): only with entries. The wallet
-refuses an entry that covers loopback, link-local or the cloud metadata
-addresses; the render stops for the plain cases. */ -}}
+{{- /* Private hosts that the wallet's SSRF guard allows
+(organisationWallet.ssrf.allowedPrivate), set only when there are entries.
+The wallet refuses an entry that covers loopback, link-local or cloud
+metadata addresses; the render fails on the plain cases. */ -}}
 {{- with $w.ssrf.allowedPrivate -}}
 {{- range $entry := . -}}
 {{- $text := lower (toString $entry) -}}
@@ -331,12 +329,12 @@ addresses; the render stops for the plain cases. */ -}}
 {{- end }}
 
 {{/*
-Render guard of the writable paths of one wallet file: the root file system
-of the wallet pods is read-only, so each folder that a process writes
-(server.metrics_directory, worker.state_directory; also from
-organisationWallet.extraConfig) must be on an emptyDir of its pod: /tmp of
-each pod, /run/ows-server of the service and config pods, /run/ows-worker of
-the worker pods. No role has a log file (log_file.path, ow.noLogFile): the
+Render guard for the writable paths in one wallet file. The wallet pods
+have a read-only root file system, so every folder a process writes to
+(server.metrics_directory, worker.state_directory, also when set in
+organisationWallet.extraConfig) must be on one of the pod's emptyDirs: /tmp
+in every pod, /run/ows-server in service and config pods, /run/ows-worker in
+worker pods. No role has a log file (log_file.path, ow.noLogFile): the
 processes log to stdout. Call with (list <config> "<role>"). Output:
 nothing.
 */}}
@@ -364,13 +362,13 @@ nothing.
 {{- end }}
 
 {{/*
-Render guards of the wallet server keys:
-- the stop of a service or config pod must end before Kubernetes kills the
+Render guards for the wallet server keys:
+- a service or config pod must finish stopping before Kubernetes kills the
   process: preStopSeconds + gracefulShutdownSeconds +
-  backgroundShutdownSeconds below terminationGracePeriodSeconds;
+  backgroundShutdownSeconds must be below terminationGracePeriodSeconds;
 - the gateway must not refuse a body that the wallet accepts: the gateway
-  limit of the class (gateway.proxy.maxBodyBytes; 0 = the class default of
-  the gateway) at least the wallet limit (default >= S, large >= L).
+  limit for the class (gateway.proxy.maxBodyBytes; 0 = the gateway's class
+  default) must be at least the wallet limit (default >= S, large >= L).
 Call with the root context.
 */}}
 {{- define "ow.wallet.checkServer" -}}
@@ -391,13 +389,12 @@ Call with the root context.
 {{- end }}
 
 {{/*
-config.yaml of the wallet hooks (the roles, migration and read access
-hooks): only the database, with the login of the hook, and the log level
-(the migration hook adds the retention of the audit log:
-ow.wallet.migrateConfig). database-roles, migrate-database and read-access
-read only these keys; the hooks run before the resources of the release
-change, so they cannot read the new ConfigMaps of the release. Call with
-(list $ "<user>" "<password file name>").
+config.yaml of the wallet hooks (roles, migration and read access): only
+the database with the hook's login, and the log level (the migration hook
+adds the audit log retention: ow.wallet.migrateConfig). database-roles,
+migrate-database and read-access read only these keys. The hooks run before
+the release's resources change, so they cannot read its new ConfigMaps.
+Call with (list $ "<user>" "<password file name>").
 */}}
 {{- define "ow.wallet.hookConfig" -}}
 {{- toYaml (dict
@@ -406,8 +403,8 @@ change, so they cannot read the new ConfigMaps of the release. Call with
 {{- end }}
 
 {{/*
-The database section of the wallet (its own database in the chart) for one
-login: the user and the name of its password file in ow.wallet.secretDir.
+The wallet's database section (its own database in the chart) for one
+login: the user and its password file name in ow.wallet.secretDir.
 Call with (list $ "<user>" "<password file name>"). Output: JSON.
 */}}
 {{- define "ow.wallet.database" -}}
@@ -424,11 +421,11 @@ Call with (list $ "<user>" "<password file name>"). Output: JSON.
 {{- end }}
 
 {{/*
-config.yaml of the migration hook of the wallet: ow.wallet.hookConfig and
-the retention of the audit log (ow.wallet.auditRetention): the partition
-step of migrate-database drops the months of the audit events that are
-older than the retention, only after a verified export. Call with (list $
-"<user>" "<password file name>").
+config.yaml of the wallet migration hook: ow.wallet.hookConfig plus the
+audit log retention (ow.wallet.auditRetention). The partition step of
+migrate-database drops the months of audit events older than the
+retention, and only after a verified export. Call with (list $ "<user>"
+"<password file name>").
 */}}
 {{- define "ow.wallet.migrateConfig" -}}
 {{- $config := include "ow.wallet.hookConfig" . | fromYaml -}}
@@ -437,9 +434,9 @@ older than the retention, only after a verified export. Call with (list $
 {{- end }}
 
 {{/*
-The retention of the audit log (audit.retention_years and
-audit.scope_retention_years) of the wallet files and of the migration hook.
-Call with the root context. Output: JSON.
+Audit log retention (audit.retention_years and audit.scope_retention_years)
+for the wallet files and the migration hook. Call with the root context.
+Output: JSON.
 */}}
 {{- define "ow.wallet.auditRetention" -}}
 {{- $a := .Values.organisationWallet.audit -}}
@@ -455,10 +452,9 @@ Call with the root context. Output: JSON.
 {{- end }}
 
 {{/*
-Render guards of the audit log: the credentials of the bucket need the
-bucket; the values of type s3 and of type gcs do not mix; type s3 needs its
-endpoint, its region and the Secret of its access key. Call with the root
-context.
+Render guards for the audit log: bucket credentials need a bucket; s3 and
+gcs values do not mix; type s3 needs its endpoint, region and access key
+Secret. Call with the root context.
 */}}
 {{- define "ow.wallet.checkAudit" -}}
 {{- $b := .Values.organisationWallet.audit.bucket -}}

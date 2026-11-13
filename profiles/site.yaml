@@ -1,5 +1,5 @@
 # Your installation. Copy this file to my-site.yaml, set the release tag and
-# your host names, and install with the keys file of scripts/make-keys.sh
+# your host names, then install with the keys file from scripts/make-keys.sh
 # and one exposure profile (docs/install.md):
 #
 #   helm install ows ./platform-deployment -n ows \
@@ -15,6 +15,6 @@ organisationWallet:
   # The public host of the organisation wallet.
   host: wallet.example.org
 enterpriseDashboard:
-  # The dashboard host. It must share the registrable domain of the api host
-  # (the login cookie).
+  # The dashboard host. It must be on the same registrable domain as the api
+  # host (for the login cookie).
   host: dashboard.example.org

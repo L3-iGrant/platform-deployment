@@ -1,23 +1,23 @@
-# The templates of the configuration files of the components (README.md,
+# Templates of the components' configuration files (README.md,
 # "Configuration files"). Do not start this file: compose.render.yaml loads
 # it with the same values files as docker-compose.yaml (.env and
-# config/engine/<DB_ENGINE>.env), and "make configs" (render-configs.py)
-# writes each template, with the values of .env written into it by Compose,
-# to generated/<name>. The services of compose.platform.yaml read these
-# files as configs of "file": a service with a read-only root file system
-# takes a config only from a file.
+# config/engine/<DB_ENGINE>.env), Compose fills in the values of .env, and
+# "make configs" (render-configs.py) writes each template to
+# generated/<name>. The services in compose.platform.yaml read these files
+# as "file" configs, because a service with a read-only root file system can
+# take a config only from a file.
 #
-# The keys are the keys that each component reads; the values are the
-# values of this Compose network. A <name>File or <name>_file key names a
-# secret file: no template has a secret value. An unknown key stops the
-# component. The database "port" comes from config/engine/<DB_ENGINE>.env.
-# "tls.sslMode" is disable: the Compose network has no database TLS.
+# The keys are the ones that each component reads; the values fit this
+# Compose network. A <name>File or <name>_file key names a secret file, so
+# no template holds a secret value. An unknown key stops the component. The
+# database "port" comes from config/engine/<DB_ENGINE>.env. "tls.sslMode" is
+# disable because the Compose network has no database TLS.
 
 services:
-  # The list of the templates. "docker compose config" writes only the
-  # configs that a service uses, so this service names each template. It
-  # never starts: it is in the profile "render" only, and Compose refuses
-  # a config of "content" in a read-only service.
+  # Lists the templates. "docker compose config" writes only the configs
+  # that a service uses, so this service names every template. It never
+  # starts: it is only in the profile "render", and Compose refuses a
+  # "content" config in a read-only service.
   render:
     image: scratch
     profiles: [render]
@@ -45,9 +45,9 @@ configs:
       ApiBaseUrl: ${API_PUBLIC_URL}
       ServiceName: igrant-api
       ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
-      # The header of the client address that your reverse proxy sets
-      # (CLIENT_ADDRESS_HEADER; empty: the TCP peer). The same value as the
-      # gateway.
+      # The header in which your reverse proxy sends the client address
+      # (CLIENT_ADDRESS_HEADER; empty means the TCP peer). The same value as
+      # in the gateway.
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
       DataBase:
@@ -65,8 +65,8 @@ configs:
         IdPAlias: login-with-eudi-wallet
         APIBaseUrl: ${API_PUBLIC_URL}
         mode: builtin
-      # The SMTP server of your organisation (.env). The password file is
-      # used only with SMTP_USERNAME; else no SMTP authentication.
+      # Your organisation's SMTP server (.env). The password file is used
+      # only with SMTP_USERNAME; otherwise there is no SMTP authentication.
       Smtp:
         host: "${SMTP_HOST}"
         port: ${SMTP_PORT:-587}
@@ -74,7 +74,7 @@ configs:
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
         adminEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
-      # event types: no list of event types.
+      # event types, so there is no event type list.
       Webhooks:
         DeliveryRetentionDays: 10
       ActionLogs:
@@ -102,7 +102,7 @@ configs:
         maxConcurrentHandlers: 64
         nkeySeedFile: /run/secrets/igrant-api/nats-seed
         inboxPrefix: _INBOX_api
-        # One NATS server: one replica of each stream and KV bucket.
+        # One NATS server, so one replica per stream and KV bucket.
         streamReplicas: 1
       Dashboard:
         url: ${DASHBOARD_PUBLIC_URL}
@@ -112,7 +112,7 @@ configs:
         tokenHashSecretFile: /run/secrets/igrant-api/token-hash-secret.json
         dbWrappingKeysFile: /run/secrets/igrant-api/db-wrapping-keys.json
         allowPlaintextProviderKeys: false
-      # The api trusts only the internal token of the gateway.
+      # The api trusts only the gateway's internal token.
       GatewayToken:
         jwksFile: /etc/igrant-gateway-keys/gateway-jwks.json
       ServiceEnvelope:
@@ -125,7 +125,7 @@ configs:
             jwksFile: /etc/igrant-service-keys/igrant-consent-management.json
           - issuer: eudi-wallet
             jwksFile: /etc/igrant-service-keys/eudi-wallet.json
-      # The read-only user of the api on the wallet views.
+      # The api's read-only user on the wallet views.
       ReadAccess:
         wallet:
           type: ${DB_ENGINE}
@@ -135,19 +135,19 @@ configs:
           username: api_wallet_reader
           passwordFile: /run/secrets/igrant-api/read-access-wallet-password
           tls: {sslMode: disable}
-      # No load balancer: a short drain.
+      # No load balancer, so a short drain.
       Server:
         drainSeconds: 1
         gracefulShutdownSeconds: 20
-      # The limits of the installation (MAX_ORGANISATIONS; README.md,
-      # "Settings"): the section only when the setting has a value.
+      # The installation limits (MAX_ORGANISATIONS; README.md, "Settings"):
+      # the section appears only when the setting has a value.
       ${MAX_ORGANISATIONS:+Limits:}
         ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
       Log:
         level: info
 
-  # Webhook handler (start-webhook-api): the file of the api core with a
-  # smaller database pool and its own NATS inbox (user api-webhook).
+  # Webhook handler (start-webhook-api): the api core's file with a smaller
+  # database pool and its own NATS inbox (user api-webhook).
   webhook-config.yaml:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
@@ -177,7 +177,7 @@ configs:
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
         adminEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
-      # event types: no list of event types.
+      # event types, so there is no event type list.
       Webhooks:
         DeliveryRetentionDays: 10
       ActionLogs:
@@ -238,8 +238,8 @@ configs:
       Server:
         drainSeconds: 1
         gracefulShutdownSeconds: 20
-      # The limits of the installation (MAX_ORGANISATIONS; README.md,
-      # "Settings"): the section only when the setting has a value.
+      # The installation limits (MAX_ORGANISATIONS; README.md, "Settings"):
+      # the section appears only when the setting has a value.
       ${MAX_ORGANISATIONS:+Limits:}
         ${MAX_ORGANISATIONS:+maxOrganisations: ${MAX_ORGANISATIONS}}
       Log:
@@ -269,15 +269,15 @@ configs:
       Log:
         level: info
 
-  # Auth gateway (igrant-gateway): its own file, only its own secrets.
+  # Auth gateway (igrant-gateway): its own file, with only its own secrets.
   gateway-config.yaml:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
       ApiSecretKeyFile: /run/secrets/igrant-gateway/api-secret-key
-      # The client address of the rate limits and of the IP allow-lists of
-      # the API keys: the header that your reverse proxy sets to the address
-      # of its client (CLIENT_ADDRESS_HEADER, for example X-Real-IP). Empty:
-      # the TCP peer of the gateway.
+      # The client address for rate limits and for the IP allow-lists of API
+      # keys: the header in which your reverse proxy sends its client's
+      # address (CLIENT_ADDRESS_HEADER, for example X-Real-IP). Empty means
+      # the gateway's TCP peer.
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
       DataBase:
@@ -292,7 +292,7 @@ configs:
         minConns: 2
       KeyStorage:
         tokenHashSecretFile: /run/secrets/igrant-gateway/token-hash-secret.json
-        # The PUBLIC keys of the api token keys (not a secret).
+        # Only the PUBLIC api token keys (not secret).
         tokenVerificationJwksFile: /etc/igrant-gateway/token-verification-jwks.json
       Gateway:
         listenPort: 8070
@@ -311,8 +311,8 @@ configs:
           activeKid: gateway-1
       # The feature gate (FEATURES_ENFORCE; default true): the gateway
       # refuses a route of a product feature that is off for the
-      # organisation of the credential (403 feature_disabled). Only the
-      # gateway file has this section.
+      # credential's organisation (403 feature_disabled). Only the gateway
+      # file has this section.
       Features:
         enforce: ${FEATURES_ENFORCE:-true}
       Log:
@@ -393,7 +393,7 @@ configs:
       Log:
         level: info
 
-  # Wallet config role (the config routes; the gateway calls them).
+  # Wallet config role (the config routes, which the gateway calls).
   wallet-config-config.yaml:
     content: |
       domain: ${WALLET_PUBLIC_URL}
@@ -406,8 +406,8 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        # The launcher database role: it reads and writes every data scope
-        # and cannot change the schema.
+        # The launcher database role: it reads and writes every data scope,
+        # but cannot change the schema.
         user: igrant_wallet_launcher_app
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
@@ -415,9 +415,9 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the work queue, the single-use values
-      # and the caches, through the Sentinel. The Compose network has no
-      # Valkey TLS.
+      # Valkey (README.md, "Valkey"), through the Sentinel: the work queue,
+      # the single-use values and the caches. No Valkey TLS on the Compose
+      # network.
       redis:
         queue:
           sentinels: ["valkey-sentinel:26379"]
@@ -427,11 +427,11 @@ configs:
           sentinel_username: wallet-config
           sentinel_password_file: /run/secrets/eudi-wallet/redis-password
           tls: false
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
+      # The wallet's KMS: OpenBao's Transit engine. "vault" is the section
+      # name in the wallet code; the server is OpenBao.
       kms:
         platform: transit
-        # The local key store: the Transit engine of OpenBao.
+        # The local key store: OpenBao's Transit engine.
         local_backend: openbao
         organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
         # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
@@ -447,16 +447,16 @@ configs:
       wallet_unit:
         production_checks_enabled: false
         # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
+        # appears only when the setting has a value.
         ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
-      # "Audit log"): the same value in each wallet file.
+      # Audit log retention (AUDIT_RETENTION_YEARS; README.md, "Audit
+      # log"): the same value in every wallet file.
       audit:
         retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
-        # The config role answers the signed NATS commands of the api.
+        # The config role answers the api's signed NATS commands.
         trusted_issuers:
           - issuer: igrant-api
             jwks_file: /etc/igrant-service-keys/igrant-api.json
@@ -492,8 +492,8 @@ configs:
         route_group: service
         port: 8080
         # The reverse proxies that may set X-Forwarded-For and
-        # X-Forwarded-Proto (the scheme is part of the DPoP htu check): the
-        # loopback and the private address ranges, which hold the Docker
+        # X-Forwarded-Proto (the scheme is part of the DPoP htu check):
+        # loopback and the private address ranges, which cover the Docker
         # networks and a proxy on the Docker host.
         forwarded_allow_ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"]
       database:
@@ -501,8 +501,8 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        # The launcher database role: it reads and writes every data scope
-        # and cannot change the schema.
+        # The launcher database role: it reads and writes every data scope,
+        # but cannot change the schema.
         user: igrant_wallet_launcher_app
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
@@ -510,9 +510,9 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the work queue, the single-use values
-      # and the caches, through the Sentinel. The Compose network has no
-      # Valkey TLS.
+      # Valkey (README.md, "Valkey"), through the Sentinel: the work queue,
+      # the single-use values and the caches. No Valkey TLS on the Compose
+      # network.
       redis:
         queue:
           sentinels: ["valkey-sentinel:26379"]
@@ -522,11 +522,11 @@ configs:
           sentinel_username: wallet-service
           sentinel_password_file: /run/secrets/eudi-wallet/redis-password
           tls: false
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
+      # The wallet's KMS: OpenBao's Transit engine. "vault" is the section
+      # name in the wallet code; the server is OpenBao.
       kms:
         platform: transit
-        # The local key store: the Transit engine of OpenBao.
+        # The local key store: OpenBao's Transit engine.
         local_backend: openbao
         organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
         # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
@@ -542,17 +542,17 @@ configs:
       wallet_unit:
         production_checks_enabled: false
         # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
+        # appears only when the setting has a value.
         ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The retention of the audit log (AUDIT_RETENTION_YEARS; README.md,
-      # "Audit log"): the same value in each wallet file.
+      # Audit log retention (AUDIT_RETENTION_YEARS; README.md, "Audit
+      # log"): the same value in every wallet file.
       audit:
         retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
 
-  # Wallet worker (the actors of the queues; the health port 9191).
+  # Wallet worker (the queue actors; health port 9191).
   wallet-worker-config.yaml:
     content: |
       domain: ${WALLET_PUBLIC_URL}
@@ -563,7 +563,7 @@ configs:
         port: ${DB_PORT}
         name: igrant_wallet
         # The jobs database role: it reads and writes the data scopes of the
-        # background jobs and cannot change the schema.
+        # background jobs, but cannot change the schema.
         user: igrant_wallet_jobs
         password_file: /run/secrets/eudi-wallet/database-password
       nats:
@@ -571,9 +571,9 @@ configs:
         nkey_seed_file: /run/secrets/eudi-wallet/nats-seed
         inbox_prefix: _INBOX_wallet
         stream_replicas: 1
-      # Valkey (README.md, "Valkey"): the queues of the actors, the
-      # single-use values and the caches, through the Sentinel. The Compose
-      # network has no Valkey TLS.
+      # Valkey (README.md, "Valkey"), through the Sentinel: the actor
+      # queues, the single-use values and the caches. No Valkey TLS on the
+      # Compose network.
       redis:
         queue:
           sentinels: ["valkey-sentinel:26379"]
@@ -583,16 +583,16 @@ configs:
           sentinel_username: wallet-worker
           sentinel_password_file: /run/secrets/eudi-wallet/redis-password
           tls: false
-      # /healthz, /readyz and /metrics on port 9191; the heartbeat and
-      # metric files of the worker processes in a tmpfs.
+      # /healthz, /readyz and /metrics on port 9191. The worker processes
+      # keep their heartbeat and metric files in a tmpfs.
       worker:
         health_port: 9191
         state_directory: /run/ows-worker
-      # The KMS of the wallet: the Transit engine of OpenBao. "vault" is
-      # the name of the section in the wallet code; the server is OpenBao.
+      # The wallet's KMS: OpenBao's Transit engine. "vault" is the section
+      # name in the wallet code; the server is OpenBao.
       kms:
         platform: transit
-        # The local key store: the Transit engine of OpenBao.
+        # The local key store: OpenBao's Transit engine.
         local_backend: openbao
         organisation_key_store_types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
         # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
@@ -608,23 +608,22 @@ configs:
       wallet_unit:
         production_checks_enabled: false
         # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # only when the setting has a value.
+        # appears only when the setting has a value.
         ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
-      # The audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
-      # worker signs the hourly anchors with the Transit keys of OpenBao.
-      # There is no audit bucket: Compose has no write-once store. The
-      # anchors stay in the database only, no month is exported, and no
-      # partition is dropped.
+      # Audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
+      # worker signs the hourly anchors with OpenBao's Transit keys. There is
+      # no audit bucket, because Compose has no write-once store: the anchors
+      # stay in the database only, no month is exported, and no partition is
+      # dropped.
       audit:
         retention_years: ${AUDIT_RETENTION_YEARS:-7}
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
 
-  # Wallet clock (start-clock; the health port 9192). The clock connects to
-  # no NATS and starts no KMS, but every wallet file names the NATS address
-  # and the OpenBao login of the KMS; the clock has no NATS seed and no
-  # OpenBao password.
+  # Wallet clock (start-clock; health port 9192). The clock does not use
+  # NATS or the KMS, so its file has no nats or kms section, and it gets no
+  # NATS seed and no OpenBao password.
   wallet-clock-config.yaml:
     content: |
       log_level: INFO
@@ -633,8 +632,8 @@ configs:
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
-        # The clock database role: it only connects (the leader lock and
-        # pg_is_in_recovery()).
+        # The clock database role: it can only connect (for the leader lock
+        # and pg_is_in_recovery()).
         user: igrant_wallet_clock
         password_file: /run/secrets/eudi-wallet/database-password
       redis:
@@ -649,7 +648,7 @@ configs:
       clock:
         health_port: 9192
 
-  # migrate-database of the wallet: only the database.
+  # The wallet's migrate-database: only the database.
   wallet-migrate-config.yaml:
     content: |
       log_level: INFO
@@ -662,12 +661,12 @@ configs:
         # igrant_wallet_owner.
         user: igrant_wallet_migrator
         password_file: /run/secrets/eudi-wallet/database-password
-      # The partition step of migrate-database drops the months of the audit
-      # log that are older than this retention (only after a verified export).
+      # The partition step of migrate-database drops audit log months older
+      # than this retention (only after a verified export).
       audit:
         retention_years: ${AUDIT_RETENTION_YEARS:-7}
 
-  # database-roles apply and read-access apply of the wallet: only the
+  # The wallet's database-roles apply and read-access apply: only the
   # database, with the admin user (DB_ADMIN_USER).
   wallet-database-admin-config.yaml:
     content: |
@@ -680,9 +679,9 @@ configs:
         user: ${DB_ADMIN_USER}
         password_file: /run/secrets/database/admin-password
 
-  # Runtime configuration of the dashboard: the API (the gateway) and the
-  # wallet (the vct metadata of the credential types; the
-  # Content-Security-Policy of the image allows both origins).
+  # The dashboard's runtime configuration: the API (the gateway) and the
+  # wallet (for the vct metadata of credential types; the image's
+  # Content-Security-Policy allows both origins).
   dashboard-config.json:
     content: |
       {

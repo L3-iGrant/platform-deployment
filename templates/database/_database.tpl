@@ -1,19 +1,19 @@
 {{/*
-Database helpers. ONE engine for the whole platform (database.engine) and
-one server (database.mode: bundled or external). Each component has its
-own database and its own owner user: the user name is the database name.
-Every component config file, Job and NetworkPolicy gets the engine, the
-host, the port and the TLS settings from these helpers only.
+Database helpers. The whole platform uses ONE engine (database.engine) and
+one server (database.mode: bundled or external). Each component has its own
+database and owner user, and the user name is the database name. Every
+component config file, Job and NetworkPolicy takes the engine, host, port
+and TLS settings from these helpers only.
 */}}
 
 {{/*
-The supported engines and the facts of each: the name suffix of the
-bundled server objects, the port, the admin user of the bundled server and
-the key of its password in the database Secret. PostgreSQL is the only
-engine. The other helpers read the facts here, so a new engine is a new
-entry, its server template (templates/database/<engine>.yaml, with the
-values database.<engine>), its init script (init.yaml) and its section in
-ow.db.go and ow.db.wallet. Output: JSON.
+Supported engines and their facts: the name suffix of the bundled server
+objects, the port, the admin user of the bundled server and the key of its
+password in the database Secret. PostgreSQL is the only engine. The other
+helpers read the facts from here, so a new engine needs a new entry, a
+server template (templates/database/<engine>.yaml, with the values
+database.<engine>), an init script (init.yaml) and a section in ow.db.go
+and ow.db.wallet. Output: JSON.
 */}}
 {{- define "ow.db.engines" -}}
 {{- toJson (dict
@@ -22,10 +22,10 @@ ow.db.go and ow.db.wallet. Output: JSON.
 
 {{/*
 The engine of all components, validated. The api, consent and the
-organisation wallet accept only the engines of ow.db.engines, so another
-value (for example mysql) stops the render with a message that names them.
-values.schema.json has no enum for database.engine: the message of the
-schema cannot name the components.
+organisation wallet only accept the engines in ow.db.engines, so any other
+value (for example mysql) fails the render with a message that names them.
+values.schema.json has no enum for database.engine, because a schema error
+cannot name the components.
 */}}
 {{- define "ow.db.engine" -}}
 {{- $engine := .Values.database.engine | default "postgresql" -}}
@@ -36,7 +36,7 @@ schema cannot name the components.
 {{ $engine }}
 {{- end }}
 
-{{/* The facts of the engine (its entry in ow.db.engines). Output: JSON. */}}
+{{/* Facts of the engine (its entry in ow.db.engines). Output: JSON. */}}
 {{- define "ow.db.engineFacts" -}}
 {{- index (include "ow.db.engines" . | fromJson) (include "ow.db.engine" .) | toJson -}}
 {{- end }}
@@ -83,19 +83,19 @@ schema cannot name the components.
 {{- .Values.database.auth.existingSecret | default (include "ow.db.serverName" .) -}}
 {{- end }}
 
-{{/* Key of the admin password of the bundled server in the database Secret (the variable of the server image). */}}
+{{/* Key of the bundled server's admin password in the database Secret (the server image's variable name). */}}
 {{- define "ow.db.adminPasswordKey" -}}
 {{ (include "ow.db.engineFacts" . | fromJson).adminPasswordKey }}
 {{- end }}
 
 {{/*
-The admin user of the server: it makes the databases and the owner users
-(init hook), the database roles of the wallet (roles hook) and the read-only
-users (read access Jobs).
-bundled: the admin user of the engine ("postgres") and the admin key of
-the database Secret.
-external: database.external.admin (empty user: no admin; not with the
-organisation wallet, see ow.db.check).
+The server's admin user. It creates the databases and owner users (init
+hook), the wallet database roles (roles hook) and the read-only users (read
+access Jobs).
+bundled: the engine's admin user ("postgres") and the admin key of the
+database Secret.
+external: database.external.admin (an empty user means no admin, which the
+organisation wallet does not allow, see ow.db.check).
 Output: JSON {user, secret, key}, or {} when there is no admin user.
 */}}
 {{- define "ow.db.admin" -}}
@@ -115,7 +115,7 @@ Output: JSON {user, secret, key}, or {} when there is no admin user.
 {{- end -}}
 {{- end }}
 
-{{/* Name of the TLS Secret (tls.crt, tls.key, ca.crt) of the bundled server. */}}
+{{/* TLS Secret of the bundled server (tls.crt, tls.key, ca.crt). */}}
 {{- define "ow.db.tlsSecretName" -}}
 {{- .Values.database.tls.existingSecret | default (printf "%s-tls" (include "ow.db.serverName" .)) -}}
 {{- end }}
@@ -126,9 +126,9 @@ Output: JSON {user, secret, key}, or {} when there is no admin user.
 {{- end }}
 
 {{/*
-The CA certificate that the components use to verify the server: bundled
-with TLS: ca.crt of the server TLS Secret; external with TLS:
-database.tls.caSecret. Output: JSON {secret, key}, or {} without a CA.
+CA certificate that the components use to verify the server. Bundled with
+TLS: ca.crt of the server TLS Secret. External with TLS:
+database.tls.caSecret. Output: JSON {secret, key}, or {} when there is no CA.
 */}}
 {{- define "ow.db.ca" -}}
 {{- $tls := .Values.database.tls -}}
@@ -143,15 +143,15 @@ database.tls.caSecret. Output: JSON {secret, key}, or {} without a CA.
 {{- end -}}
 {{- end }}
 
-{{/* File name of the database CA in the secret folder of each component. */}}
+{{/* File name of the database CA in each component's secret folder. */}}
 {{- define "ow.db.caFileName" -}}
 database-ca.crt
 {{- end }}
 
 {{/*
-sslmode of the clients (api, gateway, consent, wallet, init hook):
-database.tls.sslMode, else verify-full with a CA, require with
-TLS and no CA, disable without TLS.
+Client sslmode (api, gateway, consent, wallet, init hook):
+database.tls.sslMode, else verify-full with a CA, require with TLS but no
+CA, and disable without TLS.
 */}}
 {{- define "ow.db.sslMode" -}}
 {{- if not (include "ow.db.tls" .) -}}
@@ -175,8 +175,8 @@ require
 {{- end }}
 
 {{/*
-Render guards of database.*. Output: nothing. Every template that writes a
-database connection calls it (through ow.db.go and ow.db.wallet).
+Render guards for database.*. Output: nothing. Every template that writes a
+database connection calls this (through ow.db.go and ow.db.wallet).
 */}}
 {{- define "ow.db.check" -}}
 {{- $db := .Values.database -}}
@@ -192,8 +192,8 @@ database connection calls it (through ow.db.go and ow.db.wallet).
 {{- end -}}
 {{- $names = append $names $name -}}
 {{- end -}}
-{{- /* The roles hook makes the database roles of the wallet with the admin
-user: the chart cannot make them without it. */ -}}
+{{- /* The roles hook creates the wallet database roles as the admin user,
+so the chart cannot create them without one. */ -}}
 {{- if and .Values.organisationWallet.enabled (not $bundled) (not $db.external.admin.user) -}}
 {{- fail "database.external.admin.user is required with database.mode external and the organisation wallet: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
 {{- end -}}
@@ -215,13 +215,13 @@ user: the chart cannot make them without it. */ -}}
 {{- end }}
 
 {{/*
-The DataBase section of the Go components (api DataBase,
-Extensions.oidc.database and ReadAccess.*, gateway DataBase, consent
-DataBase and ReadAccess.*: one struct, exact keys): tls.sslMode (+
-tls.caFile with a CA) and the pool. Call with (dict "root" $ "host"
-"<host>" "port" <port> "name" "<database>" "username" "<user>"
-"passwordFile" "<path>" "caFile" "<path>" "pool" <{maxConns, minConns} or
-nil>). Output: JSON.
+The DataBase section of the Go components (one struct with exact keys, for
+api DataBase, Extensions.oidc.database and ReadAccess.*, gateway DataBase,
+and consent DataBase and ReadAccess.*): tls.sslMode (plus tls.caFile when
+there is a CA) and the pool. Call with (dict "root" $ "host" "<host>"
+"port" <port> "name" "<database>" "username" "<user>" "passwordFile"
+"<path>" "caFile" "<path>" "pool" <{maxConns, minConns} or nil>).
+Output: JSON.
 */}}
 {{- define "ow.db.go" -}}
 {{- $root := .root -}}
@@ -248,7 +248,7 @@ nil>). Output: JSON.
 {{- end }}
 
 {{/*
-The DataBase section of the database of one component in the chart. Call
+The DataBase section for one component's own database in the chart. Call
 with (dict "root" $ "db" "<key of database.databases>" "secretDir"
 "<folder>" "passwordFile" "<file name>" "pool" <pool or nil>). The CA is
 the file ow.db.caFileName in the same folder. Output: JSON.
@@ -268,12 +268,12 @@ the file ow.db.caFileName in the same folder. Output: JSON.
 {{- end }}
 
 {{/*
-The database section of the wallet (pydantic, exact keys: type, host,
-port, name, user, password_file, ssl_ca_file, ssl_mode): ssl_mode (the
-sslmode of the other components) and, for verify-ca and verify-full,
-ssl_ca_file; the wallet never falls back to plain text with these. Call
-with (dict "root" $ "host" "port" "name" "user" "passwordFile" "caFile").
-Output: JSON.
+The wallet's database section (pydantic, exact keys: type, host, port,
+name, user, password_file, ssl_ca_file, ssl_mode): ssl_mode (the same
+sslmode as the other components) and, for verify-ca and verify-full,
+ssl_ca_file. With these modes the wallet never falls back to plain text.
+Call with (dict "root" $ "host" "port" "name" "user" "passwordFile"
+"caFile"). Output: JSON.
 */}}
 {{- define "ow.db.wallet" -}}
 {{- $root := .root -}}
@@ -294,9 +294,9 @@ Output: JSON.
 {{- end }}
 
 {{/*
-The secret files of the database of one component: the password of its
-owner user and the CA. Call with (list $ "<key of database.databases>"
-"<password file name>"). Output: JSON "<file name>" -> {secret, key}.
+Database secret files of one component: its owner user's password and the
+CA. Call with (list $ "<key of database.databases>" "<password file name>").
+Output: JSON "<file name>" -> {secret, key}.
 */}}
 {{- define "ow.db.secretFiles" -}}
 {{- $root := index . 0 -}}

@@ -1,11 +1,11 @@
 {{- /*
-The alert rules of the wallet as a PrometheusRule of the Prometheus Operator
+The wallet's alert rules as a Prometheus Operator PrometheusRule
 (organisationWallet.prometheusRule.enabled; the CRD must exist;
-docs/workers.md, "Alerts"). The rules read the gauges that each worker pod
-reads from the database at each scrape (the same value in each pod: max)
-from the targets of the ServiceMonitor of the chart (job wallet-worker) in
-the namespace of the release. With other monitoring, take the rules of the
-docs.
+docs/workers.md, "Alerts"). The rules read the gauges that every worker pod
+reads from the database on each scrape (every pod reports the same value,
+hence max), from the targets of the chart's ServiceMonitor (job
+wallet-worker) in the release namespace. With other monitoring, take the
+rules from the docs.
 */}}
 {{- if and .Values.organisationWallet.enabled .Values.organisationWallet.prometheusRule.enabled }}
 {{- $w := .Values.organisationWallet }}
@@ -28,7 +28,7 @@ spec:
     - name: ows-wallet-audit
       rules:
         # A stopped month stays in PostgreSQL, and its partitions cannot be
-        # dropped until an operator repairs the cause and runs audit
+        # dropped until an operator fixes the cause and runs audit
         # export-retry (docs/audit-log.md).
         - alert: AuditExportStopped
           expr: max by (namespace, scope) (ows_audit_export_stopped_months{{ $selector }}) > 0

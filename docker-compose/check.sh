@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Checks of the Docker Compose platform. No container starts and no image is
-# pulled: "docker compose config" needs no Docker daemon.
+# Checks your Docker Compose installation.
 #
-#   ./check.sh  (make check): your installation: the values of .env, the
-#               files in secrets/, the configuration files in generated/
-#               (the render of the current .env) and docker compose config
-#               for DB_ENGINE. make check runs make configs first.
+#   ./check.sh  (make check, which runs make configs first): the values of
+#               .env, the files in secrets/, the configuration files in
+#               generated/ (they must match the current .env) and docker
+#               compose config for DB_ENGINE.
 #
-# It prints no secret value.
+# Starts no container and pulls no image ("docker compose config" needs no
+# Docker daemon). Prints no secret values.
 # =============================================================================
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -28,8 +28,8 @@ finish() {
 
 # --- The installation (make check) ------------------------------------------
 
-# The effective value of the settings: the value of your shell, else the
-# value of .env (the rule of docker compose).
+# The effective value of a setting: your shell's value, else the value in
+# .env (the same rule as docker compose).
 setting() {
   local name="$1" value
   if [ -n "${!name+x}" ]; then
@@ -115,7 +115,7 @@ check_installation() {
     bad "CLIENT_ADDRESS_HEADER must be a header name (letters, digits, -)"
   fi
 
-  # The feature gate of the gateway. Empty: the default of
+  # The gateway's feature gate. Empty means the default of
   # compose.platform.yaml (true).
   local features_enforce
   features_enforce="$(setting FEATURES_ENFORCE)"
@@ -125,8 +125,8 @@ check_installation() {
     *) bad "FEATURES_ENFORCE ($features_enforce) must be true or false" ;;
   esac
 
-  # The limits of the installation. Empty: no key, and the api and the
-  # wallet use their default (100).
+  # Installation limits. Empty means no key, and the api and the wallet use
+  # their default (100).
   local max_organisations max_units
   max_organisations="$(setting MAX_ORGANISATIONS)"
   max_units="$(setting MAX_ORGANISATION_WALLET_UNITS)"
@@ -169,7 +169,7 @@ check_installation() {
     ok "images ($(setting IMAGE_REGISTRY), tag $tag)"
   fi
 
-  # The built-in test CA. Empty: the defaults of compose.platform.yaml.
+  # The built-in test CA. Empty means the defaults of compose.platform.yaml.
   local test_ca days
   test_ca="$(setting TEST_CA_ENABLED)"
   days="$(setting TEST_CA_LEAF_VALIDITY_DAYS)"
@@ -183,7 +183,7 @@ check_installation() {
     ok "test CA (${test_ca:-true}, ${days:-365} days)"
   fi
 
-  # The retention of the audit log of the wallet. Empty: the default of
+  # The wallet's audit log retention. Empty means the default of
   # compose.platform.yaml.
   local years
   years="$(setting AUDIT_RETENTION_YEARS)"
@@ -193,8 +193,8 @@ check_installation() {
     ok "audit log (${years:-7} years; no audit bucket: the anchors stay in the database)"
   fi
 
-  # The password file of each login database role of the wallet (make
-  # secrets; wallet-database-roles gives them to database-roles apply).
+  # A password file for each login database role of the wallet (make
+  # secrets; wallet-database-roles passes them to database-roles apply).
   local role missing_roles=""
   for role in migrator launcher_app jobs clock audit_reader issuer_app relying_party_app \
     business_wallet_app individual_wp_app business_wp_app admin_app; do
@@ -206,10 +206,9 @@ check_installation() {
     bad "no password file for the database roles${missing_roles}: run make secrets"
   fi
 
-  # The configuration files in generated/: the render of the templates of
-  # compose.configs.yaml with the current values (make configs). After a
-  # change of .env, docker compose would start the services with the
-  # earlier files.
+  # generated/ must be the render of the compose.configs.yaml templates with
+  # the current values (make configs). Otherwise, after a change to .env,
+  # docker compose would start the services with the old files.
   local render
   if ! command -v python3 > /dev/null; then
     bad "python3 is required (make configs writes the configuration files with it)"
@@ -221,7 +220,7 @@ check_installation() {
     finish ""
   fi
 
-  # docker compose config for the engine of the installation.
+  # docker compose config for the installation's engine.
   local json
   if ! json="$(docker compose config --format json 2>&1)"; then
     bad "docker compose config: $json"
@@ -235,8 +234,8 @@ check_installation() {
   else
     bad "the services must have postgres (COMPOSE_PROFILES)"
   fi
-  # The DDL and connection logs of the database server (the command of
-  # postgres). A Compose override file can remove them: a warning.
+  # The DDL and connection logs of the database server (the postgres
+  # command). A Compose override file can remove them, so this only warns.
   local setting missing_logs=""
   for setting in log_statement=ddl log_connections=on log_disconnections=on; do
     grep -q -F "\"${setting}\"" <<< "$json" || missing_logs+=" ${setting}"
@@ -247,8 +246,8 @@ check_installation() {
     warn "the database server does not log DDL and connections (missing:${missing_logs}); see README.md"
   fi
 
-  # Every file of a secret and of a file configuration exists. Only the
-  # SMTP password can be empty (no SMTP authentication).
+  # Every secret file and config file exists. Only the SMTP password can be
+  # empty (no SMTP authentication).
   local missing=0 file
   while IFS= read -r file; do
     if [ ! -f "$file" ]; then

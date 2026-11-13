@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Tests of the chart. No cluster and no container: only local commands.
 #
-# 1. The text of the chart files and of the documentation (README.md,
-#    docs/): no em dash or en dash, British English, no
+# 1. No em dash or en dash in any text file of the repository (also
+#    docker-compose/, scripts/, images/ and .github/; not the licence texts
+#    of other projects). The text of the chart files and of the
+#    documentation (README.md, docs/): British English, no
 #    name of the earlier key store product (only the wallet config section
 #    "vault" of OpenBao, the key store types "vault" (an external OpenBao),
 #    "external-vault" and "azure-key-vault", and the product name Azure Key
@@ -107,7 +109,16 @@ text_check() {
     ok "text: $what"
   fi
 }
-text_check "no em dash or en dash" "$(printf '\342\200\224|\342\200\223')" "${files[@]}"
+# No em dash (U+2014) or en dash (U+2013) in any text file of the
+# repository, except the licence texts of other projects.
+all_files=()
+while IFS= read -r -d '' file; do all_files+=("$file"); done < <(find "$chart" -type f ! -path '*/.git/*' ! -path "$chart/licenses/*" ! -name 'LICENSE*' -print0)
+if dashes="$(grep -n -I -E "$(printf '\342\200\224|\342\200\223')" "${all_files[@]}")"; then
+  bad "text: no em dash or en dash in any file"
+  printf '%s\n' "$dashes" | sed "s|$chart/||; s/^/  /" | head -10
+else
+  ok "text: no em dash or en dash in any file ($(printf '%s\n' "${all_files[@]}" | wc -l | tr -d ' ') files)"
+fi
 text_check "British English (-ise, -our, -re)" '\b(initializ(e|ed|es|ing)|organiz(e|ed|ation|ations)|behavior|authoriz(e|ed|es|ing)|color|center|optimiz(e|ed|es|ing)|customiz(e|ed|es|ing)|recogniz(e|ed|es|ing)|analyz(e|ed|es|ing)|serializ(e|ed|ation)|favor|honor|neighbor|labor)\b' "${files[@]}"
 text_check "no HashiCorp" 'hashicorp' "${files[@]}"
 vault_files=()

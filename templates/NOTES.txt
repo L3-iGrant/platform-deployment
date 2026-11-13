@@ -1,7 +1,7 @@
-The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Release.Namespace }}.
+The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Release.Namespace }}.
 {{- $ns := .Release.Namespace }}
 
-{{- /* The SSRF guards that an extraConfig turns off (docs/security-context.md,
+{{- /* SSRF guards that an extraConfig turns off (docs/security-context.md,
 "The SSRF guards"). */}}
 {{- $ssrfOff := list }}
 {{- if and .Values.api.enabled (eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true") }}
@@ -15,11 +15,11 @@ The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Re
 {{- end }}
 {{- range $ssrfOff }}
 
-WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors also when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). A URL of an organisation can then reach the services of your network and the credentials of the metadata server.
-  Turn the guard on again, and allow only the private hosts that you need (docs/security-context.md, "The SSRF guards"; the wallet: organisationWallet.ssrf.allowedPrivate).
+WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
+  Turn the guard back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: organisationWallet.ssrf.allowedPrivate).
 {{- end }}
 
-Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names point to your ingress controller or Gateway):
+Public URLs (exposure {{ .Values.exposure.type }} by default; make sure your DNS names point to your ingress controller or Gateway):
 {{- if .Values.api.enabled }}
   API:                 {{ include "ow.publicUrlOf" (list . "api") }}
 {{- end }}
@@ -32,7 +32,7 @@ Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names p
 {{- $services := include "ow.installation.services" . | fromJsonArray }}
 {{- if lt (len $services) 2 }}
 
-Services of the installation: {{ join ", " $services }} (Installation.services of the api and gateway files).
+Installed services: {{ join ", " $services }} (Installation.services in the api and gateway files).
 {{- if not (has "consent" $services) }}
   Consent is not installed: the gateway answers 404 to the consent routes, and the dashboard shows no consent area (docs/components.md).
 {{- end }}
@@ -45,7 +45,7 @@ Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ inclu
 {{- $budget := include "ow.db.budget" . | fromJson }}
   The pools of this release can open {{ $budget.total | int }} connections to it, and the hooks {{ include "ow.db.budgetReserve" . }} more
 {{- if include "ow.db.bundled" . }} (max_connections {{ index .Values.database.postgresql.parameters "max_connections" }}).
-{{- else }}: set max_connections of your server to at least {{ add ($budget.total | int) (include "ow.db.budgetReserve" . | int) }} plus its reserved connections and the other users of the server (docs/database.md, "Connection budget").
+{{- else }}: set max_connections of your server to at least {{ add ($budget.total | int) (include "ow.db.budgetReserve" . | int) }}, plus the server's reserved connections and its other users (docs/database.md, "Connection budget").
 {{- end }}
 {{- if include "ow.redis.bundled" . }}
 Valkey: bundled, {{ .Values.redis.replicas }} pods {{ include "ow.redis.name" . }}-<n> (a data server and a Sentinel in each; docs/redis.md).
@@ -55,37 +55,37 @@ Valkey or Redis: external, {{ .Values.redis.external.sentinels | default (list .
 {{- range include "ow.securityContextShadowed" . | fromJsonArray }}
 
 WARNING: {{ . }}.
-  To use the global value for a component, set its key of the component to null (docs/security-context.md, "Change the settings").
+  To use the global value for a component, set the component's key to null (docs/security-context.md, "Change the settings").
 {{- end }}
 
-Next steps (docs/install.md has each step with its check):
+Next steps (docs/install.md explains each step and how to check it):
 {{- $step := 1 }}
 {{- if include "ow.openbao.bundled" . }}
 {{- $seal := include "ow.openbao.seal" . }}
 {{- $pod := printf "%s-0" (include "ow.openbao.name" .) }}
 
-{{ $step }}. Initialise OpenBao (seal {{ $seal }}) ONE time, and keep the keys and the root token outside the cluster:
+{{ $step }}. Initialise OpenBao (seal {{ $seal }}) ONCE, and keep the keys and the root token outside the cluster:
      kubectl -n {{ $ns }} exec -it {{ $pod }} -- bao operator init -key-shares=5 -key-threshold=3
    Then unseal EACH pod after EACH start (3 different unseal keys per pod):
      kubectl -n {{ $ns }} exec -it {{ include "ow.openbao.name" . }}-<n> -- bao operator unseal
-   Then run the bootstrap of the wallet KMS (it asks for the root token):
+   Then bootstrap the wallet KMS (the script asks for the root token):
      kubectl -n {{ $ns }} exec -it {{ $pod }} -- /openbao/scripts/bootstrap.sh
-   Check: kubectl -n {{ $ns }} exec {{ $pod }} -- bao status   (you see "Initialized true" and "Sealed false")
+   Check: kubectl -n {{ $ns }} exec {{ $pod }} -- bao status   (expect "Initialized true" and "Sealed false")
 {{- $step = add1 $step }}
 {{- end }}
 
 {{ $step }}. Wait until all pods are ready and all Jobs are complete:
      kubectl -n {{ $ns }} get pods,jobs
 {{- if (include "ow.db.admin" . | fromJson).user }}
-   The init hook {{ include "ow.name" (list . "db-init") }} makes the databases and the users.
+   The init hook {{ include "ow.name" (list . "db-init") }} creates the databases and users.
 {{- end }}
 {{- if not .Values.readAccess.jobs.enabled }}
-   readAccess.jobs.enabled is false: a DBA must make the read-only users (docs/read-access.md); until then the readers are not ready.
+   readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
 {{- end }}
 {{- $step = add1 $step }}
 {{- if .Values.api.enabled }}
 
-{{ $step }}. Make the platform operator organisation and its first platform admin, at the first installation only (docs/install.md, step 7):
+{{ $step }}. Make the platform operator organisation and its first platform admin, on the first installation only (docs/install.md, step 7):
    set api.jobs.bootstrapPlatform, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
 {{- $step = add1 $step }}
 {{- end }}

@@ -1,13 +1,12 @@
 # =============================================================================
-# The iGrant.io platform for Docker Compose. README.md has the procedure.
+# The iGrant.io platform on Docker Compose. See README.md for the steps.
 # =============================================================================
 
 COMPOSE ?= docker compose
-# openbao-init runs as your user, so that secrets/openbao/init.json belongs
-# to you.
+# openbao-init runs as your user, so you own secrets/openbao/init.json.
 export HOST_UID := $(shell id -u)
 export HOST_GID := $(shell id -g)
-# The Helm chart of this repository (make nats-config).
+# The Helm chart in this repository (used by make nats-config).
 CHART_DIR ?= ..
 
 .DEFAULT_GOAL := help
@@ -21,41 +20,41 @@ help: ## Show the targets
 
 # --- Installation ----------------------------------------------------------------
 
-env: ## Step 2: make .env from .env.example (keeps a .env that exists)
+env: ## Step 2: create .env from .env.example (keeps an existing .env)
 	@if [ -f .env ]; then echo "env: .env exists (kept)"; \
 	else cp .env.example .env && echo "env: wrote .env: set your values, then run make secrets"; fi
 
-secrets: ## Step 3: make all secrets and keys in secrets/ (keeps the files that exist; prints no value)
+secrets: ## Step 3: create all secrets and keys in secrets/ (keeps existing files; prints no values)
 	@./secrets.sh
 
-# The configuration files of the components: Compose writes the values of
-# .env into the templates of compose.configs.yaml, and render-configs.py
-# writes them to generated/ (a service with a read-only root file system
-# takes a config only from a file). make check and make up run it first.
-configs: ## Write the configuration files of the components to generated/ from .env (make check and make up do it)
+# Component configuration files: Compose fills the templates in
+# compose.configs.yaml with the values of .env, and render-configs.py writes
+# the results to generated/ (a service with a read-only root file system can
+# take a config only from a file). make check and make up run this first.
+configs: ## Write the component configuration files to generated/ from .env (make check and make up run it)
 	@COMPOSE="$(COMPOSE)" python3 -I ./render-configs.py
 
-check: configs ## Step 4: write the configuration files, then check .env, secrets/ and the Compose files (no container starts)
+check: configs ## Step 4: write the configuration files, then check .env, secrets/ and the Compose files (starts no container)
 	@./check.sh
 
-# --remove-orphans: a service that a new release removes (for example the
-# api-read-access of an earlier release) does not stay.
+# --remove-orphans: removes the services that a new release dropped (for
+# example api-read-access of an earlier release).
 up: check ## Step 5: start the platform (after make check)
 	$(COMPOSE) up -d --remove-orphans
 	@echo "up: started. make status shows the state of the services."
 
-status: ## Show the state of the services (also the one-shot services that stopped)
+status: ## Show the state of the services (including the stopped one-shot services)
 	$(COMPOSE) ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Status}}'
 
 logs: ## Follow the logs of all services (CTRL+C stops)
 	$(COMPOSE) logs -f
 
-down: ## Stop and remove the containers (the data in the volumes stays)
+down: ## Stop and remove the containers (the data in the volumes is kept)
 	$(COMPOSE) down
 
-# reset deletes the data: the volumes (databases, NATS, OpenBao, files) and
-# secrets/openbao/init.json (the next start initialises a new OpenBao). The
-# other files of secrets/ stay.
+# reset deletes all data: the volumes (databases, NATS, OpenBao, files) and
+# secrets/openbao/init.json, so the next start initialises a new OpenBao.
+# The other files in secrets/ are kept.
 reset: ## Remove the containers AND all data (asks first)
 	@read -r -p "This deletes all data of the platform. Type yes to continue: " answer; \
 	if [ "$$answer" = yes ]; then \
@@ -68,16 +67,16 @@ API_COMMAND = $(COMPOSE) exec -T api /app/bin/igrant-api
 API_CONFIG = --config /etc/igrant-api/config.yaml
 ORGANISATION_TYPE ?= Technology
 
-# The platform operator of a new installation: the platform operator
-# organisation and its first admin with the platform admin right, in one
-# command (onboard bootstrap-platform; it also makes the organisation type).
-# An installation has one platform operator organisation; its platform
-# admins make the other organisations in the dashboard. The command is
-# idempotent. The password is read from the terminal and goes to the
-# command on standard input: it is never an argument. It needs 15
-# characters or more and at least one special character, and the admin sets
-# a new password at the first login.
-platform-operator: ## Step 8: make the platform operator organisation and its first platform admin: make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... (asks for the password)
+# Sets up the platform operator of a new installation in one command
+# (onboard bootstrap-platform): the platform operator organisation, its
+# organisation type when missing, and its first admin with the platform
+# admin right. An installation has one platform operator organisation; its
+# platform admins create the other organisations in the dashboard. The
+# command is idempotent. The password is read from the terminal and passed
+# on standard input, never as an argument. It needs 15 characters or more
+# with at least one special character, and the admin sets a new password at
+# the first login.
+platform-operator: ## Step 8: create the platform operator organisation and its first platform admin: make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... (asks for the password)
 	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
 		{ echo "platform-operator: set ADMIN_EMAIL, ADMIN_NAME, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
 	@stty -echo 2>/dev/null; printf 'First password of %s (15 characters or more, with at least one special character; the input is hidden): ' "$(ADMIN_EMAIL)"; \
@@ -87,29 +86,29 @@ platform-operator: ## Step 8: make the platform operator organisation and its fi
 		--organisation-name "$(ORG_NAME)" --type "$(ORGANISATION_TYPE)" \
 		--location "$(ORG_LOCATION)" --policy-url "$(ORG_POLICY_URL)" $(API_CONFIG)
 
-# Recovery when no platform admin can log in (the dashboard needs a platform
-# admin to give the right). Idempotent.
-platform-grant-admin: ## Recovery: give an admin of the platform operator organisation the platform admin right: make platform-grant-admin ADMIN_EMAIL=...
+# Recovery when no platform admin can log in (in the dashboard, only a
+# platform admin can give the right). Idempotent.
+platform-grant-admin: ## Recovery: give the platform admin right to an admin of the platform operator organisation: make platform-grant-admin ADMIN_EMAIL=...
 	@test -n "$(ADMIN_EMAIL)" || { echo "platform-grant-admin: set ADMIN_EMAIL" >&2; exit 1; }
 	@$(API_COMMAND) platform grant-admin --email "$(ADMIN_EMAIL)" $(API_CONFIG) </dev/null
 
-platform-status: ## Show the platform operator organisation and the platform admins (reads only)
+platform-status: ## Show the platform operator organisation and the platform admins (read only)
 	@$(API_COMMAND) platform status $(API_CONFIG) </dev/null
 
-db-shell: ## Open the SQL shell of the database server as the admin user
+db-shell: ## Open an SQL shell on the database server as the admin user
 	$(COMPOSE) exec postgres psql -U postgres -d postgres
 
-openbao-status: ## Show the seal status of OpenBao
+openbao-status: ## Show the OpenBao seal status
 	$(COMPOSE) exec openbao bao status
 
 # --- Maintainers -----------------------------------------------------------------
 
 # The NATS users and their subjects come from the Helm chart (helper
-# ow.nats.users), so that the chart and Docker Compose have the same users.
-# Run this target after a change of the NATS users of the chart (needs helm).
+# ow.nats.users), so the chart and Docker Compose have the same users. Run
+# this target after you change the chart's NATS users (needs helm).
 NATS_USERS := api:API apiWebhook:API_WEBHOOK consent:CONSENT walletConfig:WALLET_CONFIG \
 	walletService:WALLET_SERVICE walletWorker:WALLET_WORKER
-nats-config: ## Maintainers: write config/nats/users.conf from the NATS users of the Helm chart
+nats-config: ## Maintainers: write config/nats/users.conf from the Helm chart's NATS users
 	@{ \
 	  echo "# Generated by \"make nats-config\" from the Helm chart (templates/nats/configmap.yaml,"; \
 	  echo "# helper ow.nats.users). Do not change it by hand: change the chart, then run"; \

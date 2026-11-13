@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 # =============================================================================
-# make secrets: makes all secrets and keys of the iGrant.io platform in the
-# folder secrets/ (git ignores it). It prints only file names and counts,
-# never a value. It keeps a file that exists, so it is safe to run again.
+# make secrets: creates all secrets and keys of the iGrant.io platform in
+# secrets/ (git ignores it). It prints only file names and counts, never a
+# value. It keeps existing files, so it is safe to run again.
 #
-# What it makes:
-# - secrets/database/: the password of the admin user of the database
-#   server, of the owner user of each database, of each read-only user and
-#   of each login database role of the wallet;
+# What it creates:
+# - secrets/database/: the passwords of the database server's admin user,
+#   of each database's owner user, of each read-only user and of each login
+#   database role of the wallet;
 # - secrets/api/: the API secret key, the token hash secret, the database
-#   wrapping key, the token signing key, the service key of the NATS
-#   messages, the NATS seeds of the api and of the webhook handler, and the
-#   SMTP password (asked when SMTP_USERNAME is set in .env);
-# - secrets/gateway/: the key of the internal token of the auth gateway;
+#   wrapping key, the token signing key, the service key for NATS messages,
+#   the NATS seeds of the api and the webhook handler, and the SMTP password
+#   (asked for when SMTP_USERNAME is set in .env);
+# - secrets/gateway/: the internal token key of the auth gateway;
 # - secrets/consent/, secrets/wallet/: the service keys and the NATS seeds;
-# - secrets/openbao/: the seal key of OpenBao and the password of the
-#   OpenBao user of the wallet (the openbao-init service writes init.json
-#   there at the first start);
-# - secrets/valkey/: the passwords of the ACL users of Valkey (the wallet
+# - secrets/openbao/: the OpenBao seal key and the password of the wallet's
+#   OpenBao user (the openbao-init service writes init.json there at the
+#   first start);
+# - secrets/valkey/: the passwords of the Valkey ACL users (the wallet
 #   roles, the gateway, and replication, sentinel and probe);
-# - secrets/public/: the public keys (no secret) that the services use to
+# - secrets/public/: the public keys (not secret) that the services use to
 #   verify each other, and the public nkeys of the NATS users.
 #
-# The keys come from the operator commands of the api ("igrant-api keys").
-# The script runs them in a container of the api image
-# (<IMAGE_REGISTRY>/api:<PLATFORM_TAG>) without network. To use a local
-# igrant-api binary instead, set IGRANT_API_BIN=<path>.
+# The keys come from the api's operator commands ("igrant-api keys"), run in
+# a container of the api image (<IMAGE_REGISTRY>/api:<PLATFORM_TAG>) with no
+# network. To use a local igrant-api binary instead, set
+# IGRANT_API_BIN=<path>.
 # =============================================================================
 set -euo pipefail
 
@@ -39,8 +39,8 @@ fail() { printf 'secrets: ERROR: %s\n' "$*" >&2; exit 1; }
 command -v openssl > /dev/null || fail "openssl is required"
 [ -f .env ] || fail ".env does not exist: run make env first"
 
-# The values of .env (KEY=value lines), and a value in the shell has
-# priority (as in docker compose).
+# Load .env (KEY=value lines). A value set in the shell wins, as in docker
+# compose.
 registry_shell="${IMAGE_REGISTRY-}"
 tag_shell="${PLATFORM_TAG-}"
 smtp_username_shell="${SMTP_USERNAME-}"
@@ -56,9 +56,9 @@ if [ -z "${IGRANT_API_BIN:-}" ] && [ "$PLATFORM_TAG" = 2026.10.x ]; then
 fi
 SMTP_USERNAME="${smtp_username_shell:-${SMTP_USERNAME:-}}"
 
-# The folders are private (0700). The files are 0644: the services that run
-# as a non-root user in their containers must read the mounted files; on
-# this computer only your user can open the folders.
+# The folders are private (0700), so on this computer only your user can
+# open them. The files are 0644 because the services run as a non-root user
+# in their containers and must read the mounted files.
 umask 077
 mkdir -p "$SECRETS"/{database,api,gateway,consent,wallet,openbao,valkey,public/service-jwks}
 
@@ -68,7 +68,8 @@ count() {
   if [ "$1" = made ]; then made=$((made + 1)); else kept=$((kept + 1)); fi
 }
 
-# igrant-api with the arguments. Its output has only kids and public nkeys.
+# Runs igrant-api with the given arguments. Its output holds only kids and
+# public nkeys.
 igrant_api() {
   if [ -n "${IGRANT_API_BIN:-}" ]; then
     "$IGRANT_API_BIN" "$@"
@@ -81,7 +82,7 @@ igrant_api() {
   fi
 }
 
-# igrant-api keys, quiet: the output appears only when the command fails.
+# igrant-api keys, quiet: prints the output only when the command fails.
 keys() {
   local output
   if ! output="$(igrant_api keys "$@" 2>&1)"; then
@@ -90,7 +91,7 @@ keys() {
   fi
 }
 
-# A random password (hexadecimal, no line break) in the file $1.
+# Writes a random password (hexadecimal, no line break) to the file $1.
 password() {
   local file="${SECRETS}/$1"
   if [ -s "$file" ]; then count kept; return; fi
@@ -98,7 +99,8 @@ password() {
   count made
 }
 
-# A private ES256 JWKS with the kid $2 in the file $1, for the purpose $3.
+# Writes a private ES256 JWKS with the kid $2 to the file $1, for the
+# purpose $3.
 private_jwks() {
   local file="${SECRETS}/$1"
   if [ -s "$file" ]; then count kept; return; fi
@@ -106,14 +108,15 @@ private_jwks() {
   count made
 }
 
-# The public JWKS $2 of the private JWKS $1 (made again when the private
+# Writes the public JWKS $2 of the private JWKS $1 (again when the private
 # file is newer).
 public_jwks() {
   [ "${SECRETS}/$2" -nt "${SECRETS}/$1" ] && return
   keys export-token-jwks --purpose "$3" --file "${SECRETS}/$1" --out "${SECRETS}/$2"
 }
 
-# The nkey seed of a NATS user in the file $1, and its public nkey in $1.pub.
+# Writes the nkey seed of a NATS user to the file $1, and its public nkey to
+# $1.pub.
 nats_seed() {
   local file="${SECRETS}/$1"
   if [ -s "$file" ]; then
@@ -138,15 +141,15 @@ for name in admin igrant_api igrant_oidc igrant_consent igrant_wallet \
   wallet_api_reader consent_api_reader api_wallet_reader consent_wallet_reader wallet_consent_reader; do
   password "database/${name}-password"
 done
-# The login database roles of the wallet (igrant_wallet_<name>; the service
-# wallet-database-roles makes them with these passwords).
+# The wallet's login database roles (igrant_wallet_<name>; the service
+# wallet-database-roles creates them with these passwords).
 for name in migrator launcher_app jobs clock audit_reader issuer_app relying_party_app \
   business_wallet_app individual_wp_app business_wp_app admin_app; do
   password "database/igrant_wallet_${name}-password"
 done
 
 # 2. api: the API secret key, the token hash secret, the database wrapping
-# key, the token signing key and the service key of the NATS messages.
+# key, the token signing key and the service key for NATS messages.
 password api/api-secret-key
 if [ -s "${SECRETS}/api/token-hash-secret.json" ]; then count kept; else
   keys generate-hash-secret compose-1 --file "${SECRETS}/api/token-hash-secret.json"
@@ -159,14 +162,14 @@ fi
 private_jwks api/token-signing-jwks.json igrant-api-token-1 token
 private_jwks api/service-envelope-jwks.json igrant-api-1 service
 
-# 3. The auth gateway: the key of the internal token.
+# 3. The auth gateway: the internal token key.
 private_jwks gateway/internal-token-jwks.json gateway-1 token
 
-# 4. consent and the wallet: the service keys of the NATS messages.
+# 4. consent and the wallet: the service keys for NATS messages.
 private_jwks consent/service-envelope-jwks.json consent-1 service
 private_jwks wallet/service-envelope-jwks.json eudi-wallet-1 service
 
-# 5. The NATS users: one for each process (the clock connects to no NATS).
+# 5. The NATS users: one per process (the clock does not use NATS).
 nats_seed api/nats-api.nk
 nats_seed api/nats-api-webhook.nk
 nats_seed consent/nats-consent.nk
@@ -174,22 +177,22 @@ nats_seed wallet/nats-wallet-config.nk
 nats_seed wallet/nats-wallet-service.nk
 nats_seed wallet/nats-wallet-worker.nk
 
-# 6. OpenBao: the password of the user of the wallet, and the static seal
-# key (32 random bytes) that unseals OpenBao at each start.
+# 6. OpenBao: the password of the wallet's user, and the static seal key
+# (32 random bytes) that unseals OpenBao at each start.
 password openbao/wallet-password
 if [ -s "${SECRETS}/openbao/static-seal.key" ]; then count kept; else
   openssl rand -out "${SECRETS}/openbao/static-seal.key" 32
   count made
 fi
 
-# 7. Valkey: the password of each ACL user (hexadecimal: the start script of
-# the Valkey services accepts it).
+# 7. Valkey: one password per ACL user (hexadecimal, which the start script
+# of the Valkey services accepts).
 for name in wallet-config wallet-service wallet-worker wallet-clock gateway replication sentinel probe; do
   password "valkey/${name}-password"
 done
 
 # 8. The SMTP password. With SMTP_USERNAME: the password of that login
-# (asked one time; it is not shown). Without: an empty file (no SMTP
+# (asked for once, with hidden input). Without it: an empty file (no SMTP
 # authentication).
 smtp_file="${SECRETS}/api/smtp-password"
 if [ -n "$SMTP_USERNAME" ]; then

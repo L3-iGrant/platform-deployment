@@ -1,6 +1,6 @@
-# Exposure with ingress-nginx, and the TLS certificates from your
-# cert-manager (an optional tool: the chart has no cert-manager object).
-# cert-manager reads the annotation and makes the TLS Secret of each host.
+# Exposure with ingress-nginx, with TLS certificates from your cert-manager
+# (optional: the chart creates no cert-manager objects). cert-manager reads
+# the annotation and creates the TLS Secret of each host.
 exposure:
   type: ingress
   ingress:

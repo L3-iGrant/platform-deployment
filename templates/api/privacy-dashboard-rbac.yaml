@@ -1,9 +1,9 @@
 {{- /*
-The access of the api to the Kubernetes API for the privacy dashboards
-(privacyDashboard.enabled): a ServiceAccount of the api pods, and a Role in
-the target namespace with only the kinds and verbs that the api uses (get,
-create, update, delete of ConfigMaps, Services, Deployments and Ingresses;
-no list, no watch, no other namespace).
+The api's access to the Kubernetes API for privacy dashboards
+(privacyDashboard.enabled): a ServiceAccount for the api pods, and a Role in
+the target namespace limited to the kinds and verbs the api uses (get,
+create, update and delete on ConfigMaps, Services, Deployments and
+Ingresses; no list, no watch, no other namespace).
 */}}
 {{- if and .Values.api.enabled .Values.privacyDashboard.enabled }}
 {{- $namespace := required "privacyDashboard.namespace is required: the namespace of the privacy dashboards" .Values.privacyDashboard.namespace }}

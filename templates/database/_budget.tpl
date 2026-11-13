@@ -1,12 +1,11 @@
 {{/*
-The connection budget of the database server (docs/database.md,
-"Connection budget"; WORKERS-AND-REDIS-PLAN.md item H1): the most
-connections that the pools of the processes of this release can open,
-with the most pods of each Deployment (the maximum of an autoscaler).
-Each process: the largest number of connections of one pod
+Connection budget of the database server (docs/database.md, "Connection
+budget"): the most connections that the pools of this release's processes
+can open, with the most pods of each Deployment (the autoscaler maximum).
+Each process counts its largest number of connections per pod
 (docs/database.md, "The pools of each process"). With a pooler
-(database.pooler.host), the sessions of the wallet go through it: the
-wallet processes count only their connections to the server, and the
+(database.pooler.host), the wallet sessions go through it: the wallet
+processes count only their direct connections to the server, and the
 pooler counts database.pooler.serverConnections. Output: JSON {processes:
 [{name, pods, each}], total}.
 */}}
@@ -14,13 +13,13 @@ pooler counts database.pooler.serverConnections. Output: JSON {processes:
 {{- $v := .Values -}}
 {{- $p := $v.database.pools -}}
 {{- $processes := list -}}
-{{- /* The readers of the views of a service that is not installed open no
-connection (ow.installation.has). */ -}}
+{{- /* Readers of the views of a service that is not installed open no
+connections (ow.installation.has). */ -}}
 {{- $walletViews := include "ow.installation.has" (list . "wallet") -}}
 {{- $consentViews := include "ow.installation.has" (list . "consent") -}}
-{{- /* The api core, the webhook handler, the gateway and consent: also one
-health connection of each pod, outside the pools (a check of the database
-every 2 s). */ -}}
+{{- /* The api core, the webhook handler, the gateway and consent: plus one
+health connection per pod outside the pools (it checks the database every
+2 s). */ -}}
 {{- if $v.api.enabled -}}
 {{- $apiReader := ternary ($p.apiReadAccess.maxConns | int) 0 (eq $walletViews "true") -}}
 {{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader 1)) -}}
@@ -28,18 +27,18 @@ every 2 s). */ -}}
 {{- $processes = append $processes (dict "name" "gateway" "pods" ($v.gateway.replicas | int) "each" (add $p.gateway.maxConns 1)) -}}
 {{- end -}}
 {{- if $v.consent.enabled -}}
-{{- /* consent: its pool and its readers (the api views, and the wallet
-views when the wallet is installed) of 5 each. */ -}}
+{{- /* consent: its pool plus its readers of 5 each (the api views, and the
+wallet views when the wallet is installed). */ -}}
 {{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")) 1)) -}}
 {{- end -}}
 {{- if $v.organisationWallet.enabled -}}
 {{- $w := $v.organisationWallet -}}
 {{- $pooled := not (empty $v.database.pooler.host) -}}
 {{- /* service and config: the session pool, the allocation pool and the
-synchronous engine (one at a time); config also its readers (the api
-views, and the consent views when consent is installed) of 10 each and one
-WIA pool mint (the route of the wallet unit attestation holds its lock on
-a connection of its own). */ -}}
+synchronous engine (one at a time). config also has its readers of 10 each
+(the api views, and the consent views when consent is installed) and one
+WIA pool mint (the wallet unit attestation route holds its lock on its own
+connection). */ -}}
 {{- $s := $p.walletService -}}
 {{- $servicePods := $w.service.replicas | int -}}
 {{- if ($w.service.autoscaling | default dict).enabled -}}{{- $servicePods = $w.service.autoscaling.maxReplicas | int -}}{{- end -}}
@@ -48,9 +47,9 @@ a connection of its own). */ -}}
 {{- $c := $p.walletConfig -}}
 {{- $sessions = ternary 0 (add $c.poolSize $c.maxOverflow 1) $pooled -}}
 {{- $processes = append $processes (dict "name" "wallet config" "pods" ($w.config.replicas | int) "each" (add $sessions $c.allocationPoolSize (ternary 20 10 (eq $consentViews "true")) 1)) -}}
-{{- /* a worker process: one session for each thread, maxOverflow, the
-allocation pool, at most 2 lock connections for each thread and the
-synchronous engine; a pod: its processes and its health server. */ -}}
+{{- /* A worker process: one session per thread, maxOverflow, the allocation
+pool, at most 2 lock connections per thread and the synchronous engine. A
+pod: its processes plus its health server. */ -}}
 {{- $k := $p.walletWorker -}}
 {{- range $g := $w.workers.groups -}}
 {{- $threads := $g.threads | int -}}
@@ -61,7 +60,7 @@ synchronous engine; a pod: its processes and its health server. */ -}}
 {{- if $keda.enabled -}}{{- $pods = $keda.maxReplicaCount | int -}}{{- end -}}
 {{- $processes = append $processes (dict "name" (printf "workers %s" $g.name) "pods" $pods "each" (add (mul ($g.processes | int) $process) 1)) -}}
 {{- end -}}
-{{- /* the clock: the leader connection and its health server. */ -}}
+{{- /* The clock: the leader connection and its health server. */ -}}
 {{- $processes = append $processes (dict "name" "clock" "pods" ($w.clock.replicas | int) "each" 2) -}}
 {{- if $pooled -}}
 {{- $processes = append $processes (dict "name" "connection pooler" "pods" 1 "each" ($v.database.pooler.serverConnections | int)) -}}
@@ -75,20 +74,19 @@ synchronous engine; a pod: its processes and its health server. */ -}}
 {{- end }}
 
 {{/*
-The connections that the release keeps free on the database server: the
-hook Jobs of an install or an upgrade (the migration, the roles step and
-the read access steps, one after the other: at most 5 at a time).
+Connections that the release keeps free on the database server for the
+hook Jobs of an install or upgrade (the migration, the roles step and the
+read access steps run one after the other: at most 5 at a time).
 */}}
 {{- define "ow.db.budgetReserve" -}}
 5
 {{- end }}
 
 {{/*
-Render guard of the bundled server: the pools of the release and the
-reserve of the hooks must fit in max_connections less the connections of
-the superuser (superuser_reserved_connections, default 3) and
-reserved_connections (default 0) of database.postgresql.parameters.
-Call with the root context.
+Render guard for the bundled server: the release's pools plus the hook
+reserve must fit in max_connections, less superuser_reserved_connections
+(default 3) and reserved_connections (default 0) from
+database.postgresql.parameters. Call with the root context.
 */}}
 {{- define "ow.db.checkBudget" -}}
 {{- $pooler := .Values.database.pooler -}}

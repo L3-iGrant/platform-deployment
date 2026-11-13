@@ -1,6 +1,6 @@
-# Your OpenBao (docs/openbao.md, "External OpenBao"): the Transit engine at
-# "transit", the userpass method and the user "wallet" with the wallet
-# policy. Make the Secrets first:
+# Your own OpenBao (docs/openbao.md, "External OpenBao"): the Transit engine
+# at "transit", the userpass method, and the user "wallet" with the wallet
+# policy. Create the Secrets first:
 #   kubectl -n ows create secret generic openbao-wallet --from-file=password=./openbao-wallet-password.txt
 #   kubectl -n ows create secret generic openbao-ca --from-file=ca.crt=./openbao-ca.crt
 openbao:

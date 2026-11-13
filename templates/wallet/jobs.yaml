@@ -1,12 +1,12 @@
 {{- /*
 Read access hooks of the wallet (readAccess.jobs; helm post-install and
 pre-upgrade, after the migration hook, so the views exist): "read-access
-apply" for the readers api and consent that are on (ow.readAccess.enabledReaders).
-The command connects with the admin user (readAccess.jobs.wallet, else
-ow.db.admin); its configuration has only the database, with the admin user
-and its password file (a pre-upgrade hook cannot read the new ConfigMaps of
-the release). The hooks run at each install and upgrade (idempotent; a new
-release can add views).
+apply" for each enabled reader, api and consent
+(ow.readAccess.enabledReaders). The command connects as the admin user
+(readAccess.jobs.wallet, else ow.db.admin). Its config has only the
+database, with the admin user and its password file (a pre-upgrade hook
+cannot read the release's new ConfigMaps). The hooks run on every install
+and upgrade (idempotent; a new release can add views).
 */}}
 {{- $readers := include "ow.readAccess.enabledReaders" (list . (list "api" "consent")) | splitList "," | compact }}
 {{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled $readers }}
@@ -56,10 +56,10 @@ spec:
         {{- include "ow.labels" (list $ $component) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
     spec:
-      # OnFailure: a retry restarts the container in the same pod. With
-      # network policies, the first connection of a new pod can fail until
-      # the network policy controller knows the pod; a retry in a new pod
-      # (Never) would meet the same delay each time.
+      # OnFailure retries by restarting the container in the same pod. With
+      # network policies, a new pod's first connection can fail until the
+      # policy controller knows the pod; a retry in a new pod (Never) would
+      # hit the same delay every time.
       restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -68,9 +68,9 @@ spec:
         - name: command
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
-          # The password of the new read-only user (--password-file) and of
-          # the admin user (--admin-password-file): files of their Secrets,
-          # never arguments or variables.
+          # The passwords of the new read-only user (--password-file) and
+          # the admin user (--admin-password-file) are files from their
+          # Secrets, never arguments or environment variables.
           command:
             {{- toYaml (list "/app/.venv/bin/read-access" "apply" "--reader" $reader "--user" $user.username "--password-file" "/run/secrets/read-access/password" "--admin-user" $admin.user "--admin-password-file" (printf "%s/database-admin-password" $secretDir)) | nindent 12 }}
           env:

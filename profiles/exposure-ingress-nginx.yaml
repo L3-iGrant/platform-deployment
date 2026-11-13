@@ -24,8 +24,8 @@ enterpriseDashboard:
   exposure:
     tls:
       secretName: dashboard-tls
-# ingress-nginx sets X-Real-IP to the address of its TCP peer (the client),
-# and it replaces a value that the client sends.
+# ingress-nginx sets X-Real-IP to its TCP peer's address (the client) and
+# overwrites any value that the client sends.
 clientAddress:
   header: X-Real-IP
 networkPolicy:

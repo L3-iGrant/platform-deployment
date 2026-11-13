@@ -1,20 +1,23 @@
 {{/*
-config.yaml of the auth gateway: its own file, not the api config. The
-sections that the gateway shares with the api have the same keys and values
-as api.yaml: ClientAddress comes from clientAddress, and IndividualAuth,
-Cors and OutboundHttp come from api.extraConfig, so the gateway and the api
-core apply the same rules. An unknown key stops the
-gateway, and the gateway reads every <Name>File at start: the file names only
-the secrets of the gateway (ow.gateway.secretFiles), not the token signing
-keys of the api. The file has no secret. The gateway decides every request,
-counts the rate limits and writes the action log; it resolves the client
-address with ClientAddress and sends it in the token (claim cip). Features
-is only in this file: the feature gate (gateway.features.enforce). It sends
-the consent routes to the consent service, the wallet config routes to the
-wallet config role and all other routes to the api core. Installation is
-in this file and in the api file (ow.installation.config) only when a
-service is not installed; the file then has no upstream of that service,
-and the gateway answers 404 to its routes.
+config.yaml of the auth gateway: its own file, not the api config.
+- Sections shared with the api have the same keys and values as api.yaml:
+  ClientAddress comes from clientAddress, and IndividualAuth, Cors and
+  OutboundHttp come from api.extraConfig, so the gateway and the api core
+  apply the same rules.
+- An unknown key stops the gateway, and the gateway reads every <Name>File
+  at start, so the file names only the gateway's secrets
+  (ow.gateway.secretFiles), never the api token signing keys. The file
+  itself holds no secrets.
+- The gateway decides every request, counts the rate limits and writes the
+  action log. It resolves the client address with ClientAddress and passes
+  it in the token (claim cip).
+- Features (the feature gate, gateway.features.enforce) is only in this
+  file.
+- Routing: consent routes go to the consent service, wallet config routes
+  to the wallet config role, and all other routes to the api core.
+- Installation is in this file and in the api file (ow.installation.config)
+  only when a service is not installed; the file then has no upstream for
+  that service, and the gateway answers 404 on its routes.
 */}}
 {{- define "ow.gateway.config" -}}
 {{- $root := . -}}
@@ -23,9 +26,9 @@ and the gateway answers 404 to its routes.
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
 {{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
-{{- /* The upstream of consent and of the wallet config role: the URL of the
-service of another release, else the Service of this release. A service
-that is not installed (enabled false and no URL) has no upstream. */ -}}
+{{- /* Upstreams for consent and the wallet config role: the service URL of
+another release, else the Service in this release. A service that is not
+installed (enabled false and no URL) has no upstream. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
 {{- $consentUrl := $g.upstreams.consent.url -}}
 {{- if and (not $consentUrl) $v.consent.enabled -}}
@@ -35,23 +38,23 @@ that is not installed (enabled false and no URL) has no upstream. */ -}}
 {{- if and (not $walletConfigUrl) $v.organisationWallet.enabled -}}
 {{- $walletConfigUrl = printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- end -}}
-{{- /* The file body limit of the gateway must not refuse an image that the
-api accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), else the
-client gets the 413 of the gateway with another text. 0 = the defaults
-(5 MiB + 64 KiB and 5 MiB). */ -}}
+{{- /* The gateway's file body limit must not refuse an image that the api
+accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), or the client
+gets the gateway's 413 with a different text. 0 = the defaults (5 MiB +
+64 KiB and 5 MiB). */ -}}
 {{- $imageMax := (dig "ImageUpload" "maxBytes" 0 ($api.extraConfig | default dict)) | int64 | default 5242880 -}}
 {{- $fileLimit := $g.proxy.maxBodyBytes.file | int64 | default (add 5242880 65536) -}}
 {{- if lt $fileLimit (add $imageMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api ImageUpload.maxBytes (%v) + 65536: the gateway would refuse an image that the api accepts" $fileLimit $imageMax) -}}
 {{- end -}}
-{{- /* The same for the CSV import of individuals (Uploads.
-individualImportMaxFileBytes of the api, default 5 MiB, at most 20 MiB). */ -}}
+{{- /* Same for the CSV import of individuals (the api's Uploads.
+individualImportMaxFileBytes, default 5 MiB, at most 20 MiB). */ -}}
 {{- $importMax := (dig "Uploads" "individualImportMaxFileBytes" 0 ($api.extraConfig | default dict)) | int64 | default 5242880 -}}
 {{- if lt $fileLimit (add $importMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api Uploads.individualImportMaxFileBytes (%v) + 65536: the gateway would refuse a CSV import that the api accepts" $fileLimit $importMax) -}}
 {{- end -}}
-{{- /* The feature gate: on unless gateway.features.enforce is false (a
-values file without the key keeps the default of the gateway). */ -}}
+{{- /* Feature gate: on unless gateway.features.enforce is false (a values
+file without the key keeps the gateway default). */ -}}
 {{- $enforce := true -}}
 {{- if kindIs "bool" (dig "features" "enforce" true $g) -}}
 {{- $enforce = dig "features" "enforce" true $g -}}

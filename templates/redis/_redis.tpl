@@ -1,10 +1,10 @@
 {{/*
 Valkey helpers. The organisation wallet uses Valkey (or Redis) as a work
-queue, a store of short-lived single-use values and a cache, never as a
-record: the evidence stays in the database. redis.mode bundled: the chart
-runs Valkey with Sentinel (StatefulSet <fullname>-redis; each pod has a data
-container and a Sentinel container). redis.mode external: your Valkey or
-Redis (the requirements are in docs/redis.md).
+queue, a store for short-lived single-use values and a cache, never as a
+system of record: the evidence stays in the database. redis.mode bundled:
+the chart runs Valkey with Sentinel (StatefulSet <fullname>-redis, each pod
+with a data container and a Sentinel container). redis.mode external: your
+own Valkey or Redis (requirements in docs/redis.md).
 */}}
 
 {{/* "true" when a process of the release uses Valkey (the organisation wallet or the gateway), else "". */}}
@@ -31,27 +31,27 @@ Redis (the requirements are in docs/redis.md).
 {{ include "ow.name" (list . "redis-headless") }}
 {{- end }}
 
-{{/* Name of the Service of the Sentinels. */}}
+{{/* Name of the Sentinel Service. */}}
 {{- define "ow.redis.sentinelName" -}}
 {{ include "ow.name" (list . "redis-sentinel") }}
 {{- end }}
 
-{{/* Name of the TLS Secret (tls.crt, tls.key, ca.crt) of the bundled Valkey. */}}
+{{/* TLS Secret of the bundled Valkey (tls.crt, tls.key, ca.crt). */}}
 {{- define "ow.redis.tlsSecretName" -}}
 {{- .Values.redis.tls.existingSecret | default (include "ow.name" (list . "redis-tls")) -}}
 {{- end }}
 
-{{/* Name of the Secret of the chart with the passwords of the ACL users. */}}
+{{/* Name of the chart's Secret with the ACL user passwords. */}}
 {{- define "ow.redis.usersSecretName" -}}
 {{ include "ow.name" (list . "redis-users") }}
 {{- end }}
 
-{{/* The DNS domain of the pods: <headless Service>.<namespace>.svc. */}}
+{{/* DNS domain of the pods: <headless Service>.<namespace>.svc. */}}
 {{- define "ow.redis.domain" -}}
 {{ include "ow.redis.headlessName" . }}.{{ .Release.Namespace }}.svc
 {{- end }}
 
-{{/* The DNS names of the pods of the bundled Valkey, pod 0 first. Output: JSON list. */}}
+{{/* DNS names of the bundled Valkey pods, pod 0 first. Output: JSON list. */}}
 {{- define "ow.redis.podHosts" -}}
 {{- $hosts := list -}}
 {{- range $i := until (.Values.redis.replicas | int) -}}
@@ -61,44 +61,47 @@ Redis (the requirements are in docs/redis.md).
 {{- end }}
 
 {{/*
-The ACL users of the processes (values keys of redis.users): one user for
-each wallet process kind (when the wallet is installed) and one for the
-gateway. The bundled Valkey also has the users replication (the replicas),
-sentinel (the Sentinels) and probe (the probes), with the passwords of the
-Secret of the chart.
+ACL users of the processes (values keys of redis.users): one per wallet
+process kind (when the wallet is installed) and one for the gateway. The
+bundled Valkey also has the users replication (replicas), sentinel
+(Sentinels) and probe (probes), with passwords from the chart's Secret.
 */}}
 {{- define "ow.redis.processUsers" -}}
 {{- if include "ow.installation.has" (list . "wallet") -}}walletService,walletConfig,walletWorker,walletClock,{{- end -}}gateway
 {{- end }}
 
 {{/*
-The users of the bundled Valkey itself: replication (the replicas),
-sentinel (the Sentinels), probe (the probes) and, with redis.metrics, metrics
-(the exporter of each pod). Their passwords are in the Secret of the chart
+Users of the bundled Valkey itself: replication (replicas), sentinel
+(Sentinels), probe (probes) and, with redis.metrics, metrics (the exporter
+in each pod). Their passwords are in the chart's Secret
 <fullname>-redis-users (key: the user name).
 */}}
 {{- define "ow.redis.serverUsers" -}}
 replication,sentinel,probe{{- if .Values.redis.metrics.enabled -}},metrics{{- end -}}
 {{- end }}
 
-{{/* The values key of the ACL user of one wallet role (service, config, worker, clock). */}}
+{{/* Values key of the ACL user of a wallet role (service, config, worker, clock). */}}
 {{- define "ow.wallet.redisUser" -}}
 {{- get (dict "service" "walletService" "config" "walletConfig" "worker" "walletWorker" "clock" "walletClock") . -}}
 {{- end }}
 
 {{/*
-The ACL rights (the ACL file syntax). The wallet: its key namespaces (ows:*,
-and the Dramatiq namespace: the key ows-wallet, which the broker script gets
-as KEYS[1], and ows-wallet:*), the read, write, script and
-connection commands without the dangerous ones, and INFO (the server check
-of the wallet) and KEYS (the Dramatiq broker script) again. The gateway:
-its key namespace gw:*. The discovery: the commands of the clients on the
-Sentinels. replication, sentinel: the commands of the replicas and of the
-Sentinels on the data servers. metrics: the commands of the exporter of a
-pod (redis.metrics): INFO, the lengths of the slow log and the latency
-events, and its client name; no key and no CONFIG. sentinelPeer: the commands of a Sentinel on
-the other Sentinels, and the start and stop scripts of the pods. probe: the
-probes. Output: JSON.
+ACL rights, in ACL file syntax:
+- wallet: its key namespaces (ows:*, and the Dramatiq namespace: the key
+  ows-wallet, which the broker script gets as KEYS[1], and ows-wallet:*);
+  the read, write, script and connection commands minus the dangerous ones,
+  with INFO (the wallet's server check) and KEYS (the Dramatiq broker
+  script) allowed again.
+- gateway: its key namespace gw:*.
+- discovery: the client commands on the Sentinels.
+- replication, sentinel: the replica and Sentinel commands on the data
+  servers.
+- metrics: the commands of a pod's exporter (redis.metrics): INFO, the slow
+  log and latency event lengths, and its client name; no keys and no CONFIG.
+- sentinelPeer: a Sentinel's commands on the other Sentinels, and the pod
+  start and stop scripts.
+- probe: the probes.
+Output: JSON.
 */}}
 {{- define "ow.redis.rights" -}}
 {{- toJson (dict
@@ -114,10 +117,10 @@ probes. Output: JSON.
 {{- end }}
 
 {{/*
-The ACL user of one process and the Secret of its password. Call with
+ACL user of one process and the Secret with its password. Call with
 (list $ "<values key of redis.users>"). Output: JSON {username, secret,
-key}. The password: redis.users.<key>.passwordSecret, else (bundled) the
-Secret of the chart <fullname>-redis-users (key: the values key).
+key}. The password comes from redis.users.<key>.passwordSecret, else
+(bundled) the chart's Secret <fullname>-redis-users (key: the values key).
 */}}
 {{- define "ow.redis.user" -}}
 {{- $root := index . 0 -}}
@@ -135,7 +138,7 @@ Secret of the chart <fullname>-redis-users (key: the values key).
 {{- end -}}
 {{- end }}
 
-{{/* The CA of the servers: the TLS Secret of the bundled Valkey, or redis.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* Server CA: the TLS Secret of the bundled Valkey, or redis.external.caSecret. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.redis.ca" -}}
 {{- $external := .Values.redis.external -}}
 {{- if include "ow.redis.bundled" . -}}
@@ -148,12 +151,12 @@ Secret of the chart <fullname>-redis-users (key: the values key).
 {{- end }}
 
 {{/*
-The Valkey groups of the wallet: queue (the group of redis.mode: the work
-queue, and also the single-use values and the caches without a group of
-their own), and the enabled groups state and cache (redis.state,
-redis.cache: your own Valkey or Redis). Output: JSON name -> {sentinels,
-address, masterName, sentinelAuth, ca ({secret, key} or {}), caFile (the
-file of the CA in ow.wallet.secretDir, or "")}.
+The wallet's Valkey groups: queue (the redis.mode group: the work queue,
+plus the single-use values and caches that have no group of their own),
+and the enabled groups state and cache (redis.state, redis.cache: your own
+Valkey or Redis). Output: JSON name -> {sentinels, address, masterName,
+sentinelAuth, ca ({secret, key} or {}), caFile (the CA file in
+ow.wallet.secretDir, or "")}.
 */}}
 {{- define "ow.redis.groups" -}}
 {{- $r := .Values.redis -}}
@@ -181,12 +184,12 @@ file of the CA in ow.wallet.secretDir, or "")}.
 {{- end }}
 
 {{/*
-The redis section of one wallet role (the keys of the wallet settings,
-docs/redis.md): one endpoint for each group of ow.redis.groups. Without a
-group state or cache, the wallet uses the endpoint queue for them. The
-role logs in to each group with its ACL user and the same password. The
-password and the CA files are in ow.wallet.secretDir
-(ow.wallet.secretFiles). Call with (list $ "<role>"). Output: JSON.
+The redis section of one wallet role (wallet setting keys, docs/redis.md):
+one endpoint per group in ow.redis.groups. Without a state or cache group,
+the wallet uses the queue endpoint for them. The role logs in to each group
+with its ACL user and the same password. The password and CA files are in
+ow.wallet.secretDir (ow.wallet.secretFiles). Call with (list $ "<role>").
+Output: JSON.
 */}}
 {{- define "ow.wallet.redis" -}}
 {{- $root := index . 0 -}}
@@ -220,9 +223,9 @@ password and the CA files are in ow.wallet.secretDir
 {{- end }}
 
 {{/*
-The files of the Valkey user of one process in its secret folder: the
-password (redis-password) and the CA of the servers (redis-ca.crt). Call
-with (list $ "<values key of redis.users>"). Output: JSON "<file name>" ->
+Files for one process's Valkey user in its secret folder: the password
+(redis-password) and the server CA (redis-ca.crt). Call with
+(list $ "<values key of redis.users>"). Output: JSON "<file name>" ->
 {secret, key}.
 */}}
 {{- define "ow.redis.secretFiles" -}}
@@ -236,9 +239,9 @@ with (list $ "<values key of redis.users>"). Output: JSON "<file name>" ->
 {{- end }}
 
 {{/*
-Render guards of the Valkey values. The values go into the configuration
-files of Valkey and of the wallet, so the guards also allow only safe
-characters. Output: nothing.
+Render guards for the Valkey values. The values end up in the Valkey and
+wallet config files, so the guards also allow only safe characters.
+Output: nothing.
 */}}
 {{- define "ow.redis.check" -}}
 {{- $v := .Values -}}
@@ -293,15 +296,15 @@ characters. Output: nothing.
 {{- fail "redis.metrics is for the bundled Valkey (redis.mode bundled): monitor your own Valkey or Redis with your own exporter" -}}
 {{- end -}}
 {{- end -}}
-{{- /* The separate groups of the wallet (redis.state, redis.cache). */ -}}
+{{- /* The wallet's separate groups (redis.state, redis.cache). */ -}}
 {{- if $v.organisationWallet.enabled -}}
-{{- /* The wallet refuses a replica wait above half of timeout_seconds of
-the state endpoint: a longer WAIT ends as
-a socket timeout, the client drops the connection, and while a replica
-stalls each request with a proof or a nonce opens a new TLS connection to
-the primary. All endpoints get redis.client.timeoutSeconds. */ -}}
-{{- /* The exact rule of the wallet, in integer milliseconds: timeout_ms
-= round(timeoutSeconds x 1000) (at most 3 decimals), refused when 2 x wait >
+{{- /* The wallet refuses a replica wait above half of the state endpoint's
+timeout_seconds. A longer WAIT ends in a socket timeout, the client drops
+the connection, and while a replica stalls every request with a proof or a
+nonce opens a new TLS connection to the primary. All endpoints get
+redis.client.timeoutSeconds. */ -}}
+{{- /* The wallet's exact rule, in integer milliseconds: timeout_ms =
+round(timeoutSeconds x 1000) (at most 3 decimals), refused when 2 x wait >
 timeout_ms. */ -}}
 {{- $product := mulf ($r.client.timeoutSeconds | float64) 1000 -}}
 {{- $timeoutMs := round $product 0 | int -}}
@@ -339,48 +342,48 @@ timeout_ms. */ -}}
 {{- end }}
 
 {{/*
-The configuration of a data server: the template of /run/valkey/valkey.conf.
-valkey.sh writes the file: it puts in the passwords ({password:<user>}), the
-DNS name of the pod ({self}) and, on a replica, the line replicaof. No
-secret is in the template.
+Data server config: the template of /run/valkey/valkey.conf. valkey.sh
+writes the file and fills in the passwords ({password:<user>}), the pod DNS
+name ({self}) and, on a replica, the replicaof line. The template holds no
+secrets.
 */}}
 {{- define "ow.redis.serverConfig" -}}
-# The data server of the bundled Valkey (the template of
-# /run/valkey/valkey.conf; valkey.sh puts in the passwords and the names).
+# Data server of the bundled Valkey (template of /run/valkey/valkey.conf;
+# valkey.sh fills in the passwords and names).
 bind * -::*
 port 0
 tls-port 6379
 tls-cert-file /etc/valkey-tls/tls.crt
 tls-key-file /etc/valkey-tls/tls.key
 tls-ca-cert-file /etc/valkey-tls/ca.crt
-# The clients log in with their ACL user, not with a certificate.
+# Clients log in with their ACL user, not with a certificate.
 tls-auth-clients no
-# The replication and the Sentinel links also use TLS.
+# Replication and Sentinel links use TLS too.
 tls-replication yes
 dir /data
 aclfile /run/valkey/users.acl
-# At most about one second of writes is lost when a server stops.
+# A server stop loses at most about one second of writes.
 appendonly yes
 appendfsync everysec
 aof-use-rdb-preamble yes
-# Never evict a key: an eviction would delete queue messages or nonces.
+# Never evict keys: eviction would delete queue messages or nonces.
 maxmemory {{ .Values.redis.maxmemory }}
 maxmemory-policy noeviction
-# A primary without a replica in sync refuses the writes: the wallet
-# accepts a single-use value only when a replica has it.
+# Without an in-sync replica the primary refuses writes: the wallet only
+# accepts a single-use value once a replica has it.
 min-replicas-to-write 1
 min-replicas-max-lag 10
-# The replication login. After a failover the old primary is a replica.
+# Replication login. After a failover the old primary becomes a replica.
 masteruser replication
 masterauth {password:replication}
-# The Sentinels and the clients use the pod DNS names: the pod addresses
+# Sentinels and clients use the pod DNS names, because pod addresses
 # change.
 replica-announce-ip {self}
 {{- end }}
 
 {{/*
-The ACL file of a data server: the template of /run/valkey/users.acl.
-valkey.sh puts in the SHA-256 of each password ({hash:<user>}).
+Data server ACL file: the template of /run/valkey/users.acl. valkey.sh
+fills in the SHA-256 of each password ({hash:<user>}).
 */}}
 {{- define "ow.redis.serverAcl" -}}
 {{- $rights := include "ow.redis.rights" . | fromJson -}}
@@ -397,18 +400,17 @@ user metrics on {hash:metrics} {{ $rights.metrics }}
 {{- end }}
 
 {{/*
-The configuration of a Sentinel: the template of /run/valkey/sentinel.conf.
-sentinel.sh writes the file: it puts in the passwords, the hashes, the DNS
-name of the pod ({self}) and of the primary ({primary}). The Sentinel
-rewrites the file (its state).
+Sentinel config: the template of /run/valkey/sentinel.conf. sentinel.sh
+writes the file and fills in the passwords, the hashes, and the DNS names
+of the pod ({self}) and the primary ({primary}). The Sentinel rewrites the
+file to keep its state.
 */}}
 {{- define "ow.redis.sentinelConfig" -}}
 {{- $r := .Values.redis -}}
 {{- $rights := include "ow.redis.rights" . | fromJson -}}
 {{- $master := $r.masterName -}}
-# The Sentinel of the bundled Valkey (the template of
-# /run/valkey/sentinel.conf; sentinel.sh puts in the passwords and the
-# names).
+# Sentinel of the bundled Valkey (template of /run/valkey/sentinel.conf;
+# sentinel.sh fills in the passwords and names).
 bind * -::*
 port 0
 tls-port 26379
@@ -416,11 +418,11 @@ tls-cert-file /etc/valkey-tls/tls.crt
 tls-key-file /etc/valkey-tls/tls.key
 tls-ca-cert-file /etc/valkey-tls/ca.crt
 tls-auth-clients no
-# The links to the data servers and to the other Sentinels use TLS.
+# Links to the data servers and the other Sentinels use TLS.
 tls-replication yes
 dir /run/valkey
-# The Sentinels give the pod DNS names to the clients (the names of the
-# server certificate).
+# The Sentinels give clients the pod DNS names (the names in the server
+# certificate).
 sentinel resolve-hostnames yes
 sentinel announce-hostnames yes
 sentinel announce-ip {self}

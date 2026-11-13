@@ -10,9 +10,8 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "redis") | nindent 4 }}
 data:
-  # The templates of the configuration files (no secret: the scripts put in
-  # the passwords and the hashes from the Secret volume at the start) and
-  # the scripts of the pods.
+  # Config file templates (no secrets: at start the scripts fill in the
+  # passwords and hashes from the Secret volume) and the pod scripts.
   valkey.conf: |
     {{- include "ow.redis.serverConfig" . | nindent 4 }}
   users.acl: |

@@ -1,7 +1,7 @@
-# Database: your PostgreSQL server. The init hook makes the databases and the
-# users with the admin user, and the roles hook makes the database roles of
-# the wallet with it; the components verify the server with its CA.
-# Make the two Secrets first:
+# Database: your own PostgreSQL server. The init hook creates the databases
+# and users with the admin user, and the roles hook uses it to create the
+# wallet database roles; the components verify the server with its CA.
+# Create the two Secrets first:
 #   kubectl -n ows create secret generic db-admin --from-file=password=./db-admin-password.txt
 #   kubectl -n ows create secret generic db-ca --from-file=ca.crt=./db-ca.crt
 database:
@@ -9,7 +9,7 @@ database:
   mode: external
   external:
     host: db.example.org
-    port: ""                 # empty: 5432
+    port: ""                 # empty means 5432
     admin:
       user: igrant_admin     # CREATEROLE and CREATEDB (see docs/database.md)
       passwordSecret: db-admin
