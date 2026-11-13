@@ -5,10 +5,23 @@ The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Re
 WARNING: global.imageTag is the placeholder "2026.10.x": no image has this tag, so the pods cannot pull their images.
   Set global.imageTag to the release tag of your version (from iGrant.io) and run "helm upgrade".
 {{- end }}
-{{- if hasKey (.Values.api.webhooks | default dict) "events" }}
 
-WARNING: api.webhooks.events is not used: the effective features of each organisation select its webhook event types.
-  Remove api.webhooks.events from your values files (docs/upgrade.md, "The webhook event types"). A later release refuses the value.
+{{- /* The SSRF guards that an extraConfig turns off (docs/security-context.md,
+"The SSRF guards"). */}}
+{{- $ssrfOff := list }}
+{{- if and .Values.api.enabled (eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true") }}
+{{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
+{{- end }}
+{{- if and .Values.consent.enabled (eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.consent.extraConfig | default dict))) "true") }}
+{{- $ssrfOff = append $ssrfOff (list "consent" "consent.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
+{{- end }}
+{{- if and .Values.organisationWallet.enabled (eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.extraConfig | default dict))) "false") }}
+{{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.extraConfig.ssrf_protection.enabled is false") }}
+{{- end }}
+{{- range $ssrfOff }}
+
+WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors also when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). A URL of an organisation can then reach the services of your network and the credentials of the metadata server.
+  Turn the guard on again, and allow only the private hosts that you need (docs/security-context.md, "The SSRF guards"; the wallet: organisationWallet.ssrf.allowedPrivate).
 {{- end }}
 
 Public URLs ({{ .Values.exposure.type }} by default; check that your DNS names point to your ingress controller or Gateway):

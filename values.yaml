@@ -1853,11 +1853,6 @@ organisationWallet:
     # create of one more organisation wallet (a new organisation) gets 409
     # organisation_wallet_unit.limit_reached; the units that exist stay.
     # Empty: the chart writes no key, and the wallet uses its default (100).
-    # Set a value only with the images of the release with the input
-    # limits: a wallet of an earlier release does not know the key and does
-    # not start (docs/upgrade.md, "The limits of the installation"). An
-    # installation with more than 100 organisation wallets keeps them, but
-    # it cannot make the organisation wallet of a new organisation.
     organisationWalletUnitsMax: ""
     # -- wallet_unit.development_apps_allowed: true lets an admin give a
     # wallet app the build development or simulator, and protocol 2 then
@@ -1998,6 +1993,18 @@ organisationWallet:
   # keys in their own OpenBao (Transit engine), in their cloud KMS or at a
   # QTSP. The local key store of this installation (OpenBao Transit) is
   # always there for every organisation.
+  # -- The SSRF guard of the wallet (ssrf_protection.allowed_private): the
+  # private hosts that the wallet may call, for an installation whose public
+  # hosts (the status lists, the metadata, the offers of its organisations)
+  # have private addresses, for example on premise. Each entry is a host
+  # name (exact) or an IP address or CIDR (for example 10.20.0.0/16).
+  # Loopback, link-local, the cloud metadata addresses, unspecified,
+  # multicast and reserved addresses are never allowed. Empty (default):
+  # only public addresses, and the chart writes no key. With network
+  # policies, also give the address to networkPolicy.egress.profiles.platform
+  # (docs/network-policies.md).
+  ssrf:
+    allowedPrivate: []
   keyStores:
     # -- kms.organisation_key_store_types: the types that admins may add, in
     # this order: an external OpenBao (Transit engine), a QTSP (remote

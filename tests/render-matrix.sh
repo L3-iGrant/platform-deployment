@@ -340,8 +340,22 @@ notes "external OpenBao" "Make the platform operator organisation and its first 
 notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of an external server" "set max_connections of your server to at least 226" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
+# A guard against SSRF that an extraConfig turns off: a warning in the
+# notes that names the role; none by default.
+notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: consent" "WARNING: the SSRF guard of consent is off (consent.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'consent.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
+if helm template ows "$notes_chart" --namespace ows -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
+    --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+  bad "notes: an SSRF warning with the guards on"
+else
+  ok "notes: no SSRF warning with the guards on"
+fi
+notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
+notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
   --set-json 'api.webhooks.events=["consent.allowed"]'
@@ -983,11 +997,6 @@ renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
 # The WIA pool refill is an actor of the workers, not a NATS event.
 lacks "no WIA pool refill event" "ows.wia_pool.refill_requested" "${shamir[@]}"
-# The scheduler is gone (organisation-wallet-suite removed it): no object, user or value of it.
-lacks "no scheduler" "scheduler" "${shamir[@]}" -f "$examples/networkpolicy.yaml"
-guard "no scheduler value" "Additional property scheduler" "${shamir[@]}" --set organisationWallet.scheduler.replicas=1
-guard "no NATS user of the scheduler" "Additional property walletScheduler" "${shamir[@]}" --set nats.auth.users.walletScheduler.nkey=UTESTWALLETSCHEDULER
-guard "no egress profiles of the scheduler" 'networkPolicy.egress.roles.wallet-scheduler: "wallet-scheduler" is not a network role' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-scheduler=["internet"]'
 # A value of database.postgresql.parameters wins over a log parameter of
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
@@ -1019,6 +1028,15 @@ renders "one worker group: its configuration key" "worker-all.yaml: |" "${shamir
 lacks "one worker group: no Deployment of the default groups" "name: t-wallet-worker-main" "${shamir[@]}" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" "${shamir[@]}" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
 renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+# The SSRF allow list of the wallet (organisationWallet.ssrf.allowedPrivate):
+# no key by default (an image without it gets no new key); the entries in
+# each wallet file; the render stops for a loopback or metadata network and
+# for an entry that is no host name, address or CIDR.
+lacks "no SSRF allow list by default" "ssrf_protection" "${shamir[@]}" --show-only templates/wallet/configmap.yaml
+renders "the SSRF allow list in the wallet files" "allowed_private:" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
+guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
+guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
+guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
 # The servers (service and config): a headless Service of the port metrics
 # (9190) and the job wallet-server; the ServiceMonitor names the jobs with
 # the label metrics.igrant.io/job.
