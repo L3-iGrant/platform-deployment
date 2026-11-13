@@ -266,7 +266,8 @@ roles = ["migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_ap
 wallet = {
     "wallet-database-roles": (admin, "database-init"),
     "wallet-migrate": ("igrant_wallet_migrator", "wallet-database-roles"),
-    "wallet-read-access": (admin, "wallet-migrate"),
+    "wallet-read-access-api": (admin, "wallet-migrate"),
+    "wallet-read-access-consent": (admin, "wallet-migrate"),
     "wallet-config": ("igrant_wallet_launcher_app", "wallet-migrate"),
     "wallet-service": ("igrant_wallet_launcher_app", "wallet-migrate"),
     "wallet-worker": ("igrant_wallet_jobs", "wallet-migrate"),
@@ -1020,7 +1021,8 @@ expected = {
     "consent": (CONSENT, ["/tmp"], []),
     "wallet-database-roles": (WALLET, ["/tmp"], []),
     "wallet-migrate": (WALLET, ["/tmp"], []),
-    "wallet-read-access": (WALLET, ["/tmp"], []),
+    "wallet-read-access-api": (WALLET, ["/tmp"], []),
+    "wallet-read-access-consent": (WALLET, ["/tmp"], []),
     "wallet-config": (WALLET, ["/tmp"], []),
     "wallet-service": (WALLET, ["/tmp"], []),
     "wallet-worker": (WALLET, ["/run/ows-worker"], ["/tmp"]),
@@ -1106,6 +1108,11 @@ if "wallet-worker-tmp" not in project.get("volumes", {}):
     problems.append("no volume wallet-worker-tmp")
 if "api-read-access" in services:
     problems.append("the service api-read-access is still there (it ran a shell in the api image)")
+if "wallet-read-access" in services:
+    problems.append("the service wallet-read-access is still there (it ran a shell in the wallet image)")
+for name, service in services.items():
+    if "/eudi-wallet:" in service.get("image", "") and any(part in ("/bin/sh", "sh", "bash", "/bin/bash") for part in (service.get("entrypoint") or [])):
+        problems.append(f"{name}: a shell in the wallet image (the image has no shell)")
 if problems:
     print("; ".join(problems))
     sys.exit(1)

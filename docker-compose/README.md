@@ -48,8 +48,8 @@ check: do the next step only when you see the result of the check.
 Some services run one time at each start and then stop:
 `database-init`, `wallet-database-roles`, `api-migrate`,
 `consent-migrate`, `wallet-migrate`, `api-read-access-wallet`,
-`api-read-access-consent`, `consent-read-access`, `wallet-read-access`,
-`openbao-init` and `nats-data-owner`. They create the databases, the
+`api-read-access-consent`, `consent-read-access`, `wallet-read-access-api`,
+`wallet-read-access-consent`, `openbao-init` and `nats-data-owner`. They create the databases, the
 database roles of the wallet, the database tables, the read-only database
 users and the configuration of OpenBao, and give the NATS volume to the
 user of NATS.
@@ -501,10 +501,12 @@ make up
   [Configuration files](#configuration-files)). Use `make up`, not
   `docker compose up`: `make up` writes the files, and sets `HOST_UID` and
   `HOST_GID` for `openbao-init`.
-- `make up` removes the container of the service `api-read-access` of the
-  earlier release (`--remove-orphans`). The api image has no shell: the
-  services `api-read-access-wallet` and `api-read-access-consent` replace
-  it.
+- `make up` removes the containers of the services `api-read-access` and
+  `wallet-read-access` of the earlier release (`--remove-orphans`). The
+  api image and the wallet image have no shell: the services
+  `api-read-access-wallet` and `api-read-access-consent`, and
+  `wallet-read-access-api` and `wallet-read-access-consent` replace them.
+  Change your scripts and your monitoring that name the earlier services.
 - `nats-data-owner` gives each file and folder of the volume `nats-data`
   with another owner (root or the user 1000 of an earlier release wrote
   them) to the user of NATS (65532), then `nats` starts. Later starts
@@ -610,15 +612,16 @@ each one starts only when the one before it stopped with exit code 0:
    applies the migrations of the wallet as the owner role, then gives the
    database roles their grants on the new tables. It is the only service
    that changes the schema of the wallet.
-4. `wallet-read-access` (as the admin user) creates the read-only users of
-   the api and of consent on the wallet views. The wallet processes start
+4. `wallet-read-access-api` and `wallet-read-access-consent` (as the admin
+   user) create the read-only users of the api and of consent on the wallet
+   views (one service for each reader: the wallet image has no shell). The wallet processes start
    after `wallet-migrate`.
 
 | Process | Service | Database role |
 |---|---|---|
 | Database roles | `wallet-database-roles` | The admin user (`DB_ADMIN_USER`) |
 | Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
-| Read access | `wallet-read-access` | The admin user (`DB_ADMIN_USER`) |
+| Read access | `wallet-read-access-api`, `wallet-read-access-consent` | The admin user (`DB_ADMIN_USER`) |
 | Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
 | Background work | `wallet-worker` | `igrant_wallet_jobs` |
 | Clock | `wallet-clock` | `igrant_wallet_clock` (it can only connect) |
@@ -804,7 +807,7 @@ profiles: a service without these settings fails the test.
 | `wallet-config`, `wallet-service` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `wallet-worker` | `65532:65532` | `/tmp` (the volume `wallet-worker-tmp`, on disk), `/run/ows-worker` (tmpfs, 64 MB) |
 | `wallet-clock` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
-| `wallet-database-roles`, `wallet-migrate`, `wallet-read-access` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `wallet-database-roles`, `wallet-migrate`, `wallet-read-access-api`, `wallet-read-access-consent` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `dashboard` | `101:101` | `/tmp` (tmpfs, 64 MB): the pid file and the temporary files of nginx |
 | `postgres` | `999:999` (the user `postgres` of the image) | the volume `postgres-data`, `/var/run/postgresql` and `/tmp` (tmpfs) |
 | `database-init` | `999:999` | `/tmp` (tmpfs, 16 MB) |

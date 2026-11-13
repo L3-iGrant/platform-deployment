@@ -478,20 +478,27 @@ services:
     depends_on:
       consent-migrate: {condition: service_completed_successfully}
 
-  wallet-read-access:
+  wallet-read-access-api:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
-    entrypoint: ["/bin/sh", "-ec"]
+    # The wallet image has no shell: one service for each reader, which runs
+    # the program read-access directly.
+    entrypoint: ["/app/.venv/bin/read-access"]
     command:
-      - |
-        for reader in api consent; do
-          /app/.venv/bin/read-access apply --reader "$$reader" --user "$${reader}_wallet_reader" \
-            --password-file "/run/secrets/read-access/$${reader}_wallet_reader" \
-            --admin-user "${DB_ADMIN_USER}" --admin-password-file /run/secrets/database/admin-password
-        done
+      - apply
+      - --reader
+      - api
+      - --user
+      - api_wallet_reader
+      - --password-file
+      - /run/secrets/read-access/api_wallet_reader
+      - --admin-user
+      - ${DB_ADMIN_USER}
+      - --admin-password-file
+      - /run/secrets/database/admin-password
     environment:
       EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
     labels:
@@ -501,10 +508,41 @@ services:
     secrets:
       - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: reader-api-wallet-password, target: /run/secrets/read-access/api_wallet_reader}
-      - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
 
+  wallet-read-access-consent:
+    <<: [*job, *hardened]
+    image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
+    # The wallet image has no shell: one service for each reader, which runs
+    # the program read-access directly.
+    entrypoint: ["/app/.venv/bin/read-access"]
+    command:
+      - apply
+      - --reader
+      - consent
+      - --user
+      - consent_wallet_reader
+      - --password-file
+      - /run/secrets/read-access/consent_wallet_reader
+      - --admin-user
+      - ${DB_ADMIN_USER}
+      - --admin-password-file
+      - /run/secrets/database/admin-password
+    environment:
+      EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
+    labels:
+      io.igrant.config-sha256.wallet-database-admin-config: ${CONFIG_SHA256_WALLET_DATABASE_ADMIN_CONFIG:?run make configs}
+    configs:
+      - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
+    secrets:
+      - {source: database-admin-password, target: /run/secrets/database/admin-password}
+      - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
+    depends_on:
+      wallet-migrate: {condition: service_completed_successfully}
   # --- api core, webhook handler and auth gateway ------------------------------
 
   # The auth gateway: the only public entry of the API. It checks each
@@ -568,7 +606,7 @@ services:
       - {source: smtp-password, target: /run/secrets/igrant-api/smtp-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # start-webhook-api: the NATS consumers of the webhooks and of the
@@ -606,7 +644,7 @@ services:
       - {source: smtp-password, target: /run/secrets/igrant-api/smtp-password}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # --- Consent --------------------------------------------------------------------
@@ -637,7 +675,7 @@ services:
     depends_on:
       consent-migrate: {condition: service_completed_successfully}
       api-read-access-consent: {condition: service_completed_successfully}
-      wallet-read-access: {condition: service_completed_successfully}
+      wallet-read-access-consent: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # --- Organisation wallet: config, service, worker and clock roles of one image
