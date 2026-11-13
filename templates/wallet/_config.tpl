@@ -116,6 +116,17 @@ not start with it. The clock has no wallet_unit section. */ -}}
 {{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
 {{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
 {{- end -}}
+{{- /* The guard of the builds of the wallet apps (read by the config and
+service processes): wallet_unit.development_apps_allowed only when the
+installer sets true or false; empty gives no key (the default of the
+wallet, false). A text, also "true", stops the render: the wallet reads a
+boolean. */ -}}
+{{- $developmentApps := dig "developmentAppsAllowed" "" $w.walletUnit -}}
+{{- if kindIs "bool" $developmentApps -}}
+{{- $_ := set $walletUnit "development_apps_allowed" $developmentApps -}}
+{{- else if and (not (kindIs "invalid" $developmentApps)) (ne (toString $developmentApps) "") -}}
+{{- fail (printf "organisationWallet.walletUnit.developmentAppsAllowed (%q) must be true, false or empty: give a boolean, not a text" (toString $developmentApps)) -}}
+{{- end -}}
 {{- $p := $w.walletUnit.playIntegrity -}}
 {{- $digests := $w.walletUnit.androidSigningCertificateDigests -}}
 {{- if and $p.existingSecret (not $digests) -}}

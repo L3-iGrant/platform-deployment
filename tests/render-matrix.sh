@@ -797,6 +797,45 @@ guard "organisation wallet unit limit over 100" "organisationWallet.walletUnit.o
   --set organisationWallet.walletUnit.organisationWalletUnitsMax=101
 guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" "${shamir[@]}" \
   --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=50
+# The guard of the builds of the wallet apps: no key by default (the
+# default of the wallet, false), the boolean when it is set, in the files with the
+# wallet_unit section (service, config, workers), never in the clock file;
+# a text, also "true", stops the render.
+development_apps() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "$@" \
+      --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+data = yaml.safe_load(sys.stdin)["data"]
+roles = 0
+for key, text in sorted(data.items()):
+    if not key.endswith(".yaml"):
+        continue
+    config = yaml.safe_load(text) or {}
+    unit = config.get("wallet_unit")
+    if key == "clock.yaml":
+        if unit is not None:
+            print("clock.yaml has wallet_unit")
+        continue
+    roles += 1
+    got = (unit or {}).get("development_apps_allowed", "absent")
+    if got != expect:
+        print(f"{key}: development_apps_allowed {got!r}, expected {expect!r}")
+if roles < 3:
+    print("files with wallet_unit:", roles)
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "development apps: $name"
+  else
+    bad "development apps: $name: $(printf '%s' "$problems" | head -c 300)"
+  fi
+}
+development_apps "no key by default" '"absent"'
+development_apps "true in the service, config and worker files" 'true' --set organisationWallet.walletUnit.developmentAppsAllowed=true
+development_apps "false in the service, config and worker files" 'false' --set organisationWallet.walletUnit.developmentAppsAllowed=false
+guard "development apps as a text" "organisationWallet.walletUnit.developmentAppsAllowed" "${shamir[@]}" --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
+guard "development apps as a text without the schema" 'organisationWallet.walletUnit.developmentAppsAllowed ("true") must be true, false or empty' "${shamir[@]}" --skip-schema-validation --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
 # The services of the installation (docs/components.md): Installation.services
 # in the api, webhook and gateway files only when a service is not
 # installed, and no upstream, object, read user, trust, NATS user or Valkey
