@@ -33,7 +33,11 @@
 #    (values.schema.json and the template guards).
 # 5. Rendered settings, also the services of the installation
 #    (tests/check_installation.py): all services, consent or the wallet of
-#    another release, without consent, without the wallet.
+#    another release, without consent, without the wallet; the JetStream
+#    store of NATS (store-check, and the fsGroupChangePolicy of a rollout
+#    from a NATS StatefulSet in the cluster, which a copy of the chart reads
+#    from a file in place of lookup); global.podSecurityContext and
+#    global.containerSecurityContext under the values of the components.
 # 6. Install and upgrade: tests/check_hook_order.py replays the steps of
 #    Helm on the renders (each render of the matrix is an install; installs
 #    with consent, the api or the organisation wallet off; an upgrade with
@@ -42,6 +46,10 @@
 #    wallet). The Secrets that are hooks keep the values of
 #    the earlier Secrets (a copy of the chart reads them from a file in place
 #    of lookup).
+# 7. The security settings of each container of each render:
+#    tests/check_security.py and the Pod Security Standard "restricted" with
+#    the upstream library (tests/psscheck; needs Go), and both checks refuse
+#    the mutants of tests/values/pss-mutant.yaml and tests/fixtures/pss-pods.yaml.
 #
 # Usage: tests/render-matrix.sh [--keep <dir>]
 #   --keep <dir>: keep the renders in <dir> (else a temporary folder).
@@ -428,11 +436,32 @@ guard "existing platform operator organisation id with a space" "organisationId"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
 guard "worker /tmp size not a size" "organisationWallet.workers.tmp.sizeLimit" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10GB
 guard "worker /tmp without a size" "sizeLimit is required" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=null
-# A path that a process writes must be on an emptyDir of its pod (the root
-# file system is read-only).
-guard "wallet log file outside /tmp" "has log_file.path \"/var/log/ows.log\"" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+# A folder that a process writes must be on an emptyDir of its pod (the
+# root file system is read-only).
 guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" "${shamir[@]}" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
-guard "api log file outside /tmp" "api.extraConfig sets Log.file.path" "${shamir[@]}" --set api.extraConfig.Log.file.path=/var/log/api.log
+# No log file (ow.noLogFile): each process logs to stdout, also with a path
+# on an emptyDir (a rotating file of 100 MB x 6 fills the /tmp of 64Mi).
+no_log_file="the chart writes no log file in Kubernetes"
+guard "no wallet log file" "organisationWallet.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
+guard "no wallet log file outside /tmp" "organisationWallet.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+guard "no api log file" "api.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" "${shamir[@]}" --set api.extraConfig.Log.file.path=/tmp/api.log
+guard "no gateway log file" "gateway.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" "${shamir[@]}" --set gateway.extraConfig.Log.file.path=/tmp/gateway.log
+guard "no consent log file" "consent.extraConfig sets Log.file.path \"/tmp/consent.log\": $no_log_file" "${shamir[@]}" --set consent.extraConfig.Log.file.path=/tmp/consent.log
+# /tmp of the api (api.tmp, an emptyDir in memory): it holds one upload of
+# the largest body of the gateway above 32 MiB (the multipart parser of Go
+# writes such a file part whole to /tmp), and the memory request and /tmp
+# fit below the memory limit of the container (ow.api.checkTmp).
+guard "api /tmp below the file body limit of the gateway" "api.tmp.sizeLimit (64Mi, 67108864 bytes) is below the largest body that the gateway sends to the api (104857600 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.file=104857600
+guard "api /tmp below the default body limit of the gateway" "is below the largest body that the gateway sends to the api (67108865 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.default=67108865
+guard "api /tmp just below a body above 32 MiB" "api.tmp.sizeLimit (32Mi, 33554432 bytes) is below the largest body that the gateway sends to the api (33554433 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.file=33554433 --set api.tmp.sizeLimit=32Mi
+guard "api memory limit below the request and /tmp" "api.resources: the memory request (272Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (300Mi)" "${shamir[@]}" \
+  --set api.resources.limits.memory=300Mi
+guard "webhook memory limit below the request and /tmp" "api.webhook.resources: the memory request (32Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (90Mi)" "${shamir[@]}" \
+  --set api.webhook.resources.limits.memory=90Mi
+guard "api /tmp size not a size" "api.tmp.sizeLimit" "${shamir[@]}" --set api.tmp.sizeLimit=64MB
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -1198,7 +1227,13 @@ lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}
 # The /tmp folder of the workers (organisationWallet.workers.tmp): an
 # emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
 # size; the tmp of a group replaces the keys of workers.tmp.
-renders "wallet log file below /tmp" "path: /tmp/ows.log" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
+# /tmp of the api: an upload of 100 MiB with a /tmp of 100Mi (and the
+# memory limits for it); a body of 32 MiB stays in memory, so a small /tmp
+# is enough for it.
+renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=104857600 \
+  --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
+renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=33554432 \
+  --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
 renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
 renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
 renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
@@ -1216,8 +1251,8 @@ elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
 import sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
 expected = {
-    ("Deployment", "t-api"): {"/tmp": {"sizeLimit": "64Mi"}},
-    ("Deployment", "t-webhook"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-api"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-webhook"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-dashboard"): {"/tmp": {"sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-service"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-config"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
@@ -1236,6 +1271,12 @@ for (kind, name), paths in expected.items():
     volumes = {v["name"]: v for v in spec["volumes"]}
     for container in spec.get("initContainers", []) + spec["containers"]:
         mounts = {m["mountPath"]: m["name"] for m in container.get("volumeMounts", [])}
+        if name == "t-nats" and container["name"] == "store-check":
+            # The check of the store writes nothing: each mount is read-only.
+            writable = [m["mountPath"] for m in container.get("volumeMounts", []) if m.get("readOnly") is not True]
+            if writable or sorted(mounts) != ["/data", "/etc/nats-config"]:
+                print(f"{name}:store-check: mounts {sorted(mounts)}, writable {writable}")
+            continue
         for path, empty_dir in paths.items():
             if name == "t-nats" and container["name"] == "reloader" and path != "/var/run/nats":
                 continue
@@ -1248,6 +1289,181 @@ PY
 else
   bad "writable paths"
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+fi
+
+# The JetStream store of the bundled NATS: the user 65532, the init
+# container store-check (the script files/nats/store-check.sh in the
+# ConfigMap, the mounts read-only, before nats-server), and the
+# fsGroupChangePolicy of the rollout. A copy of the chart reads the NATS
+# StatefulSet "in the cluster" from the file live-nats.json in place of
+# lookup (ow.nats.liveStatefulSet): Always when it runs NATS as root (the
+# earlier release, or a rollback to it) or when its rollout is not
+# complete; else the value (OnRootMismatch). The notes of the copy (a
+# ConfigMap, as in section 3) tell the operator.
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
+    --show-only templates/nats/statefulset.yaml --show-only templates/nats/configmap.yaml > "$out/nats-store.yaml" 2> "$out/nats-store.err"; then
+  bad "NATS store: $(head -c 200 "$out/nats-store.err")"
+elif problems="$(python3 - "$out/nats-store.yaml" "$chart/files/nats/store-check.sh" <<'PY'
+import sys, yaml
+docs = {d["kind"]: d for d in yaml.safe_load_all(open(sys.argv[1])) if d}
+script = open(sys.argv[2]).read()
+spec = docs["StatefulSet"]["spec"]["template"]["spec"]
+context = spec["securityContext"]
+for key, value in (("runAsUser", 65532), ("runAsGroup", 65532), ("fsGroup", 65532), ("fsGroupChangePolicy", "OnRootMismatch")):
+    if context.get(key) != value:
+        print(f"the pod {key} is {context.get(key)!r}, not {value!r}")
+inits = spec.get("initContainers") or []
+if [c["name"] for c in inits] != ["store-check"]:
+    print(f"the init containers are {[c['name'] for c in inits]}, not [store-check]")
+else:
+    check = inits[0]
+    if check["command"] != ["/bin/sh", "/etc/nats-config/store-check.sh", "/data"]:
+        print(f"store-check runs {check['command']}")
+    if check["image"] != spec["containers"][0]["image"]:
+        print("store-check has not the image of nats")
+    mounts = {m["mountPath"]: m for m in check["volumeMounts"]}
+    if mounts.get("/data", {}).get("name") != "data" or mounts.get("/etc/nats-config", {}).get("name") != "config":
+        print(f"store-check mounts {sorted(mounts)}")
+    if any(m.get("readOnly") is not True for m in mounts.values()):
+        print("a mount of store-check is not read-only")
+if docs["ConfigMap"]["data"].get("store-check.sh", "").strip() != script.strip():
+    print("the ConfigMap has not files/nats/store-check.sh")
+if not docs["StatefulSet"]["spec"]["template"]["metadata"]["annotations"].get("checksum/store-check"):
+    print("no checksum of the store check")
+PY
+)" && [ -z "$problems" ]; then
+  ok "NATS store: the user 65532, OnRootMismatch, the init container store-check with the script of the chart, read-only"
+else
+  bad "NATS store: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+fi
+nats_chart="$out/nats-lookup-chart"
+rm -rf "$nats_chart"
+mkdir -p "$nats_chart"
+cp -R "$chart/Chart.yaml" "$chart/values.yaml" "$chart/values.schema.json" "$chart/templates" "$chart/files" "$chart/policies" "$nats_chart/"
+nats_lookup_line='{{- $live := lookup "apps/v1" "StatefulSet" $root.Release.Namespace (include "ow.name" (list $root "nats")) -}}'
+nats_stub_line='{{- $live := $root.Files.Get "live-nats.json" | fromJson -}}'
+{ printf '{{- define "test.notes" -}}\n'; cat "$chart/templates/NOTES.txt"; printf '\n{{- end }}\n'; } > "$nats_chart/templates/_test_notes.tpl"
+rm "$nats_chart/templates/NOTES.txt"
+printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes\ndata:\n  notes: |\n{{ include "test.notes" . | indent 4 }}\n' > "$nats_chart/templates/zz-test-notes.yaml"
+printf '{}' > "$nats_chart/live-nats.json"
+if [ "$(grep -c -F -- "$nats_lookup_line" "$nats_chart/templates/nats/_nats.tpl")" != 1 ]; then
+  bad "NATS store repair: ow.nats.liveStatefulSet has not the lookup line of the test"
+else
+  NATS_LOOKUP_LINE="$nats_lookup_line" NATS_STUB_LINE="$nats_stub_line" perl -pi -e 's/\Q$ENV{NATS_LOOKUP_LINE}\E/$ENV{NATS_STUB_LINE}/' "$nats_chart/templates/nats/_nats.tpl"
+  # live <case> <expected fsGroupChangePolicy> <text of the notes, or -> <JSON of the StatefulSet in the cluster> [helm args]
+  # -: the notes have no repair text.
+  live() {
+    local name="$1" policy="$2" note="$3" json="$4"; shift 4
+    local rendered got
+    printf '%s' "$json" > "$nats_chart/live-nats.json"
+    if ! rendered="$(helm template t "$nats_chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "$@" \
+        --show-only templates/nats/statefulset.yaml --show-only templates/zz-test-notes.yaml 2>&1)"; then
+      bad "NATS store repair, $name: $(printf '%s' "$rendered" | head -c 200)"
+      return
+    fi
+    printf '%s\n' "$rendered" > "$out/nats-live.yaml"
+    got="$(python3 -c '
+import sys, yaml
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if doc and doc["kind"] == "StatefulSet":
+        print(doc["spec"]["template"]["spec"]["securityContext"].get("fsGroupChangePolicy"))
+' "$out/nats-live.yaml")"
+    rm -f "$out/nats-live.yaml"
+    if [ "$got" != "$policy" ]; then
+      bad "NATS store repair, $name: fsGroupChangePolicy $got, not $policy"
+    elif [ "$note" != - ] && ! grep -q -F -- "$note" <<< "$rendered"; then
+      bad "NATS store repair, $name: the notes have not \"$note\""
+    elif [ "$note" = - ] && grep -q -F -- "This rollout gives the group" <<< "$rendered"; then
+      bad "NATS store repair, $name: the notes have the repair text"
+    else
+      ok "NATS store repair, $name: $policy"
+    fi
+  }
+  status_done='"status":{"observedGeneration":4,"currentRevision":"t-nats-1","updateRevision":"t-nats-1","replicas":3,"updatedReplicas":3}'
+  hardened='"template":{"spec":{"securityContext":{"runAsUser":65532,"fsGroup":65532},"containers":[{"name":"nats"},{"name":"reloader"}]}}'
+  repair_note="This rollout gives the group and the group rights to each file of the JetStream store again (fsGroupChangePolicy Always)"
+  live "install (no StatefulSet)" OnRootMismatch - '{}'
+  live "upgrade from the earlier release (NATS as root)" Always "$repair_note" \
+    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,\"template\":{\"spec\":{\"containers\":[{\"name\":\"nats\"}]}}},$status_done}"
+  live "roll forward after a rollback (container user 0)" Always "$repair_note" \
+    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,\"template\":{\"spec\":{\"securityContext\":{\"runAsUser\":65532},\"containers\":[{\"name\":\"nats\",\"securityContext\":{\"runAsUser\":0}}]}}},$status_done}"
+  live "upgrade of the release with non-root NATS" OnRootMismatch - \
+    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},$status_done}"
+  live "rollout not complete" Always "$repair_note" \
+    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},\"status\":{\"observedGeneration\":4,\"currentRevision\":\"t-nats-1\",\"updateRevision\":\"t-nats-2\",\"replicas\":3,\"updatedReplicas\":1}}"
+  live "rollout not seen by the controller" Always "$repair_note" \
+    "{\"metadata\":{\"generation\":5},\"spec\":{\"replicas\":3,$hardened},$status_done}"
+  live "Always of the values" Always "WARNING: nats.podSecurityContext.fsGroupChangePolicy is Always" \
+    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},$status_done}" --set nats.podSecurityContext.fsGroupChangePolicy=Always
+  printf '{}' > "$nats_chart/live-nats.json"
+fi
+
+# global.podSecurityContext and global.containerSecurityContext: each pod
+# and each container gets the keys that the component does not set (here
+# the SELinux options and the supplemental groups of a cluster); a key of
+# the component stays (runAsUser). The notes name each component whose own
+# value sets a global key (values.yaml: the jobs without their own value
+# use the value of the component).
+global_security=(--set-json 'global.podSecurityContext={"seLinuxOptions":{"level":"s0:c123,c456"},"supplementalGroups":[4321],"runAsUser":4242}'
+  --set-json 'global.containerSecurityContext={"seLinuxOptions":{"type":"container_t"}}')
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+    --set redis.metrics.enabled=true "${global_security[@]}" > "$out/global-security.yaml" 2> "$out/global-security.err"; then
+  bad "global security contexts: $(head -c 200 "$out/global-security.err")"
+elif problems="$(python3 - "$out/global-security.yaml" <<'PY'
+import sys, yaml
+pods = 0
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if not doc or doc.get("kind") not in ("Deployment", "StatefulSet", "Job"):
+        continue
+    pods += 1
+    spec = doc["spec"]["template"]["spec"]
+    name = f"{doc['kind']}/{doc['metadata']['name']}"
+    context = spec.get("securityContext") or {}
+    if context.get("seLinuxOptions") != {"level": "s0:c123,c456"} or context.get("supplementalGroups") != [4321]:
+        print(f"{name}: the pod has not the global keys: {context}")
+    if context.get("runAsUser") in (None, 4242):
+        print(f"{name}: runAsUser {context.get('runAsUser')} (the value of the component must stay)")
+    for container in spec.get("initContainers", []) + spec["containers"]:
+        container_context = container.get("securityContext") or {}
+        if container_context.get("seLinuxOptions") != {"type": "container_t"}:
+            print(f"{name}:{container['name']}: the container has not global.containerSecurityContext")
+        if container_context.get("readOnlyRootFilesystem") is not True:
+            print(f"{name}:{container['name']}: the container lost readOnlyRootFilesystem")
+if pods < 25:
+    print(f"only {pods} pod templates")
+PY
+)" && [ -z "$problems" ]; then
+  ok "global security contexts: under the values of each component, in each pod and container"
+else
+  bad "global security contexts: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+fi
+expected="$(python3 - "$chart/values.yaml" <<'PY'
+import sys, yaml
+values = yaml.safe_load(open(sys.argv[1]))
+paths = []
+for key, component in values.items():
+    if key == "global" or not isinstance(component, dict) or "podSecurityContext" not in component:
+        continue
+    if "runAsUser" in (component["podSecurityContext"] or {}):
+        paths.append(key)
+    # A part of the component with its own pods (the jobs: an empty value is
+    # the value of the component; the HSM signer manager).
+    for name, part in component.items():
+        if isinstance(part, dict) and "podSecurityContext" in part:
+            context = part["podSecurityContext"] or (component["podSecurityContext"] if name == "jobs" else {})
+            if "runAsUser" in (context or {}):
+                paths.append(f"{key}.{name}")
+print(f"global.podSecurityContext.runAsUser does not apply to {', '.join(sorted(paths))}: the podSecurityContext of each sets runAsUser")
+PY
+)"
+if ! text="$(helm template t "$nats_chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "${global_security[@]}" \
+    --show-only templates/zz-test-notes.yaml 2>&1)"; then
+  bad "global security contexts: notes: $(printf '%s' "$text" | head -c 200)"
+elif grep -q -F -- "$expected" <<< "$text" && ! grep -q -F "global.podSecurityContext.supplementalGroups" <<< "$text" \
+    && ! grep -q -F "global.podSecurityContext.seLinuxOptions" <<< "$text"; then
+  ok "global security contexts: the notes name each component that sets a global key"
+else
+  bad "global security contexts: the notes have not \"$expected\" (or they name a key that applies)"
 fi
 
 # --- 6. Install and upgrade --------------------------------------------------------
@@ -1448,10 +1664,22 @@ fi
 # Each container of each render of this test (the matrix, the other cases
 # above, and one render with the optional containers: the metrics exporter
 # of Valkey, the operator Jobs of the api, the /tmp volume claims of the
-# workers): a non-root user with a UID and a GID other than 0, no privilege
-# escalation, a read-only root file system, all capabilities dropped and
-# none added, not privileged, seccomp RuntimeDefault, no host namespace
-# (tests/check_security.py).
+# workers):
+# - tests/check_security.py: a non-root user with a UID and a GID other than
+#   0, no privilege escalation, a read-only root file system, all
+#   capabilities dropped and none added, not privileged, seccomp
+#   RuntimeDefault, no host namespace, and the SELinux, AppArmor, procMount
+#   and hostProcess rules of the Pod Security Standard;
+# - tests/psscheck: the Pod Security Standard "restricted" (latest, and
+#   v1.25, the lowest Kubernetes version of the chart) with the upstream
+#   library k8s.io/pod-security-admission, the code of the admission plugin.
+#   It must read the same count of containers as check_security.py. It
+#   needs Go (the version of tests/psscheck/go.mod) and the modules of
+#   go.sum.
+# Both checks must refuse a mutant of the values (tests/values/pss-mutant.yaml:
+# AppArmor Unconfined, SELinux spc_t, procMount Unmasked, hostProcess), and
+# each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container
+# and an AppArmor annotation, which the chart does not render).
 if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
     -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true \
     --set organisationWallet.workers.tmp.volume.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
@@ -1460,11 +1688,69 @@ if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml"
 fi
 renders_of_test=()
 while IFS= read -r -d '' file; do renders_of_test+=("$file"); done < <(find "$out" -maxdepth 1 -type f -name '*.yaml' -print0 | sort -z)
+containers_of_test=""
 if result="$(python3 "$here/check_security.py" "${renders_of_test[@]}" 2>&1)"; then
   ok "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
+  containers_of_test="$(printf '%s' "$result" | tail -n 1 | sed -n 's/^[0-9]* renders, \([0-9]*\) containers, 0 problems$/\1/p')"
 else
   bad "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
   printf '%s\n' "$result" | head -20
+fi
+mkdir -p "$out/tools" "$out/mutants"
+psscheck="$(cd "$out/tools" && pwd)/psscheck"
+if ! command -v go > /dev/null; then
+  bad "Pod Security Standard (upstream): Go is not installed; tests/psscheck needs the Go of tests/psscheck/go.mod"
+elif ! build="$(cd "$here/psscheck" && GOFLAGS=-mod=readonly go build -o "$psscheck" . 2>&1)"; then
+  bad "Pod Security Standard (upstream): go build of tests/psscheck: $(printf '%s' "$build" | head -c 300)"
+else
+  if [ -z "$containers_of_test" ]; then
+    bad "Pod Security Standard (upstream): no count of the containers from check_security.py"
+  else
+    for version in latest v1.25; do
+      if result="$("$psscheck" -level restricted -version "$version" -containers "$containers_of_test" "${renders_of_test[@]}" 2>&1)"; then
+        ok "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
+      else
+        bad "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
+        printf '%s\n' "$result" | head -20
+      fi
+    done
+  fi
+  # The mutant of the values: both checks refuse it, each for the four
+  # fields.
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$here/values/pss-mutant.yaml" \
+      > "$out/mutants/pss-mutant.yaml" 2> "$out/mutants/pss-mutant.err"; then
+    bad "security checks refuse the mutant: helm template: $(head -c 200 "$out/mutants/pss-mutant.err")"
+  else
+    python_result="$(python3 "$here/check_security.py" "$out/mutants/pss-mutant.yaml" 2>&1)" && python_status=0 || python_status=$?
+    upstream_result="$("$psscheck" -level restricted -version latest "$out/mutants/pss-mutant.yaml" 2>&1)" && upstream_status=0 || upstream_status=$?
+    missing=""
+    for text in "appArmorProfile.type is 'Unconfined'" "seLinuxOptions.type is 'spc_t'" "procMount is 'Unmasked'" "windowsOptions.hostProcess true"; do
+      grep -q -F -- "$text" <<< "$python_result" || missing="$missing check_security.py: $text;"
+    done
+    for text in "forbidden AppArmor profile" "set forbidden securityContext.seLinuxOptions" "must not set securityContext.procMount" "must not set securityContext.windowsOptions.hostProcess=true"; do
+      grep -q -F -- "$text" <<< "$upstream_result" || missing="$missing psscheck: $text;"
+    done
+    if [ "$python_status" = 1 ] && [ "$upstream_status" = 1 ] && [ -z "$missing" ]; then
+      ok "security checks refuse the mutant (AppArmor, SELinux, procMount, hostProcess): both"
+    else
+      bad "security checks refuse the mutant: exit $python_status and $upstream_status;$missing"
+    fi
+  fi
+  # The pods of the fixture: each bad pod is named by both checks, the good
+  # pod by none.
+  python_result="$(python3 "$here/check_security.py" "$here/fixtures/pss-pods.yaml" 2>&1)" || true
+  upstream_result="$("$psscheck" -level restricted -version latest "$here/fixtures/pss-pods.yaml" 2>&1)" || true
+  problems=""
+  for pod in bad-apparmor-field bad-apparmor-annotation bad-selinux bad-procmount bad-hostprocess bad-ephemeral; do
+    grep -q -F -- "Pod/$pod" <<< "$python_result" || problems="$problems check_security.py misses $pod;"
+    grep -q -F -- "Pod/$pod" <<< "$upstream_result" || problems="$problems psscheck misses $pod;"
+  done
+  grep -q -F -- "Pod/good" <<< "$python_result$upstream_result" && problems="$problems a check refuses the good pod;"
+  if [ -z "$problems" ]; then
+    ok "security checks: each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container and an AppArmor annotation), not the good pod"
+  else
+    bad "security checks of tests/fixtures/pss-pods.yaml:$problems"
+  fi
 fi
 
 echo "result: ${pass} passed, ${fail} failed"
