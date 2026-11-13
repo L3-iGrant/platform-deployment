@@ -571,17 +571,35 @@ The chart and the images of this release belong together. Set `global.imageTag` 
 
 Before step 2:
 
-1. Your values files: when you set `podSecurityContext` or `containerSecurityContext` of `api`, `organisationWallet`, `enterpriseDashboard`, `nats` or `database`, Helm merges your keys into the new defaults. Remove a key that sets the user 0 or adds a capability. `global.podSecurityContext` and `global.containerSecurityContext` no longer apply to these components: each has its own default now. On OpenShift, set `runAsUser`, `runAsGroup` and `fsGroup` of each component to `null`.
-2. A policy engine of your cluster (for example Kyverno or Gatekeeper) that refuses sysctls: allow `net.ipv4.ip_unprivileged_port_start` for the pods of the api, the webhook handler, consent and the dashboard. Kubernetes allows it without a kubelet setting (a safe sysctl).
-3. The workers: the `/tmp` of each worker pod is an `emptyDir` on the disk of the node with `organisationWallet.workers.tmp.sizeLimit` (default `10Gi`). With an audit bucket, the monthly export writes one month of one data scope two times to it. Check that the nodes have the free ephemeral storage, or use a volume (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
+1. Your values files: when you set `podSecurityContext` or `containerSecurityContext` of `api`, `organisationWallet`, `enterpriseDashboard`, `nats` or `database`, Helm merges your keys into the new defaults. Remove a key that sets the user 0 or adds a capability. `global.podSecurityContext` and `global.containerSecurityContext` apply to each pod and container under the default of the component: a key that the component also sets (for example `runAsUser`) does not apply to it, and the notes of the release name such keys (see [Security settings of the containers](security-context.md#change-the-settings)). On OpenShift, set `runAsUser`, `runAsGroup` and `fsGroup` of each component to `null`.
+2. Log files: the chart writes no log file. Remove `Log.file` from `api.extraConfig`, `gateway.extraConfig` and `consent.extraConfig`, and `log_file` from `organisationWallet.extraConfig`: else the render stops with "the chart writes no log file in Kubernetes". The processes log to stdout and stderr (the container log).
+3. Uploads above 32 MiB: when you raised `gateway.proxy.maxBodyBytes.file` or `.default` above 32 MiB, set `api.tmp.sizeLimit` to at least that size and raise the memory limits of the api and of the webhook handler by the same size (see [Security settings of the containers](security-context.md#the-tmp-folder-of-the-api)). Else the render stops.
+4. A policy engine of your cluster (for example Kyverno or Gatekeeper) that refuses sysctls: allow `net.ipv4.ip_unprivileged_port_start` for the pods of the api, the webhook handler, consent and the dashboard. Kubernetes allows it without a kubelet setting (a safe sysctl).
+5. The workers: the `/tmp` of each worker pod is an `emptyDir` on the disk of the node with `organisationWallet.workers.tmp.sizeLimit` (default `10Gi`). With an audit bucket, the monthly export writes one month of one data scope two times to it. Check that the nodes have the free ephemeral storage, or use a volume (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
 
 During step 3:
 
 - The bundled PostgreSQL restarts as the user `postgres` (999) with its data volume. The files of the data folder belong to this user already (the earlier image changed to it at the start).
-- The bundled NATS pods restart one at a time as the user 1000. At the first start, the kubelet gives the group 1000 (`fsGroup`) and the group write right to each file of the JetStream store, which root wrote. A large store takes more time to start. Later starts do not change the files (`fsGroupChangePolicy: OnRootMismatch`).
+- The bundled NATS pods restart one at a time as the user 65532. The NATS StatefulSet in the cluster runs NATS as root, so the chart gives `fsGroupChangePolicy: Always` for this rollout (the notes say so): at the first start, the kubelet gives the group 65532 (`fsGroup`) and the group rights to each file of the JetStream store, which root wrote. A large store takes more time to start (see [Security settings of the containers](security-context.md#the-jetstream-store)). Then the init container `store-check` checks that NATS can read and write each file of the store.
+- The next upgrade after this one gives `fsGroupChangePolicy: OnRootMismatch` again (the value of `nats.podSecurityContext`): one more rolling restart of NATS. Later starts do not change the files.
 
-Check after step 3: all pods are `Running` and `READY`, and `kubectl -n ows get pod ows-nats-0 -o jsonpath='{.spec.securityContext.runAsUser}'` shows `1000`.
+Check after step 3: all pods are `Running` and `READY`, and `kubectl -n ows get pod ows-nats-0 -o jsonpath='{.spec.securityContext.runAsUser}'` shows `65532`.
 
-Docker Compose: the one-shot service `api-read-access` is now two services, `api-read-access-wallet` and `api-read-access-consent` (the api image has no shell). Change your scripts and your monitoring that name `api-read-access`, and run `docker compose up -d --remove-orphans` (see the [Compose README](../docker-compose/README.md#change-to-the-release-with-the-non-root-services)).
+Docker Compose: each service now runs with a read-only root file system. The configuration files of the components are files of `docker-compose/generated/`: `make configs` writes them from the templates of `compose.configs.yaml` with the values of `.env` (Python 3.8 or later on the host). Upgrade with `make secrets` and `make up`, not `docker compose up`: `make up` writes the files, sets `HOST_UID` and `HOST_GID` for `openbao-init`, and removes the container of the earlier service `api-read-access` (`--remove-orphans`; the api image has no shell, so it is now two services, `api-read-access-wallet` and `api-read-access-consent`: change your scripts and your monitoring that name it). NATS runs as the user 65532: at the first start, `nats-data-owner` gives each file of the volume `nats-data` with another owner (root, or the user 1000) to 65532; later starts write nothing. OpenBao (100:1000) and Valkey (999:1000) run as the users of their images, the owners of their volumes: their data does not change (see the [Compose README](../docker-compose/README.md#change-to-the-release-with-the-non-root-services)).
 
-When you go back to an earlier release (see [Rollback](#rollback)), use its chart and its images together. The NATS store keeps the group 1000: NATS of the earlier release runs as root and can use it.
+### A rollback to a release before the non-root containers
+
+When you go back to an earlier release (see [Rollback](#rollback)), use its chart and its images together. NATS of the earlier release runs as root and can use the store: the files keep the group 65532. Each file that it writes has the mode 0600 and the owner root, so NATS of this release cannot read it, and the kubelet does not change it again by itself (the top folder of the volume has the group already).
+
+The roll forward to this release:
+
+- With `helm upgrade` (step 3): the chart finds the NATS StatefulSet of the earlier release in the cluster and gives `fsGroupChangePolicy: Always` for this rollout, as at the first upgrade. Nothing more to do.
+- With another path, for example `helm rollback` to a revision of this release, or a tool that renders the chart without a cluster: the init container `store-check` stops each NATS pod whose store has such a file, with the message "cannot read and write this entry of the JetStream store". No stream is lost: the files stay as they are, and with 3 servers the other two keep the JetStream cluster. Then do one upgrade with the repair, and one more without it:
+
+  ```bash
+  helm upgrade ows ./platform-deployment -n ows <your values files> \
+    --set nats.podSecurityContext.fsGroupChangePolicy=Always --wait --timeout 30m
+  helm upgrade ows ./platform-deployment -n ows <your values files> --wait --timeout 15m
+  ```
+
+  The first upgrade changes each file of the store at each start of a NATS pod; the second gives `OnRootMismatch` again.
