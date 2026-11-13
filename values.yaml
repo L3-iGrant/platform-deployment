@@ -11,7 +11,7 @@
 
 global:
   # -- Registry of the iGrant.io images. An image with its own registry ignores it.
-  imageRegistry: europe-docker.pkg.dev/jenkins-189019/igrantio
+  imageRegistry: europe-docker.pkg.dev/jenkins-189019/igrant-customers
   # -- Required: the release tag of your version (the render stops without it).
   imageTag: ""
   # -- Image pull Secrets of all pods (create them before the install).

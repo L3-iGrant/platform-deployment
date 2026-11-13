@@ -21,6 +21,7 @@ The tests of the chart. They run without a cluster.
 - the network policies of each render with `network-policies.yaml`: `tests/check_network_matrix.py` applies the policies to the pods of the release as Kubernetes does. It proves that each connection of `policies/network-matrix.yaml` is allowed, that every other connection between the pods of the release is denied, and that each forbidden pair is denied;
 - your own Valkey or Redis (`redis-external.yaml`, with two database choices, with and without network policies): no Valkey object, the `redis` section of each wallet role, the Secrets of the users, and egress to your servers only from the wallet roles and the gateway;
 - the minimal profile (`minimal.yaml`, with and without network policies): one replica of each service except the worker groups, and 3 Valkey pods;
+- the image pull Secrets of `global.imagePullSecrets` in every pod spec: the Deployments, StatefulSets, Jobs and hooks, also the optional ones;
 - the certificate of the bundled Valkey: the names of the pods, of the Sentinel Service, and 127.0.0.1;
 - the Valkey metrics: the exporter in each pod (the user `metrics`, no CONFIG, only the CA), its ACL user and password, the ServiceMonitor, the scrape port with network policies, none of them by default, and their guards;
 - the wallet's separate groups (`redis.state`, `redis.cache`): the endpoints `state` and `cache` in each wallet file, the CA of a group in the wallet pods and not in the gateway, egress to `networkPolicy.externalRedis` only from the wallet roles, and the guards;

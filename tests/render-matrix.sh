@@ -1643,6 +1643,47 @@ else
   bad "global security contexts: the notes have not \"$expected\" (or they name a key that applies)"
 fi
 
+# The image pull Secrets of the values (global.imagePullSecrets) in every
+# pod spec: the Deployments, StatefulSets, Jobs and hooks, also the optional
+# ones (the operator Job of the api, the metrics exporter of Valkey).
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+    --set redis.metrics.enabled=true --set-json 'global.imagePullSecrets=["igrant-registry-creds","mirror-creds"]' \
+    > "$out/pull-secrets.yaml" 2> "$out/pull-secrets.err"; then
+  bad "image pull Secrets: helm template: $(head -c 200 "$out/pull-secrets.err")"
+else
+  result="$(python3 - "$out/pull-secrets.yaml" <<'PY'
+import sys, yaml
+want = {"igrant-registry-creds", "mirror-creds"}
+pods = managers = 0
+for d in yaml.safe_load_all(open(sys.argv[1])):
+    if not d:
+        continue
+    kind = d["kind"]
+    if kind in ("Deployment", "StatefulSet", "DaemonSet", "Job"):
+        spec = d["spec"]["template"]["spec"]
+    elif kind == "CronJob":
+        spec = d["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+    elif kind == "Pod":
+        spec = d["spec"]
+    else:
+        continue
+    pods += 1
+    names = {s["name"] for s in spec.get("imagePullSecrets") or []}
+    if not want <= names:
+        print(f"{kind} {d['metadata']['name']} has the image pull Secrets {sorted(names)}")
+if pods < 20:
+    print(f"only {pods} pod specs")
+print(f"pods={pods}")
+PY
+)"
+  if [ "$(printf '%s\n' "$result" | grep -c -v '^pods=')" = 0 ]; then
+    ok "image pull Secrets in every pod spec ($(printf '%s' "$result" | sed -n 's/^pods=//p') pod specs)"
+  else
+    bad "image pull Secrets in every pod spec"
+    printf '%s\n' "$result" | grep -v '^pods=' | sed 's/^/  /' | head -10
+  fi
+fi
+
 # --- 6. Install and upgrade --------------------------------------------------------
 # The order of the hooks (tests/check_hook_order.py, no cluster): the Jobs
 # of the hooks find their Secrets, ConfigMaps, databases and users when they

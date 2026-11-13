@@ -61,7 +61,7 @@ For HSM support and larger installations, see the chart pages [Connect your on-p
   only: `make configs` uses it to write the configuration files, see
   [Configuration files](#configuration-files)).
 - Access to the iGrant.io image registry (`IMAGE_REGISTRY`, default
-  `europe-docker.pkg.dev/jenkins-189019/igrantio`) and the tag of your
+  `europe-docker.pkg.dev/jenkins-189019/igrant-customers`) and the tag of your
   release (`PLATFORM_TAG`). Ask support@igrant.io for a key file
   (`key.json`) or for access for your Google account.
 - Your own reverse proxy with TLS in front of the three host ports, and a
@@ -331,7 +331,7 @@ your shell overrides the value in `.env`.
 | `FEATURES_ENFORCE` | `true` | The gateway's feature gate (`Features.enforce`). With `true`, the gateway refuses a route of a product feature that is off for the credential's organisation (`403`, `feature_disabled`). With `false`, it refuses no route for a feature: use this only in an emergency. |
 | `MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS` | empty (100) | The installation limits: the maximum number of organisations (`Limits.maxOrganisations` of the api, 1 to 100) and of organisation wallet units of the wallet provider (`wallet_unit.organisation_wallet_units_max` of the wallet, 1 to 100). Creating one more gets `409` (`organisation_limit_reached` from the api, `organisation_wallet_unit.limit_reached` from the wallet); existing organisations and organisation wallets stay. When empty, the configuration files get no key, and the api and the wallet use their default, 100. Set a value only with the images of the release that has these limits: an api or a wallet of an earlier release does not know the key and does not start. The maximum is 100. An installation with more than 100 organisations or organisation wallets keeps them, but cannot create a new organisation. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. With an empty `SMTP_HOST`, no e-mail is sent. |
-| `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the Helm chart's default). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
+| `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrant-customers` | The registry of the iGrant.io images (the Helm chart's default). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
 | `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
 | `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
 

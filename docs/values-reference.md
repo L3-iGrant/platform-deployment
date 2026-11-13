@@ -12,7 +12,7 @@ This page lists every value of the chart, what it does and its default.
 | --- | --- | --- |
 | `fullnameOverride` | The prefix of the object names (`<fullname>`). Empty: the release name | `""` |
 | `nameOverride` | The value of the label `app.kubernetes.io/name`, which is also in the selectors. Kubernetes does not let an upgrade change a selector | `""` (the chart name `platform`) |
-| `global.imageRegistry` | Registry of the iGrant.io images. An image with its own `registry` does not use it (see [Images](images.md)) | `europe-docker.pkg.dev/jenkins-189019/igrantio` |
+| `global.imageRegistry` | Registry of the iGrant.io images. An image with its own `registry` does not use it (see [Images](images.md)) | `europe-docker.pkg.dev/jenkins-189019/igrant-customers` |
 | `global.imageTag` | The release tag of the iGrant.io images (`api`, `gateway`, `consent-management-backend`, `eudi-wallet`, `dashboard`, `openbao`). Required: the render stops with `global.imageTag is required: the release tag of your version`. An image with its own `tag` does not use it | `""` |
 | `global.imagePullSecrets` | Image pull Secrets of all pods. Create them before the install (see [Install](install.md#step-1-the-namespace-and-the-registry-access)) | `[igrant-registry-creds]` |
 | `global.imagePullPolicy` | `imagePullPolicy` of all images; `<component>.image.pullPolicy` overrides it | `IfNotPresent` |

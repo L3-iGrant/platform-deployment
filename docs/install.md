@@ -8,6 +8,29 @@ The examples use the release name `ows`, the namespace `ows` and a clone of this
 
 ## Step 1: the namespace and the registry access
 
+The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access and for the release tag of your version (for example `2026.10.1`). You get a service account key file, `service-account-key.json`.
+
+On your workstation, check the access and let Docker pull the api image for step 2. Use one of the two ways.
+
+With the Google Cloud CLI:
+
+```bash
+gcloud auth activate-service-account --key-file=service-account-key.json
+gcloud auth configure-docker europe-docker.pkg.dev
+gcloud artifacts docker tags list europe-docker.pkg.dev/jenkins-189019/igrant-customers/api
+```
+
+The last command lists the release tags of the api image: your tag must be in the list. `gcloud auth activate-service-account` makes the key the active gcloud account; switch back later with `gcloud config set account <your account>`.
+
+Without the Google Cloud CLI, with Docker only:
+
+```bash
+docker login -u _json_key --password-stdin https://europe-docker.pkg.dev < service-account-key.json
+docker pull europe-docker.pkg.dev/jenkins-189019/igrant-customers/api:<release tag>
+```
+
+In both cases, the cluster pulls with an image pull Secret that you create from the same key file. The chart gives it to every pod, also to the Jobs and hooks: `global.imagePullSecrets` (default `[igrant-registry-creds]`). If you give the Secret another name, set `global.imagePullSecrets` in `my-site.yaml` in step 3.
+
 ```bash
 kubectl create namespace ows
 kubectl -n ows create secret docker-registry igrant-registry-creds \
@@ -19,14 +42,13 @@ kubectl -n ows create secret docker-registry igrant-registry-creds \
 
 Check: `kubectl -n ows get secret igrant-registry-creds` shows the Secret with the type `kubernetes.io/dockerconfigjson`.
 
-Ask iGrant.io for the release tag of your version (for example `2026.10.1`). You set it as `global.imageTag` in step 3; the render stops without it. If you use your own mirror, also set `global.imageRegistry` and `global.imagePullSecrets`.
+You set the release tag as `global.imageTag` in step 3; the render stops without it. If you use your own mirror, also set `global.imageRegistry` and `global.imagePullSecrets`.
 
 ## Step 2: the keys
 
-`scripts/make-keys.sh` uses the api image to create every key of the platform: the API keys, the gateway key, the keys that sign each service's NATS messages, and one NATS user per process. Run it on a trusted workstation that can pull the api image:
+`scripts/make-keys.sh` uses the api image to create every key of the platform: the API keys, the gateway key, the keys that sign each service's NATS messages, and one NATS user per process. Run it on a trusted workstation that can pull the api image (step 1):
 
 ```bash
-docker login -u _json_key --password-stdin https://europe-docker.pkg.dev < service-account-key.json
 ./platform-deployment/scripts/make-keys.sh --release ows --namespace ows --tag <release tag> --out ./ows-keys
 kubectl apply -n ows -f ./ows-keys/secrets.yaml
 ```
