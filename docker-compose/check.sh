@@ -4,7 +4,9 @@
 # pulled: "docker compose config" needs no Docker daemon.
 #
 #   ./check.sh  (make check): your installation: the values of .env, the
-#               files in secrets/ and docker compose config for DB_ENGINE.
+#               files in secrets/, the configuration files in generated/
+#               (the render of the current .env) and docker compose config
+#               for DB_ENGINE. make check runs make configs first.
 #
 # It prints no secret value.
 # =============================================================================
@@ -204,6 +206,21 @@ check_installation() {
     bad "no password file for the database roles${missing_roles}: run make secrets"
   fi
 
+  # The configuration files in generated/: the render of the templates of
+  # compose.configs.yaml with the current values (make configs). After a
+  # change of .env, docker compose would start the services with the
+  # earlier files.
+  local render
+  if ! command -v python3 > /dev/null; then
+    bad "python3 is required (make configs writes the configuration files with it)"
+    finish ""
+  elif render="$(python3 -I ./render-configs.py --check 2>&1)"; then
+    ok "configuration files: generated/ is the render of the current values"
+  else
+    bad "${render#configs: }: run make configs (make check and make up do it)"
+    finish ""
+  fi
+
   # docker compose config for the engine of the installation.
   local json
   if ! json="$(docker compose config --format json 2>&1)"; then
@@ -237,6 +254,7 @@ check_installation() {
     if [ ! -f "$file" ]; then
       bad "missing: ${file#"$PWD"/}"
       missing=1
+      [[ $file != */generated/* ]] || bad "run make configs"
     elif [ ! -s "$file" ] && [[ $file != */secrets/api/smtp-password ]]; then
       bad "empty: ${file#"$PWD"/}"
       missing=1

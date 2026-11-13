@@ -28,6 +28,15 @@ INIT_FILE="${OPENBAO_STATE_DIR}/init.json"
 say() { printf 'openbao-init: %s\n' "$*"; }
 fail() { printf 'openbao-init: ERROR: %s\n' "$*" >&2; exit 1; }
 
+# The state folder is your folder secrets/openbao/ (mode 0700). This service
+# runs as your user without capabilities: make sets HOST_UID and HOST_GID.
+# Another user (for example root, when HOST_UID is not set) cannot open it.
+# The test of the owner and a list of the folder, not "test -r": the test of
+# BusyBox gives true to root for each file.
+if [ ! -O "$OPENBAO_STATE_DIR" ] || ! ls "$OPENBAO_STATE_DIR" > /dev/null 2>&1; then
+  fail "the user $(id -u):$(id -g) cannot open secrets/openbao/: start the platform with make up (it sets HOST_UID and HOST_GID to your user), or set HOST_UID and HOST_GID in your shell"
+fi
+
 # The exit code of "bao status": 0 unsealed, 2 sealed (or not initialised),
 # 1 no answer.
 status_code() {

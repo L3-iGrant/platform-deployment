@@ -11,7 +11,7 @@ export HOST_GID := $(shell id -g)
 CHART_DIR ?= ..
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets check up status logs down reset platform-operator platform-set-operator \
+.PHONY: help env secrets configs check up status logs down reset platform-operator platform-set-operator \
 	platform-grant-admin platform-status admin organisation db-shell openbao-status nats-config
 
 help: ## Show the targets
@@ -28,11 +28,20 @@ env: ## Step 2: make .env from .env.example (keeps a .env that exists)
 secrets: ## Step 3: make all secrets and keys in secrets/ (keeps the files that exist; prints no value)
 	@./secrets.sh
 
-check: ## Step 4: check .env, secrets/ and the Compose files (no container starts)
+# The configuration files of the components: Compose writes the values of
+# .env into the templates of compose.configs.yaml, and render-configs.py
+# writes them to generated/ (a service with a read-only root file system
+# takes a config only from a file). make check and make up run it first.
+configs: ## Write the configuration files of the components to generated/ from .env (make check and make up do it)
+	@COMPOSE="$(COMPOSE)" python3 -I ./render-configs.py
+
+check: configs ## Step 4: write the configuration files, then check .env, secrets/ and the Compose files (no container starts)
 	@./check.sh
 
+# --remove-orphans: a service that a new release removes (for example the
+# api-read-access of an earlier release) does not stay.
 up: check ## Step 5: start the platform (after make check)
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --remove-orphans
 	@echo "up: started. make status shows the state of the services."
 
 status: ## Show the state of the services (also the one-shot services that stopped)
