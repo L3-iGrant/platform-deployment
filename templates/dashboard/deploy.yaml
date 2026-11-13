@@ -9,6 +9,7 @@ metadata:
     {{- include "ow.labels" (list . "dashboard") | nindent 4 }}
 spec:
   replicas: {{ $d.replicas }}
+  {{- include "ow.rollout" $d | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list . "dashboard") | nindent 6 }}
@@ -18,9 +19,15 @@ spec:
         {{- include "ow.labels" (list . "dashboard") | nindent 8 }}
         {{- include "ow.netpol.labels" (list . "dashboard" list) | nindent 8 }}
       annotations:
-        {{- include "ow.checksum" (list "config" $d.configuration) | nindent 8 }}
+        {{- include "ow.checksum" (list "config" (include "ow.dashboard.config" .)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $d) | nindent 6 }}
+      {{- if lt ($d.terminationGracePeriodSeconds | int) (add ($d.preStopSeconds | int) 10) }}
+      {{- fail (printf "enterpriseDashboard.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + 10: nginx needs the time to end the requests in progress" $d.terminationGracePeriodSeconds $d.preStopSeconds) }}
+      {{- end }}
+      # The stop: the preStop sleep, then SIGQUIT (the stop signal of the
+      # image): nginx ends the requests in progress, then stops.
+      terminationGracePeriodSeconds: {{ $d.terminationGracePeriodSeconds | int }}
       containers:
         - name: dashboard
           image: {{ include "ow.image" (list . $d.image) }}
@@ -28,11 +35,19 @@ spec:
           ports:
             - name: http
               containerPort: 80
+          {{- with $d.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $d.readinessProbe }}
           readinessProbe:
-            httpGet:
-              path: /
-              port: http
-            periodSeconds: 10
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $d.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "ow.preStopSleep" $d.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list . $d) | nindent 10 }}
           {{- with $d.resources }}
           resources:

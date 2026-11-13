@@ -110,9 +110,8 @@ writes its purge date, the workers purge. */ -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- /* The most organisation wallet units of the installation
 (organisationWallet.walletUnit.organisationWalletUnitsMax): the key only
-when the installer sets a value; without it the wallet uses its default. A
-wallet of a release before the input limits does not know the key and does
-not start with it. The clock has no wallet_unit section. */ -}}
+when the installer sets a value; without it the wallet uses its default. The
+clock has no wallet_unit section. */ -}}
 {{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
 {{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
 {{- end -}}
@@ -313,6 +312,19 @@ gateway ends quiet streams. */ -}}
 builds the public image URIs of the routes that the gateway sends to it. */ -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
+{{- /* The private hosts that the SSRF guard of the wallet allows
+(organisationWallet.ssrf.allowedPrivate): only with entries. The wallet
+refuses an entry that covers loopback, link-local or the cloud metadata
+addresses; the render stops for the plain cases. */ -}}
+{{- with $w.ssrf.allowedPrivate -}}
+{{- range $entry := . -}}
+{{- $text := lower (toString $entry) -}}
+{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
+{{- fail (printf "organisationWallet.ssrf.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
+{{- end -}}
 {{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
 {{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
 {{- $config | toYaml -}}
@@ -320,11 +332,13 @@ builds the public image URIs of the routes that the gateway sends to it. */ -}}
 
 {{/*
 Render guard of the writable paths of one wallet file: the root file system
-of the wallet pods is read-only, so each path that a process writes
-(log_file.path, server.metrics_directory, worker.state_directory; also from
+of the wallet pods is read-only, so each folder that a process writes
+(server.metrics_directory, worker.state_directory; also from
 organisationWallet.extraConfig) must be on an emptyDir of its pod: /tmp of
 each pod, /run/ows-server of the service and config pods, /run/ows-worker of
-the worker pods. Call with (list <config> "<role>"). Output: nothing.
+the worker pods. No role has a log file (log_file.path, ow.noLogFile): the
+processes log to stdout. Call with (list <config> "<role>"). Output:
+nothing.
 */}}
 {{- define "ow.wallet.checkWritablePaths" -}}
 {{- $config := index . 0 -}}
@@ -332,8 +346,8 @@ the worker pods. Call with (list <config> "<role>"). Output: nothing.
 {{- $mounts := list "/tmp" -}}
 {{- if has $role (list "service" "config") -}}{{- $mounts = append $mounts (include "ow.wallet.serverMetricsDir" .) -}}{{- end -}}
 {{- if eq $role "worker" -}}{{- $mounts = append $mounts (include "ow.wallet.workerStateDir" .) -}}{{- end -}}
+{{- include "ow.noLogFile" (list "organisationWallet.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
 {{- $paths := dict
-    "log_file.path" (((get $config "log_file") | default dict).path | default "" | toString)
     "server.metrics_directory" (((get $config "server") | default dict).metrics_directory | default "" | toString)
     "worker.state_directory" (((get $config "worker") | default dict).state_directory | default "" | toString) -}}
 {{- range $key, $path := $paths -}}

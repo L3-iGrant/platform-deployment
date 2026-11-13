@@ -9,6 +9,7 @@ metadata:
     {{- include "ow.labels" (list . "consent") | nindent 4 }}
 spec:
   replicas: {{ $c.replicas }}
+  {{- include "ow.rollout" $c | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list . "consent") | nindent 6 }}
@@ -26,8 +27,7 @@ spec:
       # Consent does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.checkStopBudget" (list "consent.server" $c.server 5 20) }}
-      # The stop budget: drain + graceful shutdown + margin; no
-      # preStop, the process drains itself.
+      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $c.server.terminationGracePeriodSeconds | int }}
       containers:
         - name: consent
@@ -51,27 +51,19 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- with $c.startupProbe }}
           startupProbe:
-            httpGet:
-              path: /healthz
-              port: admin
-            periodSeconds: 2
-            timeoutSeconds: 1
-            failureThreshold: 30
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $c.readinessProbe }}
           readinessProbe:
-            httpGet:
-              path: /readyz
-              port: admin
-            periodSeconds: 5
-            timeoutSeconds: 2
-            failureThreshold: 2
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $c.livenessProbe }}
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: admin
-            periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 3
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- include "ow.preStopSleep" $c.server.preStopSeconds | nindent 10 }}
           volumeMounts:
             {{- include "ow.consent.volumeMounts" . | nindent 12 }}
             - name: tmp

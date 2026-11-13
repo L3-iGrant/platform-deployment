@@ -1,0 +1,14 @@
+# The templates of the configuration files (compose.configs.yaml) with the
+# values of the platform. "make configs" (render-configs.py) reads this file
+# with "docker compose config"; nothing of it starts. The values files are
+# the same as in docker-compose.yaml, in the same order, so that Compose
+# writes the same values as for the services (a value in your shell has
+# priority). docker-compose.yaml also loads generated/configs.env, the hash
+# of each file that this render writes.
+name: igrant-platform-render
+
+include:
+  - path: compose.configs.yaml
+    env_file:
+      - .env
+      - config/engine/${DB_ENGINE:-postgresql}.env

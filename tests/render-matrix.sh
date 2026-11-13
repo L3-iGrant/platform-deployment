@@ -33,7 +33,9 @@
 #    (values.schema.json and the template guards).
 # 5. Rendered settings, also the services of the installation
 #    (tests/check_installation.py): all services, consent or the wallet of
-#    another release, without consent, without the wallet.
+#    another release, without consent, without the wallet; the user and
+#    the group of the JetStream store of NATS; global.podSecurityContext and
+#    global.containerSecurityContext under the values of the components.
 # 6. Install and upgrade: tests/check_hook_order.py replays the steps of
 #    Helm on the renders (each render of the matrix is an install; installs
 #    with consent, the api or the organisation wallet off; an upgrade with
@@ -42,6 +44,10 @@
 #    wallet). The Secrets that are hooks keep the values of
 #    the earlier Secrets (a copy of the chart reads them from a file in place
 #    of lookup).
+# 7. The security settings of each container of each render:
+#    tests/check_security.py and the Pod Security Standard "restricted" with
+#    the upstream library (tests/psscheck; needs Go), and both checks refuse
+#    the mutants of tests/values/pss-mutant.yaml and tests/fixtures/pss-pods.yaml.
 #
 # Usage: tests/render-matrix.sh [--keep <dir>]
 #   --keep <dir>: keep the renders in <dir> (else a temporary folder).
@@ -331,22 +337,33 @@ notes() {
 }
 notes "shamir" "bao operator unseal" -f "$examples/openbao-shamir.yaml"
 notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$examples/openbao-external.yaml"
-notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of an external server" "set max_connections of your server to at least 226" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
+# A guard against SSRF that an extraConfig turns off: a warning in the
+# notes that names the role; none by default.
+notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: consent" "WARNING: the SSRF guard of consent is off (consent.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'consent.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
+if helm template ows "$notes_chart" --namespace ows -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
+    --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+  bad "notes: an SSRF warning with the guards on"
+else
+  ok "notes: no SSRF warning with the guards on"
+fi
+notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
+notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
-notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
-  --set-json 'api.webhooks.events=["consent.allowed"]'
 notes "without the wallet" "The organisation wallet is not installed" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
 # The readers of the views of a service that is not installed open no
 # connection: without the wallet, the api core and the webhook handler have
-# no reader pool, and consent one reader (67 = 1 x 15 + 1 x 10 + 2 x 10 +
-# 2 x 11); without consent, the wallet config role has one reader (221 less
-# 2 x 16 of consent and 10).
-notes "connection budget without the wallet" "can open 67 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
-notes "connection budget without consent" "can open 179 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
+# no reader pool, and consent one reader (73 = 1 x 16 + 1 x 11 + 2 x 11 +
+# 2 x 12, with the health connection of each pod); without consent, the
+# wallet config role has one reader (227 less 2 x 17 of consent and 10).
+notes "connection budget without the wallet" "can open 73 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
+notes "connection budget without consent" "can open 183 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 
 # --- 4. The render guards --------------------------------------------------------
 # Each case: the values that must stop the render, and a text of the message.
@@ -393,23 +410,13 @@ guard "external OpenBao without password" "openbao.wallet.existingSecret" --set 
 guard "exposure type" "exposure.type" "${shamir[@]}" --set exposure.type=route
 guard "gatewayAPI without parentRefs" "parentRefs" "${shamir[@]}" --set exposure.type=gatewayAPI
 guard "host" "api.host" "${shamir[@]}" --set api.host=
-guard "removed file store value" "Additional property storage" "${shamir[@]}" --set organisationWallet.storage.gcsBucket=files
 guard "client address" "clientAddress" "${shamir[@]}" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
 guard "unknown value" "Additional property" "${shamir[@]}" --set postgres.enabled=true
 guard "privacy dashboard network policy without Kubernetes API address" "networkPolicy.egress.profiles.kubeApi" "${shamir[@]}" --set networkPolicy.enabled=true --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards
 guard "sslMode verify-full without CA" "needs the CA of the server" "${shamir[@]}" -f "$examples/postgresql-external.yaml" --set database.tls.caSecret= --set database.tls.sslMode=verify-full
-admin=(--set api.jobs.registerAdmin.enabled=true --set api.jobs.registerAdmin.email=admin@example.org --set api.jobs.registerAdmin.passwordSecret=s)
-guard "first admin without name" "api.jobs.registerAdmin.name" "${shamir[@]}" "${admin[@]}" --set-string api.jobs.registerAdmin.phone=+4612345678
-guard "first admin without phone" "api.jobs.registerAdmin.phone" "${shamir[@]}" "${admin[@]}" --set api.jobs.registerAdmin.name=Admin
 guard "OpenBao update strategy" "openbao.updateStrategy" "${shamir[@]}" --set openbao.updateStrategy=Sometimes
-organisation=(--set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.adminEmail=admin@example.org --set api.jobs.createOrganisation.type=Technology)
-guard "first organisation without name" "api.jobs.createOrganisation.name" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy
-guard "first organisation without policy URL" "api.jobs.createOrganisation.policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm
-guard "first organisation without admin" "api.jobs.createOrganisation.adminEmail" "${shamir[@]}" --set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy --set api.jobs.createOrganisation.type=Technology
-guard "first organisation policy URL not http" "policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=ftp://example.org/privacy
-# The platform operator Jobs: the required values, one path at a time, an
-# http or https policy URL, an organisation id without other characters,
-# and no password as a value (the password is a file of a Secret).
+# The platform operator Job: the required values, an http or https policy
+# URL, and no password as a value (the password is a file of a Secret).
 bootstrap=(-f "$here/values/operator-jobs-bootstrap.yaml")
 guard "platform operator without admin e-mail" "api.jobs.bootstrapPlatform.adminEmail" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminEmail=
 guard "platform operator without admin name" "api.jobs.bootstrapPlatform.adminName" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminName=
@@ -420,19 +427,47 @@ guard "platform operator without location" "api.jobs.bootstrapPlatform.location"
 guard "platform operator without policy URL" "api.jobs.bootstrapPlatform.policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=
 guard "platform operator policy URL not http" "policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=ftp://example.org/privacy
 guard "platform operator password as a value" "Additional property password" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.password=not-a-value
-guard "platform operator with the first admin Job" "api.jobs.bootstrapPlatform cannot run with api.jobs.registerAdmin" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-old.yaml"
-guard "platform operator of a new and of an existing installation" "enable only one of them" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-upgrade.yaml"
-guard "existing platform operator without organisation id" "api.jobs.platformOperator.organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.organisationId=
-guard "existing platform operator without admin e-mail" "api.jobs.platformOperator.adminEmail" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.adminEmail=
-guard "existing platform operator organisation id with a space" "organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set-string "api.jobs.platformOperator.organisationId=6731 --allow-last"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
-guard "worker /tmp size not a size" "organisationWallet.workers.tmp.sizeLimit" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10GB
-guard "worker /tmp without a size" "sizeLimit is required" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=null
-# A path that a process writes must be on an emptyDir of its pod (the root
-# file system is read-only).
-guard "wallet log file outside /tmp" "has log_file.path \"/var/log/ows.log\"" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+# A folder that a process writes must be on an emptyDir of its pod (the
+# root file system is read-only).
 guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" "${shamir[@]}" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
-guard "api log file outside /tmp" "api.extraConfig sets Log.file.path" "${shamir[@]}" --set api.extraConfig.Log.file.path=/var/log/api.log
+# No log file (ow.noLogFile): each process logs to stdout, also with a path
+# on an emptyDir (a rotating file of 100 MB x 6 fills the /tmp of 64Mi).
+no_log_file="the chart writes no log file in Kubernetes"
+guard "no wallet log file" "organisationWallet.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
+guard "no wallet log file outside /tmp" "organisationWallet.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
+guard "no api log file" "api.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" "${shamir[@]}" --set api.extraConfig.Log.file.path=/tmp/api.log
+guard "no gateway log file" "gateway.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" "${shamir[@]}" --set gateway.extraConfig.Log.file.path=/tmp/gateway.log
+guard "no consent log file" "consent.extraConfig sets Log.file.path \"/tmp/consent.log\": $no_log_file" "${shamir[@]}" --set consent.extraConfig.Log.file.path=/tmp/consent.log
+# /tmp of the api (api.tmp, an emptyDir in memory): it holds one upload of
+# the largest body of the gateway above 32 MiB (the multipart parser of Go
+# writes such a file part whole to /tmp), and the memory request and /tmp
+# fit below the memory limit of the container (ow.api.checkTmp).
+guard "api /tmp below the file body limit of the gateway" "api.tmp.sizeLimit (64Mi, 67108864 bytes) is below the largest body that the gateway sends to the api (104857600 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.file=104857600
+guard "api /tmp below the default body limit of the gateway" "is below the largest body that the gateway sends to the api (67108865 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.default=67108865
+guard "api /tmp just below a body above 32 MiB" "api.tmp.sizeLimit (32Mi, 33554432 bytes) is below the largest body that the gateway sends to the api (33554433 bytes" "${shamir[@]}" \
+  --set gateway.proxy.maxBodyBytes.file=33554433 --set api.tmp.sizeLimit=32Mi
+guard "api memory limit below the request and /tmp" "api.resources: the memory request (272Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (300Mi)" "${shamir[@]}" \
+  --set api.resources.limits.memory=300Mi
+guard "webhook memory limit below the request and /tmp" "api.webhook.resources: the memory request (32Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (90Mi)" "${shamir[@]}" \
+  --set api.webhook.resources.limits.memory=90Mi
+guard "api /tmp size not a size" "api.tmp.sizeLimit" "${shamir[@]}" --set api.tmp.sizeLimit=64MB
+# The stop of the HTTP pods (ow.checkStopBudget, the dashboard guard and the
+# schema): the grace period covers the preStop sleep and the stop of the
+# server; a preStop of 0 seconds and a strategy other than RollingUpdate
+# stop the render.
+guard "gateway stop budget with the preStop" "gateway.terminationGracePeriodSeconds (35) must be at least preStopSeconds (10) + drainSeconds (5) + gracefulShutdownSeconds (20) + 5 = 40" "${shamir[@]}" \
+  --set gateway.terminationGracePeriodSeconds=35
+guard "api stop budget with the preStop" "api.server.terminationGracePeriodSeconds (40) must be at least preStopSeconds (15)" "${shamir[@]}" --set api.server.preStopSeconds=15
+guard "consent stop budget with the preStop" "consent.server.terminationGracePeriodSeconds (39)" "${shamir[@]}" --set consent.server.terminationGracePeriodSeconds=39
+guard "dashboard stop budget" "enterpriseDashboard.terminationGracePeriodSeconds (15) must be at least preStopSeconds (10) + 10" "${shamir[@]}" \
+  --set enterpriseDashboard.terminationGracePeriodSeconds=15
+guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gracefulShutdownSeconds (20) + backgroundShutdownSeconds (10) = 50 must be below terminationGracePeriodSeconds (45)" "${shamir[@]}" \
+  --set organisationWallet.server.preStopSeconds=20
+guard "preStop of 0 seconds" "preStopSeconds" "${shamir[@]}" --set api.server.preStopSeconds=0
+guard "rollout strategy Recreate" "strategy" "${shamir[@]}" --set gateway.strategy.type=Recreate
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -468,23 +503,10 @@ renders "OpenBao OnDelete removes rollingUpdate" "rollingUpdate: null" "${shamir
 renders "OpenBao RollingUpdate when set" "type: RollingUpdate" "${shamir[@]}" --set openbao.updateStrategy=RollingUpdate
 # The wallet reads a key just after it makes it: no read on a standby.
 renders "OpenBao standbys forward reads" "disable_standby_reads = true" "${shamir[@]}"
-# The organisation of the first admin: the e-mail and the type of the other
-# two Jobs, and the Job tries again until they exist.
-first=(--set api.jobs.registerAdmin.enabled=true --set api.jobs.registerAdmin.email=admin@example.org --set api.jobs.registerAdmin.name=Admin
-  --set-string api.jobs.registerAdmin.phone=+4612345678 --set api.jobs.registerAdmin.passwordSecret=s
-  --set api.jobs.createOrganisationType.enabled=true --set api.jobs.createOrganisationType.type=Technology
-  --set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm
-  --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy)
-renders "first organisation admin from registerAdmin" "--admin-email=admin@example.org" "${shamir[@]}" "${first[@]}"
-renders "first organisation type from createOrganisationType" "--type=Technology" "${shamir[@]}" "${first[@]}"
-renders "first organisation Job" "name: t-api-create-organisation-1" "${shamir[@]}" "${first[@]}"
 # The operator Jobs of the api (tests/check_operator_jobs.py): none by
-# default; the three Jobs of the earlier releases render as before (their
-# values file of the earlier install page); the platform operator of a new
-# installation (onboard bootstrap-platform) and of an installation that
-# exists (platform set-operator, then platform grant-admin). The password is
-# a file of its own Secret, never an argument, a variable or a ConfigMap
-# value.
+# default; the platform operator of a new installation (onboard
+# bootstrap-platform). The password is a file of its own Secret, never an
+# argument, a variable or a ConfigMap value.
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result
@@ -498,9 +520,7 @@ operator_jobs() {
   fi
 }
 operator_jobs none
-operator_jobs old -f "$here/values/operator-jobs-old.yaml"
 operator_jobs bootstrap -f "$here/values/operator-jobs-bootstrap.yaml"
-operator_jobs operator -f "$here/values/operator-jobs-upgrade.yaml"
 # The feature gate of the gateway (Features.enforce): on by default, off
 # with gateway.features.enforce false, and gateway.extraConfig still wins.
 renders "feature gate on by default" "enforce: true" "${shamir[@]}"
@@ -508,26 +528,19 @@ renders "feature gate off" "enforce: false" "${shamir[@]}" --set gateway.feature
 lacks "feature gate off has no enforce true" "enforce: true" "${shamir[@]}" --set gateway.features.enforce=false
 renders "feature gate off with extraConfig" "enforce: false" "${shamir[@]}" --set gateway.extraConfig.Features.enforce=false
 # The webhook event types: the effective features of each organisation
-# select them, so the api files have no Webhooks.events. A values file of an
-# earlier release that sets api.webhooks.events still renders (the schema
-# accepts the value for one release), the files do not have it, and the
-# notes tell to remove it.
-events='api.webhooks.events=["consent.allowed","data.delete.initiated"]'
+# select them, so the api files have no Webhooks.events, and the schema
+# refuses the value.
 renders "webhook delivery retention of the api files" "DeliveryRetentionDays: 10" "${shamir[@]}" --show-only templates/api/configmap.yaml
 lacks "no webhook event types in the api files" "consent.allowed" "${shamir[@]}" --show-only templates/api/configmap.yaml
-lacks "api.webhooks.events of an earlier values file is not rendered" "consent.allowed" "${shamir[@]}" --set-json "$events" --show-only templates/api/configmap.yaml
+guard "no api.webhooks.events" "api.webhooks" "${shamir[@]}" --set-json 'api.webhooks.events=["consent.allowed"]'
 # The API core publishes the deletion of an organisation (contract/v2 E10).
 renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"' "${shamir[@]}"
 # The key store providers and the EU trusted list check of the wallet.
 renders "EU trusted list check on by default" "eu_lotl_url: https://ec.europa.eu/tools/lotl/eu-lotl.xml" "${shamir[@]}"
 renders "EU trusted list check off" "eu_lotl_url: null" "${shamir[@]}" --set organisationWallet.trustList.euLotlUrl=
-# The refresh of the list trust sources (trust_sources.*); the shared trust
-# list lookup service is gone (no lookup_url, no lookup token file).
+# The refresh of the list trust sources (trust_sources.*).
 renders "trust sources refresh defaults" "refresh_max_interval_seconds: 86400" "${shamir[@]}"
 renders "trust sources stale grace" "stale_grace_seconds: 3600" "${shamir[@]}" --set organisationWallet.trustSources.staleGraceSeconds=3600
-lacks "no trust list lookup service" "lookup_url" "${shamir[@]}"
-lacks "no trust list lookup token" "trust-list-lookup-token" "${shamir[@]}"
-guard "removed trust list lookup value" "Additional property lookupUrl" "${shamir[@]}" --set organisationWallet.trustList.lookupUrl=https://trustlist.example.org/lookup
 guard "trust sources refresh interval too short" "refreshMinIntervalSeconds" "${shamir[@]}" --set organisationWallet.trustSources.refreshMinIntervalSeconds=10
 renders "added key store provider" "logo_url: https://example.org/qtsp.png" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"example-qtsp","category":"qtsp","type":"csc","name":"Example QTSP","protection":"provider","qualified":true,"logoUrl":"https://example.org/qtsp.png","region":"SE","order":30}]'
 guard "key store provider category" "category" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"x","category":"cloud","type":"csc","name":"X","protection":"provider"}]'
@@ -603,8 +616,7 @@ PY
   fi
 }
 # The Play Integrity keys of the wallet (wallet_unit.play_integrity): only
-# the service file names them and only the service pods mount them; the
-# service account of the earlier releases is gone.
+# the service file names them and only the service pods mount them.
 play_integrity() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -650,8 +662,6 @@ play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decrypti
   --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
 guard "Play Integrity keys without the certificate digest" "androidSigningCertificateDigests needs the SHA-256" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
 guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" "${shamir[@]}" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
-guard "the Play Integrity digest value is gone" "certificateSha256Digests" "${shamir[@]}" --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}"
-guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
 # The App IDs of the iOS wallet apps (wallet_unit.app_attest.app_ids): only
 # the service file names them (the WIA and key attestation requests).
 app_attest() {
@@ -950,11 +960,6 @@ renders "local backend openbao by default" "local_backend: openbao" "${shamir[@]
 renders "wallet database name of 43 characters" "user: w234567890123456789012345678901234567890123_launcher_app" "${shamir[@]}" --set database.databases.wallet.name=w234567890123456789012345678901234567890123
 # The WIA pool refill is an actor of the workers, not a NATS event.
 lacks "no WIA pool refill event" "ows.wia_pool.refill_requested" "${shamir[@]}"
-# The scheduler is gone (organisation-wallet-suite removed it): no object, user or value of it.
-lacks "no scheduler" "scheduler" "${shamir[@]}" -f "$examples/networkpolicy.yaml"
-guard "no scheduler value" "Additional property scheduler" "${shamir[@]}" --set organisationWallet.scheduler.replicas=1
-guard "no NATS user of the scheduler" "Additional property walletScheduler" "${shamir[@]}" --set nats.auth.users.walletScheduler.nkey=UTESTWALLETSCHEDULER
-guard "no egress profiles of the scheduler" 'networkPolicy.egress.roles.wallet-scheduler: "wallet-scheduler" is not a network role' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-scheduler=["internet"]'
 # A value of database.postgresql.parameters wins over a log parameter of
 # database.postgresql.logDdlAndConnections: one -c for each name.
 renders "server parameter wins over a database log parameter" '"log_statement=all"' "${shamir[@]}" --set database.postgresql.parameters.log_statement=all
@@ -986,6 +991,21 @@ renders "one worker group: its configuration key" "worker-all.yaml: |" "${shamir
 lacks "one worker group: no Deployment of the default groups" "name: t-wallet-worker-main" "${shamir[@]}" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" "${shamir[@]}" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
 renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+# The SSRF allow list of the wallet (organisationWallet.ssrf.allowedPrivate):
+# no key by default (an image without it gets no new key); the entries in
+# each wallet file; the render stops for a loopback or metadata network and
+# for an entry that is no host name, address or CIDR.
+lacks "no SSRF allow list by default" "ssrf_protection" "${shamir[@]}" --show-only templates/wallet/configmap.yaml
+renders "the SSRF allow list in the wallet files" "allowed_private:" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
+guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
+guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
+guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
+# The alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh
+# runs them with promtool): none by default, only with the ServiceMonitor.
+lacks "no PrometheusRule by default" "kind: PrometheusRule" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+renders "PrometheusRule of the wallet: the stopped audit exports are critical" "alert: AuditExportStopped" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
+renders "PrometheusRule of the wallet: the labels for the rule selector" "release: kube-prometheus" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
+guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" "${shamir[@]}" --set organisationWallet.prometheusRule.enabled=true
 # The servers (service and config): a headless Service of the port metrics
 # (9190) and the job wallet-server; the ServiceMonitor names the jobs with
 # the label metrics.igrant.io/job.
@@ -1020,7 +1040,137 @@ renders "scrape of the workers and the clock with network policies" "port: healt
   --show-only templates/networkpolicy/policies.yaml
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --show-only templates/networkpolicy/policies.yaml
+# DNS servers outside the pod network (networkPolicy.dns.cidrs): an ipBlock
+# next to the DNS pods in the DNS policy; none by default.
+dns_policy() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc["metadata"]["name"].endswith("netpol-dns"):
+        peers = doc["spec"]["egress"][0]["to"]
+        if peers[0].get("podSelector", {}).get("matchLabels") != {"k8s-app": "kube-dns"}:
+            print("the DNS pods are not the first peer:", peers[0])
+        blocks = [peer["ipBlock"]["cidr"] for peer in peers if "ipBlock" in peer]
+        if blocks != expect:
+            print("ipBlocks", blocks, "expected", expect)
+        break
+else:
+    print("no DNS policy")
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "DNS policy: $name"
+  else
+    bad "DNS policy: $name: $(printf '%s' "$problems" | head -c 300)"
+  fi
+}
+dns_policy "the DNS pods only by default" '[]'
+dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.20.10/32"]' --set-json 'networkPolicy.dns.cidrs=["169.254.20.10/32"]'
+# The egress to the public internet (the conformance with other vendors):
+# 0.0.0.0/0 and ::/0, each with the excepts of its family (also of
+# networkPolicy.clusterCidrs); the wallet roles reach any port by default.
+# IPv6: no multicast, and in the NAT64 prefix 64:ff9b::/96 only the images
+# of the IPv4 ranges that are never public: a public IPv4 vendor through
+# NAT64 (an IPv6-only cluster with DNS64) stays open, the NAT64 images of a
+# private, loopback or metadata address are closed. No IPv4-mapped address
+# (the API server refuses it).
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+    --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
+import sys, yaml
+import ipaddress
+want = {"0.0.0.0/0": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"],
+        "::/0": ["fc00::/7", "fe80::/10", "ff00::/8", "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112",
+                 "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104", "fd00:10::/56"]}
+# address: open (True) or closed (False) in each internet profile
+probes = {"93.184.215.14": True, "2001:db8:ffff::1": True, "64:ff9b::5db8:d70e": True, "64:ff9b::808:808": True,
+          "64:ff9b::a00:1": False, "64:ff9b::ac1f:ffff": False, "64:ff9b::c0a8:101": False, "64:ff9b::6440:1": False,
+          "64:ff9b::a9fe:a9fe": False, "64:ff9b::7f00:1": False, "64:ff9b::1": False, "ff02::1": False,
+          "fd00:10::5": False, "fe80::1": False, "10.1.2.3": False, "169.254.169.254": False}
+def is_open(blocks, address):
+    address = ipaddress.ip_address(address)
+    return any(address in ipaddress.ip_network(cidr) and not any(address in ipaddress.ip_network(e) for e in (excepts or []))
+               for cidr, excepts in blocks.items() if ipaddress.ip_network(cidr).version == address.version)
+seen, roles = {}, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] in ("t-netpol-egress-profile-internet", "t-netpol-egress-profile-internet-any-port"):
+        blocks = {peer["ipBlock"]["cidr"]: peer["ipBlock"].get("except") for peer in doc["spec"]["egress"][0]["to"]}
+        if blocks != want:
+            print(doc["metadata"]["name"], blocks)
+        for address, expect in probes.items():
+            if is_open(blocks, address) != expect:
+                print(doc["metadata"]["name"], address, "open" if expect else "closed", "expected")
+        mapped = [e for c in blocks.values() for e in (c or []) if ipaddress.ip_network(e).version == 6 and ipaddress.ip_network(e).network_address.ipv4_mapped]
+        if mapped:
+            print(doc["metadata"]["name"], "IPv4-mapped excepts", mapped)
+        seen[doc["metadata"]["name"]] = doc["spec"]["egress"][0].get("ports")
+    labels = (((doc.get("spec") or {}).get("template") or {}).get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-internet-any-port") == "true":
+        roles.add(labels["netpol.igrant.io/role"])
+if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
+    print("internet-any-port has ports", seen.get("t-netpol-egress-profile-internet-any-port"))
+if sorted(roles) != ["api", "consent", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
+    print("roles with any port", sorted(roles))
+' 2>&1)" && [ -z "$problems" ]; then
+  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family (NAT64: only the never-public images); any port for the api, the webhook handler, consent and the wallet roles"
+else
+  bad "the internet profiles: $(printf '%s' "$problems" | head -c 400)"
+fi
+# The egress profile platform (the public hosts of this platform): the pods
+# of networkPolicy.ingressController are always a target; the wallet roles
+# have it by default, the other roles do not.
+platform_profile() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+policy, labelled = None, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "t-netpol-egress-profile-platform":
+        policy = doc
+    template = (doc.get("spec") or {}).get("template") or {}
+    labels = (template.get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-platform") == "true":
+        labelled.add(labels["netpol.igrant.io/role"])
+if policy is None:
+    sys.exit("no platform policy")
+rule = policy["spec"]["egress"][0]
+if rule["to"] != expect["to"]:
+    print("targets", rule["to"])
+if [p["port"] for p in rule["ports"]] != expect["ports"]:
+    print("ports", rule["ports"])
+if sorted(labelled) != expect["roles"]:
+    print("roles with the profile", sorted(labelled))
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "platform profile: $name"
+  else
+    bad "platform profile: $name: $(printf '%s' "$problems" | head -c 400)"
+  fi
+}
+ingress_nginx='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}, "podSelector": {}}'
+platform_profile "the ingress controller on 80 and 443, the wallet roles" \
+  "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
+platform_profile "a load balancer address, other ports, also the webhook handler" \
+  "{\"to\": [{\"ipBlock\": {\"cidr\": \"192.0.2.80/32\"}}, $ingress_nginx], \"ports\": [8000, 8443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\", \"webhook\"]}" \
+  --set-json 'networkPolicy.egress.profiles.platform={"cidrs":["192.0.2.80/32"],"ports":[8000,8443]}' \
+  --set-json 'networkPolicy.egress.roles.webhook=["internet-any-port","platform"]'
+guard "no platform profile for the clock" 'the egress profile "platform" is not allowed for the network role "wallet-clock"' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-clock=["platform"]'
 
+# NATS 2.14 (pinned by digest); the render stops for 2.15 and later (the
+# acks of the format v2 and the permissions of the format v1); the routes
+# of a NATS cluster use mutual TLS (verify).
+renders "NATS 2.14.10 by digest" "image: docker.io/library/nats@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e" "${shamir[@]}"
+guard "NATS 2.15 (the acks of the format v2)" "NATS 2.15 and later send the JetStream acks on subjects of the format v2" "${shamir[@]}" --set nats.image.tag=2.15.3-alpine
+guard "NATS 3" "NATS 2.15 and later send the JetStream acks" "${shamir[@]}" --set nats.image.tag=3.0.0
+renders "NATS with an own tag without a version" "nats.conf" "${shamir[@]}" --set nats.image.tag=mirror --set nats.image.digest=
+renders "the routes of NATS with mutual TLS" "verify: true" "${shamir[@]}" --set nats.replicas=3 --show-only templates/nats/configmap.yaml
 # The bundled NATS (nats.tls, nats.tlsCa).
 guard "NATS CA of an external NATS with the bundled NATS" "nats.tlsCa is the CA of an external NATS" "${shamir[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
 renders "NATS with own certificate" "secretName: my-nats-tls" "${shamir[@]}" --set nats.tls.existingSecret=my-nats-tls --show-only templates/nats/statefulset.yaml
@@ -1052,12 +1202,12 @@ guard "worker threads above the largest pool of the wallet" "organisationWallet.
 # The connection budget (docs/database.md, "Connection budget"): the pools
 # of the release, with the most pods of each Deployment, and the hooks fit
 # in max_connections of the bundled server less its reserved connections.
-renders "connection budget at the limit of the bundled server" "max_connections=229" "${shamir[@]}" --set database.postgresql.parameters.max_connections=229
-guard "connection budget one over the limit" "can open 221 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=228
+renders "connection budget at the limit of the bundled server" "max_connections=235" "${shamir[@]}" --set database.postgresql.parameters.max_connections=235
+guard "connection budget one over the limit" "can open 227 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=234
 guard "connection budget counts the reserved connections" "less the 13 reserved connections" "${shamir[@]}" \
-  --set database.postgresql.parameters.max_connections=229 --set-string database.postgresql.parameters.reserved_connections=10
+  --set database.postgresql.parameters.max_connections=235 --set-string database.postgresql.parameters.reserved_connections=10
 guard "connection budget counts the replicas" "wallet config 3 x 36" "${shamir[@]}" --set organisationWallet.config.replicas=3 \
-  --set database.postgresql.parameters.max_connections=229
+  --set database.postgresql.parameters.max_connections=235
 renders "no connection budget check with an external server" "kind: StatefulSet" "${shamir[@]}" -f "$examples/postgresql-external.yaml" --set api.replicas=20
 # The connection pooler (database.pooler): the wallet files of the
 # processes with sessions name it, and the budget counts its server
@@ -1113,6 +1263,30 @@ guard "redis user name of the bundled Valkey" 'redis.users.gateway.username "sen
 guard "redis unknown value" "Additional property" "${shamir[@]}" --set redis.cluster=true
 guard "redis client timeout" "redis.client.timeoutSeconds" "${shamir[@]}" --set redis.client.timeoutSeconds=0
 guard "redis replica wait" "redis.client.replicaWaitMilliseconds" "${shamir[@]}" --set redis.client.replicaWaitMilliseconds=20000
+# The replica wait is at most half of the timeout, in whole milliseconds
+# (the exact rule of the wallet: timeout_ms =
+# round(timeoutSeconds x 1000), refused when 2 x wait > timeout_ms). The
+# vectors of the wallet, also timeouts whose float product is not exact
+# (2.01 x 1000 / 2 = 1004.9999999999999): each renders, and +1 ms stops.
+# A timeout with more than 3 decimals stops (the schema, and the template
+# without it). Not without the wallet (only the wallet reads the wait).
+replica_wait() {
+  local seconds="$1" wait="$2" limit="$3"
+  renders "redis replica wait $wait ms with $seconds s" "replica_wait_milliseconds: $wait" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$wait" --show-only templates/wallet/configmap.yaml
+  guard "redis replica wait $((wait + 1)) ms with $seconds s" "redis.client.replicaWaitMilliseconds ($((wait + 1))) must be at most half of redis.client.timeoutSeconds ($seconds s = $limit ms), that is at most $wait ms" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$((wait + 1))"
+}
+replica_wait 2 1000 2000
+replica_wait 2.01 1005 2010
+replica_wait 2.03 1015 2030
+replica_wait 4.02 2010 4020
+replica_wait 8.03 4015 8030
+replica_wait 0.5 250 500
+renders "redis replica wait 10000 ms (the largest) with 20 s" "replica_wait_milliseconds: 10000" "${shamir[@]}" --set redis.client.timeoutSeconds=20 --set redis.client.replicaWaitMilliseconds=10000 --show-only templates/wallet/configmap.yaml
+replica_wait 0.003 1 3
+guard "redis replica wait of 10000 ms with 19 s" "redis.client.replicaWaitMilliseconds (10000) must be at most half of redis.client.timeoutSeconds (19 s = 19000 ms), that is at most 9500 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
+guard "redis timeout with 4 decimals" "redis.client.timeoutSeconds" "${shamir[@]}" --set-json redis.client.timeoutSeconds=2.0005
+guard "redis timeout with 4 decimals without the schema" "redis.client.timeoutSeconds (2.0005) has more than 3 decimals" "${shamir[@]}" --skip-schema-validation --set-json redis.client.timeoutSeconds=2.0005
+renders "redis replica wait without the wallet" "kind: Deployment" "${shamir[@]}" --set organisationWallet.enabled=false --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=("${shamir[@]}" -f "$examples/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
@@ -1234,34 +1408,61 @@ else
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
 fi
 lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}"
-# The /tmp folder of the workers (organisationWallet.workers.tmp): an
-# emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
-# size; the tmp of a group replaces the keys of workers.tmp.
-renders "wallet log file below /tmp" "path: /tmp/ows.log" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
-renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
-renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
-renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
-renders "worker /tmp volume storage class" "storageClassName: fast" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
-worker_group='{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430'
-renders "worker /tmp of a group" "sizeLimit: 300Gi" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"
+# /tmp of the api: an upload of 100 MiB with a /tmp of 100Mi (and the
+# memory limits for it); a body of 32 MiB stays in memory, so a small /tmp
+# is enough for it.
+renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=104857600 \
+  --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
+renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=33554432 \
+  --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
+# The uploads of the api (api.extraConfig Uploads and ImageUpload): the
+# file class of the gateway takes the largest CSV
+# import + 64 KiB, and the memory request + Uploads.maxInProgress x the
+# largest file fits below the memory limit of the api.
+guard "gateway file class below the CSV import of the api" "must be at least the api Uploads.individualImportMaxFileBytes (20971520) + 65536" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}'
+renders "CSV import of 20 MiB with the file class for it" "kind: Deployment" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}' --set gateway.proxy.maxBodyBytes.file=21037056
+guard "gateway file class below the image upload of the api" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "8 uploads of 100 MiB above the memory limit of the api" "Uploads.maxInProgress (8) x the largest upload file (104791040 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "too many uploads in progress for the memory limit of the api" "Uploads.maxInProgress (60) x the largest upload file (5242880 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+# The limits of the CSV import in config.json of the dashboard: the values of api.extraConfig.Uploads, as whole
+# numbers, only when they are set; the render stops for a value that the api
+# refuses at its start; a change restarts the dashboard pods (the checksum
+# of config.json).
+lacks "no import limits in config.json of the dashboard by default" "individualImport" "${shamir[@]}" --show-only templates/dashboard/configmap.yaml
+renders "the import file limit of the api in config.json of the dashboard" '"individualImportMaxFileBytes": 10485760' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":10485760,"individualImportMaxRows":9000}}' --set gateway.proxy.maxBodyBytes.file=11000000 --show-only templates/dashboard/configmap.yaml
+renders "the import row limit of the api in config.json of the dashboard" '"individualImportMaxRows": 9000' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9000}}' --show-only templates/dashboard/configmap.yaml
+lacks "the default 0 of the api is not in config.json of the dashboard" "individualImport" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":0}}' --show-only templates/dashboard/configmap.yaml
+guard "import rows above 9000" "api.extraConfig.Uploads.individualImportMaxRows (9001) is not between 1 and 9000" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9001}}'
+guard "import file below 64 KiB" "api.extraConfig.Uploads.individualImportMaxFileBytes (1000) is not between 65536 and 20971520" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":1000}}'
+guard "import rows not a whole number" "api.extraConfig.Uploads.individualImportMaxRows (50.5) must be a whole number" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":50.5}}'
+guard "import rows not a number" 'api.extraConfig.Uploads.individualImportMaxRows ("5k") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
+guard "import rows as a text of digits" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5000"}}'
+guard "import file bytes as a text of digits" 'api.extraConfig.Uploads.individualImportMaxFileBytes ("5242880") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":"5242880"}}'
+guard "import rows as a text in a values file" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text' "${shamir[@]}" -f "$here/fixtures/import-rows-text.yaml"
+if [ "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
+     "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+  ok "a new import limit restarts the dashboard pods (the checksum of config.json)"
+else
+  bad "a new import limit restarts the dashboard pods (the checksum of config.json)"
+fi
+renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 # The writable paths of the pods that run as a non-root user with a
 # read-only root file system: /tmp of each api, webhook, dashboard and wallet
-# pod (the worker /tmp on disk), the socket folder of the bundled server.
+# pod (in memory, 64Mi; the worker /tmp too), the socket folder of the
+# bundled server.
 if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
   bad "writable paths: $(head -c 200 "$out/writable.err")"
 elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
 import sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
 expected = {
-    ("Deployment", "t-api"): {"/tmp": {"sizeLimit": "64Mi"}},
-    ("Deployment", "t-webhook"): {"/tmp": {"sizeLimit": "64Mi"}},
+    ("Deployment", "t-api"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-webhook"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-dashboard"): {"/tmp": {"sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-service"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-config"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-worker-main"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-main"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-clock"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("StatefulSet", "t-postgres"): {"/tmp": {"sizeLimit": "64Mi"}, "/var/run/postgresql": {"medium": "Memory", "sizeLimit": "1Mi"}},
     ("StatefulSet", "t-nats"): {"/var/run/nats": {"medium": "Memory", "sizeLimit": "1Mi"}},
@@ -1287,6 +1488,96 @@ PY
 else
   bad "writable paths"
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+fi
+
+# The JetStream store of the bundled NATS: the user and the group 65532,
+# fsGroup and OnRootMismatch, and no init container.
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
+    --show-only templates/nats/statefulset.yaml > "$out/nats-store.yaml" 2> "$out/nats-store.err"; then
+  bad "NATS store: $(head -c 200 "$out/nats-store.err")"
+elif problems="$(python3 - "$out/nats-store.yaml" <<'PY'
+import sys, yaml
+docs = {d["kind"]: d for d in yaml.safe_load_all(open(sys.argv[1])) if d}
+spec = docs["StatefulSet"]["spec"]["template"]["spec"]
+context = spec["securityContext"]
+for key, value in (("runAsUser", 65532), ("runAsGroup", 65532), ("fsGroup", 65532), ("fsGroupChangePolicy", "OnRootMismatch")):
+    if context.get(key) != value:
+        print(f"the pod {key} is {context.get(key)!r}, not {value!r}")
+if spec.get("initContainers"):
+    print(f"init containers {[c['name'] for c in spec['initContainers']]}")
+PY
+)" && [ -z "$problems" ]; then
+  ok "NATS store: the user and the group 65532, fsGroup, OnRootMismatch"
+else
+  bad "NATS store: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+fi
+
+# global.podSecurityContext and global.containerSecurityContext: each pod
+# and each container gets the keys that the component does not set (here
+# the SELinux options and the supplemental groups of a cluster); a key of
+# the component stays (runAsUser). The notes name each component whose own
+# value sets a global key (values.yaml: the jobs without their own value
+# use the value of the component).
+global_security=(--set-json 'global.podSecurityContext={"seLinuxOptions":{"level":"s0:c123,c456"},"supplementalGroups":[4321],"runAsUser":4242}'
+  --set-json 'global.containerSecurityContext={"seLinuxOptions":{"type":"container_t"}}')
+if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+    --set redis.metrics.enabled=true "${global_security[@]}" > "$out/global-security.yaml" 2> "$out/global-security.err"; then
+  bad "global security contexts: $(head -c 200 "$out/global-security.err")"
+elif problems="$(python3 - "$out/global-security.yaml" <<'PY'
+import sys, yaml
+pods = 0
+for doc in yaml.safe_load_all(open(sys.argv[1])):
+    if not doc or doc.get("kind") not in ("Deployment", "StatefulSet", "Job"):
+        continue
+    pods += 1
+    spec = doc["spec"]["template"]["spec"]
+    name = f"{doc['kind']}/{doc['metadata']['name']}"
+    context = spec.get("securityContext") or {}
+    if context.get("seLinuxOptions") != {"level": "s0:c123,c456"} or context.get("supplementalGroups") != [4321]:
+        print(f"{name}: the pod has not the global keys: {context}")
+    if context.get("runAsUser") in (None, 4242):
+        print(f"{name}: runAsUser {context.get('runAsUser')} (the value of the component must stay)")
+    for container in spec.get("initContainers", []) + spec["containers"]:
+        container_context = container.get("securityContext") or {}
+        if container_context.get("seLinuxOptions") != {"type": "container_t"}:
+            print(f"{name}:{container['name']}: the container has not global.containerSecurityContext")
+        if container_context.get("readOnlyRootFilesystem") is not True:
+            print(f"{name}:{container['name']}: the container lost readOnlyRootFilesystem")
+if pods < 25:
+    print(f"only {pods} pod templates")
+PY
+)" && [ -z "$problems" ]; then
+  ok "global security contexts: under the values of each component, in each pod and container"
+else
+  bad "global security contexts: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
+fi
+expected="$(python3 - "$chart/values.yaml" <<'PY'
+import sys, yaml
+values = yaml.safe_load(open(sys.argv[1]))
+paths = []
+for key, component in values.items():
+    if key == "global" or not isinstance(component, dict) or "podSecurityContext" not in component:
+        continue
+    if "runAsUser" in (component["podSecurityContext"] or {}):
+        paths.append(key)
+    # A part of the component with its own pods (the jobs: an empty value is
+    # the value of the component; the HSM signer manager).
+    for name, part in component.items():
+        if isinstance(part, dict) and "podSecurityContext" in part:
+            context = part["podSecurityContext"] or (component["podSecurityContext"] if name == "jobs" else {})
+            if "runAsUser" in (context or {}):
+                paths.append(f"{key}.{name}")
+print(f"global.podSecurityContext.runAsUser does not apply to {', '.join(sorted(paths))}: the podSecurityContext of each sets runAsUser")
+PY
+)"
+if ! text="$(helm template t "$notes_chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "${global_security[@]}" \
+    --show-only templates/zz-test-notes.yaml 2>&1)"; then
+  bad "global security contexts: notes: $(printf '%s' "$text" | head -c 200)"
+elif grep -q -F -- "$expected" <<< "$text" && ! grep -q -F "global.podSecurityContext.supplementalGroups" <<< "$text" \
+    && ! grep -q -F "global.podSecurityContext.seLinuxOptions" <<< "$text"; then
+  ok "global security contexts: the notes name each component that sets a global key"
+else
+  bad "global security contexts: the notes have not \"$expected\" (or they name a key that applies)"
 fi
 
 # --- 6. Install and upgrade --------------------------------------------------------
@@ -1359,28 +1650,6 @@ for database in postgresql-bundled postgresql-external; do
   upgrade_order "that installs the wallet" "$database" "${no_wallet[@]}"
   upgrade_removes "that removes consent" "$database" "${no_consent[@]}"
   upgrade_removes "that removes the wallet" "$database" "${no_wallet[@]}"
-  # The first upgrade from a release in which the database Secret, the read
-  # access Secret and the init Job were resources, not hooks: the earlier
-  # release is the render of the new release without their hook annotations
-  # (the init Job with the release revision in its name). Helm must not
-  # delete the Secrets at the end of the upgrade (keep on the live Secret).
-  case="$out/upgrade-$database-with-the-same-values"
-  if python3 -c '
-import sys, yaml
-docs = [doc for doc in yaml.safe_load_all(open(sys.argv[1])) if doc]
-for doc in docs:
-    if (doc["kind"], doc["metadata"]["name"]) in (("Secret", "t-postgres"), ("Secret", "t-postgres-tls"), ("Secret", "t-read-access"), ("ConfigMap", "t-db-init"), ("Job", "t-db-init")):
-        for name in ("helm.sh/hook", "helm.sh/hook-weight", "helm.sh/hook-delete-policy"):
-            doc["metadata"]["annotations"].pop(name)
-        if doc["kind"] == "Job":
-            doc["metadata"]["name"] = "t-db-init-1"
-yaml.safe_dump_all(docs, open(sys.argv[2], "w"))
-' "$case-after.yaml" "$case-resources-before.yaml" \
-      && python3 "$here/check_hook_order.py" upgrade "$case-resources-before.yaml" "$case-after.yaml"; then
-    ok "upgrade from Secrets and an init Job that were resources ($database)"
-  else
-    bad "upgrade from Secrets and an init Job that were resources ($database)"
-  fi
 done
 
 # The Secrets that are hooks (the database Secret, the read access Secret
@@ -1486,24 +1755,116 @@ fi
 # --- 7. The security settings of the containers -------------------------------
 # Each container of each render of this test (the matrix, the other cases
 # above, and one render with the optional containers: the metrics exporter
-# of Valkey, the operator Jobs of the api, the /tmp volume claims of the
-# workers): a non-root user with a UID and a GID other than 0, no privilege
-# escalation, a read-only root file system, all capabilities dropped and
-# none added, not privileged, seccomp RuntimeDefault, no host namespace
-# (tests/check_security.py).
+# of Valkey and the operator Jobs of the api):
+# - tests/check_security.py: a non-root user with a UID and a GID other than
+#   0, no privilege escalation, a read-only root file system, all
+#   capabilities dropped and none added, not privileged, seccomp
+#   RuntimeDefault, no host namespace, and the SELinux, AppArmor, procMount
+#   and hostProcess rules of the Pod Security Standard;
+# - tests/psscheck: the Pod Security Standard "restricted" (latest, and
+#   v1.30, the lowest Kubernetes version of the chart) with the upstream
+#   library k8s.io/pod-security-admission, the code of the admission plugin.
+#   It must read the same count of containers as check_security.py. It
+#   needs Go (the version of tests/psscheck/go.mod) and the modules of
+#   go.sum.
+# Both checks must refuse a mutant of the values (tests/values/pss-mutant.yaml:
+# AppArmor Unconfined, SELinux spc_t, procMount Unmasked, hostProcess), and
+# each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container
+# and an AppArmor annotation, which the chart does not render).
 if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
-    -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true \
-    --set organisationWallet.workers.tmp.volume.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
+    -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
   bad "security settings: helm template with the optional containers"
   sed 's/^/  /' "$out/security-options.err" | head -10
 fi
 renders_of_test=()
 while IFS= read -r -d '' file; do renders_of_test+=("$file"); done < <(find "$out" -maxdepth 1 -type f -name '*.yaml' -print0 | sort -z)
+containers_of_test=""
 if result="$(python3 "$here/check_security.py" "${renders_of_test[@]}" 2>&1)"; then
   ok "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
+  containers_of_test="$(printf '%s' "$result" | tail -n 1 | sed -n 's/^[0-9]* renders, \([0-9]*\) containers, 0 problems$/\1/p')"
 else
   bad "security settings of the containers: $(printf '%s' "$result" | tail -n 1)"
   printf '%s\n' "$result" | head -20
+fi
+mkdir -p "$out/tools" "$out/mutants"
+psscheck="$(cd "$out/tools" && pwd)/psscheck"
+if ! command -v go > /dev/null; then
+  bad "Pod Security Standard (upstream): Go is not installed; tests/psscheck needs the Go of tests/psscheck/go.mod"
+elif ! build="$(cd "$here/psscheck" && GOFLAGS=-mod=readonly go build -o "$psscheck" . 2>&1)"; then
+  bad "Pod Security Standard (upstream): go build of tests/psscheck: $(printf '%s' "$build" | head -c 300)"
+else
+  if [ -z "$containers_of_test" ]; then
+    bad "Pod Security Standard (upstream): no count of the containers from check_security.py"
+  else
+    for version in latest v1.30; do
+      if result="$("$psscheck" -level restricted -version "$version" -containers "$containers_of_test" "${renders_of_test[@]}" 2>&1)"; then
+        ok "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
+      else
+        bad "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
+        printf '%s\n' "$result" | head -20
+      fi
+    done
+  fi
+  # The mutant of the values: both checks refuse it, each for the four
+  # fields.
+  if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$here/values/pss-mutant.yaml" \
+      > "$out/mutants/pss-mutant.yaml" 2> "$out/mutants/pss-mutant.err"; then
+    bad "security checks refuse the mutant: helm template: $(head -c 200 "$out/mutants/pss-mutant.err")"
+  else
+    python_result="$(python3 "$here/check_security.py" "$out/mutants/pss-mutant.yaml" 2>&1)" && python_status=0 || python_status=$?
+    upstream_result="$("$psscheck" -level restricted -version latest "$out/mutants/pss-mutant.yaml" 2>&1)" && upstream_status=0 || upstream_status=$?
+    missing=""
+    for text in "appArmorProfile.type is 'Unconfined'" "seLinuxOptions.type is 'spc_t'" "procMount is 'Unmasked'" "windowsOptions.hostProcess true"; do
+      grep -q -F -- "$text" <<< "$python_result" || missing="$missing check_security.py: $text;"
+    done
+    for text in "forbidden AppArmor profile" "set forbidden securityContext.seLinuxOptions" "must not set securityContext.procMount" "must not set securityContext.windowsOptions.hostProcess=true"; do
+      grep -q -F -- "$text" <<< "$upstream_result" || missing="$missing psscheck: $text;"
+    done
+    if [ "$python_status" = 1 ] && [ "$upstream_status" = 1 ] && [ -z "$missing" ]; then
+      ok "security checks refuse the mutant (AppArmor, SELinux, procMount, hostProcess): both"
+    else
+      bad "security checks refuse the mutant: exit $python_status and $upstream_status;$missing"
+    fi
+  fi
+  # The pods of the fixture: each bad pod is named by both checks, the good
+  # pod by none.
+  python_result="$(python3 "$here/check_security.py" "$here/fixtures/pss-pods.yaml" 2>&1)" || true
+  upstream_result="$("$psscheck" -level restricted -version latest "$here/fixtures/pss-pods.yaml" 2>&1)" || true
+  problems=""
+  for pod in bad-apparmor-field bad-apparmor-annotation bad-selinux bad-procmount bad-hostprocess bad-ephemeral; do
+    grep -q -F -- "Pod/$pod" <<< "$python_result" || problems="$problems check_security.py misses $pod;"
+    grep -q -F -- "Pod/$pod" <<< "$upstream_result" || problems="$problems psscheck misses $pod;"
+  done
+  grep -q -F -- "Pod/good" <<< "$python_result$upstream_result" && problems="$problems a check refuses the good pod;"
+  if [ -z "$problems" ]; then
+    ok "security checks: each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container and an AppArmor annotation), not the good pod"
+  else
+    bad "security checks of tests/fixtures/pss-pods.yaml:$problems"
+  fi
+fi
+
+# The probes, the hooks, the rollout and the stop (tests/check_lifecycle.py)
+# of each render: no exec probe or hook in an image without a shell, no
+# exec of /bin/sleep, no initialDelaySeconds with a startup probe; each HTTP
+# Deployment rolls with maxUnavailable 0, minReadySeconds and a preStop
+# sleep, and its grace period covers the sleep and the stop of its server.
+# The check must refuse each bad pod of tests/fixtures/lifecycle-pods.yaml.
+if result="$(python3 "$here/check_lifecycle.py" "${renders_of_test[@]}" 2>&1)"; then
+  ok "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+else
+  bad "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+  printf '%s\n' "$result" | head -20
+fi
+result="$(python3 "$here/check_lifecycle.py" "$here/fixtures/lifecycle-pods.yaml" 2>&1)" || true
+problems=""
+for pod in bad-sleep-exec bad-shell-probe bad-initial-delay; do
+  grep -q -F -- "Pod/$pod" <<< "$result" || problems="$problems misses $pod;"
+done
+grep -q -F -- "Pod/good" <<< "$result" && problems="$problems refuses the good pod;"
+if [ -z "$problems" ]; then
+  ok "probes, hooks, rollout and stop: the check refuses each bad pod of tests/fixtures/lifecycle-pods.yaml"
+else
+  bad "probes, hooks, rollout and stop: the check$problems"
 fi
 
 echo "result: ${pass} passed, ${fail} failed"

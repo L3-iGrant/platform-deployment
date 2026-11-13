@@ -56,7 +56,11 @@ spec:
         {{- include "ow.labels" (list $ $component) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $ "job" list) | nindent 8 }}
     spec:
-      restartPolicy: Never
+      # OnFailure: a retry restarts the container in the same pod. With
+      # network policies, the first connection of a new pod can fail until
+      # the network policy controller knows the pod; a retry in a new pod
+      # (Never) would meet the same delay each time.
+      restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.podSpecCommon" (list $ $jobPod) | nindent 6 }}

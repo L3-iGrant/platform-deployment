@@ -1,6 +1,18 @@
 {{- if .Values.nats.enabled }}
 {{- $nats := .Values.nats }}
 {{- $name := include "ow.name" (list . "nats") }}
+{{- /* NATS 2.15 and later send the JetStream acks on subjects of the format
+v2 by default; the permissions of the users ($JS.ACK.<stream>.<consumer>.>)
+are of the format v1, so the acks would fail. A tag without a version (a
+digest or an own tag) gets no check. */}}
+{{- $version := regexFind "^[0-9]+\\.[0-9]+" (toString $nats.image.tag) }}
+{{- if $version }}
+{{- $major := index (splitList "." $version) 0 | int }}
+{{- $minor := index (splitList "." $version) 1 | int }}
+{{- if or (gt $major 2) (and (eq $major 2) (ge $minor 15)) }}
+{{- fail (printf "nats.image.tag %s: NATS 2.15 and later send the JetStream acks on subjects of the format v2, and the NATS users of the chart allow the acks only in the format v1 ($JS.ACK.<stream>.<consumer>.>): the consumers of the services could not ack. Use NATS 2.14 (docs/nats-users.md, \"The version of NATS\")" $nats.image.tag) }}
+{{- end }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:

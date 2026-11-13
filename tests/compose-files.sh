@@ -25,10 +25,21 @@
 #     MAX_ORGANISATION_WALLET_UNITS): the keys only with a value;
 #   - the webhooks of the api files (no Webhooks.events) and no
 #     Installation key (Compose installs all services);
-#   - the security settings of the services: a non-root user, no
-#     capability, no new privileges, the tmpfs and volumes of the writable
-#     paths, a read-only root file system for each service without a config
-#     of content, no shell in the api image;
+#   - the configuration files (make configs, render-configs.py): the
+#     templates of compose.configs.yaml and the file configs of generated/
+#     (one for each template, no config of content), the same values files
+#     for the render and for the services, the hash label of each service
+#     and its file, only the variables of .env.example in the templates
+#     (no secret), no secret value in a file, and the renderer in a copy
+#     of this folder ($$, ${VAR:+...}, a missing value, the file modes, a
+#     stale file, --check, a second run);
+#   - the security settings of EACH service of all profiles (a service
+#     that the test does not know fails): a read-only root file system, a
+#     non-root user, no capability, no new privileges, the tmpfs and
+#     volumes of the writable paths, no config of content, no host
+#     namespace, no device, only bind mounts of secrets/, no shell in the
+#     api image; the one-shot services of root (nats-data-owner) with only
+#     their capabilities and no network;
 #   - bash -n / sh -n of the scripts;
 #   - nats-server -t of the NATS configuration (when nats-server is on this
 #     computer);
@@ -39,6 +50,9 @@
 #   tests/compose-files.sh
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../docker-compose"
+# The user of openbao-init (make sets them from your user): fixed values,
+# so that the test gives the same result for each user.
+export HOST_UID=4242 HOST_GID=4243
 
 failures=0
 warnings=0
@@ -53,15 +67,52 @@ finish() {
   echo "check: $1"
 }
 
+# project_json: docker compose config of the project (with the current
+# environment) as JSON, with the text of each file config of generated/ as
+# "content": the render of the templates with the same environment
+# (render-configs.py --print), so that each case below checks the files
+# that make configs writes for its values.
+project_json() {
+  local project files
+  project="$(mktemp)"
+  files="$(mktemp)"
+  if ! docker compose config --format json > "$project" || ! python3 -I ./render-configs.py --print > "$files"; then
+    rm -f "$project" "$files"
+    return 1
+  fi
+  python3 -I - "$project" "$files" <<'PY' || { rm -f "$project" "$files"; return 1; }
+import json, os, sys
+project = json.load(open(sys.argv[1], encoding="utf-8"))
+files = json.load(open(sys.argv[2], encoding="utf-8"))
+for name, config in (project.get("configs") or {}).items():
+    file = config.get("file", "")
+    if os.path.basename(os.path.dirname(file)) == "generated":
+        if os.path.basename(file) not in files:
+            sys.exit(f"{name}: no template for {file}")
+        config["content"] = files[os.path.basename(file)]
+print(json.dumps(project))
+PY
+  rm -f "$project" "$files"
+}
+
 check_files() {
-  local created_env=""
+  local created_env="" created_generated="" render
   if [ ! -f .env ]; then
     cp .env.example .env
     created_env=1
   fi
+  # The files of make configs: the project needs generated/configs.env.
+  [ -d generated ] || created_generated=1
+  if render="$(python3 -I ./render-configs.py 2>&1)"; then
+    ok "make configs: ${render#configs: }"
+  else
+    bad "make configs: $render"
+    [ -z "$created_env" ] || rm -f .env
+    finish ""
+  fi
   local engine json services server images
   for engine in postgresql; do
-    if ! json="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --format json 2>&1)"; then
+    if ! json="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" project_json 2>&1)"; then
       bad "$engine: docker compose config: $json"
       continue
     fi
@@ -145,7 +196,7 @@ PY
   # (local_backend openbao) and the organisation key store types.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "key stores: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -190,7 +241,7 @@ PY
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file admin
     admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/engine/postgresql.env)"
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "database roles: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -215,7 +266,8 @@ roles = ["migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_ap
 wallet = {
     "wallet-database-roles": (admin, "database-init"),
     "wallet-migrate": ("igrant_wallet_migrator", "wallet-database-roles"),
-    "wallet-read-access": (admin, "wallet-migrate"),
+    "wallet-read-access-api": (admin, "wallet-migrate"),
+    "wallet-read-access-consent": (admin, "wallet-migrate"),
     "wallet-config": ("igrant_wallet_launcher_app", "wallet-migrate"),
     "wallet-service": ("igrant_wallet_launcher_app", "wallet-migrate"),
     "wallet-worker": ("igrant_wallet_jobs", "wallet-migrate"),
@@ -292,7 +344,7 @@ PY
   # each server parameter once.
   if command -v python3 > /dev/null; then
     local output project_file
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "database logs: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -339,7 +391,7 @@ PY
         default) enabled="" days="" ;;
         off) enabled=false days=90 ;;
       esac
-      if ! json="$(TEST_CA_ENABLED="$enabled" TEST_CA_LEAF_VALIDITY_DAYS="$days" docker compose config --format json 2>&1)"; then
+      if ! json="$(TEST_CA_ENABLED="$enabled" TEST_CA_LEAF_VALIDITY_DAYS="$days" project_json 2>&1)"; then
         bad "test CA $case_name: docker compose config: $json"
         continue
       fi
@@ -375,7 +427,7 @@ PY
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local gate
     for gate in "" false; do
-      if ! json="$(FEATURES_ENFORCE="$gate" docker compose config --format json 2>&1)"; then
+      if ! json="$(FEATURES_ENFORCE="$gate" project_json 2>&1)"; then
         bad "feature gate ${gate:-default}: docker compose config: $json"
         continue
       fi
@@ -422,7 +474,7 @@ PY
         default) organisations="" units="" ;;
         set) organisations=250 units=300 ;;
       esac
-      if ! json="$(MAX_ORGANISATIONS="$organisations" MAX_ORGANISATION_WALLET_UNITS="$units" docker compose config --format json 2>&1)"; then
+      if ! json="$(MAX_ORGANISATIONS="$organisations" MAX_ORGANISATION_WALLET_UNITS="$units" project_json 2>&1)"; then
         bad "installation limits $case_name: docker compose config: $json"
         continue
       fi
@@ -472,7 +524,7 @@ PY
   # features of each organisation select the event types), and no file has
   # Installation (Compose installs all services).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "webhooks and services: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -517,16 +569,14 @@ PY
   else
     bad "make platform-operator: $dry"
   fi
-  if dry="$(make -n platform-set-operator ORGANISATION_ID=6731f0c2a1b2c3d4e5f60789 2>&1)" \
-    && grep -q -F 'platform set-operator --organisation-id "6731f0c2a1b2c3d4e5f60789"' <<< "$dry" \
-    && dry="$(make -n platform-grant-admin ADMIN_EMAIL=admin@example.com 2>&1)" \
+  if dry="$(make -n platform-grant-admin ADMIN_EMAIL=admin@example.com 2>&1)" \
     && grep -q -F 'platform grant-admin --email "admin@example.com"' <<< "$dry" \
     && dry="$(make -n platform-status 2>&1)" && grep -q -F 'platform status' <<< "$dry"; then
-    ok "make platform-set-operator, platform-grant-admin and platform-status"
+    ok "make platform-grant-admin and platform-status"
   else
     bad "the platform operator targets: $dry"
   fi
-  if make platform-operator > /dev/null 2>&1 || make platform-set-operator > /dev/null 2>&1 || make platform-grant-admin > /dev/null 2>&1; then
+  if make platform-operator > /dev/null 2>&1 || make platform-grant-admin > /dev/null 2>&1; then
     bad "a platform operator target runs without its values"
   else
     ok "the platform operator targets stop without their values"
@@ -543,7 +593,7 @@ PY
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local years
     for years in "" 10; do
-      if ! json="$(AUDIT_RETENTION_YEARS="$years" docker compose config --format json 2>&1)"; then
+      if ! json="$(AUDIT_RETENTION_YEARS="$years" project_json 2>&1)"; then
         bad "audit log ${years:-default}: docker compose config: $json"
         continue
       fi
@@ -579,7 +629,7 @@ PY
   # users of make secrets and the redis section of each wallet role.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "Valkey: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -607,8 +657,8 @@ for name, (before, role) in order.items():
         continue
     if service.get("image") != image:
         problems.append(f"{name}: image {service.get('image')!r}, not VALKEY_IMAGE of .env.example")
-    if service.get("user") != "valkey" or service.get("entrypoint") != ["/bin/sh", "/etc/valkey/start.sh"] or service.get("command") != [role]:
-        problems.append(f"{name}: not start.sh {role} as the user valkey")
+    if service.get("user") != "999:1000" or service.get("entrypoint") != ["/bin/sh", "/etc/valkey/start.sh"] or service.get("command") != [role]:
+        problems.append(f"{name}: not start.sh {role} as the user valkey (999:1000)")
     if before and (service.get("depends_on") or {}).get(before, {}).get("condition") != "service_healthy":
         problems.append(f"{name} does not wait for {before} (service_healthy)")
     if "--user probe" not in " ".join(service.get("healthcheck", {}).get("test", [])):
@@ -684,7 +734,7 @@ PY
   # no OpenBao password).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
-    if ! json="$(docker compose config --format json 2>&1)"; then
+    if ! json="$(project_json 2>&1)"; then
       bad "worker and clock: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -741,38 +791,223 @@ PY
     fi
   fi
 
-  # The security settings of the services (README.md, "Security settings"):
-  # each long-running service and each one-shot service of the platform
-  # images, of PostgreSQL and of NATS runs as its non-root user with no
-  # capability and no new privileges, and has tmpfs or a volume for each
-  # path that it writes. A service is read-only when it has no config of
-  # "content" (Compose cannot write such a file into a read-only container). The ports below 1024
-  # come with the sysctl net.ipv4.ip_unprivileged_port_start. The api image
-  # has no shell: no service of the api image starts a shell.
-  # nats-data-owner is the only service of root: it has only CHOWN and
-  # DAC_READ_SEARCH, and no network.
+  # The configuration files (README.md, "Configuration files"): the
+  # templates of compose.configs.yaml, each one in the list of the service
+  # render; one file config of generated/ for each template and no config
+  # of content in the project; the same values files for the render as for
+  # the services (and generated/configs.env only for the services); the
+  # label of each service that reads a file of generated/ is the SHA-256 of
+  # the file; the templates have only the variables of .env.example and of
+  # config/engine/ (the settings: no secret), and each key of a file with a
+  # password, a secret or a seed names a file.
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local output project_file variables_file
+    project_file="$(mktemp)"
+    variables_file="$(mktemp)"
+    if ! COMPOSE_PROFILES='*' docker compose config --format json > "$project_file" 2>&1; then
+      bad "configuration files: docker compose config: $(cat "$project_file")"
+    elif ! docker compose -f compose.configs.yaml --profile render config --variables --format json > "$variables_file" 2>&1; then
+      bad "configuration files: the variables of the templates: $(cat "$variables_file")"
+    elif output="$(python3 - "$project_file" "$variables_file" 2>&1 <<'PY'
+import hashlib
+import json
+import os
+import re
+import sys
+
+import yaml
+
+project = json.load(open(sys.argv[1], encoding="utf-8"))
+variables = json.load(open(sys.argv[2], encoding="utf-8"))
+problems = []
+templates_file = yaml.safe_load(open("compose.configs.yaml", encoding="utf-8"))
+templates = templates_file.get("configs") or {}
+listed = [entry if isinstance(entry, str) else entry.get("source") for entry in templates_file["services"]["render"].get("configs") or []]
+if sorted(listed) != sorted(templates) or len(listed) != len(set(listed)):
+    problems.append(f"the service render names {sorted(listed)}, not each template {sorted(templates)}")
+if list(templates_file["services"]) != ["render"] or templates_file["services"]["render"].get("profiles") != ["render"]:
+    problems.append("compose.configs.yaml has another service than render, or render is not only in the profile render")
+for name, config in templates.items():
+    if not re.match(r"^[a-z0-9][a-z0-9-]*\.(yaml|json)$", name) or set(config) != {"content"}:
+        problems.append(f"the template {name} is not <name>.yaml or <name>.json with only content")
+# The same values files, in the same order.
+def env_files(path):
+    return yaml.safe_load(open(path, encoding="utf-8"))["include"][0]["env_file"]
+services_files, render_files = env_files("docker-compose.yaml"), env_files("compose.render.yaml")
+if services_files != render_files + ["generated/configs.env"]:
+    problems.append(f"the values files of the services {services_files} are not those of the render {render_files} and generated/configs.env")
+# One file config of generated/ for each template, no config of content.
+generated = {}
+for name, config in project.get("configs", {}).items():
+    if "content" in config:
+        problems.append(f"the config {name} has content")
+    file = config.get("file", "")
+    if os.path.dirname(file) == os.path.join(os.getcwd(), "generated"):
+        base = os.path.basename(file)
+        if base.rsplit(".", 1)[0] != name:
+            problems.append(f"the config {name} is the file {base}")
+        generated[name] = base
+if sorted(generated.values()) != sorted(templates):
+    problems.append(f"the file configs of generated/ {sorted(generated.values())} are not the templates {sorted(templates)}")
+# The hash label of each service, and the hash in generated/configs.env.
+hashes = dict(line.split("=", 1) for line in open("generated/configs.env", encoding="utf-8").read().splitlines() if line and not line.startswith("#"))
+labelled = 0
+for service_name, service in project["services"].items():
+    labels = service.get("labels") or {}
+    sources = [entry["source"] for entry in service.get("configs") or [] if entry["source"] in generated]
+    for source in sources:
+        digest = hashlib.sha256(open(os.path.join("generated", generated[source]), "rb").read()).hexdigest()
+        variable = "CONFIG_SHA256_" + source.upper().replace("-", "_")
+        if labels.get(f"io.igrant.config-sha256.{source}") != digest or hashes.get(variable) != digest:
+            problems.append(f"{service_name}: the label io.igrant.config-sha256.{source} is not the SHA-256 of generated/{generated[source]}")
+        labelled += 1
+    for label in labels:
+        if label.startswith("io.igrant.config-sha256.") and label.split(".", 3)[3] not in sources:
+            problems.append(f"{service_name}: the label {label} without its config")
+# The variables of the templates: only the settings.
+settings = set()
+for path in (".env.example", "config/engine/postgresql.env"):
+    settings |= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", open(path, encoding="utf-8").read(), re.M))
+unknown = sorted(set(variables) - settings)
+if unknown:
+    problems.append(f"the templates use {unknown}, which are not settings of .env.example or config/engine/")
+# Each key with a password, a secret or a seed names a file (an absolute
+# path), in each file of generated/.
+def keys(node, path=""):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield f"{path}.{key}".lstrip("."), str(key), value
+            yield from keys(value, f"{path}.{key}".lstrip("."))
+    elif isinstance(node, list):
+        for item in node:
+            yield from keys(item, path)
+for base in sorted(templates):
+    text = open(os.path.join("generated", base), encoding="utf-8").read()
+    document = json.loads(text) if base.endswith(".json") else yaml.safe_load(text)
+    for path, key, value in keys(document):
+        if re.search(r"password|secret|seed", key, re.I) and not isinstance(value, (dict, list)):
+            if not re.search(r"file$", key, re.I) or not str(value).startswith("/"):
+                problems.append(f"generated/{base}: {path} is a value, not the path of a file")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print(f"{len(templates)} templates, {len(generated)} file configs of generated/, {labelled} hash labels, "
+      f"{len(variables)} variables of the settings, no secret value")
+PY
+)"; then
+      ok "configuration files: $output"
+    else
+      bad "configuration files: $output"
+    fi
+    rm -f "$project_file" "$variables_file"
+  fi
+
+  # The renderer (render-configs.py) in a copy of this folder, with one more
+  # template: $$ gives $, ${VAR:+...} and a value with $ of the shell are
+  # the rules of Compose; the modes 0644 (files) and 0755 (folder); a file
+  # that is not a template (a stale file, a temporary file of a stopped
+  # run) goes; --check passes, and fails after a change of a value; a
+  # second run writes the same bytes; a missing required value stops the
+  # run before it writes a file.
+  if command -v python3 > /dev/null; then
+    local copy output
+    copy="$(mktemp -d)"
+    tar -c --exclude ./secrets --exclude ./generated . | tar -x -C "$copy"
+    if output="$(cd "$copy" && python3 - 2>&1 <<'PY'
+import hashlib, os, stat, subprocess, sys
+problems = []
+text = open("compose.configs.yaml", encoding="utf-8").read()
+text = text.replace("    configs:\n      - ", "    configs:\n      - zz-test.yaml\n      - ", 1)
+text += "  zz-test.yaml:\n    content: |\n      dollar: $$HOME\n      ${RENDER_TEST:+test: ${RENDER_TEST}}\n      tag: ${PLATFORM_TAG}\n"
+open("compose.configs.yaml", "w", encoding="utf-8").write(text)
+os.makedirs("generated", exist_ok=True)
+for stale in ("stale.yaml", ".render-left"):
+    open(os.path.join("generated", stale), "w").write("x")
+env = dict(os.environ, RENDER_TEST="a$b")
+def run(*args, extra=None):
+    return subprocess.run([sys.executable, "-I", "render-configs.py", *args], env=dict(env, **(extra or {})),
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+first = run()
+if first.returncode != 0:
+    sys.exit(f"the render failed: {first.stdout}")
+tag = [l.split("=", 1)[1] for l in open(".env", encoding="utf-8").read().splitlines() if l.startswith("PLATFORM_TAG=")][-1]
+want = f"dollar: $HOME\ntest: a$b\ntag: {tag}\n".encode()
+got = open("generated/zz-test.yaml", "rb").read()
+if got != want:
+    problems.append(f"zz-test.yaml is {got!r}, not {want!r}")
+if stat.S_IMODE(os.stat("generated/zz-test.yaml").st_mode) != 0o644 or stat.S_IMODE(os.stat("generated").st_mode) != 0o755:
+    problems.append("the modes are not 0644 (files) and 0755 (folder)")
+if os.path.exists("generated/stale.yaml") or os.path.exists("generated/.render-left"):
+    problems.append("a file that is not a template stays")
+if f"CONFIG_SHA256_ZZ_TEST={hashlib.sha256(want).hexdigest()}" not in open("generated/configs.env").read():
+    problems.append("configs.env has not the SHA-256 of zz-test.yaml")
+snapshot = {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")}
+if run("--check").returncode != 0:
+    problems.append("--check fails after the render")
+changed = run("--check", extra={"RENDER_TEST": "other"})
+if changed.returncode == 0 or "zz-test.yaml" not in changed.stdout or "configs.env" not in changed.stdout:
+    problems.append(f"--check passes after a change of a value: {changed.stdout.strip()}")
+if run().returncode != 0 or {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
+    problems.append("a second run writes other bytes")
+text = open("compose.configs.yaml", encoding="utf-8").read()
+open("compose.configs.yaml", "w", encoding="utf-8").write(text + "      required: ${RENDER_MISSING:?RENDER_MISSING is required}\n")
+missing = run(extra={"RENDER_TEST": "new"})
+if missing.returncode == 0 or "RENDER_MISSING is required" not in missing.stdout:
+    problems.append(f"a missing required value does not stop the render: {missing.stdout.strip()}")
+if {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
+    problems.append("a stopped render changed a file")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print("$$, ${VAR:+...} and a value with $, the modes, the removal of a stale file, --check, a second run and a missing value")
+PY
+)"; then
+      ok "make configs: $output"
+    else
+      bad "make configs: $output"
+    fi
+    rm -rf "$copy"
+  fi
+
+  # The security settings of EACH service (README.md, "Security settings"),
+  # with all profiles: a read-only root file system, no capability, no new
+  # privileges, its user (UID:GID, not root), the tmpfs (each with a size)
+  # and the volumes of the paths that it writes, no config of "content", no
+  # host namespace, no device, no privileged mode, and only bind mounts of
+  # secrets/ (read-only, but the state folder of openbao-init). A service
+  # that this list does not know fails: add it with its user and its
+  # writable paths. The ports below 1024 come with the sysctl
+  # net.ipv4.ip_unprivileged_port_start. The api image has no shell: no
+  # service of the api image starts a shell. The one-shot services of root
+  # (nats-data-owner) have only their capabilities, and no network.
   if command -v python3 > /dev/null; then
     local output project_file
-    if ! json="$(DB_ENGINE=postgresql COMPOSE_PROFILES=postgresql docker compose config --format json 2>&1)"; then
+    if ! json="$(COMPOSE_PROFILES='*' docker compose config --format json 2>&1)"; then
       bad "security settings: docker compose config: $json"
     else
       project_file="$(mktemp)"
       printf '%s' "$json" > "$project_file"
-      if output="$(python3 - "$project_file" 2>&1 <<'PY'
+      if output="$(python3 - "$project_file" "$PWD" "$HOST_UID:$HOST_GID" 2>&1 <<'PY'
 import json
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as project_file:
     project = json.load(project_file)
+folder, host_user = sys.argv[2], sys.argv[3]
 services = project["services"]
 problems = []
 API, WALLET, CONSENT = "65532:65532", "65532:65532", "65532:65532"
-# Each service: its user, and the tmpfs paths (and volume paths) that it
+# Each service: its user, the tmpfs paths and the volume paths that it
 # writes.
 expected = {
-    "postgres": ("999:999", ["/var/run/postgresql", "/tmp"], []),
+    "postgres": ("999:999", ["/var/run/postgresql", "/tmp"], ["/var/lib/postgresql"]),
     "database-init": ("999:999", ["/tmp"], []),
-    "nats": ("1000:1000", [], ["/data"]),
+    "nats": ("65532:65532", [], ["/data"]),
+    "openbao": ("100:1000", ["/tmp"], ["/openbao/file"]),
+    "openbao-init": (host_user, ["/tmp"], []),
+    "valkey": ("999:1000", ["/run/valkey", "/tmp"], ["/data"]),
+    "valkey-replica": ("999:1000", ["/run/valkey", "/tmp"], ["/data"]),
+    "valkey-sentinel": ("999:1000", ["/run/valkey", "/tmp"], []),
     "api-migrate": (API, ["/tmp"], []),
     "api-read-access-wallet": (API, ["/tmp"], []),
     "api-read-access-consent": (API, ["/tmp"], []),
@@ -784,39 +1019,78 @@ expected = {
     "consent": (CONSENT, ["/tmp"], []),
     "wallet-database-roles": (WALLET, ["/tmp"], []),
     "wallet-migrate": (WALLET, ["/tmp"], []),
-    "wallet-read-access": (WALLET, ["/tmp"], []),
+    "wallet-read-access-api": (WALLET, ["/tmp"], []),
+    "wallet-read-access-consent": (WALLET, ["/tmp"], []),
     "wallet-config": (WALLET, ["/tmp"], []),
     "wallet-service": (WALLET, ["/tmp"], []),
     "wallet-worker": (WALLET, ["/run/ows-worker"], ["/tmp"]),
     "wallet-clock": (WALLET, ["/tmp"], []),
     "dashboard": ("101:101", ["/tmp"], []),
 }
+# The one-shot services of root: the capabilities, the volume paths and the
+# command of each.
+NATS_OWNER = ["find", "/data", "(", "!", "-user", "65532", "-o", "!", "-group", "65532", ")",
+              "-exec", "chown", "-h", "65532:65532", "{}", "+"]
+root_one_shots = {
+    "nats-data-owner": (["CHOWN", "DAC_READ_SEARCH"], ["/data"], NATS_OWNER),
+}
+# The bind mounts that a service may write (all other bind mounts are
+# read-only): the state folder of openbao-init (init.json).
+writable_binds = {("openbao-init", f"{folder}/secrets/openbao")}
 low_ports = {"api", "webhook", "consent", "dashboard"}
-for name, (user, tmpfs, volumes) in expected.items():
-    service = services.get(name)
-    if service is None:
-        problems.append(f"no service {name}")
-        continue
-    if service.get("user") != user:
-        problems.append(f"{name}: user {service.get('user')!r}, not {user!r}")
-    content = [config["source"] for config in service.get("configs") or [] if "content" in project["configs"].get(config["source"], {})]
-    if content and service.get("read_only"):
-        problems.append(f"{name}: read_only with the configs of content {content} (Compose cannot write them)")
-    if not content and service.get("read_only") is not True:
+for name in sorted(set(services) - set(expected) - set(root_one_shots)):
+    problems.append(f"{name}: a service that this test does not know (add its user and its writable paths)")
+for name in sorted((set(expected) | set(root_one_shots)) - set(services)):
+    problems.append(f"no service {name}")
+for name, service in sorted(services.items()):
+    if service.get("read_only") is not True:
         problems.append(f"{name}: read_only is not true")
-    if service.get("cap_drop") != ["ALL"] or service.get("cap_add"):
-        problems.append(f"{name}: cap_drop {service.get('cap_drop')}, cap_add {service.get('cap_add')}")
+    if service.get("cap_drop") != ["ALL"]:
+        problems.append(f"{name}: cap_drop {service.get('cap_drop')}")
     if "no-new-privileges:true" not in (service.get("security_opt") or []):
         problems.append(f"{name}: no no-new-privileges:true")
-    if service.get("privileged"):
-        problems.append(f"{name}: privileged")
-    mounted = [entry.split(":", 1)[0] for entry in service.get("tmpfs") or []]
-    if sorted(mounted) != sorted(tmpfs):
-        problems.append(f"{name}: tmpfs {mounted}, not {tmpfs}")
+    for key in ("privileged", "devices", "device_cgroup_rules"):
+        if service.get(key):
+            problems.append(f"{name}: {key}")
+    for key in ("pid", "ipc", "network_mode", "userns_mode", "uts", "cgroup"):
+        if service.get(key) == "host":
+            problems.append(f"{name}: {key} host")
+    content = [config["source"] for config in service.get("configs") or [] if "content" in project["configs"].get(config["source"], {})]
+    if content:
+        problems.append(f"{name}: configs of content {content} (Compose cannot write them into a read-only container)")
     for entry in service.get("tmpfs") or []:
         if "size=" not in entry:
             problems.append(f"{name}: the tmpfs {entry} has no size")
+    for volume in service.get("volumes") or []:
+        if volume.get("type") == "bind":
+            source = volume.get("source", "")
+            if not source.startswith(f"{folder}/secrets/"):
+                problems.append(f"{name}: a bind mount of {source} (only folders of secrets/)")
+            if not volume.get("read_only") and (name, source) not in writable_binds:
+                problems.append(f"{name}: the bind mount of {source} is not read-only")
+        elif volume.get("type") != "volume":
+            problems.append(f"{name}: a volume of the type {volume.get('type')}")
     targets = [volume.get("target") for volume in service.get("volumes") or [] if volume.get("type") == "volume"]
+    if name in root_one_shots:
+        caps, paths, entrypoint = root_one_shots[name]
+        if service.get("user") != "0:0" or sorted(service.get("cap_add") or []) != sorted(caps) or service.get("network_mode") != "none":
+            problems.append(f"{name}: user {service.get('user')}, cap_add {service.get('cap_add')}, network_mode {service.get('network_mode')}")
+        if entrypoint and service.get("entrypoint") != entrypoint:
+            problems.append(f"{name}: entrypoint {service.get('entrypoint')}")
+        if service.get("tmpfs") or sorted(targets) != sorted(paths):
+            problems.append(f"{name}: tmpfs {service.get('tmpfs')}, volumes {targets}")
+        continue
+    user, tmpfs, volumes = expected.get(name, ("?", [], []))
+    if service.get("user") != user:
+        problems.append(f"{name}: user {service.get('user')!r}, not {user!r}")
+    uid, _, gid = str(service.get("user")).partition(":")
+    if not (uid.isdigit() and gid.isdigit() and int(uid) > 0 and int(gid) > 0):
+        problems.append(f"{name}: user {service.get('user')!r} is not a UID:GID other than root")
+    if service.get("cap_add"):
+        problems.append(f"{name}: cap_add {service.get('cap_add')}")
+    mounted = [entry.split(":", 1)[0] for entry in service.get("tmpfs") or []]
+    if sorted(mounted) != sorted(tmpfs):
+        problems.append(f"{name}: tmpfs {mounted}, not {tmpfs}")
     for path in volumes:
         if path not in targets:
             problems.append(f"{name}: no volume at {path}")
@@ -826,24 +1100,22 @@ for name, (user, tmpfs, volumes) in expected.items():
 for name, service in services.items():
     if "/api:" in service.get("image", "") and any(part in ("/bin/sh", "sh", "bash", "/bin/bash") for part in (service.get("entrypoint") or [])):
         problems.append(f"{name}: a shell in the api image (the image has no shell)")
-    if "/api:" in service.get("image", "") and name not in expected:
-        problems.append(f"{name}: a service of the api image without the security settings")
-owner = services.get("nats-data-owner", {})
-if (owner.get("user") != "0:0" or sorted(owner.get("cap_add") or []) != ["CHOWN", "DAC_READ_SEARCH"] or owner.get("cap_drop") != ["ALL"]
-        or owner.get("network_mode") != "none" or owner.get("read_only") is not True
-        or owner.get("entrypoint") != ["chown", "-R", "1000:1000", "/data"]):
-    problems.append(f"nats-data-owner: {owner}")
 if (services.get("nats", {}).get("depends_on") or {}).get("nats-data-owner", {}).get("condition") != "service_completed_successfully":
     problems.append("nats does not wait for nats-data-owner")
 if "wallet-worker-tmp" not in project.get("volumes", {}):
     problems.append("no volume wallet-worker-tmp")
 if "api-read-access" in services:
     problems.append("the service api-read-access is still there (it ran a shell in the api image)")
+if "wallet-read-access" in services:
+    problems.append("the service wallet-read-access is still there (it ran a shell in the wallet image)")
+for name, service in services.items():
+    if "/eudi-wallet:" in service.get("image", "") and any(part in ("/bin/sh", "sh", "bash", "/bin/bash") for part in (service.get("entrypoint") or [])):
+        problems.append(f"{name}: a shell in the wallet image (the image has no shell)")
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-read_only = sorted(name for name in expected if services.get(name, {}).get("read_only"))
-print(f"{len(expected)} services: non-root user, no capability, no new privileges, tmpfs and volumes; read-only: {', '.join(read_only)}")
+print(f"{len(services)} services of all profiles: read-only, no capability, no new privileges, the users, the tmpfs and volumes;"
+      f" root only: {', '.join(sorted(root_one_shots))} (with {', '.join(sorted({c for v in root_one_shots.values() for c in v[0]}))})")
 PY
 )"; then
         ok "security settings: $output"
@@ -860,6 +1132,8 @@ PY
   done
   if sh -n config/openbao/bootstrap.sh; then ok "sh -n config/openbao/bootstrap.sh"; else bad "sh -n config/openbao/bootstrap.sh"; fi
   if sh -n config/valkey/start.sh; then ok "sh -n config/valkey/start.sh"; else bad "sh -n config/valkey/start.sh"; fi
+  if python3 -I -m py_compile render-configs.py 2> /dev/null; then ok "python3 -m py_compile render-configs.py"; else bad "python3 -m py_compile render-configs.py"; fi
+  rm -rf __pycache__
 
   if command -v nats-server > /dev/null; then
     local dir
@@ -891,7 +1165,7 @@ NKEYS
   # and no backup or upgrade text. Exceptions (keys that the code reads):
   # the wallet key "vault" (with its OpenBao comment).
   local text_files
-  text_files="$(find . -type f ! -path './secrets/*' ! -name .env ! -name '*.orig' | sort)"
+  text_files="$(find . -type f ! -path './secrets/*' ! -path './generated/*' ! -name .env ! -name '*.orig' | sort)"
   local hits dashes
   dashes="$(printf '\xe2\x80\x94|\xe2\x80\x93')"
   # shellcheck disable=SC2086
@@ -902,13 +1176,14 @@ NKEYS
   if [ -n "$hits" ]; then bad "American spelling: $hits"; else ok "British English spelling"; fi
   # shellcheck disable=SC2086
   hits="$(grep -n -i -E 'hashicorp|vault|kms_key|platform: *database|db-backed|data_key|facade|keycloak|mongo|aries|aca-py|cloud ?agent|\bssi\b|backup|upgrade|migration step|mailpit|rotator|allowplainapikeys' $text_files \
-    | grep -v -E '^\./compose\.platform\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
+    | grep -v -E '^\./compose\.configs\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
   if [ -n "$hits" ]; then bad "removed product or setting: $hits"; else ok "no removed product or setting"; fi
   # The relative links of README.md (also into the docs of the chart): each
   # target file and each heading of an anchor exists.
   if hits="$(python3 ../tests/check_links.py README.md 2>&1)"; then ok "relative links of README.md"; else bad "relative links of README.md: $hits"; fi
 
   [ -z "$created_env" ] || rm -f .env
+  [ -z "$created_generated" ] || rm -rf generated
   finish "all checks passed (${warnings} warning(s))"
 }
 

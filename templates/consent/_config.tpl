@@ -61,7 +61,10 @@ its own read-only users (ReadAccess; readAccess.consent.*).
 {{- if (include "ow.nats.ca" . | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" "/run/secrets/consent/nats-ca.crt" -}}
 {{- end -}}
-{{- mustMergeOverwrite $config (deepCopy ($c.extraConfig | default dict)) | toYaml }}
+{{- $config = mustMergeOverwrite $config (deepCopy ($c.extraConfig | default dict)) -}}
+{{- /* No log file (ow.noLogFile): consent logs to stdout. */ -}}
+{{- include "ow.noLogFile" (list "consent.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- $config | toYaml }}
 {{- end }}
 
 {{/* The DataBase section of consent (the service, its Jobs and the migration hook). */}}

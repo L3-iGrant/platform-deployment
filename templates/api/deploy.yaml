@@ -1,5 +1,7 @@
 {{- if .Values.api.enabled }}
 {{- $api := .Values.api }}
+{{- include "ow.api.checkTmp" . }}
+{{- include "ow.api.checkUploads" . }}
 {{- range $role := list "api" "webhook" }}
 {{- $component := ternary "api" "webhook" (eq $role "api") }}
 ---
@@ -12,6 +14,7 @@ metadata:
     {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
   replicas: {{ ternary $api.replicas $api.webhook.replicas (eq $role "api") }}
+  {{- include "ow.rollout" $api | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
@@ -40,8 +43,7 @@ spec:
       automountServiceAccountToken: false
       {{- end }}
       {{- include "ow.checkStopBudget" (list "api.server" $api.server 5 20) }}
-      # The stop budget: drain + graceful shutdown + margin; no
-      # preStop, the process drains itself.
+      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $api.server.terminationGracePeriodSeconds | int }}
       {{- if eq $role "api" }}
       initContainers:
@@ -100,6 +102,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- end }}
+          {{- include "ow.preStopSleep" $api.server.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list $ $api) | nindent 10 }}
           {{- with (ternary $api.resources $api.webhook.resources (eq $role "api")) }}
           resources:
@@ -112,10 +115,12 @@ spec:
       volumes:
         {{- include "ow.api.volumes" (list $ $role) | nindent 8 }}
         # The only writable path (the root file system is read-only): the
-        # temporary files of the multipart parser of Go (a large file part
-        # of an upload).
+        # temporary files of the multipart parser of Go (a file part of an
+        # upload above 32 MiB). In memory: a full /tmp stops one upload, not
+        # the pod (ow.api.checkTmp).
         - name: tmp
           emptyDir:
-            sizeLimit: 64Mi
+            medium: Memory
+            sizeLimit: {{ $api.tmp.sizeLimit }}
 {{- end }}
 {{- end }}

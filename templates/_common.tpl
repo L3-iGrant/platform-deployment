@@ -74,7 +74,8 @@ empty registry gives "repository:tag".
 
 {{/*
 Pod-level fields that every workload shares: image pull secrets, priority
-class, scheduling and pod security context. Call with
+class, scheduling and pod security context (global.podSecurityContext under
+the podSecurityContext of the component, ow.securityContext). Call with
 (list $ .Values.<component>). Output starts at the pod spec indentation.
 */}}
 {{- define "ow.podSpecCommon" -}}
@@ -90,7 +91,7 @@ imagePullSecrets:
 {{- with ($component.priorityClassName | default $root.Values.global.priorityClassName) }}
 priorityClassName: {{ . }}
 {{- end }}
-{{- with ($component.podSecurityContext | default $root.Values.global.podSecurityContext) }}
+{{- with (include "ow.securityContext" (list $root.Values.global.podSecurityContext $component.podSecurityContext) | fromJson) }}
 securityContext:
   {{- toYaml . | nindent 2 }}
 {{- end }}
@@ -108,14 +109,37 @@ affinity:
 {{- end }}
 {{- end }}
 
-{{/* Container security context. Call with (list $ .Values.<component>). */}}
+{{/*
+Container security context: global.containerSecurityContext under the
+containerSecurityContext of the component (ow.securityContext). Call with
+(list $ .Values.<component>).
+*/}}
 {{- define "ow.containerSecurityContext" -}}
 {{- $root := index . 0 -}}
 {{- $component := index . 1 -}}
-{{- with ($component.containerSecurityContext | default $root.Values.global.containerSecurityContext) }}
+{{- with (include "ow.securityContext" (list $root.Values.global.containerSecurityContext $component.containerSecurityContext) | fromJson) }}
 securityContext:
   {{- toYaml . | nindent 2 }}
 {{- end }}
+{{- end }}
+
+{{/*
+A security context of a pod or of a container: the keys of the global value
+(global.podSecurityContext, global.containerSecurityContext), and over them
+the keys of the component. A key of the component replaces the same key of
+the global value as a whole (a map such as seccompProfile, or a list such as
+sysctls); a key that only the global value has stays, for example
+seLinuxOptions or supplementalGroups of your cluster. A key of the defaults
+of a component that you set to null is not in the values: the global key
+then applies. Call with (list <global value> <component value>). Output:
+JSON.
+*/}}
+{{- define "ow.securityContext" -}}
+{{- $context := deepCopy ((index . 0) | default dict) -}}
+{{- range $key, $value := ((index . 1) | default dict) -}}
+{{- $_ := set $context $key (deepCopy $value) -}}
+{{- end -}}
+{{- toJson $context -}}
 {{- end }}
 
 {{/* Storage class line of a volume claim. Call with (list $ "<component storageClass>"). */}}
@@ -259,4 +283,113 @@ spec:
 {{/* checksum annotation of a values block. Call with (list "<name>" <value>). */}}
 {{- define "ow.checksum" -}}
 checksum/{{ index . 0 }}: {{ index . 1 | toYaml | sha256sum }}
+{{- end }}
+
+{{/*
+The security contexts of the components that run pods, for the notes:
+each values path and its podSecurityContext and containerSecurityContext
+(a Jobs value that is empty: the value of the component). Call with the
+root context. Output: JSON.
+*/}}
+{{- define "ow.securityContextsOfComponents" -}}
+{{- $v := .Values -}}
+{{- $out := dict -}}
+{{- range $path, $values := dict "api" $v.api "consent" $v.consent "gateway" $v.gateway "enterpriseDashboard" $v.enterpriseDashboard "organisationWallet" $v.organisationWallet "database" $v.database "nats" $v.nats "openbao" $v.openbao "redis" $v.redis -}}
+{{- $_ := set $out $path (dict "pod" ($values.podSecurityContext | default dict) "container" ($values.containerSecurityContext | default dict)) -}}
+{{- end -}}
+{{- range $path, $values := dict "api" $v.api "consent" $v.consent "organisationWallet" $v.organisationWallet -}}
+{{- $jobs := $values.jobs | default dict -}}
+{{- $_ := set $out (printf "%s.jobs" $path) (dict "pod" ($jobs.podSecurityContext | default $values.podSecurityContext | default dict) "container" ($jobs.containerSecurityContext | default $values.containerSecurityContext | default dict)) -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end }}
+
+{{/*
+The keys of global.podSecurityContext and global.containerSecurityContext
+that do not apply to a component, because the security context of the
+component sets the same key (ow.securityContext). Call with the root
+context. Output: a JSON list of texts.
+*/}}
+{{- define "ow.securityContextShadowed" -}}
+{{- $root := . -}}
+{{- $components := include "ow.securityContextsOfComponents" $root | fromJson -}}
+{{- $lines := list -}}
+{{- range $kind := list "pod" "container" -}}
+{{- $global := (index $root.Values.global (printf "%sSecurityContext" $kind)) | default dict -}}
+{{- range $key := keys $global | sortAlpha -}}
+{{- $where := list -}}
+{{- range $path := keys $components | sortAlpha -}}
+{{- if hasKey (index (index $components $path) $kind) $key -}}
+{{- $where = append $where $path -}}
+{{- end -}}
+{{- end -}}
+{{- if $where -}}
+{{- $lines = append $lines (printf "global.%sSecurityContext.%s does not apply to %s: the %sSecurityContext of each sets %s" $kind $key (join ", " $where) $kind $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $lines -}}
+{{- end }}
+
+{{/*
+Render guard: the chart writes no log file. In Kubernetes each process logs
+to stdout and stderr: the container log, which the kubelet rotates
+(containerLogMaxSize, containerLogMaxFiles) and which your log agent
+collects. A log file in a pod has no reader, it is lost with the pod, and a
+full volume evicts the pod (the defaults of a rotating log file are 100 MB
+x 6 files). Call with (list "<values key>" "<config key>" <path>). Output:
+nothing; the render stops when the path is not empty.
+*/}}
+{{- define "ow.noLogFile" -}}
+{{- $path := (index . 2) | default "" | toString -}}
+{{- if $path -}}
+{{- fail (printf "%s sets %s %q: the chart writes no log file in Kubernetes. Each process logs to stdout and stderr: the container log, which the kubelet rotates and your log agent collects. Remove %s from %s" (index . 0) (index . 1) $path (index . 1) (index . 0)) -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+The bytes of a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or
+1048576. Call with the quantity. Output: the number of bytes (an integer).
+*/}}
+{{- define "ow.quantityBytes" -}}
+{{- $text := toString . -}}
+{{- if not (regexMatch "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|k|M|G|T|P)?$" $text) -}}
+{{- fail (printf "%q is not a quantity such as 64Mi, 1Gi or 500M" $text) -}}
+{{- end -}}
+{{- $number := regexFind "^[0-9]+(\\.[0-9]+)?" $text -}}
+{{- $unit := trimPrefix $number $text -}}
+{{- $factor := get (dict "" 1 "k" 1000 "M" 1000000 "G" 1000000000 "T" 1000000000000 "P" 1000000000000000 "Ki" 1024 "Mi" 1048576 "Gi" 1073741824 "Ti" 1099511627776 "Pi" 1125899906842624) $unit -}}
+{{- mulf (float64 $number) (float64 $factor) | ceil | int64 -}}
+{{- end }}
+
+{{/*
+The rollout of the Deployment of an HTTP component (docs/security-context.md,
+"The stop of a pod"): minReadySeconds and the strategy of its values
+(default: RollingUpdate, maxSurge 25 %, maxUnavailable 0). Call with the
+values of the component. Output at the indentation of the Deployment spec.
+*/}}
+{{- define "ow.rollout" -}}
+minReadySeconds: {{ .minReadySeconds | int }}
+{{- with .strategy }}
+strategy:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+The preStop of the container of an HTTP component: the sleep action of
+Kubernetes (1.30 or later; no shell and no sleep program in the image). The
+pod serves on for these seconds while Kubernetes removes it from the
+endpoints, the Services and the proxies; then the container gets its stop
+signal. Call with the seconds (1 or more). Output at the indentation of the
+container.
+*/}}
+{{- define "ow.preStopSleep" -}}
+{{- if lt (. | int) 1 -}}
+{{- fail (printf "a preStopSeconds of %v: give 1 or more seconds (the pod must serve on while Kubernetes removes it from the endpoints)" .) -}}
+{{- end -}}
+lifecycle:
+  preStop:
+    sleep:
+      seconds: {{ . | int }}
 {{- end }}

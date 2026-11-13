@@ -1,0 +1,93 @@
+{{- /*
+The alert rules of the wallet as a PrometheusRule of the Prometheus Operator
+(organisationWallet.prometheusRule.enabled; the CRD must exist;
+docs/workers.md, "Alerts"). The rules read the gauges that each worker pod
+reads from the database at each scrape (the same value in each pod: max)
+from the targets of the ServiceMonitor of the chart (job wallet-worker) in
+the namespace of the release. With other monitoring, take the rules of the
+docs.
+*/}}
+{{- if and .Values.organisationWallet.enabled .Values.organisationWallet.prometheusRule.enabled }}
+{{- $w := .Values.organisationWallet }}
+{{- if not $w.serviceMonitor.enabled }}
+{{- fail "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled: the rules read the targets of its job wallet-worker (with other monitoring, take the rules of docs/workers.md, \"Alerts\")" }}
+{{- end }}
+{{- $selector := printf "{job=\"wallet-worker\",namespace=\"%s\"}" .Release.Namespace }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "ow.name" (list . "wallet-alerts") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "ow.labels" (list . "wallet-alerts") | nindent 4 }}
+    {{- with $w.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: ows-wallet-audit
+      rules:
+        # A stopped month stays in PostgreSQL, and its partitions cannot be
+        # dropped until an operator repairs the cause and runs audit
+        # export-retry (docs/audit-log.md).
+        - alert: AuditExportStopped
+          expr: max by (namespace, scope) (ows_audit_export_stopped_months{{ $selector }}) > 0
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: "The audit export of {{ "{{" }} $labels.scope {{ "}}" }} is stopped"
+            description: "{{ "{{" }} $value {{ "}}" }} closed month(s) of the audited scope {{ "{{" }} $labels.scope {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }}: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
+        - alert: PartitionMonthsAheadLow
+          expr: max by (namespace, table) (ows_partition_months_ahead{{ $selector }}) < 2
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Fewer than 2 future monthly partitions of {{ "{{" }} $labels.table {{ "}}" }}"
+            description: "The table {{ "{{" }} $labels.table {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }} has partitions for {{ "{{" }} $value {{ "}}" }} month(s) after the current month. Check the partition job of the queue maintenance."
+        - alert: PartitionOfTheMonthMissing
+          expr: max by (namespace, table) (ows_partition_months_ahead{{ $selector }}) < 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "No partition of the current month for {{ "{{" }} $labels.table {{ "}}" }}"
+            description: "The table {{ "{{" }} $labels.table {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }} has no partition of the current month: an insert fails."
+    - name: ows-wallet-issuer
+      rules:
+        - alert: IssuerStatusListWritesLate
+          expr: max by (namespace) (ows_status_list_change_age_seconds{{ $selector }}) > 60
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A revocation is not in the published status list after 60 s"
+            description: "The oldest queued revocation of a status list in {{ "{{" }} $labels.namespace {{ "}}" }} is {{ "{{" }} $value {{ "}}" }} s old. Check the worker group of the queue realtime and the clock."
+        - alert: IssuanceCountersLate
+          expr: max by (namespace) (ows_issuance_counter_change_age_seconds{{ $selector }}) > 60
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The statistics of the issuer are late"
+            description: "The oldest count change of the issuances in {{ "{{" }} $labels.namespace {{ "}}" }} is {{ "{{" }} $value {{ "}}" }} s old. Check the worker group of the queue realtime."
+        - alert: IssuanceExpiryLate
+          expr: max by (namespace) (ows_worker_schedule_overdue_rows{{ printf "{job=\"wallet-worker\",namespace=\"%s\",schedule=\"issuance.expiry\"}" .Release.Namespace }}) > 0
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The expiry of the issuances is late"
+            description: "{{ "{{" }} $value {{ "}}" }} open issuance(s) in {{ "{{" }} $labels.namespace {{ "}}" }} have a grant that ended more than two runs ago. Check the worker group of the queue maintenance and the clock."
+    - name: ows-wallet-provider
+      rules:
+        - alert: AndroidAttestationStatusOld
+          expr: max by (namespace) (ows_android_attestation_status_age_seconds{{ $selector }}) > 7200
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "The copy of the Android attestation status list is older than 2 hours"
+            description: "The stored attestation status list of Google in {{ "{{" }} $labels.namespace {{ "}}" }} is {{ "{{" }} $value {{ "}}" }} s old. A copy older than 24 hours cannot check a key attestation chain. Check the egress of the workers to android.googleapis.com."
+{{- end }}

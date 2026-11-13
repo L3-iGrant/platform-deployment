@@ -44,6 +44,12 @@ client gets the 413 of the gateway with another text. 0 = the defaults
 {{- if lt $fileLimit (add $imageMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api ImageUpload.maxBytes (%v) + 65536: the gateway would refuse an image that the api accepts" $fileLimit $imageMax) -}}
 {{- end -}}
+{{- /* The same for the CSV import of individuals (Uploads.
+individualImportMaxFileBytes of the api, default 5 MiB, at most 20 MiB). */ -}}
+{{- $importMax := (dig "Uploads" "individualImportMaxFileBytes" 0 ($api.extraConfig | default dict)) | int64 | default 5242880 -}}
+{{- if lt $fileLimit (add $importMax 65536) -}}
+{{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api Uploads.individualImportMaxFileBytes (%v) + 65536: the gateway would refuse a CSV import that the api accepts" $fileLimit $importMax) -}}
+{{- end -}}
 {{- /* The feature gate: on unless gateway.features.enforce is false (a
 values file without the key keeps the default of the gateway). */ -}}
 {{- $enforce := true -}}
@@ -100,5 +106,8 @@ values file without the key keeps the default of the gateway). */ -}}
 {{- /* gateway.extraConfig cannot set Installation (ow.installation.config). */ -}}
 {{- $extra := deepCopy ($g.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
-{{- mustMergeOverwrite $config $extra | toYaml -}}
+{{- $config = mustMergeOverwrite $config $extra -}}
+{{- /* No log file (ow.noLogFile): the gateway logs to stdout. */ -}}
+{{- include "ow.noLogFile" (list "gateway.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- $config | toYaml -}}
 {{- end }}

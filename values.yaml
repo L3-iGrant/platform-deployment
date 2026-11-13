@@ -37,8 +37,7 @@ fullnameOverride: ""
 
 # -- The value of the label app.kubernetes.io/name. This label is also in
 # the selectors, and Kubernetes does not let an upgrade change a selector.
-# Empty: the chart name (platform). A release that was installed from the
-# chart organisationwallet sets "organisationwallet" (docs/upgrade.md).
+# Empty: the chart name (platform).
 nameOverride: ""
 
 global:
@@ -61,14 +60,17 @@ global:
   storageClass: ""
   # -- Priority class of all pods (the class must exist). Empty: none.
   priorityClassName: ""
-  # -- Pod security context of each component whose own
-  # podSecurityContext is empty. Each component has its own default (a
-  # non-root user, docs/security-context.md), and Helm merges your keys
-  # into it: set a key to null to remove it. On OpenShift, set runAsUser,
-  # runAsGroup and fsGroup of each component to null (the SCC sets them).
+  # -- Pod security context of each pod, under the podSecurityContext of
+  # the component: a key of the component replaces the same key here (as a
+  # whole), and each other key stays, for example seLinuxOptions or
+  # supplementalGroups of your cluster. Each component has its own default
+  # (a non-root user, docs/security-context.md), and Helm merges your keys
+  # into it: set a key to null to remove it. The notes name each key here
+  # that a component also sets. On OpenShift, set runAsUser, runAsGroup and
+  # fsGroup of each component to null (the SCC sets them).
   podSecurityContext: {}
-  # -- Container security context of each component whose own
-  # containerSecurityContext is empty.
+  # -- Container security context of each container, under the
+  # containerSecurityContext of the component (the same rule).
   containerSecurityContext: {}
   # -- Node selector, tolerations and affinity of all pods.
   nodeSelector: {}
@@ -315,7 +317,17 @@ nats:
   image:
     registry: docker.io
     repository: library/nats
-    tag: 2.12.3-alpine
+    # -- 2.14.10. The 2.12 line gets no more fixes (the last release is
+    # 2.12.15): 2.14.10 has the fixes of the published advisories, also of
+    # those of the cluster routes (GHSA-5v9x-4f9q-q7qj, GHSA-27c4-m7hq-v6pw,
+    # GHSA-4fpp-8grw-j976), and 2.14.6 fixed the stop of the writes of an
+    # R3 stream after a restart of 2 of its 3 servers (nats-server #8501,
+    # #8519). Not 2.15 or later: 2.15 changes the default subject of the
+    # JetStream acks to the format v2, and the users of the chart have the
+    # permissions $JS.ACK.<stream>.<consumer>.> of the format v1 (the render
+    # stops). The digest pins the image index of the tag.
+    tag: 2.14.10-alpine
+    digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
   external:
     url: ""
   # NATS users: one nkey user per service process in the global account,
@@ -386,19 +398,19 @@ nats:
     requests:
       cpu: 15m
       memory: 32Mi
-  # -- NATS and the reloader run as the user 1000 and the group 1000 (the
+  # -- NATS and the reloader run as the user 65532 and the group 65532 (the
   # images have no user: any UID that is not 0). The reloader sends SIGHUP
-  # to nats-server, thus both containers must have the same user. fsGroup:
+  # to nats-server, thus the containers must have the same user. fsGroup:
   # the group of the JetStream store and of the TLS files (mode 0440).
-  # OnRootMismatch: the kubelet changes the group of the files of the store
-  # only when the top folder does not have it (the first start after the
-  # upgrade changes all files). NATS writes only to the store (/data) and
-  # to the emptyDir of the pid file (/var/run/nats).
+  # OnRootMismatch: the kubelet sets the group of the files of the store
+  # only when the top folder does not have it (the first start). NATS
+  # writes only to the store (/data) and to the emptyDir of the pid file
+  # (/var/run/nats).
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     fsGroupChangePolicy: OnRootMismatch
     seccompProfile:
       type: RuntimeDefault
@@ -446,10 +458,14 @@ redis:
     # seconds (more than 0, at most 60). A route that needs Valkey answers
     # 503 after them.
     connectTimeoutSeconds: 2
+    # -- At most 3 decimals (whole milliseconds).
     timeoutSeconds: 2
     # -- The longest wait, in milliseconds (1 to 10000), for a replica to
     # confirm a single-use value (WAIT 1). Without the confirmation the
-    # wallet refuses the value with 503.
+    # wallet refuses the value with 503. At most half of timeoutSeconds in
+    # whole milliseconds (2 x replicaWaitMilliseconds <= timeoutSeconds x
+    # 1000): a longer wait ends as a socket timeout, and the wallet refuses
+    # the configuration (the render stops).
     replicaWaitMilliseconds: 100
   # Your Valkey or Redis (mode external). It must meet the requirements of
   # docs/redis.md: version 7.2 or later, Sentinel or one primary with
@@ -628,6 +644,17 @@ api:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
+  # -- The rollout of the Deployments of the api and of the webhook handler:
+  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
+  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
+  # available minReadySeconds after it is ready: a pod that fails just after
+  # its start stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   # -- Host name of the api (required). The auth gateway receives every
   # request of this host. On premise it is an internal host
   # (docs/exposure.md).
@@ -756,8 +783,7 @@ api:
     androidSha256CertFingerprints: []
     appleAppIds: []
   # The effective features of each organisation select its webhook event
-  # types: the chart has no list of event types (docs/upgrade.md, "The
-  # webhook event types").
+  # types: the chart has no list of event types.
   webhooks:
     # -- Days that the api keeps webhook delivery records.
     deliveryRetentionDays: 10
@@ -768,23 +794,23 @@ api:
   nats:
     timeout: 5
     maxConcurrentHandlers: 64
-  # -- The stop of the api and webhook pods (Server.drainSeconds,
-  # Server.gracefulShutdownSeconds): at SIGTERM /readyz answers 503
-  # "draining" at once, and the server keeps accepting for drainSeconds;
-  # then it waits at most gracefulShutdownSeconds for the requests in
-  # progress and the NATS drain. No preStop: the process drains itself. The
-  # render stops when terminationGracePeriodSeconds is below drainSeconds +
+  # -- The stop of the api and webhook pods (docs/security-context.md, "The
+  # stop of a pod"): first the preStop sleep of preStopSeconds (the pod
+  # serves on while Kubernetes removes it from the endpoints); then at
+  # SIGTERM /readyz answers 503 "draining" at once, the server keeps
+  # accepting for drainSeconds (Server.drainSeconds), and it waits at most
+  # gracefulShutdownSeconds (Server.gracefulShutdownSeconds) for the
+  # requests in progress and the NATS drain. The render stops when
+  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
   # gracefulShutdownSeconds + 5.
   server:
+    preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 35
+    terminationGracePeriodSeconds: 40
   # -- The limits of the installation that the api checks (the section
   # Limits of the api and webhook files). An empty value writes no key, and
-  # the api uses its default. Set a value only with the images of the
-  # release with the input limits: an api of an earlier release does not
-  # know the key and does not start (docs/upgrade.md, "The limits of the
-  # installation").
+  # the api uses its default.
   limits:
     # -- Limits.maxOrganisations: the most organisations of the
     # installation (1 to 100: a smaller value than the default, never a larger one). The create of one more organisation gets
@@ -795,39 +821,63 @@ api:
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
-  # The root file system is read-only: a log file (Log.file.path) must be
-  # below /tmp/.
+  # Not Log.file: the chart writes no log file (the processes log to
+  # stdout).
   # Not Installation: the chart writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables (for example
   # GOMEMLIMIT): the api reads no configuration from the environment.
   extraEnv: []
   # -- Probes of the api core: startup and liveness /healthz (the process
-  # runs, no dependency check), readiness /readyz (503 while the database,
-  # NATS or the wallet views are not ready).
+  # runs, no dependency check), readiness /readyz: the api checks the
+  # database every 2 s on one connection outside its pools, and /readyz
+  # fails when no check passed for 10 s; NATS and the wallet views are start
+  # gates (/readyz waits for them only at the start). The readiness probe
+  # (2 s, timeout 2 s, 2 failures) takes a pod with a broken database path
+  # out of the Service in about 14 s; an interruption of up to 6 s changes
+  # nothing. An outage of the database of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
   startupProbe:
     httpGet:
       path: /healthz
       port: http
     periodSeconds: 2
-    failureThreshold: 30
+    timeoutSeconds: 3
+    failureThreshold: 90
   readinessProbe:
     httpGet:
       path: /readyz
       port: http
-    periodSeconds: 10
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
   livenessProbe:
     httpGet:
       path: /healthz
       port: http
-    initialDelaySeconds: 30
-    periodSeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   resources:
     requests:
       cpu: 20m
       memory: 272Mi
     limits:
       memory: 512Mi
+  # -- /tmp of the api and webhook pods (the root file system is read-only):
+  # the multipart parser of Go keeps a form of up to 32 MiB in memory, and
+  # it writes a larger file part whole to /tmp. An emptyDir in memory of
+  # sizeLimit: when /tmp is full, only the upload that fills it fails (no
+  # space left), never the pod; its files count against the memory limit of
+  # the container. The render stops when the largest body that the gateway
+  # sends to the api (gateway.proxy.maxBodyBytes, the classes default and
+  # file) is above 32 MiB and above sizeLimit, or when the memory request
+  # and sizeLimit together are above the memory limit of the api or of the
+  # webhook container (docs/security-context.md, "The /tmp folder of the
+  # api").
+  tmp:
+    sizeLimit: 64Mi
   # -- The migrate init container of the api pods (igrant-api migrate).
   migrate:
     resources:
@@ -842,21 +892,15 @@ api:
   #
   # An installation has one platform operator organisation, and its platform
   # admins make the other organisations in the dashboard. Only the command
-  # line makes the platform operator: bootstrapPlatform for a new
-  # installation (docs/install.md, step 7), platformOperator for an
-  # installation that exists (docs/upgrade.md, "The platform operator").
-  # registerAdmin, createOrganisationType and createOrganisation stay for the
-  # values files that use them: they make an admin and an organisation
-  # without the platform operator mark.
+  # line makes the platform operator: bootstrapPlatform (docs/install.md,
+  # step 7).
   jobs:
     # -- A new installation: makes the platform operator organisation and
     # its first admin with the platform admin right, in one command
     # (igrant-api onboard bootstrap-platform). It also makes the organisation
     # type when no type has the name. Idempotent: a second run with the same
     # values changes nothing, and the password of an account that exists
-    # does not change. Do not use it for an installation that has
-    # organisations: use platformOperator. The render stops when
-    # registerAdmin, createOrganisation or platformOperator is also enabled.
+    # does not change. Use it only for a new installation.
     bootstrapPlatform:
       enabled: false
       # -- The e-mail address (login name) and the name of the first
@@ -881,59 +925,6 @@ api:
       type: ""
       location: ""
       policyUrl: ""
-    # -- An installation that exists: gives one of its organisations the
-    # platform operator mark (igrant-api platform set-operator), then gives
-    # one admin of that organisation the platform admin right (igrant-api
-    # platform grant-admin). The organisation must be the wallet provider or
-    # have no wallet. There is no transfer and no removal of the mark.
-    # Idempotent. See docs/upgrade.md, "The platform operator".
-    platformOperator:
-      enabled: false
-      # -- The id of the organisation (required when enabled).
-      organisationId: ""
-      # -- The e-mail address of an admin of that organisation (required
-      # when enabled). An admin with a password of less than 15 characters
-      # sets a new password at the next login.
-      adminEmail: ""
-    # -- Makes an admin account without an organisation (igrant-api onboard
-    # register-admin). For the platform operator of a new installation, use
-    # bootstrapPlatform. Idempotent: an existing account with the e-mail
-    # address is not changed. The password needs 12 characters or more
-    # and at least one special character.
-    registerAdmin:
-      enabled: false
-      # -- The e-mail address, the name and the phone number of the admin
-      # (all required when enabled).
-      email: ""
-      name: ""
-      phone: ""
-      # -- Existing Secret and key with the password of the admin. The Job
-      # mounts it as a file (--password-file); it is never an argument.
-      passwordSecret: ""
-      passwordKey: password
-    # -- Makes an organisation type when no type has the name (igrant-api
-    # onboard create-organisation-type). Idempotent.
-    createOrganisationType:
-      enabled: false
-      type: ""
-    # -- Makes the organisation of an admin without an organisation
-    # (igrant-api onboard create-organisation): the login refuses an admin
-    # without an organisation. The organisation does not get the platform
-    # operator mark. Idempotent: an admin with an organisation is not
-    # changed. The Job tries again until the admin and the type exist.
-    createOrganisation:
-      enabled: false
-      # -- Empty: api.jobs.registerAdmin.email.
-      adminEmail: ""
-      # -- The name, the location and the URL of the privacy policy of the
-      # organisation (required when enabled).
-      name: ""
-      location: ""
-      policyUrl: ""
-      # -- At most 500 characters.
-      description: ""
-      # -- The organisation type. Empty: api.jobs.createOrganisationType.type.
-      type: ""
     # -- Resources of the Jobs, their migrate init container and the api
     # migration hook.
     resources:
@@ -962,25 +953,34 @@ api:
   webhook:
     replicas: 1
     # -- Probes of the webhook handler: startup and liveness /healthz (the
-    # process runs), readiness /readyz (503 while the database, NATS or the
-    # JetStream consumers are not ready).
+    # process runs), readiness /readyz: the database check of the api core
+    # (every 2 s, outside the pools; /readyz fails when no check passed for
+    # 10 s), NATS and the JetStream consumers as start gates. The readiness
+    # probe is 5 s x 2 failures (timeout 2 s): the handler sends no
+    # response to a client, so a slower exit is enough. The startup probe
+    # gives the process 180 s (90 x 2 s); the liveness probe starts after it
+    # (no initialDelaySeconds).
     startupProbe:
       httpGet:
         path: /healthz
         port: http
       periodSeconds: 2
-      failureThreshold: 30
+      timeoutSeconds: 3
+      failureThreshold: 90
     readinessProbe:
       httpGet:
         path: /readyz
         port: http
-      periodSeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 2
     livenessProbe:
       httpGet:
         path: /healthz
         port: http
-      initialDelaySeconds: 30
-      periodSeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 15m
@@ -1042,22 +1042,32 @@ gateway:
     digest: ""
   # -- Two or more replicas: the gateway is in front of all api requests.
   replicas: 2
-  # -- Rolling update: a new pod is ready before an old pod stops.
+  # -- The rollout of the Deployment of the gateway: new pods are ready before
+  # old pods stop (maxUnavailable 0), with at most a quarter more pods during
+  # the rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
+  # after it is ready: a pod that fails just after its start stops the rollout
+  # before an old pod stops.
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
+      maxSurge: 25%
       maxUnavailable: 0
+  minReadySeconds: 30
   revisionHistoryLimit: 5
   # -- Gateway.listenPort: 1024 or more (non-root).
   listenPort: 8070
-  # -- The stop of the gateway pods (Gateway.drainSeconds,
-  # Gateway.gracefulShutdownSeconds): the same behaviour as the api. The
-  # render stops when terminationGracePeriodSeconds is below drainSeconds +
+  # -- The stop of the gateway pods (docs/security-context.md, "The stop
+  # of a pod"): first the preStop sleep of preStopSeconds (the pod serves
+  # on while Kubernetes removes it from the endpoints and the proxies);
+  # then at SIGTERM the drain (Gateway.drainSeconds: /readyz answers 503,
+  # the server still accepts) and the wait for the requests in progress
+  # (Gateway.gracefulShutdownSeconds). The render stops when
+  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
   # gracefulShutdownSeconds + 5.
+  preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
-  terminationGracePeriodSeconds: 35
+  terminationGracePeriodSeconds: 40
   # -- Log level (Log.level). Empty: api.logLevel.
   logLevel: ""
   upstreams:
@@ -1138,37 +1148,41 @@ gateway:
   features:
     # -- true (the default of the gateway): the gate is on. false: the
     # gateway refuses no route for a feature, and the features only show
-    # and hide the areas of the dashboard. Use false for an emergency, or
-    # for the first upgrade of an installation that exists, until you have
-    # checked the features of its organisations (docs/upgrade.md, "The
-    # feature gate").
+    # and hide the areas of the dashboard. Use false only for an emergency.
     enforce: true
   # -- Extra keys of the gateway configuration, deep-merged over the keys of
   # the chart (exact key names; no secrets). Not Installation: the chart
-  # writes it (docs/components.md).
+  # writes it (docs/components.md). Not Log.file: the chart writes no log
+  # file (the gateway logs to stdout).
   extraConfig: {}
   # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes: startup and liveness /healthz (the process runs), readiness
-  # /readyz (the database, the keys).
+  # /readyz: the gateway checks the database every 2 s on one connection
+  # outside its pool, and /readyz fails when no check passed for 10 s. The
+  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
+  # database path out of the Service in about 14 s; an interruption of up
+  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
   startupProbe:
     httpGet:
       path: /healthz
       port: http
     periodSeconds: 2
-    failureThreshold: 30
+    timeoutSeconds: 3
+    failureThreshold: 90
   readinessProbe:
     httpGet:
       path: /readyz
       port: http
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
   livenessProbe:
     httpGet:
       path: /healthz
       port: http
-    initialDelaySeconds: 10
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
@@ -1234,8 +1248,12 @@ networkPolicy:
         kubernetes.io/metadata.name: ingress-nginx
     podSelector: {}
   # -- The DNS pods. OpenShift: namespace openshift-dns, pods
-  # dns.operator.openshift.io/daemonset-dns: default, port 5353.
+  # dns.operator.openshift.io/daemonset-dns: default, port 5353. cidrs: the
+  # addresses of DNS servers that are not pods of the cluster network, for
+  # example the address of NodeLocal DNSCache (169.254.20.10/32) or of a
+  # resolver of the node or of your network (docs/network-policies.md).
   dns:
+    cidrs: []
     namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: kube-system
@@ -1263,20 +1281,33 @@ networkPolicy:
   # Example: [{hosts: ["redis-1.example.org"], cidrs: ["192.0.2.50/32"], ports: [6379, 26379]}]
   externalRedis: []
   # -- Pod and Service CIDRs of the cluster, excluded from the internet
-  # profiles.
+  # profiles (0.0.0.0/0 and ::/0; each block excludes the entries of its
+  # family). A dual-stack cluster: give its IPv6 ranges too.
   clusterCidrs: []
   egress:
     # -- External targets: cidrs (with except) and/or namespaceSelector +
     # podSelector; ports [] = all ports. A profile without a target renders
-    # no rule.
+    # no rule. The except list of the internet profiles: the private,
+    # shared and link-local IPv4 ranges; the unique local, link-local and
+    # multicast IPv6 ranges; and in the NAT64 prefix 64:ff9b::/96 only the
+    # images of the IPv4 ranges that are never public (10/8, 172.16/12,
+    # 192.168/16, 100.64/10, 169.254/16, 127/8, 0/8). Thus an IPv6-only
+    # cluster with DNS64 reaches the public IPv4 addresses through NAT64.
+    # With a NAT64 prefix of your network, add the images of these ranges in
+    # that prefix (docs/network-policies.md). The list has no ::ffff:0:0/96:
+    # Kubernetes refuses an IPv4-mapped address, and a packet never has one.
     profiles:
       internet:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: [443, 80]
       internet-any-port:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: []
       # -- The metadata server of a cloud (for example the default
       # credentials of the client of a cloud service).
@@ -1302,6 +1333,19 @@ networkPolicy:
       auditBucket:
         cidrs: []
         ports: [443]
+      # -- The public hosts of this platform (the hosts of the api, the
+      # wallet and the dashboard), for a wallet role that reads a status
+      # list, the metadata or a credential offer of an organisation of the
+      # same platform. The target is always the pods of
+      # networkPolicy.ingressController: in the cluster, the address of the
+      # load balancer often goes directly to them. ports: the container
+      # ports of these pods (ingress-nginx 80 and 443; Traefik 8000 and
+      # 8443; Envoy Gateway 10080 and 10443). cidrs: the address of your
+      # load balancer when it is in a private range and the traffic goes to
+      # it (docs/network-policies.md).
+      platform:
+        cidrs: []
+        ports: [80, 443]
       smtp:
         cidrs: []
         ports: [587]
@@ -1312,13 +1356,23 @@ networkPolicy:
     # -- The profiles of each role (pod labels). The chart OpenBao needs no
     # external target.
     roles:
+      # Any port of a public IPv4 or IPv6 address for each role that calls a
+      # URL of an organisation or another vendor (see
+      # docs/network-policies.md, "The egress of each role"): the api (the
+      # webhooks, the OIDC providers), the webhook handler (the webhooks),
+      # consent (the Data Space of an organisation) and the wallet roles.
+      # The gateway calls only the upstreams of gateway.upstreams.
       api: [internet-any-port, smtp]
       webhook: [internet-any-port]
       gateway: [internet]
-      consent: [internet]
-      wallet-service: [internet, kms, cloudKms]
-      wallet-config: [internet, kms, cloudKms]
-      wallet-worker: [internet, kms, cloudKms, auditBucket]
+      consent: [internet-any-port]
+      # The wallet roles: an issuer, a verifier, a trust list, a status
+      # list, a JWKS or the metadata of another vendor can have a URL with a
+      # port (the specifications allow it). The SSRF guard of the wallet
+      # keeps the private addresses out.
+      wallet-service: [internet-any-port, platform, kms, cloudKms]
+      wallet-config: [internet-any-port, platform, kms, cloudKms]
+      wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
       wallet-clock: []
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
   monitoring:
@@ -1424,20 +1478,63 @@ consent:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 2
+  # -- The rollout of the Deployment of consent: new pods are ready before old
+  # pods stop (maxUnavailable 0), with at most a quarter more pods during the
+  # rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
+  # after it is ready: a pod that fails just after its start stops the rollout
+  # before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   logLevel: info
   nats:
     rpcTimeoutSeconds: 15
     readRpcTimeoutSeconds: 5
   maxRequestBodyBytes: 5242880
-  # -- The stop of the consent pods (Server.drainSeconds,
-  # Server.gracefulShutdownSeconds): the drain, then the wait for the
-  # requests in progress, the NATS drain and the outbox relay. The render
-  # stops when terminationGracePeriodSeconds is below drainSeconds +
-  # gracefulShutdownSeconds + 5.
+  # -- The stop of the consent pods (docs/security-context.md, "The stop of
+  # a pod"): first the preStop sleep of preStopSeconds; then at SIGTERM the
+  # drain (Server.drainSeconds), the wait for the requests in progress, the
+  # NATS drain and the outbox relay (Server.gracefulShutdownSeconds). The
+  # render stops when terminationGracePeriodSeconds is below
+  # preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5.
   server:
+    preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 35
+    terminationGracePeriodSeconds: 40
+  # -- Probes of consent on its admin port (8081): startup and liveness
+  # /healthz, readiness /readyz: consent checks the database every 2 s on
+  # one connection outside its pool, and /readyz fails when no check passed
+  # for 10 s; NATS and the views of its readers are start gates. The
+  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
+  # database path out of the Service in about 14 s; an interruption of up
+  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: admin
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 90
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: admin
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: admin
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   # -- GatewayToken: consent always verifies the internal token of the
   # gateway. Clock difference that exp and nbf accept: 1 to 300 seconds.
   gatewayToken:
@@ -1468,7 +1565,8 @@ consent:
     podSecurityContext: {}
     containerSecurityContext: {}
   # -- Extra keys of the consent configuration, deep-merged over the keys of
-  # the chart (exact key names). Do not put a secret here.
+  # the chart (exact key names). Do not put a secret here. Not Log.file: the
+  # chart writes no log file (consent logs to stdout).
   extraConfig: {}
   extraEnv: []
   resources:
@@ -1692,11 +1790,6 @@ organisationWallet:
     # create of one more organisation wallet (a new organisation) gets 409
     # organisation_wallet_unit.limit_reached; the units that exist stay.
     # Empty: the chart writes no key, and the wallet uses its default (100).
-    # Set a value only with the images of the release with the input
-    # limits: a wallet of an earlier release does not know the key and does
-    # not start (docs/upgrade.md, "The limits of the installation"). An
-    # installation with more than 100 organisation wallets keeps them, but
-    # it cannot make the organisation wallet of a new organisation.
     organisationWalletUnitsMax: ""
     # -- wallet_unit.development_apps_allowed: true lets an admin give a
     # wallet app the build development or simulator, and protocol 2 then
@@ -1837,6 +1930,18 @@ organisationWallet:
   # keys in their own OpenBao (Transit engine), in their cloud KMS or at a
   # QTSP. The local key store of this installation (OpenBao Transit) is
   # always there for every organisation.
+  # -- The SSRF guard of the wallet (ssrf_protection.allowed_private): the
+  # private hosts that the wallet may call, for an installation whose public
+  # hosts (the status lists, the metadata, the offers of its organisations)
+  # have private addresses, for example on premise. Each entry is a host
+  # name (exact) or an IP address or CIDR (for example 10.20.0.0/16).
+  # Loopback, link-local, the cloud metadata addresses, unspecified,
+  # multicast and reserved addresses are never allowed. Empty (default):
+  # only public addresses, and the chart writes no key. With network
+  # policies, also give the address to networkPolicy.egress.profiles.platform
+  # (docs/network-policies.md).
+  ssrf:
+    allowedPrivate: []
   keyStores:
     # -- kms.organisation_key_store_types: the types that admins may add, in
     # this order: an external OpenBao (Transit engine), a QTSP (remote
@@ -1997,10 +2102,21 @@ organisationWallet:
       readOnlyRootFilesystem: true
       capabilities:
         drop: ["ALL"]
+  # -- The rollout of the Deployments of the wallet service and config roles:
+  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
+  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
+  # available minReadySeconds after it is ready: a pod that fails just after
+  # its start stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   # -- Extra keys of the wallet configuration, deep-merged over the keys of
   # the chart in the files of all roles (nested keys). Do not put a secret
-  # here. The root file system is read-only: a log file (log_file.path)
-  # must be below /tmp.
+  # here. Not log_file: the chart writes no log file (the processes log to
+  # stdout).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables: the wallet reads
   # no configuration from the environment (only EUDI_WALLET_CONFIG).
@@ -2040,31 +2156,6 @@ organisationWallet:
   # for some of the queues; together the groups must run every queue. A
   # list: your list replaces the whole default list.
   workers:
-    # -- The /tmp folder of each worker pod (the root file system is
-    # read-only). The monthly audit export (audit.export, queue maintenance;
-    # only with audit.bucket.name) writes one month of the audit log of one
-    # data scope two times to /tmp/ows-audit-export-*: the export and the
-    # download that checks it. Thus /tmp is on disk, never in memory.
-    # sizeLimit: the most data in /tmp of one pod. Give at least two times
-    # the largest month of one data scope (docs/workers.md, "The /tmp folder
-    # of the workers"). A group can override these values with its own
-    # tmp.
-    tmp:
-      # -- emptyDir (default): the ephemeral storage of the node. Kubernetes
-      # evicts the pod when /tmp holds more than sizeLimit, and the export
-      # runs again from its message on another pod. The node must have the
-      # free disk space.
-      sizeLimit: 10Gi
-      # -- true: /tmp is a generic ephemeral volume in place of the emptyDir:
-      # a PersistentVolumeClaim of sizeLimit that Kubernetes makes with the
-      # pod and deletes with the pod (for exports that are larger than the
-      # free disk of the nodes).
-      volume:
-        enabled: false
-        # -- The storage class of the claim. Empty: global.storageClass,
-        # else the default storage class of the cluster. "-": no storage
-        # class.
-        storageClass: ""
     groups:
       # name: lower-case letters, digits and -; the Deployment name has at
       #   most 63 characters.
@@ -2076,9 +2167,6 @@ organisationWallet:
       #   limit of the actors of the queues, else an actor stops before its
       #   end and runs again from its message.
       # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
-      # tmp (optional): the /tmp folder of the pods of the group, with the
-      #   keys of organisationWallet.workers.tmp (sizeLimit, volume). Each
-      #   key that you give replaces the key of workers.tmp.
       - name: main
         queues: [realtime, attestation, status, kms]
         replicas: 2
@@ -2117,6 +2205,14 @@ organisationWallet:
     enabled: false
     interval: 15s
     labels: {}
+  # -- The alert rules of the wallet as a PrometheusRule of the Prometheus
+  # Operator (the CRD must exist; docs/workers.md, "Alerts"): the stopped
+  # The rules read the targets of serviceMonitor (turn it on too). labels:
+  # for the ruleSelector of your Prometheus. With other monitoring, take the
+  # rules of the docs.
+  prometheusRule:
+    enabled: false
+    labels: {}
   # -- The service, config, worker and clock pods. The image runs as the
   # user ows (UID 65532, GID 65532). fsGroup: the group of the secret files
   # (mode 0440; with 0400 the user cannot read them). The processes write
@@ -2150,6 +2246,50 @@ enterpriseDashboard:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
+  # -- The rollout of the Deployment of the dashboard: new pods are ready
+  # before old pods stop (maxUnavailable 0), with at most a quarter more pods
+  # during the rollout (maxSurge 25 %). A new pod counts as available
+  # minReadySeconds after it is ready: a pod that fails just after its start
+  # stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
+  # -- The stop of the dashboard pods (docs/security-context.md, "The stop
+  # of a pod"): the preStop sleep of preStopSeconds (nginx serves on while
+  # Kubernetes removes the pod from the endpoints), then the stop signal
+  # of the image (SIGQUIT: nginx ends the requests in progress, then
+  # stops). The render stops when terminationGracePeriodSeconds is below
+  # preStopSeconds + 10.
+  preStopSeconds: 10
+  terminationGracePeriodSeconds: 30
+  # -- Probes of the dashboard (nginx): each the start page /.
+  # The startup probe gives the process 180 s (90 x 2 s); the liveness probe
+  # starts after it (no initialDelaySeconds). Each timeout (3 s) is above
+  # the time of the check.
+  startupProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 90
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   # -- Host name of the dashboard (required). On premise it is an
   # internal host (docs/exposure.md).
   host: ""
@@ -2167,7 +2307,10 @@ enterpriseDashboard:
     timeouts: {}
   # -- config.json of the dashboard. Empty baseUrl: the api public URL.
   # Empty walletUrl: the organisation wallet public URL. Empty appVersion:
-  # the image tag.
+  # the image tag. The chart also writes the limits of the CSV import of
+  # individuals of the api (api.extraConfig.Uploads
+  # .individualImportMaxFileBytes and .individualImportMaxRows) when they
+  # are set, so that the dashboard and the api have the same limits.
   configuration:
     baseUrl: ""
     walletUrl: ""

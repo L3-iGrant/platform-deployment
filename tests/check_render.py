@@ -194,10 +194,10 @@ def main() -> int:
         check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
         for file in ("api.yaml", "webhook.yaml"):
             check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
-    # The operator Jobs of the api are off by default: no Job makes an
-    # admin, an organisation or the platform operator.
+    # The operator Job of the api is off by default: no Job makes the
+    # platform operator.
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
-        r"-api-(bootstrap-platform|platform-operator|register-admin|create-organisation(-type)?)-\d+$", d["metadata"]["name"]))
+        r"-api-bootstrap-platform-\d+$", d["metadata"]["name"]))
     check(not operator_jobs, f"the default values render the operator Jobs {operator_jobs}")
     consent = config_map_file(f"{RELEASE}-consent", "config.yaml")
     if consent:
@@ -572,9 +572,9 @@ def main() -> int:
                                            "--admin-user", admin_user, "--admin-password-file", f"{secret_dir}/database-admin-password"]
               and "args" not in container, f"the roles hook has the command {container.get('command')}")
         # The init hook runs before it: no wait for the server or the database.
-        check(roles_job["spec"].get("backoffLimit") == 1 and "activeDeadlineSeconds" not in roles_job["spec"],
-              "the roles hook has not backoffLimit 1 without activeDeadlineSeconds")
-        check(pod.get("restartPolicy") == "Never", "the roles hook has not restartPolicy Never")
+        check(roles_job["spec"].get("backoffLimit") == 3 and "activeDeadlineSeconds" not in roles_job["spec"],
+              "the roles hook has not backoffLimit 3 without activeDeadlineSeconds")
+        check(pod.get("restartPolicy") == "OnFailure", "the roles hook has not restartPolicy OnFailure")
         mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
         check(mounts.get("database-roles") == "/run/secrets/database-roles", "the roles hook does not mount the role Secret at /run/secrets/database-roles")
         refs = secret_refs(pod)

@@ -1,0 +1,15 @@
+# A mutant of the security settings for tests/render-matrix.sh: values that
+# break the Pod Security Standard "restricted" in the fields that the
+# earlier check missed. Both security checks (tests/check_security.py and
+# tests/psscheck) must refuse the render. Never use these values.
+api:
+  containerSecurityContext:
+    appArmorProfile:
+      type: Unconfined
+    seLinuxOptions:
+      type: spc_t
+    procMount: Unmasked
+organisationWallet:
+  podSecurityContext:
+    windowsOptions:
+      hostProcess: true

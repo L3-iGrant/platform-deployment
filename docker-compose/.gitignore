@@ -2,3 +2,6 @@
 # never commit them.
 .env
 secrets/
+# The configuration files of make configs (render-configs.py): no secret, but
+# they follow from your .env.
+generated/

@@ -93,7 +93,7 @@ The reconcile has no metric. When a row has no copy, it writes a warning to the 
 sum(count_over_time({namespace="ows", container=~"wallet-worker-.+"} |= "[ows.issuance.backfill] [WARNING]" [1d])) > 0
 ```
 
-After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete (see [Upgrade](upgrade.md#the-tables-of-the-issuances)).
+After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete.
 
 ## Stops and rollouts
 
@@ -135,35 +135,25 @@ The service and config pods have the port `metrics` (9190) for the metrics of th
 
 Each worker pod reads the queue metrics of all queues from Valkey: use `max by (queue)` for them.
 
-Each worker pod also reads gauges from the database at each scrape, so each pod gives the same values: use `max` for them. The chart makes no alert rules: the docs of the organisation-wallet-suite repository list the metrics and their alerts. The issuer needs these alerts:
-
-| Metric | Alert | Meaning |
-| --- | --- | --- |
-| `ows_status_list_change_age_seconds` | above 60 | The age of the oldest queued revocation of an issuer status list (0 without one). A revocation is in the published list within 60 seconds: check the worker group of the queue `realtime` and the clock. |
-| `ows_issuance_counter_change_age_seconds` | above 60 | The age of the oldest count change of the issuances that waits for the actor `issuance_counter.apply_changes` (0 without one). The statistics of the issuer are late. |
-| `ows_worker_schedule_overdue_rows{schedule="issuance.expiry"}` | above 0 | The open issuances whose grant ended more than two runs of `issuance.expiry_dispatch` ago: the expiry is late. Check the worker group of the queue `maintenance` and the clock. |
-
-For example, as a PrometheusRule of the Prometheus Operator:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: ows-wallet-issuer
-  namespace: ows
-spec:
-  groups:
-    - name: ows-wallet-issuer
-      rules:
-        - alert: IssuerStatusListWritesLate
-          expr: max(ows_status_list_change_age_seconds) > 60
-        - alert: IssuanceCountersLate
-          expr: max(ows_issuance_counter_change_age_seconds) > 60
-        - alert: IssuanceExpiryLate
-          expr: max(ows_worker_schedule_overdue_rows{schedule="issuance.expiry"}) > 0
-```
+Each worker pod also reads gauges from the database at each scrape, so each pod gives the same values: use `max` for them. See [Alerts](#alerts) for the alert rules.
 
 The copy of the issuances of earlier releases has an alert on a log line, not on a metric: see [The copy of the issuances](#the-copy-of-the-issuances).
+
+## Alerts
+
+`organisationWallet.prometheusRule.enabled: true` (with `serviceMonitor.enabled`; the CRD of the Prometheus Operator must exist) makes the PrometheusRule `<release>-wallet-alerts` with the rules below. `prometheusRule.labels` gives the labels for the `ruleSelector` of your Prometheus. The rules read the gauges of the worker pods (the job `wallet-worker` of the ServiceMonitor, the namespace of the release); each worker pod reads them from the database at each scrape, so the rules use `max`. With other monitoring, make the same rules (change the selector of the job to the one of your scrape):
+
+| Alert | Severity | Rule | Meaning |
+| --- | --- | --- | --- |
+| `AuditExportStopped` | critical | `max by (namespace, scope) (ows_audit_export_stopped_months{job="wallet-worker"}) > 0` for 10m | The export of a closed month of an audited scope stopped after 8 attempts. The month stays in PostgreSQL, and the partition step cannot drop its partitions (see [Audit log](audit-log.md#partitions)). Repair the cause, then run `audit export-retry` in a worker pod. |
+| `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition of the current month: an insert fails. Run the upgrade again (the partition step of the migration hook). |
+| `PartitionMonthsAheadLow` | warning | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 2` for 1h | A table has partitions for fewer than 2 months after the current month. |
+| `IssuerStatusListWritesLate` | warning | `max by (namespace) (ows_status_list_change_age_seconds{job="wallet-worker"}) > 60` for 2m | A revocation is not in the published status list after 60 seconds. Check the worker group of the queue `realtime` and the clock. |
+| `IssuanceCountersLate` | warning | `max by (namespace) (ows_issuance_counter_change_age_seconds{job="wallet-worker"}) > 60` for 10m | The statistics of the issuer are late. |
+| `IssuanceExpiryLate` | warning | `max by (namespace) (ows_worker_schedule_overdue_rows{job="wallet-worker",schedule="issuance.expiry"}) > 0` for 15m | Open issuances whose grant ended more than two runs of `issuance.expiry_dispatch` ago. Check the worker group of the queue `maintenance` and the clock. |
+| `AndroidAttestationStatusOld` | warning | `max by (namespace) (ows_android_attestation_status_age_seconds{job="wallet-worker"}) > 7200` for 10m | The stored attestation status list of Google is older than 2 hours; a copy older than 24 hours cannot check a key attestation chain. |
+
+A wallet image without a metric gives no series, and its rule does not fire. `tests/alert-rules.sh` checks the rules with `promtool` (see [Tests](tests.md)).
 
 ## Users and files
 
@@ -174,49 +164,13 @@ The copy of the issuances of earlier releases has an alert on a log line, not on
 
 ## The /tmp folder of the workers
 
-The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write their temporary files to `/tmp`. The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes one month of the audit log of one data scope two times to `/tmp/ows-audit-export-*`: the export, and the download that checks it. The files stay only while the export runs.
+The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write only their temporary files to `/tmp`: an `emptyDir` in memory of 64Mi, the same as in the other wallet pods. The files of `/tmp` count against the memory limit of the worker container.
 
-| Value | Description | Default |
-| --- | --- | --- |
-| `organisationWallet.workers.tmp.sizeLimit` | The most data in `/tmp` of one worker pod (`Ki`, `Mi`, `Gi` or `Ti`). Give at least two times the largest month of one data scope | `10Gi` |
-| `organisationWallet.workers.tmp.volume.enabled` | `false`: an `emptyDir` on the disk of the node (never in memory). `true`: a generic ephemeral volume, a PersistentVolumeClaim of `sizeLimit` that Kubernetes makes with the pod and deletes with the pod | `false` |
-| `organisationWallet.workers.tmp.volume.storageClass` | The storage class of the claim (empty: `global.storageClass`, else the default class; `-`: none) | `""` |
-| `organisationWallet.workers.groups[].tmp` | The same keys for one group: each key that you give replaces the key of `workers.tmp` | none |
-
-Size: the audit log grows with the activity of the organisations. Read the size of the largest monthly partition of the audit log of each data scope in the wallet database, and give two times that size and a margin. As an estimate, at 4,000,000 wallet units the audit log grows by about 400 GB each month for all data scopes together: one month of one data scope can need tens to hundreds of GB in `/tmp`.
-
-- With the `emptyDir`, the kubelet evicts a pod that writes more than `sizeLimit`, and the export runs again from its message on another pod. The nodes must have the free disk space (the ephemeral storage). The `sizeLimit` is a limit, not a reservation.
-- With a volume (`volume.enabled: true`), the storage class gives the space. Each pod of each group gets its own claim: give the large size only to the group with the queue `maintenance`, for example:
-
-```yaml
-organisationWallet:
-  workers:
-    groups:
-      - name: main
-        queues: [realtime, attestation, status, kms]
-        replicas: 2
-        processes: 1
-        threads: 8
-        shutdownTimeoutSeconds: 600
-        terminationGracePeriodSeconds: 630
-      - name: maintenance
-        queues: [maintenance]
-        replicas: 1
-        processes: 1
-        threads: 2
-        shutdownTimeoutSeconds: 14400
-        terminationGracePeriodSeconds: 14430
-        tmp:
-          sizeLimit: 200Gi
-          volume:
-            enabled: true
-```
-
-Your list replaces the whole default list: give all keys of each group, also its `resources`.
+The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes no local file: it reads the month in pages and sends each chain in parts of at most 16 MiB to the bucket. Its memory peak is about 263 to 424 MiB for one export (at most 16 open parts of 16 MiB, one page and one chunk of 8 MiB), so two exports at the same time stay below 1 GiB, inside the memory limit of the workers (1536Mi).
 
 ## Network policies
 
-The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet` also gives the actor of the Android attestation status list its source (`android.googleapis.com`, port 443); for a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
+The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet-any-port`, `platform`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet-any-port` also gives the actor of the Android attestation status list its source (`android.googleapis.com`, port 443); for a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
 
 ## Check
 

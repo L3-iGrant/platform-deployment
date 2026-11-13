@@ -11,8 +11,8 @@ export HOST_GID := $(shell id -g)
 CHART_DIR ?= ..
 
 .DEFAULT_GOAL := help
-.PHONY: help env secrets check up status logs down reset platform-operator platform-set-operator \
-	platform-grant-admin platform-status admin organisation db-shell openbao-status nats-config
+.PHONY: help env secrets configs check up status logs down reset platform-operator \
+	platform-grant-admin platform-status db-shell openbao-status nats-config
 
 help: ## Show the targets
 	@echo "iGrant.io platform - Docker Compose (README.md has the procedure)"
@@ -28,11 +28,20 @@ env: ## Step 2: make .env from .env.example (keeps a .env that exists)
 secrets: ## Step 3: make all secrets and keys in secrets/ (keeps the files that exist; prints no value)
 	@./secrets.sh
 
-check: ## Step 4: check .env, secrets/ and the Compose files (no container starts)
+# The configuration files of the components: Compose writes the values of
+# .env into the templates of compose.configs.yaml, and render-configs.py
+# writes them to generated/ (a service with a read-only root file system
+# takes a config only from a file). make check and make up run it first.
+configs: ## Write the configuration files of the components to generated/ from .env (make check and make up do it)
+	@COMPOSE="$(COMPOSE)" python3 -I ./render-configs.py
+
+check: configs ## Step 4: write the configuration files, then check .env, secrets/ and the Compose files (no container starts)
 	@./check.sh
 
+# --remove-orphans: a service that a new release removes (for example the
+# api-read-access of an earlier release) does not stay.
 up: check ## Step 5: start the platform (after make check)
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --remove-orphans
 	@echo "up: started. make status shows the state of the services."
 
 status: ## Show the state of the services (also the one-shot services that stopped)
@@ -78,41 +87,14 @@ platform-operator: ## Step 8: make the platform operator organisation and its fi
 		--organisation-name "$(ORG_NAME)" --type "$(ORGANISATION_TYPE)" \
 		--location "$(ORG_LOCATION)" --policy-url "$(ORG_POLICY_URL)" $(API_CONFIG)
 
-# The platform operator of an installation that exists (README.md, "Change
-# to the release with the platform operator"). The commands are idempotent.
-platform-set-operator: ## An installation that exists: give an organisation that exists the platform operator mark: make platform-set-operator ORGANISATION_ID=...
-	@test -n "$(ORGANISATION_ID)" || { echo "platform-set-operator: set ORGANISATION_ID" >&2; exit 1; }
-	@$(API_COMMAND) platform set-operator --organisation-id "$(ORGANISATION_ID)" $(API_CONFIG) </dev/null
-
-platform-grant-admin: ## An installation that exists: give an admin of the platform operator organisation the platform admin right: make platform-grant-admin ADMIN_EMAIL=...
+# Recovery when no platform admin can log in (the dashboard needs a platform
+# admin to give the right). Idempotent.
+platform-grant-admin: ## Recovery: give an admin of the platform operator organisation the platform admin right: make platform-grant-admin ADMIN_EMAIL=...
 	@test -n "$(ADMIN_EMAIL)" || { echo "platform-grant-admin: set ADMIN_EMAIL" >&2; exit 1; }
 	@$(API_COMMAND) platform grant-admin --email "$(ADMIN_EMAIL)" $(API_CONFIG) </dev/null
 
 platform-status: ## Show the platform operator organisation and the platform admins (reads only)
 	@$(API_COMMAND) platform status $(API_CONFIG) </dev/null
-
-# An admin and an organisation WITHOUT the platform operator mark (the
-# targets of the earlier releases; the dashboard login refuses an admin
-# without an organisation). For a new installation, use platform-operator.
-# The commands are idempotent.
-admin: ## Earlier releases: make an admin without an organisation: make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=... (asks for the password)
-	@test -n "$(ADMIN_EMAIL)" && test -n "$(ADMIN_NAME)" && test -n "$(ADMIN_PHONE)" || \
-		{ echo "admin: set ADMIN_EMAIL, ADMIN_NAME and ADMIN_PHONE" >&2; exit 1; }
-	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation-type \
-		--type "$(ORGANISATION_TYPE)" --config /etc/igrant-api/config.yaml </dev/null
-	@stty -echo 2>/dev/null; printf 'Password of %s (12 characters or more, with at least one special character; the input is hidden): ' "$(ADMIN_EMAIL)"; \
-	IFS= read -r password; stty echo 2>/dev/null; echo; \
-	printf '%s' "$$password" | $(COMPOSE) exec -T api /app/bin/igrant-api onboard register-admin \
-		--email "$(ADMIN_EMAIL)" --name "$(ADMIN_NAME)" --phone "$(ADMIN_PHONE)" \
-		--password-file - --config /etc/igrant-api/config.yaml
-
-organisation: ## Earlier releases: make the organisation of that admin (no platform operator mark): make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]
-	@test -n "$(ADMIN_EMAIL)" && test -n "$(ORG_NAME)" && test -n "$(ORG_LOCATION)" && test -n "$(ORG_POLICY_URL)" || \
-		{ echo "organisation: set ADMIN_EMAIL, ORG_NAME, ORG_LOCATION and ORG_POLICY_URL" >&2; exit 1; }
-	@$(COMPOSE) exec -T api /app/bin/igrant-api onboard create-organisation \
-		--admin-email "$(ADMIN_EMAIL)" --name "$(ORG_NAME)" --type "$(ORGANISATION_TYPE)" \
-		--location "$(ORG_LOCATION)" --policy-url "$(ORG_POLICY_URL)" --description "$(ORG_DESCRIPTION)" \
-		--config /etc/igrant-api/config.yaml
 
 db-shell: ## Open the SQL shell of the database server as the admin user
 	$(COMPOSE) exec postgres psql -U postgres -d postgres

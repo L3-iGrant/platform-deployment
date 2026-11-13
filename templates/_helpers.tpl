@@ -1123,22 +1123,24 @@ Output: nothing.
 {{- end }}
 
 {{/*
-Stop budget of a Go server (api, webhook handler, gateway, consent): at
-SIGTERM the server drains for drainSeconds, then waits at most
-gracefulShutdownSeconds; Kubernetes must not kill it first, so
-terminationGracePeriodSeconds must be at least drain + graceful + 5 s
-margin (no preStop: the process drains itself). 0 = the default of the code
-of the service. Call with (list "<values path>" <values with drainSeconds,
-gracefulShutdownSeconds, terminationGracePeriodSeconds> <default drain>
-<default graceful>).
+Stop budget of a Go server (api, webhook handler, gateway, consent): first
+the preStop sleep of preStopSeconds (the pod serves on while Kubernetes
+removes it from the endpoints); then at SIGTERM the server drains for
+drainSeconds and waits at most gracefulShutdownSeconds. Kubernetes counts
+terminationGracePeriodSeconds from the start of the preStop, so it must be
+at least preStop + drain + graceful + 5 s margin. 0 for drain or graceful =
+the default of the code of the service. Call with (list "<values path>"
+<values with preStopSeconds, drainSeconds, gracefulShutdownSeconds,
+terminationGracePeriodSeconds> <default drain> <default graceful>).
 */}}
 {{- define "ow.checkStopBudget" -}}
 {{- $path := index . 0 -}}
 {{- $v := index . 1 -}}
+{{- $preStop := $v.preStopSeconds | int -}}
 {{- $drain := $v.drainSeconds | int | default (index . 2) -}}
 {{- $graceful := $v.gracefulShutdownSeconds | int | default (index . 3) -}}
-{{- $need := add $drain $graceful 5 -}}
+{{- $need := add $preStop $drain $graceful 5 -}}
 {{- if lt ($v.terminationGracePeriodSeconds | int) $need -}}
-{{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least drainSeconds (%v) + gracefulShutdownSeconds (%v) + 5 = %v: Kubernetes would kill the process before it stops" $path $v.terminationGracePeriodSeconds $drain $graceful $need) -}}
+{{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + drainSeconds (%v) + gracefulShutdownSeconds (%v) + 5 = %v: Kubernetes would kill the process before it stops" $path $v.terminationGracePeriodSeconds $preStop $drain $graceful $need) -}}
 {{- end -}}
 {{- end }}

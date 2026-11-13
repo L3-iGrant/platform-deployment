@@ -127,10 +127,8 @@ section. */ -}}
     "drainSeconds" ($api.server.drainSeconds | int)
     "gracefulShutdownSeconds" ($api.server.gracefulShutdownSeconds | int)) -}}
 {{- /* The limits of the installation (api.limits): the key only when the
-installer sets a value; without it the api uses its default. An api of a
-release before the input limits does not know the section and does not
-start with it. The gateway file never has it: the gateway refuses the
-section. */ -}}
+installer sets a value; without it the api uses its default. The gateway
+file never has it: the gateway refuses the section. */ -}}
 {{- with dig "limits" "maxOrganisations" "" $api -}}
 {{- $_ := set $config "Limits" (dict "maxOrganisations" (. | int)) -}}
 {{- end -}}
@@ -143,12 +141,9 @@ own section. */ -}}
 {{- $extra := deepCopy ($api.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
-{{- /* The root file system of the api pods is read-only: a log file
-(Log.file.path of api.extraConfig) must be on the emptyDir /tmp. */ -}}
-{{- $logFile := (((get $config "Log") | default dict).file | default dict).path | default "" | toString -}}
-{{- if and $logFile (not (hasPrefix "/tmp/" (clean $logFile))) -}}
-{{- fail (printf "api.extraConfig sets Log.file.path %q: the root file system of the api pods is read-only; give a path below /tmp/ (an emptyDir of the pod)" $logFile) -}}
-{{- end -}}
+{{- /* No log file (ow.noLogFile): the api and the webhook handler log to
+stdout. */ -}}
+{{- include "ow.noLogFile" (list "api.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
 {{- $config | toYaml -}}
 {{- end }}
 
@@ -165,4 +160,110 @@ of the release change, so it cannot read the new ConfigMaps of the release.
     "DataBase" (include "ow.db.goOwner" (dict "root" . "db" "api" "secretDir" $dir "passwordFile" "db-password") | fromJson)
     "Extensions" (dict "oidc" (dict "database" (include "ow.db.goOwner" (dict "root" . "db" "oidc" "secretDir" $dir "passwordFile" "oidc-db-password") | fromJson)))
     "Log" (dict "level" .Values.api.logLevel)) }}
+{{- end }}
+
+{{/*
+The limits of the CSV import of individuals that the api reads from
+api.extraConfig.Uploads: individualImportMaxFileBytes
+(65536 to 20971520) and individualImportMaxRows (1 to 9000); absent or 0 is
+the default of the api (5 MiB, 5000). The dashboard gets the same values in
+its config.json, so that it refuses only the files
+that the api refuses. The render stops for a value that the api refuses at
+its start: a text (also a text of digits: the api decodes its file without
+type conversion), not a whole number, or out of its range. Call with the root
+context. Output: JSON with the keys that are set (as whole numbers).
+*/}}
+{{- define "ow.api.importLimits" -}}
+{{- $uploads := dig "Uploads" dict (.Values.api.extraConfig | default dict) -}}
+{{- $out := dict -}}
+{{- range $key, $range := dict "individualImportMaxFileBytes" (list 65536 20971520) "individualImportMaxRows" (list 1 9000) -}}
+{{- if hasKey ($uploads | default dict) $key -}}
+{{- $value := get $uploads $key -}}
+{{- if kindIs "string" $value -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%q) is a text: give a number, not a text (the api reads a whole number and stops at its start with a text)" $key $value) -}}
+{{- end -}}
+{{- $text := toString $value -}}
+{{- if or (kindIs "float64" $value) (kindIs "float32" $value) -}}
+{{- if ne (floor $value) ($value | float64) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number: the api and the dashboard read it in whole units" $key $value) -}}
+{{- end -}}
+{{- $text = printf "%.0f" ($value | float64) -}}
+{{- end -}}
+{{- if not (regexMatch "^[0-9]+$" $text) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number of 0 or more: the api and the dashboard read it in whole units" $key $value) -}}
+{{- end -}}
+{{- $number := $text | int64 -}}
+{{- if ne $number 0 -}}
+{{- if or (lt $number (index $range 0 | int64)) (gt $number (index $range 1 | int64)) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%s) is not between %v and %v (or 0, the default): the api refuses it at its start, and the dashboard would use its default" $key $text (index $range 0) (index $range 1)) -}}
+{{- end -}}
+{{- $_ := set $out $key $number -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end }}
+
+{{/*
+Render guard of the memory of the uploads of the api core (api.extraConfig
+Uploads and ImageUpload): each upload in progress (an
+image or a CSV import of individuals) holds its file in memory, at most
+Uploads.maxInProgress of them (default 8). The memory request of the
+container (the memory of the process without uploads) and maxInProgress x
+the largest file must fit below the memory limit. Call with the root
+context. Output: nothing.
+*/}}
+{{- define "ow.api.checkUploads" -}}
+{{- $_ := include "ow.api.importLimits" . -}}
+{{- $api := .Values.api -}}
+{{- $config := $api.extraConfig | default dict -}}
+{{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}
+{{- $image := (dig "ImageUpload" "maxBytes" 0 $config) | int64 | default 5242880 -}}
+{{- $import := (dig "Uploads" "individualImportMaxFileBytes" 0 $config) | int64 | default 5242880 -}}
+{{- $largest := max $image $import -}}
+{{- $limit := (($api.resources | default dict).limits | default dict).memory -}}
+{{- if $limit -}}
+{{- $request := (($api.resources | default dict).requests | default dict).memory | default "0" -}}
+{{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $largest) -}}
+{{- if gt $need (include "ow.quantityBytes" $limit | int64) -}}
+{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest upload file (%d bytes: the larger of ImageUpload.maxBytes and Uploads.individualImportMaxFileBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or the file limits of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $largest $need $limit) -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{/*
+Render guard of /tmp of the api and webhook pods (api.tmp.sizeLimit, an
+emptyDir in memory). The multipart parser of Go (r.FormFile, 32 MiB in
+memory) writes a file part above 32 MiB whole to /tmp. The largest body
+that reaches the multipart parser of the api is the larger body limit of
+the gateway classes default and file (gateway.proxy.maxBodyBytes; the
+class large goes only to the wallet). Thus:
+- when that limit is above 32 MiB, /tmp must hold one upload of it, else
+  each such upload fails;
+- the memory request and /tmp together must fit below the memory limit of
+  the container (the files of /tmp count against it), else a full /tmp can
+  make the kernel stop the process.
+Call with the root context. Output: nothing.
+*/}}
+{{- define "ow.api.checkTmp" -}}
+{{- $api := .Values.api -}}
+{{- $limits := .Values.gateway.proxy.maxBodyBytes -}}
+{{- $default := $limits.default | int64 | default 1048576 -}}
+{{- $file := $limits.file | int64 | default (add 5242880 65536) -}}
+{{- $body := max $default $file -}}
+{{- $inMemory := 33554432 -}}
+{{- $tmp := include "ow.quantityBytes" $api.tmp.sizeLimit | int64 -}}
+{{- if and (gt $body $inMemory) (gt $body $tmp) -}}
+{{- fail (printf "api.tmp.sizeLimit (%s, %d bytes) is below the largest body that the gateway sends to the api (%d bytes, gateway.proxy.maxBodyBytes default and file): the api writes a file part above 32 MiB whole to /tmp, so these uploads fail; give api.tmp.sizeLimit at least that size (and raise the memory limit of the api by the same size)" $api.tmp.sizeLimit $tmp $body) -}}
+{{- end -}}
+{{- range $role, $resources := dict "api" $api.resources "webhook" $api.webhook.resources -}}
+{{- $limit := (($resources | default dict).limits | default dict).memory -}}
+{{- if $limit -}}
+{{- $request := (($resources | default dict).requests | default dict).memory | default "0" -}}
+{{- if gt (add (include "ow.quantityBytes" $request | int64) $tmp) (include "ow.quantityBytes" $limit | int64) -}}
+{{- $key := ternary "api.resources" "api.webhook.resources" (eq $role "api") -}}
+{{- fail (printf "%s: the memory request (%s) and api.tmp.sizeLimit (%s) together are above the memory limit (%s): /tmp of the %s pods is in memory and counts against the limit; raise %s.limits.memory" $key $request $api.tmp.sizeLimit $limit $role $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
