@@ -61,14 +61,17 @@ global:
   storageClass: ""
   # -- Priority class of all pods (the class must exist). Empty: none.
   priorityClassName: ""
-  # -- Pod security context of each component whose own
-  # podSecurityContext is empty. Each component has its own default (a
-  # non-root user, docs/security-context.md), and Helm merges your keys
-  # into it: set a key to null to remove it. On OpenShift, set runAsUser,
-  # runAsGroup and fsGroup of each component to null (the SCC sets them).
+  # -- Pod security context of each pod, under the podSecurityContext of
+  # the component: a key of the component replaces the same key here (as a
+  # whole), and each other key stays, for example seLinuxOptions or
+  # supplementalGroups of your cluster. Each component has its own default
+  # (a non-root user, docs/security-context.md), and Helm merges your keys
+  # into it: set a key to null to remove it. The notes name each key here
+  # that a component also sets. On OpenShift, set runAsUser, runAsGroup and
+  # fsGroup of each component to null (the SCC sets them).
   podSecurityContext: {}
-  # -- Container security context of each component whose own
-  # containerSecurityContext is empty.
+  # -- Container security context of each container, under the
+  # containerSecurityContext of the component (the same rule).
   containerSecurityContext: {}
   # -- Node selector, tolerations and affinity of all pods.
   nodeSelector: {}

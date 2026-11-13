@@ -44,6 +44,12 @@ Valkey: bundled, {{ .Values.redis.replicas }} pods {{ include "ow.redis.name" . 
 {{- else if include "ow.redis.enabled" . }}
 Valkey or Redis: external, {{ .Values.redis.external.sentinels | default (list .Values.redis.external.address) | join ", " }} (docs/redis.md).
 {{- end }}
+{{- range include "ow.securityContextShadowed" . | fromJsonArray }}
+
+WARNING: {{ . }}.
+  To use the global value for a component, set its key of the component to null (docs/security-context.md, "Change the settings").
+{{- end }}
+
 
 Next steps (docs/install.md has each step with its check):
 {{- $step := 1 }}
