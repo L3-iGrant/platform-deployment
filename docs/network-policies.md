@@ -59,6 +59,20 @@ Each role that calls a URL that an organisation, a customer or another vendor co
 
 The network policy is not the only protection: a cluster can run without network policies. Each of these callers also has an SSRF guard in its code that refuses the private, loopback, link-local and metadata addresses: the wallet (`ssrf_protection`), the api and the webhook handler (`OutboundHttp.ssrfProtectionDisabled: false`, the default) and consent (`OutboundHttp.ssrfProtectionDisabled: false`, the default).
 
+### Receivers behind the ingress controller of this cluster
+
+The api and the webhook handler do not have the profile `platform`. Thus they cannot call a URL whose host is behind the ingress controller of this cluster, for example the webhook receiver (`payloadUrl`) of a customer that runs in the same cluster, or an OIDC provider of an organisation there. In most clusters, the traffic of a pod to the address of the load balancer goes directly to the pods of the ingress controller (see [The public hosts of this platform](#the-public-hosts-of-this-platform)), and the `internet` profiles exclude the pod addresses: the network policy refuses the connection, and the delivery of the webhook fails. To allow it, add `platform` to these roles. A list in your values replaces the default list, so keep the default profiles:
+
+```yaml
+networkPolicy:
+  egress:
+    roles:
+      api: [internet-any-port, smtp, platform]
+      webhook: [internet-any-port, platform]
+```
+
+The profile `platform` opens only the pods of `networkPolicy.ingressController` on its `ports` (default 80 and 443), not the other pods of the cluster. When the host of the receiver has a private address (on premise, an internal load balancer), also give that address to `networkPolicy.egress.profiles.platform.cidrs`; the SSRF guard of the api and of the webhook handler refuses a private address too. With an api image with api-gateway#2413, list the host names or the networks in `api.extraConfig.OutboundHttp.allowedPrivate` (the api and the webhook handler read the same file). Do not turn the guard off (`OutboundHttp.ssrfProtectionDisabled`): that opens all private addresses.
+
 ### IPv6 and NAT64
 
 The `::/0` block of the `internet` profiles excludes `fc00::/7` (unique local), `fe80::/10` (link-local), `ff00::/8` (multicast) and the IPv6 ranges of `networkPolicy.clusterCidrs`. In an IPv6-only cluster with DNS64, the DNS server gives a host that has only an IPv4 address an address in the NAT64 prefix `64:ff9b::/96` (RFC 6052), and the NAT64 gateway sends the traffic to the IPv4 address in the last 32 bits. A vendor with only a public IPv4 address is then at such an address, so the profiles do not exclude the full prefix. They exclude only the NAT64 images of the IPv4 ranges that are never public:
