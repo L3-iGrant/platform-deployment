@@ -1,5 +1,8 @@
 {{- if .Values.nats.enabled }}
 {{- $nats := .Values.nats }}
+{{- /* fsGroupChangePolicy Always for this rollout when the StatefulSet in
+the cluster runs NATS as root (ow.nats.repairStore). */}}
+{{- $podValues := include "ow.nats.podValues" (list . $nats) | fromJson }}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -23,8 +26,9 @@ spec:
         {{- /* The reloader applies a change of the users and of max_payload
         without a restart; without it the pods restart. */}}
         {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream" "tls") (pick $nats "replicas" "jetstream" "tls" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
+        {{- include "ow.checksum" (list "store-check" (.Files.Get "files/nats/store-check.sh")) | nindent 8 }}
     spec:
-      {{- include "ow.podSpecCommon" (list . $nats) | nindent 6 }}
+      {{- include "ow.podSpecCommon" (list . $podValues) | nindent 6 }}
       # NATS does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- if $nats.reloader.enabled }}
@@ -32,6 +36,26 @@ spec:
       shareProcessNamespace: true
       {{- end }}
       terminationGracePeriodSeconds: 60
+      initContainers:
+        # Before nats-server starts: each file and folder of the store can be
+        # read and written by the user of NATS (files/nats/store-check.sh).
+        # Else the pod does not start, and no stream is skipped.
+        - name: store-check
+          image: {{ include "ow.image" (list . $nats.image) }}
+          imagePullPolicy: {{ include "ow.imagePullPolicy" (list . $nats.image) }}
+          command: ["/bin/sh", "/etc/nats-config/store-check.sh", "/data"]
+          {{- include "ow.containerSecurityContext" (list . $nats) | nindent 10 }}
+          {{- with $nats.storeCheck.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nats-config
+              readOnly: true
+            - name: data
+              mountPath: /data
+              readOnly: true
       containers:
         - name: nats
           image: {{ include "ow.image" (list . $nats.image) }}

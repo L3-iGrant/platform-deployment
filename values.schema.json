@@ -857,6 +857,15 @@
         "resources": {
           "type": "object"
         },
+        "storeCheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "resources": {
+              "type": "object"
+            }
+          }
+        },
         "podSecurityContext": {
           "type": "object"
         },

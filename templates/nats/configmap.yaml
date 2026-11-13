@@ -52,6 +52,10 @@ data:
     }
     {{- end }}
     {{- include "ow.nats.authorization" . | nindent 4 }}
+  # The check of the JetStream store before nats-server starts (the init
+  # container store-check).
+  store-check.sh: |
+    {{- .Files.Get "files/nats/store-check.sh" | nindent 4 }}
 {{- end }}
 {{- if not .Values.nats.enabled }}
 {{- /*

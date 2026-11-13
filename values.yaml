@@ -389,19 +389,33 @@ nats:
     requests:
       cpu: 15m
       memory: 32Mi
-  # -- NATS and the reloader run as the user 1000 and the group 1000 (the
-  # images have no user: any UID that is not 0). The reloader sends SIGHUP
-  # to nats-server, thus both containers must have the same user. fsGroup:
-  # the group of the JetStream store and of the TLS files (mode 0440).
-  # OnRootMismatch: the kubelet changes the group of the files of the store
-  # only when the top folder does not have it (the first start after the
-  # upgrade changes all files). NATS writes only to the store (/data) and
-  # to the emptyDir of the pid file (/var/run/nats).
+  # -- The init container store-check: before nats-server starts, it checks
+  # that the user of NATS can read and write each file and folder of the
+  # JetStream store (one stat of each entry, no write), else the pod does
+  # not start (docs/security-context.md, "The JetStream store").
+  storeCheck:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi
+  # -- NATS, the reloader and store-check run as the user 65532 and the
+  # group 65532 (the images have no user: any UID that is not 0). The
+  # reloader sends SIGHUP to nats-server, thus the containers must have the
+  # same user. fsGroup: the group of the JetStream store and of the TLS
+  # files (mode 0440). OnRootMismatch: the kubelet changes the group of the
+  # files of the store only when the top folder does not have it (the first
+  # start after the upgrade changes all files). The chart gives Always for
+  # one rollout when the NATS StatefulSet in the cluster runs NATS as root
+  # (an earlier release, or a rollback to it): the files that root wrote
+  # then get the group rights too. NATS writes only to the store (/data)
+  # and to the emptyDir of the pid file (/var/run/nats).
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     fsGroupChangePolicy: OnRootMismatch
     seccompProfile:
       type: RuntimeDefault

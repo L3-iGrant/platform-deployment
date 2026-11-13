@@ -49,7 +49,18 @@ Valkey or Redis: external, {{ .Values.redis.external.sentinels | default (list .
 WARNING: {{ . }}.
   To use the global value for a component, set its key of the component to null (docs/security-context.md, "Change the settings").
 {{- end }}
+{{- if .Values.nats.enabled }}
+{{- if include "ow.nats.repairStore" . }}
 
+NATS: the NATS StatefulSet in the cluster runs NATS as root (a release before the non-root containers, or a rollback to such a release), or its last rollout is not complete.
+  This rollout gives the group and the group rights to each file of the JetStream store again (fsGroupChangePolicy Always): the first start of each NATS pod takes longer with a large store.
+  After this rollout, the next upgrade gives nats.podSecurityContext.fsGroupChangePolicy again (default OnRootMismatch): one more rolling restart of NATS (docs/upgrade.md, "The non-root containers").
+{{- else if eq (toString (.Values.nats.podSecurityContext | default dict).fsGroupChangePolicy) "Always" }}
+
+WARNING: nats.podSecurityContext.fsGroupChangePolicy is Always: each start of a NATS pod changes the group of each file of the JetStream store, and a large store starts slowly.
+  Use Always for one rollout only, then set OnRootMismatch again (docs/upgrade.md, "The non-root containers").
+{{- end }}
+{{- end }}
 
 Next steps (docs/install.md has each step with its check):
 {{- $step := 1 }}
