@@ -171,7 +171,8 @@ api.extraConfig.Uploads (api-gateway#2408): individualImportMaxFileBytes
 the default of the api (5 MiB, 5000). The dashboard gets the same values in
 its config.json (admin-dashboard#3434), so that it refuses only the files
 that the api refuses. The render stops for a value that the api refuses at
-its start: not a whole number, or out of its range. Call with the root
+its start: a text (also a text of digits: the api decodes its file without
+type conversion), not a whole number, or out of its range. Call with the root
 context. Output: JSON with the keys that are set (as whole numbers).
 */}}
 {{- define "ow.api.importLimits" -}}
@@ -180,6 +181,9 @@ context. Output: JSON with the keys that are set (as whole numbers).
 {{- range $key, $range := dict "individualImportMaxFileBytes" (list 65536 20971520) "individualImportMaxRows" (list 1 9000) -}}
 {{- if hasKey ($uploads | default dict) $key -}}
 {{- $value := get $uploads $key -}}
+{{- if kindIs "string" $value -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%q) is a text: give a number, not a text (the api reads a whole number and stops at its start with a text)" $key $value) -}}
+{{- end -}}
 {{- $text := toString $value -}}
 {{- if or (kindIs "float64" $value) (kindIs "float32" $value) -}}
 {{- if ne (floor $value) ($value | float64) -}}

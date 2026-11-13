@@ -1487,7 +1487,10 @@ lacks "the default 0 of the api is not in config.json of the dashboard" "individ
 guard "import rows above 9000" "api.extraConfig.Uploads.individualImportMaxRows (9001) is not between 1 and 9000" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9001}}'
 guard "import file below 64 KiB" "api.extraConfig.Uploads.individualImportMaxFileBytes (1000) is not between 65536 and 20971520" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":1000}}'
 guard "import rows not a whole number" "api.extraConfig.Uploads.individualImportMaxRows (50.5) must be a whole number" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":50.5}}'
-guard "import rows not a number" "api.extraConfig.Uploads.individualImportMaxRows (5k) must be a whole number of 0 or more" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
+guard "import rows not a number" 'api.extraConfig.Uploads.individualImportMaxRows ("5k") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
+guard "import rows as a text of digits" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5000"}}'
+guard "import file bytes as a text of digits" 'api.extraConfig.Uploads.individualImportMaxFileBytes ("5242880") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":"5242880"}}'
+guard "import rows as a text in a values file" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text' "${shamir[@]}" -f "$here/fixtures/import-rows-text.yaml"
 if [ "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
      "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
   ok "a new import limit restarts the dashboard pods (the checksum of config.json)"
