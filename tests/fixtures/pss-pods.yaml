@@ -1,0 +1,167 @@
+# Pods for the test of the two security checks (tests/render-matrix.sh,
+# section 7): each pod "bad-*" breaks the Pod Security Standard
+# "restricted" in one field, the pod "good" meets it. Both checks
+# (tests/check_security.py and tests/psscheck) must name each bad pod and
+# not the good pod. The chart renders no ephemeral container and no
+# AppArmor annotation: these pods test them.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-apparmor-field
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+      appArmorProfile:
+        type: Unconfined
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-apparmor-annotation
+  annotations:
+    container.apparmor.security.beta.kubernetes.io/main: unconfined
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-selinux
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+    seLinuxOptions:
+      type: spc_t
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-procmount
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+      procMount: Unmasked
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-hostprocess
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+    windowsOptions:
+      hostProcess: true
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-ephemeral
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: main
+    image: registry.example.org/app:1
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+  ephemeralContainers:
+  - name: debug
+    image: registry.example.org/debug:1
+    securityContext:
+      privileged: true

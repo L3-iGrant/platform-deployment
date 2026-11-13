@@ -61,14 +61,17 @@ global:
   storageClass: ""
   # -- Priority class of all pods (the class must exist). Empty: none.
   priorityClassName: ""
-  # -- Pod security context of each component whose own
-  # podSecurityContext is empty. Each component has its own default (a
-  # non-root user, docs/security-context.md), and Helm merges your keys
-  # into it: set a key to null to remove it. On OpenShift, set runAsUser,
-  # runAsGroup and fsGroup of each component to null (the SCC sets them).
+  # -- Pod security context of each pod, under the podSecurityContext of
+  # the component: a key of the component replaces the same key here (as a
+  # whole), and each other key stays, for example seLinuxOptions or
+  # supplementalGroups of your cluster. Each component has its own default
+  # (a non-root user, docs/security-context.md), and Helm merges your keys
+  # into it: set a key to null to remove it. The notes name each key here
+  # that a component also sets. On OpenShift, set runAsUser, runAsGroup and
+  # fsGroup of each component to null (the SCC sets them).
   podSecurityContext: {}
-  # -- Container security context of each component whose own
-  # containerSecurityContext is empty.
+  # -- Container security context of each container, under the
+  # containerSecurityContext of the component (the same rule).
   containerSecurityContext: {}
   # -- Node selector, tolerations and affinity of all pods.
   nodeSelector: {}
@@ -386,19 +389,19 @@ nats:
     requests:
       cpu: 15m
       memory: 32Mi
-  # -- NATS and the reloader run as the user 1000 and the group 1000 (the
+  # -- NATS and the reloader run as the user 65532 and the group 65532 (the
   # images have no user: any UID that is not 0). The reloader sends SIGHUP
-  # to nats-server, thus both containers must have the same user. fsGroup:
+  # to nats-server, thus the containers must have the same user. fsGroup:
   # the group of the JetStream store and of the TLS files (mode 0440).
-  # OnRootMismatch: the kubelet changes the group of the files of the store
-  # only when the top folder does not have it (the first start after the
-  # upgrade changes all files). NATS writes only to the store (/data) and
-  # to the emptyDir of the pid file (/var/run/nats).
+  # OnRootMismatch: the kubelet sets the group of the files of the store
+  # only when the top folder does not have it (the first start). NATS
+  # writes only to the store (/data) and to the emptyDir of the pid file
+  # (/var/run/nats).
   podSecurityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     fsGroupChangePolicy: OnRootMismatch
     seccompProfile:
       type: RuntimeDefault
@@ -795,8 +798,8 @@ api:
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
-  # The root file system is read-only: a log file (Log.file.path) must be
-  # below /tmp/.
+  # Not Log.file: the chart writes no log file (the processes log to
+  # stdout).
   # Not Installation: the chart writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables (for example
@@ -828,6 +831,19 @@ api:
       memory: 272Mi
     limits:
       memory: 512Mi
+  # -- /tmp of the api and webhook pods (the root file system is read-only):
+  # the multipart parser of Go keeps a form of up to 32 MiB in memory, and
+  # it writes a larger file part whole to /tmp. An emptyDir in memory of
+  # sizeLimit: when /tmp is full, only the upload that fills it fails (no
+  # space left), never the pod; its files count against the memory limit of
+  # the container. The render stops when the largest body that the gateway
+  # sends to the api (gateway.proxy.maxBodyBytes, the classes default and
+  # file) is above 32 MiB and above sizeLimit, or when the memory request
+  # and sizeLimit together are above the memory limit of the api or of the
+  # webhook container (docs/security-context.md, "The /tmp folder of the
+  # api").
+  tmp:
+    sizeLimit: 64Mi
   # -- The migrate init container of the api pods (igrant-api migrate).
   migrate:
     resources:
@@ -1145,7 +1161,8 @@ gateway:
     enforce: true
   # -- Extra keys of the gateway configuration, deep-merged over the keys of
   # the chart (exact key names; no secrets). Not Installation: the chart
-  # writes it (docs/components.md).
+  # writes it (docs/components.md). Not Log.file: the chart writes no log
+  # file (the gateway logs to stdout).
   extraConfig: {}
   # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
   extraEnv: []
@@ -1468,7 +1485,8 @@ consent:
     podSecurityContext: {}
     containerSecurityContext: {}
   # -- Extra keys of the consent configuration, deep-merged over the keys of
-  # the chart (exact key names). Do not put a secret here.
+  # the chart (exact key names). Do not put a secret here. Not Log.file: the
+  # chart writes no log file (consent logs to stdout).
   extraConfig: {}
   extraEnv: []
   resources:
@@ -1999,8 +2017,8 @@ organisationWallet:
         drop: ["ALL"]
   # -- Extra keys of the wallet configuration, deep-merged over the keys of
   # the chart in the files of all roles (nested keys). Do not put a secret
-  # here. The root file system is read-only: a log file (log_file.path)
-  # must be below /tmp.
+  # here. Not log_file: the chart writes no log file (the processes log to
+  # stdout).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables: the wallet reads
   # no configuration from the environment (only EUDI_WALLET_CONFIG).
@@ -2040,31 +2058,6 @@ organisationWallet:
   # for some of the queues; together the groups must run every queue. A
   # list: your list replaces the whole default list.
   workers:
-    # -- The /tmp folder of each worker pod (the root file system is
-    # read-only). The monthly audit export (audit.export, queue maintenance;
-    # only with audit.bucket.name) writes one month of the audit log of one
-    # data scope two times to /tmp/ows-audit-export-*: the export and the
-    # download that checks it. Thus /tmp is on disk, never in memory.
-    # sizeLimit: the most data in /tmp of one pod. Give at least two times
-    # the largest month of one data scope (docs/workers.md, "The /tmp folder
-    # of the workers"). A group can override these values with its own
-    # tmp.
-    tmp:
-      # -- emptyDir (default): the ephemeral storage of the node. Kubernetes
-      # evicts the pod when /tmp holds more than sizeLimit, and the export
-      # runs again from its message on another pod. The node must have the
-      # free disk space.
-      sizeLimit: 10Gi
-      # -- true: /tmp is a generic ephemeral volume in place of the emptyDir:
-      # a PersistentVolumeClaim of sizeLimit that Kubernetes makes with the
-      # pod and deletes with the pod (for exports that are larger than the
-      # free disk of the nodes).
-      volume:
-        enabled: false
-        # -- The storage class of the claim. Empty: global.storageClass,
-        # else the default storage class of the cluster. "-": no storage
-        # class.
-        storageClass: ""
     groups:
       # name: lower-case letters, digits and -; the Deployment name has at
       #   most 63 characters.
@@ -2076,9 +2069,6 @@ organisationWallet:
       #   limit of the actors of the queues, else an actor stops before its
       #   end and runs again from its message.
       # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
-      # tmp (optional): the /tmp folder of the pods of the group, with the
-      #   keys of organisationWallet.workers.tmp (sizeLimit, volume). Each
-      #   key that you give replaces the key of workers.tmp.
       - name: main
         queues: [realtime, attestation, status, kms]
         replicas: 2

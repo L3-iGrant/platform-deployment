@@ -33,7 +33,7 @@ The test `tests/check_security.py` checks these settings in each render of `test
 | Consent, its Jobs and hooks | `consent`, the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir`) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
 | Dashboard (`<release>-dashboard`) | `dashboard` | `101:101` | none | `/tmp` (`emptyDir`, 64Mi): the pid file and the temporary files of nginx, and `/tmp/dashboard` of the start scripts | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
 | Wallet service and config roles | `wallet-service`, `wallet-config` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi), `/run/ows-server` (`emptyDir` in memory, 64Mi: `server.metrics_directory`) | none |
-| Wallet workers (each group) | `wallet-worker-<group>` | `65532:65532` | `65532` | `/tmp` (on disk: `organisationWallet.workers.tmp`, 10Gi), `/run/ows-worker` (`emptyDir` in memory, 64Mi: `worker.state_directory`) | none |
+| Wallet workers (each group) | `wallet-worker-<group>` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi), `/run/ows-worker` (`emptyDir` in memory, 64Mi: `worker.state_directory`) | none |
 | Wallet clock | `wallet-clock` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi) | none |
 | Hooks of the wallet (`organisationWallet.jobs`) | the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi) | none |
 | Bundled PostgreSQL (`<release>-postgres`) | `postgres` | `999:999` (the user `postgres` of the image) | `999` | the data volume (`/var/lib/postgresql`), `/var/run/postgresql` (`emptyDir` in memory, 1Mi: the socket and the lock file), `/tmp` (`emptyDir`, 64Mi) | none |
@@ -54,12 +54,7 @@ Notes:
 
 ## The /tmp folder of the workers
 
-The monthly audit export of the wallet (`audit.export`, queue `maintenance`; only with `organisationWallet.audit.bucket.name`) writes one month of the audit log of one data scope two times to `/tmp/ows-audit-export-*`: the export and the download that checks it. Thus the `/tmp` of the workers is on disk, never in memory, and it has its own size (`organisationWallet.workers.tmp.sizeLimit`, default `10Gi`). Give at least two times the largest month of one data scope. A large installation can need tens to hundreds of GB (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
-
-- `emptyDir` (default): the ephemeral storage of the node. The node must have the free disk space.
-- `organisationWallet.workers.tmp.volume.enabled: true`: a generic ephemeral volume, a PersistentVolumeClaim of `sizeLimit` that Kubernetes makes with the pod and deletes with the pod (`.volume.storageClass`; empty: `global.storageClass`, else the default storage class).
-
-A group can have its own `tmp` (the same keys), for example a large volume only for the group with the queue `maintenance`.
+The `/tmp` of the workers is an `emptyDir` in memory of 64Mi, as in the other wallet pods: only the temporary files of Python. The monthly audit export writes no local file (it sends its parts to the bucket; see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
 
 ## Change the settings
 

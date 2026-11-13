@@ -320,11 +320,13 @@ builds the public image URIs of the routes that the gateway sends to it. */ -}}
 
 {{/*
 Render guard of the writable paths of one wallet file: the root file system
-of the wallet pods is read-only, so each path that a process writes
-(log_file.path, server.metrics_directory, worker.state_directory; also from
+of the wallet pods is read-only, so each folder that a process writes
+(server.metrics_directory, worker.state_directory; also from
 organisationWallet.extraConfig) must be on an emptyDir of its pod: /tmp of
 each pod, /run/ows-server of the service and config pods, /run/ows-worker of
-the worker pods. Call with (list <config> "<role>"). Output: nothing.
+the worker pods. No role has a log file (log_file.path, ow.noLogFile): the
+processes log to stdout. Call with (list <config> "<role>"). Output:
+nothing.
 */}}
 {{- define "ow.wallet.checkWritablePaths" -}}
 {{- $config := index . 0 -}}
@@ -332,8 +334,8 @@ the worker pods. Call with (list <config> "<role>"). Output: nothing.
 {{- $mounts := list "/tmp" -}}
 {{- if has $role (list "service" "config") -}}{{- $mounts = append $mounts (include "ow.wallet.serverMetricsDir" .) -}}{{- end -}}
 {{- if eq $role "worker" -}}{{- $mounts = append $mounts (include "ow.wallet.workerStateDir" .) -}}{{- end -}}
+{{- include "ow.noLogFile" (list "organisationWallet.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
 {{- $paths := dict
-    "log_file.path" (((get $config "log_file") | default dict).path | default "" | toString)
     "server.metrics_directory" (((get $config "server") | default dict).metrics_directory | default "" | toString)
     "worker.state_directory" (((get $config "worker") | default dict).state_directory | default "" | toString) -}}
 {{- range $key, $path := $paths -}}

@@ -37,7 +37,7 @@ The chart writes the retention to the configuration of each wallet role (not of 
 
 The audit bucket keeps a copy of each hourly anchor and the monthly exports out of the reach of a database owner. A person who can change the wallet database cannot then rewrite the log without a trace: `audit verify` compares the anchors with their copies, and the exports keep the months that the migration hook drops.
 
-The export of a month writes the month of one data scope two times to `/tmp` of the worker pod (the export, and the download that checks it). Give the workers a `/tmp` that holds it: see [Workers and clock](workers.md#the-tmp-folder-of-the-workers).
+The export of a month writes no local file: it sends each chain in parts of at most 16 MiB to the bucket, with a memory peak of about 263 to 424 MiB for one export (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
 
 The wallet writes each object once with a create-only write (it never overwrites an object), reads it back, and never deletes an object or makes a bucket. Each object must stay unchanged for at least `organisationWallet.audit.retentionYears`: set a retention period of at least that value.
 

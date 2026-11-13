@@ -100,5 +100,8 @@ values file without the key keeps the default of the gateway). */ -}}
 {{- /* gateway.extraConfig cannot set Installation (ow.installation.config). */ -}}
 {{- $extra := deepCopy ($g.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
-{{- mustMergeOverwrite $config $extra | toYaml -}}
+{{- $config = mustMergeOverwrite $config $extra -}}
+{{- /* No log file (ow.noLogFile): the gateway logs to stdout. */ -}}
+{{- include "ow.noLogFile" (list "gateway.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- $config | toYaml -}}
 {{- end }}

@@ -1,0 +1,4 @@
+      # Python 3.13 (the strict TLS checks of the wallet).
+      PYTHON_IMAGE: python:3.13-slim-trixie
+      - name: tests/tls-strict.sh
+        run: tests/tls-strict.sh "$PYTHON_IMAGE"

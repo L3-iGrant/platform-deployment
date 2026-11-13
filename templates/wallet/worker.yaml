@@ -136,6 +136,12 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-        {{- include "ow.wallet.workerTmpVolume" (list $ $g) | nindent 8 }}
+        # The temporary files of Python (tempfile; the root file system is
+        # read-only), as in the other wallet pods. The monthly audit export
+        # writes no local file: it sends its parts to the bucket.
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
 {{- end }}
 {{- end }}

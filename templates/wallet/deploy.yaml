@@ -44,6 +44,8 @@ spec:
         - name: {{ $component }}
           image: {{ include "ow.image" (list $ $w.image) }}
           imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $w.image) }}
+          # The full command: the image has no entrypoint script.
+          command: ["/app/.venv/bin/start-server"]
           env:
             # The only environment variable of the wallet configuration: the
             # path of the file (the image has the same default).

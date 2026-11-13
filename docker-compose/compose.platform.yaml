@@ -38,6 +38,9 @@ x-hardened: &hardened
 
 x-wallet: &wallet
   image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/eudi-wallet:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
+  # The full command of the server (config and service): the image has no
+  # shell and no entrypoint script. The worker and the clock give their own.
+  command: ["/app/.venv/bin/start-server"]
   restart: unless-stopped
   # The security settings, and the user ows of the image. The processes
   # write only to /tmp (the temporary files of Python, for example a part of
