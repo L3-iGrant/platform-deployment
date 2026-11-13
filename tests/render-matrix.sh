@@ -357,16 +357,14 @@ fi
 notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
-notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
-  --set-json 'api.webhooks.events=["consent.allowed"]'
 notes "without the wallet" "The organisation wallet is not installed" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
 # The readers of the views of a service that is not installed open no
 # connection: without the wallet, the api core and the webhook handler have
-# no reader pool, and consent one reader (67 = 1 x 15 + 1 x 10 + 2 x 10 +
-# 2 x 11); without consent, the wallet config role has one reader (221 less
-# 2 x 16 of consent and 10).
-notes "connection budget without the wallet" "can open 67 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
-notes "connection budget without consent" "can open 179 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
+# no reader pool, and consent one reader (73 = 1 x 16 + 1 x 11 + 2 x 11 +
+# 2 x 12, with the health connection of each pod); without consent, the
+# wallet config role has one reader (227 less 2 x 17 of consent and 10).
+notes "connection budget without the wallet" "can open 73 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
+notes "connection budget without consent" "can open 183 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 
 # --- 4. The render guards --------------------------------------------------------
 # Each case: the values that must stop the render, and a text of the message.
@@ -1233,12 +1231,12 @@ guard "worker threads above the largest pool of the wallet" "organisationWallet.
 # The connection budget (docs/database.md, "Connection budget"): the pools
 # of the release, with the most pods of each Deployment, and the hooks fit
 # in max_connections of the bundled server less its reserved connections.
-renders "connection budget at the limit of the bundled server" "max_connections=229" "${shamir[@]}" --set database.postgresql.parameters.max_connections=229
-guard "connection budget one over the limit" "can open 221 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=228
+renders "connection budget at the limit of the bundled server" "max_connections=235" "${shamir[@]}" --set database.postgresql.parameters.max_connections=235
+guard "connection budget one over the limit" "can open 227 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=234
 guard "connection budget counts the reserved connections" "less the 13 reserved connections" "${shamir[@]}" \
-  --set database.postgresql.parameters.max_connections=229 --set-string database.postgresql.parameters.reserved_connections=10
+  --set database.postgresql.parameters.max_connections=235 --set-string database.postgresql.parameters.reserved_connections=10
 guard "connection budget counts the replicas" "wallet config 3 x 36" "${shamir[@]}" --set organisationWallet.config.replicas=3 \
-  --set database.postgresql.parameters.max_connections=229
+  --set database.postgresql.parameters.max_connections=235
 renders "no connection budget check with an external server" "kind: StatefulSet" "${shamir[@]}" -f "$examples/postgresql-external.yaml" --set api.replicas=20
 # The connection pooler (database.pooler): the wallet files of the
 # processes with sessions name it, and the budget counts its server
@@ -1294,6 +1292,30 @@ guard "redis user name of the bundled Valkey" 'redis.users.gateway.username "sen
 guard "redis unknown value" "Additional property" "${shamir[@]}" --set redis.cluster=true
 guard "redis client timeout" "redis.client.timeoutSeconds" "${shamir[@]}" --set redis.client.timeoutSeconds=0
 guard "redis replica wait" "redis.client.replicaWaitMilliseconds" "${shamir[@]}" --set redis.client.replicaWaitMilliseconds=20000
+# The replica wait is at most half of the timeout, in whole milliseconds
+# (the exact rule of the wallet: timeout_ms =
+# round(timeoutSeconds x 1000), refused when 2 x wait > timeout_ms). The
+# vectors of the wallet, also timeouts whose float product is not exact
+# (2.01 x 1000 / 2 = 1004.9999999999999): each renders, and +1 ms stops.
+# A timeout with more than 3 decimals stops (the schema, and the template
+# without it). Not without the wallet (only the wallet reads the wait).
+replica_wait() {
+  local seconds="$1" wait="$2" limit="$3"
+  renders "redis replica wait $wait ms with $seconds s" "replica_wait_milliseconds: $wait" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$wait" --show-only templates/wallet/configmap.yaml
+  guard "redis replica wait $((wait + 1)) ms with $seconds s" "redis.client.replicaWaitMilliseconds ($((wait + 1))) must be at most half of redis.client.timeoutSeconds ($seconds s = $limit ms), that is at most $wait ms" "${shamir[@]}" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$((wait + 1))"
+}
+replica_wait 2 1000 2000
+replica_wait 2.01 1005 2010
+replica_wait 2.03 1015 2030
+replica_wait 4.02 2010 4020
+replica_wait 8.03 4015 8030
+replica_wait 0.5 250 500
+renders "redis replica wait 10000 ms (the largest) with 20 s" "replica_wait_milliseconds: 10000" "${shamir[@]}" --set redis.client.timeoutSeconds=20 --set redis.client.replicaWaitMilliseconds=10000 --show-only templates/wallet/configmap.yaml
+replica_wait 0.003 1 3
+guard "redis replica wait of 10000 ms with 19 s" "redis.client.replicaWaitMilliseconds (10000) must be at most half of redis.client.timeoutSeconds (19 s = 19000 ms), that is at most 9500 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
+guard "redis timeout with 4 decimals" "redis.client.timeoutSeconds" "${shamir[@]}" --set-json redis.client.timeoutSeconds=2.0005
+guard "redis timeout with 4 decimals without the schema" "redis.client.timeoutSeconds (2.0005) has more than 3 decimals" "${shamir[@]}" --skip-schema-validation --set-json redis.client.timeoutSeconds=2.0005
+renders "redis replica wait without the wallet" "kind: Deployment" "${shamir[@]}" --set organisationWallet.enabled=false --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=("${shamir[@]}" -f "$examples/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
@@ -1415,18 +1437,44 @@ else
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
 fi
 lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}"
-# The /tmp folder of the workers (organisationWallet.workers.tmp): an
-# emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
-# size; the tmp of a group replaces the keys of workers.tmp.
-renders "wallet log file below /tmp" "path: /tmp/ows.log" "${shamir[@]}" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
-renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
-renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
-renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
-renders "worker /tmp volume storage class" "storageClassName: fast" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
-worker_group='{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430'
-renders "worker /tmp of a group" "sizeLimit: 300Gi" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"
+# /tmp of the api: an upload of 100 MiB with a /tmp of 100Mi (and the
+# memory limits for it); a body of 32 MiB stays in memory, so a small /tmp
+# is enough for it.
+renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=104857600 \
+  --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
+renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=33554432 \
+  --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
+# The uploads of the api (api.extraConfig Uploads and ImageUpload): the
+# file class of the gateway takes the largest CSV
+# import + 64 KiB, and the memory request + Uploads.maxInProgress x the
+# largest file fits below the memory limit of the api.
+guard "gateway file class below the CSV import of the api" "must be at least the api Uploads.individualImportMaxFileBytes (20971520) + 65536" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}'
+renders "CSV import of 20 MiB with the file class for it" "kind: Deployment" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}' --set gateway.proxy.maxBodyBytes.file=21037056
+guard "gateway file class below the image upload of the api" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "8 uploads of 100 MiB above the memory limit of the api" "Uploads.maxInProgress (8) x the largest upload file (104791040 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "too many uploads in progress for the memory limit of the api" "Uploads.maxInProgress (60) x the largest upload file (5242880 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+# The limits of the CSV import in config.json of the dashboard: the values of api.extraConfig.Uploads, as whole
+# numbers, only when they are set; the render stops for a value that the api
+# refuses at its start; a change restarts the dashboard pods (the checksum
+# of config.json).
+lacks "no import limits in config.json of the dashboard by default" "individualImport" "${shamir[@]}" --show-only templates/dashboard/configmap.yaml
+renders "the import file limit of the api in config.json of the dashboard" '"individualImportMaxFileBytes": 10485760' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":10485760,"individualImportMaxRows":9000}}' --set gateway.proxy.maxBodyBytes.file=11000000 --show-only templates/dashboard/configmap.yaml
+renders "the import row limit of the api in config.json of the dashboard" '"individualImportMaxRows": 9000' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9000}}' --show-only templates/dashboard/configmap.yaml
+lacks "the default 0 of the api is not in config.json of the dashboard" "individualImport" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":0}}' --show-only templates/dashboard/configmap.yaml
+guard "import rows above 9000" "api.extraConfig.Uploads.individualImportMaxRows (9001) is not between 1 and 9000" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9001}}'
+guard "import file below 64 KiB" "api.extraConfig.Uploads.individualImportMaxFileBytes (1000) is not between 65536 and 20971520" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":1000}}'
+guard "import rows not a whole number" "api.extraConfig.Uploads.individualImportMaxRows (50.5) must be a whole number" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":50.5}}'
+guard "import rows not a number" 'api.extraConfig.Uploads.individualImportMaxRows ("5k") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
+guard "import rows as a text of digits" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5000"}}'
+guard "import file bytes as a text of digits" 'api.extraConfig.Uploads.individualImportMaxFileBytes ("5242880") is a text: give a number, not a text' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":"5242880"}}'
+guard "import rows as a text in a values file" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text' "${shamir[@]}" -f "$here/fixtures/import-rows-text.yaml"
+if [ "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
+     "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+  ok "a new import limit restarts the dashboard pods (the checksum of config.json)"
+else
+  bad "a new import limit restarts the dashboard pods (the checksum of config.json)"
+fi
+renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 # The writable paths of the pods that run as a non-root user with a
 # read-only root file system: /tmp of each api, webhook, dashboard and wallet
 # pod (in memory, 64Mi; the worker /tmp too), the socket folder of the

@@ -18,16 +18,19 @@ pooler counts database.pooler.serverConnections. Output: JSON {processes:
 connection (ow.installation.has). */ -}}
 {{- $walletViews := include "ow.installation.has" (list . "wallet") -}}
 {{- $consentViews := include "ow.installation.has" (list . "consent") -}}
+{{- /* The api core, the webhook handler, the gateway and consent: also one
+health connection of each pod, outside the pools (a check of the database
+every 2 s). */ -}}
 {{- if $v.api.enabled -}}
 {{- $apiReader := ternary ($p.apiReadAccess.maxConns | int) 0 (eq $walletViews "true") -}}
-{{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader)) -}}
-{{- $processes = append $processes (dict "name" "webhook handler" "pods" ($v.api.webhook.replicas | int) "each" (add $p.webhook.maxConns $p.oidc.maxConns $apiReader)) -}}
-{{- $processes = append $processes (dict "name" "gateway" "pods" ($v.gateway.replicas | int) "each" ($p.gateway.maxConns | int)) -}}
+{{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader 1)) -}}
+{{- $processes = append $processes (dict "name" "webhook handler" "pods" ($v.api.webhook.replicas | int) "each" (add $p.webhook.maxConns $p.oidc.maxConns $apiReader 1)) -}}
+{{- $processes = append $processes (dict "name" "gateway" "pods" ($v.gateway.replicas | int) "each" (add $p.gateway.maxConns 1)) -}}
 {{- end -}}
 {{- if $v.consent.enabled -}}
 {{- /* consent: its pool and its readers (the api views, and the wallet
 views when the wallet is installed) of 5 each. */ -}}
-{{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")))) -}}
+{{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")) 1)) -}}
 {{- end -}}
 {{- if $v.organisationWallet.enabled -}}
 {{- $w := $v.organisationWallet -}}

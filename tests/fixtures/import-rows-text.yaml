@@ -1,0 +1,7 @@
+# A values file with the import rows of the api as a text (quotes): the api
+# reads a whole number and stops at its start with a text, so the render
+# stops (tests/render-matrix.sh, "import rows as a text in a values file").
+api:
+  extraConfig:
+    Uploads:
+      individualImportMaxRows: "5000"

@@ -459,10 +459,14 @@ redis:
     # seconds (more than 0, at most 60). A route that needs Valkey answers
     # 503 after them.
     connectTimeoutSeconds: 2
+    # -- At most 3 decimals (whole milliseconds).
     timeoutSeconds: 2
     # -- The longest wait, in milliseconds (1 to 10000), for a replica to
     # confirm a single-use value (WAIT 1). Without the confirmation the
-    # wallet refuses the value with 503.
+    # wallet refuses the value with 503. At most half of timeoutSeconds in
+    # whole milliseconds (2 x replicaWaitMilliseconds <= timeoutSeconds x
+    # 1000): a longer wait ends as a socket timeout, and the wallet refuses
+    # the configuration (the render stops).
     replicaWaitMilliseconds: 100
   # Your Valkey or Redis (mode external). It must meet the requirements of
   # docs/redis.md: version 7.2 or later, Sentinel or one primary with
@@ -2362,7 +2366,10 @@ enterpriseDashboard:
     timeouts: {}
   # -- config.json of the dashboard. Empty baseUrl: the api public URL.
   # Empty walletUrl: the organisation wallet public URL. Empty appVersion:
-  # the image tag.
+  # the image tag. The chart also writes the limits of the CSV import of
+  # individuals of the api (api.extraConfig.Uploads
+  # .individualImportMaxFileBytes and .individualImportMaxRows) when they
+  # are set, so that the dashboard and the api have the same limits.
   configuration:
     baseUrl: ""
     walletUrl: ""

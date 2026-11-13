@@ -31,16 +31,16 @@ Each process of the platform has its own connection pools. A pool opens a connec
 
 With the bundled server, the chart checks the rule: the render stops when the sum is too large, and the message gives the sum of each process. Then lower the pools (`database.pools`) or the replicas, or raise `max_connections` and `database.resources` together (see [Size of the bundled PostgreSQL](#size-of-the-bundled-postgresql)). With an external server the chart cannot read its limit: the notes of `helm install` and `helm upgrade` print the sum. Give your server at least this sum plus its reserved connections and its other users.
 
-During a rollout, the new pod of a Deployment starts before the old pod stops (`maxSurge: 1`). The free connections of the table below cover this for the pods whose pools are not full at that time; for an upgrade under a load peak, keep more free connections.
+During a rollout, the new pods of a Deployment start before the old pods stop (`maxSurge: 25%`: one more pod for a Deployment of 2 to 4 pods). The free connections of the table below cover this for the pods whose pools are not full at that time; for an upgrade under a load peak, keep more free connections.
 
 The pools of each process:
 
 | Process | Connections of one pod | Values |
 | --- | --- | --- |
-| api core | `maxConns` of `DataBase`, of the OIDC database and of the reader of the wallet views | `database.pools.api`, `.oidc`, `.apiReadAccess` |
-| webhook handler | the same | `database.pools.webhook`, `.oidc`, `.apiReadAccess` |
-| gateway | `maxConns` | `database.pools.gateway` |
-| consent | `maxConns`, and 5 for each of its two readers (api and wallet views) | `database.pools.consent` |
+| api core | `maxConns` of `DataBase`, of the OIDC database and of the reader of the wallet views, plus 1 health connection (outside the pools: a check of the database every 2 s) | `database.pools.api`, `.oidc`, `.apiReadAccess` |
+| webhook handler | the same (also the health connection) | `database.pools.webhook`, `.oidc`, `.apiReadAccess` |
+| gateway | `maxConns`, plus 1 health connection | `database.pools.gateway` |
+| consent | `maxConns`, and 5 for each of its two readers (api and wallet views), plus 1 health connection | `database.pools.consent` |
 | wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
 | wallet config | the same, plus 10 for each of its two readers (api and consent views), plus 1 for a WIA pool mint (see below) | `database.pools.walletConfig` |
 | wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (a lock of an actor has a connection of its own) + 1; plus 1 for the health server of the pod | `database.pools.walletWorker`, the `processes` and `threads` of the group |
@@ -52,19 +52,19 @@ The default values give these largest numbers. They are first values, not measur
 
 | Process | Pods | Maximum for each pod | Sum |
 | --- | --- | --- | --- |
-| api core | 1 | 10 + 5 (OIDC) + 5 (reader) = 20 | 20 |
-| webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) = 15 | 15 |
-| gateway | 2 | 10 | 20 |
-| consent | 2 | 6 + 5 + 5 (readers) = 16 | 32 |
+| api core | 1 | 10 + 5 (OIDC) + 5 (reader) + 1 (health) = 21 | 21 |
+| webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) + 1 (health) = 16 | 16 |
+| gateway | 2 | 10 + 1 (health) = 11 | 22 |
+| consent | 2 | 6 + 5 + 5 (readers) + 1 (health) = 17 | 34 |
 | wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
 | wallet config | 1 | 8 + 4 + 2 + 20 (readers) + 1 + 1 (mint) = 36 | 36 |
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| **Total** | | | **221** |
+| **Total** | | | **227** |
 | the hooks | | | 5 |
 | the superuser (`superuser_reserved_connections`) | | | 3 |
-| **`max_connections` of the bundled server** | | | **250** (21 free) |
+| **`max_connections` of the bundled server** | | | **250** (15 free) |
 
 ## Connection pooler
 

@@ -19,7 +19,7 @@ spec:
         {{- include "ow.labels" (list . "dashboard") | nindent 8 }}
         {{- include "ow.netpol.labels" (list . "dashboard" list) | nindent 8 }}
       annotations:
-        {{- include "ow.checksum" (list "config" $d.configuration) | nindent 8 }}
+        {{- include "ow.checksum" (list "config" (include "ow.dashboard.config" .)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $d) | nindent 6 }}
       {{- if lt ($d.terminationGracePeriodSeconds | int) (add ($d.preStopSeconds | int) 10) }}
