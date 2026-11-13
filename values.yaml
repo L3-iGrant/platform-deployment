@@ -37,8 +37,7 @@ fullnameOverride: ""
 
 # -- The value of the label app.kubernetes.io/name. This label is also in
 # the selectors, and Kubernetes does not let an upgrade change a selector.
-# Empty: the chart name (platform). A release that was installed from the
-# chart organisationwallet sets "organisationwallet" (docs/upgrade.md).
+# Empty: the chart name (platform).
 nameOverride: ""
 
 global:
@@ -784,8 +783,7 @@ api:
     androidSha256CertFingerprints: []
     appleAppIds: []
   # The effective features of each organisation select its webhook event
-  # types: the chart has no list of event types (docs/upgrade.md, "The
-  # webhook event types").
+  # types: the chart has no list of event types.
   webhooks:
     # -- Days that the api keeps webhook delivery records.
     deliveryRetentionDays: 10
@@ -812,10 +810,7 @@ api:
     terminationGracePeriodSeconds: 40
   # -- The limits of the installation that the api checks (the section
   # Limits of the api and webhook files). An empty value writes no key, and
-  # the api uses its default. Set a value only with the images of the
-  # release with the input limits: an api of an earlier release does not
-  # know the key and does not start (docs/upgrade.md, "The limits of the
-  # installation").
+  # the api uses its default.
   limits:
     # -- Limits.maxOrganisations: the most organisations of the
     # installation (1 to 100: a smaller value than the default, never a larger one). The create of one more organisation gets
@@ -899,7 +894,7 @@ api:
   # admins make the other organisations in the dashboard. Only the command
   # line makes the platform operator: bootstrapPlatform for a new
   # installation (docs/install.md, step 7), platformOperator for an
-  # installation that exists (docs/upgrade.md, "The platform operator").
+  # organisation that exists.
   # registerAdmin, createOrganisationType and createOrganisation stay for the
   # values files that use them: they make an admin and an organisation
   # without the platform operator mark.
@@ -941,7 +936,7 @@ api:
     # one admin of that organisation the platform admin right (igrant-api
     # platform grant-admin). The organisation must be the wallet provider or
     # have no wallet. There is no transfer and no removal of the mark.
-    # Idempotent. See docs/upgrade.md, "The platform operator".
+    # Idempotent.
     platformOperator:
       enabled: false
       # -- The id of the organisation (required when enabled).
@@ -1212,10 +1207,7 @@ gateway:
   features:
     # -- true (the default of the gateway): the gate is on. false: the
     # gateway refuses no route for a feature, and the features only show
-    # and hide the areas of the dashboard. Use false for an emergency, or
-    # for the first upgrade of an installation that exists, until you have
-    # checked the features of its organisations (docs/upgrade.md, "The
-    # feature gate").
+    # and hide the areas of the dashboard. Use false only for an emergency.
     enforce: true
   # -- Extra keys of the gateway configuration, deep-merged over the keys of
   # the chart (exact key names; no secrets). Not Installation: the chart

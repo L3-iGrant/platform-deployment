@@ -110,9 +110,8 @@ writes its purge date, the workers purge. */ -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- /* The most organisation wallet units of the installation
 (organisationWallet.walletUnit.organisationWalletUnitsMax): the key only
-when the installer sets a value; without it the wallet uses its default. A
-wallet of a release before the input limits does not know the key and does
-not start with it. The clock has no wallet_unit section. */ -}}
+when the installer sets a value; without it the wallet uses its default. The
+clock has no wallet_unit section. */ -}}
 {{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
 {{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
 {{- end -}}

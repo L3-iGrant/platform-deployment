@@ -15,7 +15,7 @@ The whole platform uses one database engine: `database.engine` is `postgresql`, 
 
 All components verify the server with its CA (`sslmode=verify-full`). An external PostgreSQL without `database.tls.caSecret` gets `require` (encryption without verification). With `database.tls.enabled: false`, the connections are not encrypted.
 
-The bundled server always serves TLS, also with `database.tls.enabled: false`: that value only sets the connections of the components. Its certificate is in the Secret `<release>-postgres-tls` (made by the chart, kept across upgrades) or in your Secret `database.tls.existingSecret`. The chart makes `<release>-postgres-tls` as a hook, before the other hooks, so an upgrade can turn `database.tls.enabled` on: the hooks get the CA, and the server already serves TLS (see [Upgrade](upgrade.md#the-tls-of-the-database)).
+The bundled server always serves TLS, also with `database.tls.enabled: false`: that value only sets the connections of the components. Its certificate is in the Secret `<release>-postgres-tls` (made by the chart, kept across upgrades) or in your Secret `database.tls.existingSecret`. The chart makes `<release>-postgres-tls` as a hook, before the other hooks, so an upgrade can turn `database.tls.enabled` on: the hooks get the CA, and the server already serves TLS.
 
 ## Size of the bundled PostgreSQL
 
@@ -78,8 +78,6 @@ The organisation wallet can connect through a connection pooler in transaction m
 With a pooler, the configuration of the service, config and worker processes has `database.pooler`: their sessions (the requests, the actors, the NATS commands, the start checks) go through the pooler. These connections stay direct to the server: the locks of the WIA pool mints and of the clock, the status list allocations, the readers of the views of the api and consent, the readiness checks of the workers and the clock, and the hooks (the migration lock and `SET ROLE` need one server session). A connection through the pooler gives the server no timeout at its start: the roles step sets the timeouts of each database role as its defaults (`ALTER ROLE ... SET`), and a process sets other timeouts in each transaction. The other components (the api, consent, the gateway) connect to the server.
 
 The connection budget then counts, for the wallet, only the direct connections (the allocation pools, 20 for the readers and 1 mint for each config pod, 2 lock connections for each thread of a worker, the health checks, the clock) and `serverConnections`. With network policies, add the address of the pooler to `networkPolicy.externalDatabases`.
-
-The key `database.pooler` needs a wallet image of organisation-wallet-suite with the support of the pooler; an older image refuses the key.
 
 ## External PostgreSQL
 

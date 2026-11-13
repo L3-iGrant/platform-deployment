@@ -93,7 +93,7 @@ The reconcile has no metric. When a row has no copy, it writes a warning to the 
 sum(count_over_time({namespace="ows", container=~"wallet-worker-.+"} |= "[ows.issuance.backfill] [WARNING]" [1d])) > 0
 ```
 
-After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete (see [Upgrade](upgrade.md#the-tables-of-the-issuances)).
+After the alert, run `issuance-backfill status`, then `issuance-backfill start --from-start` when rows stay missing. A later release drops `issuer.credential_issuance`; its migration stops while the copy is not complete.
 
 ## Stops and rollouts
 

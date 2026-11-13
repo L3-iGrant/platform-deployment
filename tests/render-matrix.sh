@@ -337,7 +337,6 @@ notes() {
 }
 notes "shamir" "bao operator unseal" -f "$examples/openbao-shamir.yaml"
 notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$examples/openbao-external.yaml"
-notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
 # A guard against SSRF that an extraConfig turns off: a warning in the
@@ -558,21 +557,17 @@ renders "feature gate off" "enforce: false" "${shamir[@]}" --set gateway.feature
 lacks "feature gate off has no enforce true" "enforce: true" "${shamir[@]}" --set gateway.features.enforce=false
 renders "feature gate off with extraConfig" "enforce: false" "${shamir[@]}" --set gateway.extraConfig.Features.enforce=false
 # The webhook event types: the effective features of each organisation
-# select them, so the api files have no Webhooks.events. A values file of an
-# earlier release that sets api.webhooks.events still renders (the schema
-# accepts the value for one release), the files do not have it, and the
-# notes tell to remove it.
-events='api.webhooks.events=["consent.allowed","data.delete.initiated"]'
+# select them, so the api files have no Webhooks.events, and the schema
+# refuses the value.
 renders "webhook delivery retention of the api files" "DeliveryRetentionDays: 10" "${shamir[@]}" --show-only templates/api/configmap.yaml
 lacks "no webhook event types in the api files" "consent.allowed" "${shamir[@]}" --show-only templates/api/configmap.yaml
-lacks "api.webhooks.events of an earlier values file is not rendered" "consent.allowed" "${shamir[@]}" --set-json "$events" --show-only templates/api/configmap.yaml
+guard "no api.webhooks.events" "api.webhooks" "${shamir[@]}" --set-json 'api.webhooks.events=["consent.allowed"]'
 # The API core publishes the deletion of an organisation (contract/v2 E10).
 renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"' "${shamir[@]}"
 # The key store providers and the EU trusted list check of the wallet.
 renders "EU trusted list check on by default" "eu_lotl_url: https://ec.europa.eu/tools/lotl/eu-lotl.xml" "${shamir[@]}"
 renders "EU trusted list check off" "eu_lotl_url: null" "${shamir[@]}" --set organisationWallet.trustList.euLotlUrl=
-# The refresh of the list trust sources (trust_sources.*); the shared trust
-# list lookup service is gone (no lookup_url, no lookup token file).
+# The refresh of the list trust sources (trust_sources.*).
 renders "trust sources refresh defaults" "refresh_max_interval_seconds: 86400" "${shamir[@]}"
 renders "trust sources stale grace" "stale_grace_seconds: 3600" "${shamir[@]}" --set organisationWallet.trustSources.staleGraceSeconds=3600
 guard "trust sources refresh interval too short" "refreshMinIntervalSeconds" "${shamir[@]}" --set organisationWallet.trustSources.refreshMinIntervalSeconds=10
@@ -650,8 +645,7 @@ PY
   fi
 }
 # The Play Integrity keys of the wallet (wallet_unit.play_integrity): only
-# the service file names them and only the service pods mount them; the
-# service account of the earlier releases is gone.
+# the service file names them and only the service pods mount them.
 play_integrity() {
   local name="$1" expect="$2"; shift 2
   local problems

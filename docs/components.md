@@ -36,7 +36,7 @@ The chart writes the services into the api file and the gateway file (`Installat
 
 When a service is not installed:
 
-- The api file and the gateway file get `Installation.services` with the other service, for example `[wallet]`. Use the images of the same release as the chart: an api or a gateway of an earlier release does not start with this key.
+- The api file and the gateway file get `Installation.services` with the other service, for example `[wallet]`.
 - The gateway answers `404` with `errorKey` `service_not_installed` to each route of the service, also to a public route. The dashboard shows no area of the service. The organisations get no webhook event type and no API key scope of the service.
 - The gateway file has no upstream of the service. No process of the release reads the views of the service or trusts its NATS messages. Thus you do not need its public keys (`serviceKeys.publicJwks.<service>`), its NATS users (`nats.auth.users.*`) or the read-only users of its database (`readAccess.*.<service>`).
 

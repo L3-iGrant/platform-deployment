@@ -14,8 +14,6 @@ check: do the next step only when you see the result of the check.
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
 - [Operation](#operation)
-- [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)
-- [Change to the release with the non-root services](#change-to-the-release-with-the-non-root-services)
 - [Settings](#settings)
 - [Configuration files](#configuration-files)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
@@ -258,10 +256,7 @@ the group "Wallet Provider (Orgs)".
 
 Rules of the command:
 
-- Use it only for a new installation. For an installation that has
-  organisations, see
-  [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator).
-  When an admin with the e-mail address has a different organisation, the
+- Use it only for a new installation. When an admin with the e-mail address has a different organisation, the
   command exits 1 and changes nothing.
 - There is no transfer and no removal of the platform operator mark.
 - The wallet of the platform operator organisation is the wallet provider
@@ -342,7 +337,7 @@ your shell has priority over the value in `.env`.
 | `PUBLISH_ADDRESS` | `127.0.0.1` | The IP address of the host ports. |
 | `API_PORT`, `WALLET_PORT`, `DASHBOARD_PORT` | `8080`, `8090`, `3000` | The host ports. |
 | `CLIENT_ADDRESS_HEADER` | empty | The header with the client address that your reverse proxy sets. |
-| `FEATURES_ENFORCE` | `true` | The feature gate of the gateway (`Features.enforce`): with `true`, the gateway refuses a route of a product feature that is off for the organisation of the credential (`403`, `feature_disabled`). With `false`, it refuses no route for a feature: use it for an emergency, or for the first start of the release with the gate on an installation that exists (see [Change to the release with the platform operator](#change-to-the-release-with-the-platform-operator)). |
+| `FEATURES_ENFORCE` | `true` | The feature gate of the gateway (`Features.enforce`): with `true`, the gateway refuses a route of a product feature that is off for the organisation of the credential (`403`, `feature_disabled`). With `false`, it refuses no route for a feature: use it for an emergency. |
 | `MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS` | empty (100) | The limits of the installation: the most organisations (`Limits.maxOrganisations` of the api, 1 to 100) and the most organisation wallet units of the wallet provider (`wallet_unit.organisation_wallet_units_max` of the wallet, 1 to 100). The create of one more organisation gets `409` (`organisation_limit_reached` from the api, `organisation_wallet_unit.limit_reached` from the wallet); the organisations and the organisation wallets that exist stay. Empty: the configuration files get no key, and the api and the wallet use their default, 100. Set a value only with the images of the release with the input limits: an api or a wallet of an earlier release does not know the key and does not start. The largest value is 100. An installation with more than 100 organisations or organisation wallets keeps them, but it cannot make a new organisation. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. Empty `SMTP_HOST`: no e-mail. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrantio` | The registry of the iGrant.io images (the default of the Helm chart). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |

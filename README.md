@@ -4,7 +4,7 @@ This repository holds the Helm chart and the Docker Compose files that install t
 
 The Helm chart installs the platform on Kubernetes, with the services that it depends on: a database server (or it uses yours), NATS, OpenBao (or it uses yours) and Valkey with Sentinel (or it uses your Valkey or Redis). Your cluster provides the ingress controller or Gateway, the certificates and the monitoring.
 
-The name of the Helm chart is `platform`. A release that was installed from the chart `organisationwallet` sets `nameOverride: organisationwallet` before its next upgrade: see [The chart name platform](docs/upgrade.md#the-chart-name-platform).
+The name of the Helm chart is `platform`.
 
 This is the community installation of the platform: use it for development, tests and evaluation, and as the reference architecture and setup. For production, use the enterprise installation: the enterprise Helm chart and its installation guide, with your HSM, the automatic unseal of OpenBao, high availability and sizing for your load. iGrant.io gives access on request: contact support@igrant.io.
 
