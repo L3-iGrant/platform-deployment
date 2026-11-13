@@ -3134,6 +3134,13 @@
               "maxLength": 0,
               "minimum": 1,
               "maximum": 100
+            },
+            "developmentAppsAllowed": {
+              "type": [
+                "string",
+                "boolean"
+              ],
+              "maxLength": 0
             }
           }
         },

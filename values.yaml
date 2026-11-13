@@ -1698,6 +1698,15 @@ organisationWallet:
     # installation with more than 100 organisation wallets keeps them, but
     # it cannot make the organisation wallet of a new organisation.
     organisationWalletUnitsMax: ""
+    # -- wallet_unit.development_apps_allowed: true lets an admin give a
+    # wallet app the build development or simulator, and protocol 2 then
+    # relaxes its device checks for that app (development: the App Attest
+    # development environment and no Play Integrity token; simulator:
+    # placeholder evidence, only the request signature). For test
+    # installations only, never in production. false: such a build is
+    # refused, and every app counts as release. true or false only. Empty:
+    # no key, and the wallet uses its default (false).
+    developmentAppsAllowed: ""
   # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
   # chain in the wallet database for each data scope and organisation, an
   # hourly anchor of each scope signed with an installation key (the
