@@ -1,12 +1,83 @@
+name: Tests
+
+# The tests of the chart and of docker-compose/ (docs/tests.md), on each
+# pull request and each push to main:
+# - chart: tests/render-matrix.sh (the renders, the guards, the hooks, the
+#   network policies, tests/check_security.py and the Pod Security Standard
+#   "restricted" with the upstream library, tests/psscheck);
+# - compose: tests/compose-files.sh (no container);
+# - containers: the tests against real servers in containers of the images
+#   of the chart: tests/valkey-pods.sh, tests/compose-valkey.sh,
+#   tests/tls-strict.sh (strict TLS of the certificates),
 #   tests/nats-routes.sh (only the NATS servers of the chart open a route),
 #   tests/alert-rules.sh (the alert rules of the wallet with promtool).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chart:
+    name: Chart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tests/psscheck/go.mod
+          cache-dependency-path: tests/psscheck/go.sum
+      - name: Install the tools
+        run: tests/ci-tools.sh "$RUNNER_TEMP/tools"
+      - name: tests/render-matrix.sh
+        run: tests/render-matrix.sh --keep "$RUNNER_TEMP/renders"
+
+  compose:
+    name: Docker Compose files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the tools
+        run: tests/ci-tools.sh "$RUNNER_TEMP/tools"
+      - name: tests/compose-files.sh
+        run: tests/compose-files.sh
+
+  containers:
     name: Valkey, NATS and TLS in containers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      # The images of values.yaml (redis.image, nats.image) and a NATS client.
+      VALKEY_IMAGE: valkey/valkey:8.1.10-alpine
       NATS_IMAGE: nats:2.14.10-alpine@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e
       # The NATS of the earlier release (the upgrade and the rollback).
       # Python 3.13 (the strict TLS checks of the wallet).
       PYTHON_IMAGE: python:3.13-slim-trixie
       # promtool (the alert rules of the wallet).
       PROMETHEUS_IMAGE: prom/prometheus:v3.5.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the tools
+        run: tests/ci-tools.sh "$RUNNER_TEMP/tools"
+      - name: Pull the images
+        run: |
+          for image in "$VALKEY_IMAGE" "$NATS_IMAGE" "$PYTHON_IMAGE" "$PROMETHEUS_IMAGE"; do
+            docker pull --quiet "$image"
+          done
+      - name: tests/valkey-pods.sh
+        run: tests/valkey-pods.sh "$VALKEY_IMAGE"
+      - name: tests/compose-valkey.sh
+        run: tests/compose-valkey.sh "$VALKEY_IMAGE"
       - name: tests/tls-strict.sh
         run: tests/tls-strict.sh "$PYTHON_IMAGE"
       - name: tests/nats-routes.sh

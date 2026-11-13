@@ -20,14 +20,14 @@ The pods use no host network, no host PID, no host IPC, no host port and no `hos
 kubectl label namespace ows pod-security.kubernetes.io/enforce=restricted
 ```
 
-The test `tests/check_security.py` checks these settings in each render of `tests/render-matrix.sh` (see [Tests](tests.md)).
+Two checks of `tests/render-matrix.sh` read each render (see [Tests](tests.md)): `tests/check_security.py` checks these settings, and `tests/psscheck` checks the Pod Security Standard `restricted` (latest and v1.25) with the upstream library `k8s.io/pod-security-admission`, the code of the admission plugin of Kubernetes (also AppArmor, SELinux, `procMount`, `hostProcess` and the ephemeral containers).
 
 ## Users, writable paths and sysctls
 
 | Component | Containers | User (UID:GID) | fsGroup | Writable paths | Sysctls |
 | --- | --- | --- | --- | --- | --- |
-| API core (`<release>-api`) | `migrate` (init), `api` | `65532:65532` | `65532` | `/tmp` (`emptyDir`, 64Mi) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
-| Webhook handler (`<release>-webhook`) | `webhook` | `65532:65532` | `65532` | `/tmp` (`emptyDir`, 64Mi) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
+| API core (`<release>-api`) | `migrate` (init), `api` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, `api.tmp.sizeLimit`, 64Mi) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
+| Webhook handler (`<release>-webhook`) | `webhook` | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, `api.tmp.sizeLimit`, 64Mi) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
 | Jobs and hooks of the api (`api.jobs`) | `migrate`, the command | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory) | none |
 | Auth gateway | `gateway` | `65532:65532` | `65532` | none | none |
 | Consent, its Jobs and hooks | `consent`, the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir`) | `net.ipv4.ip_unprivileged_port_start=0` (port 80) |
@@ -38,7 +38,7 @@ The test `tests/check_security.py` checks these settings in each render of `test
 | Hooks of the wallet (`organisationWallet.jobs`) | the commands | `65532:65532` | `65532` | `/tmp` (`emptyDir` in memory, 64Mi) | none |
 | Bundled PostgreSQL (`<release>-postgres`) | `postgres` | `999:999` (the user `postgres` of the image) | `999` | the data volume (`/var/lib/postgresql`), `/var/run/postgresql` (`emptyDir` in memory, 1Mi: the socket and the lock file), `/tmp` (`emptyDir`, 64Mi) | none |
 | Init hook of the databases (`<release>-db-init`) | `create-databases` | `999:999` | `999` | `/tmp` (`emptyDir` in memory, 16Mi) | none |
-| Bundled NATS (`<release>-nats`) | `nats`, `reloader` | `1000:1000` (the images have no user) | `1000` | the JetStream store (`/data`), `/var/run/nats` (`emptyDir` in memory, 1Mi: the pid file) | none |
+| Bundled NATS (`<release>-nats`) | `nats`, `reloader` | `65532:65532` (the images have no user) | `65532` | the JetStream store (`/data`), `/var/run/nats` (`emptyDir` in memory, 1Mi: the pid file) | none |
 | Bundled OpenBao | `openbao` | `10001:10001` | `10001` | the data volume, `/tmp` (`emptyDir`, 64Mi) | none |
 | Bundled Valkey | `valkey`, `sentinel`, `metrics` | `999:1000` | `1000` | the data volume, `/run/valkey` (`emptyDir` in memory), `/tmp` (`emptyDir`, 16Mi) | none |
 
@@ -46,7 +46,7 @@ Notes:
 
 - `fsGroup` gives the group of the Secret files (mode `0440`) and of the data volumes. Without it, the non-root user cannot read the Secret files, and the process does not start. Your storage must support `fsGroup` (most block storage does).
 - The api, the webhook handler, consent and the dashboard listen on port 80 as a non-root user. The sysctl `net.ipv4.ip_unprivileged_port_start=0` lets the pod open a port below 1024 without a capability. It is a safe sysctl (Kubernetes 1.22 or later): you do not need to allow it on the kubelet.
-- The bundled PostgreSQL and NATS have `fsGroupChangePolicy: OnRootMismatch`: the kubelet changes the group of the files of the data volume only when the top folder does not have the group. The first start after the upgrade to this release changes all files of the NATS store (see [Upgrade](upgrade.md#the-non-root-containers)).
+- The bundled PostgreSQL and NATS have `fsGroupChangePolicy: OnRootMismatch`: the kubelet sets the group of the files of the data volume only when the top folder does not have the group (the first start), so a later start does not walk the volume.
 - The reloader sends `SIGHUP` to `nats-server` through the shared process namespace. Thus `nats` and `reloader` must have the same user.
 - A size of an `emptyDir` is a limit, not a reservation. When a pod writes more than the limit, the kubelet evicts the pod. An `emptyDir` in memory counts against the memory limit of the container.
 - The wallet files of the chart set `server.metrics_directory: /run/ows-server` (service and config) and `worker.state_directory: /run/ows-worker` (workers): each is an `emptyDir` of the pod. The render stops when `organisationWallet.extraConfig` gives such a folder outside the `emptyDir` volumes of the pod.
@@ -103,7 +103,19 @@ The `/tmp` of the workers is an `emptyDir` in memory of 64Mi, as in the other wa
 
 ## Change the settings
 
-Each component has its own `podSecurityContext` and `containerSecurityContext` in `values.yaml`. The hooks and Jobs of the api, consent and the wallet have their own values in `<component>.jobs`. `global.podSecurityContext` and `global.containerSecurityContext` apply only to a component whose own value is empty (`{}`).
+Each component has its own `podSecurityContext` and `containerSecurityContext` in `values.yaml`. The hooks and Jobs of the api, consent and the wallet have their own values in `<component>.jobs` (an empty value: the value of the component).
+
+`global.podSecurityContext` and `global.containerSecurityContext` apply to each pod and each container of the chart, under the value of the component: a key of the component replaces the same key of the global value as a whole (for example `seccompProfile` or `sysctls`), and each other key of the global value stays. Thus the keys of your cluster that no component sets, for example `seLinuxOptions` or `supplementalGroups`, go to each pod:
+
+```yaml
+global:
+  podSecurityContext:
+    seLinuxOptions:
+      level: "s0:c123,c456"
+    supplementalGroups: [4321]
+```
+
+A global key that a component also sets (for example `runAsUser`) does not apply to that component: the notes of the release name the components. To use the global key there, set the key of the component to `null`.
 
 Helm merges your keys into the default of a component. To remove a key of the default, set it to `null`. For example, on OpenShift the security context constraints (SCC) give the UID and the groups:
 
