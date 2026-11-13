@@ -6,42 +6,22 @@ command with the configuration (api.yaml) and the secret files of the api.
 The name has the release revision, so an enabled Job runs at each install
 and upgrade: turn an operator Job off after the run.
 
-The platform operator of an installation (an installation has
-one platform operator organisation, and only the command line makes it):
-- api.jobs.bootstrapPlatform, a new installation: "onboard
-  bootstrap-platform" makes the organisation type, the first admin, the
-  platform operator organisation and the platform admin right.
-- api.jobs.platformOperator, an installation that exists: "platform
-  set-operator" (an init container), then "platform grant-admin".
-- api.jobs.registerAdmin, .createOrganisationType and .createOrganisation
-  stay for the values files that use them: they make an admin and an
-  organisation without the platform operator mark.
+The platform operator of an installation (an installation has one
+platform operator organisation, and only the command line makes it):
+api.jobs.bootstrapPlatform, "onboard bootstrap-platform", makes the
+organisation type, the first admin, the platform operator organisation and
+the platform admin right.
 */}}
 {{- if .Values.api.enabled }}
 {{- $api := .Values.api }}
 {{- $config := printf "--config=%s" (include "ow.api.configPath" .) }}
 {{- $jobs := list }}
-{{- if $api.jobs.registerAdmin.enabled }}
-{{- $register := $api.jobs.registerAdmin }}
-{{- $args := list "onboard" "register-admin" (printf "--email=%s" (required "api.jobs.registerAdmin.email is required" $register.email)) "--password-file=/run/secrets/onboard/password" $config }}
-{{- /* The api requires the name and the phone number of an admin. */}}
-{{- $args = append $args (printf "--name=%s" (required "api.jobs.registerAdmin.name is required" $register.name)) }}
-{{- $args = append $args (printf "--phone=%s" (required "api.jobs.registerAdmin.phone is required (the phone number of the admin, for example +4612345678)" $register.phone)) }}
-{{- $password := dict "secret" (required "api.jobs.registerAdmin.passwordSecret is required" $register.passwordSecret) "key" $register.passwordKey }}
-{{- $jobs = append $jobs (dict "name" "api-register-admin" "args" $args "password" $password) }}
-{{- end }}
 {{- /* A new installation: the platform operator organisation and the first
 platform admin, in one command. It makes the organisation type itself. A
 second run with the same values changes nothing ("created": false). The
 password (15 characters or more) is a file of its own Secret. */}}
 {{- if $api.jobs.bootstrapPlatform.enabled }}
 {{- $bootstrap := $api.jobs.bootstrapPlatform }}
-{{- if or $api.jobs.registerAdmin.enabled $api.jobs.createOrganisation.enabled }}
-{{- fail "api.jobs.bootstrapPlatform cannot run with api.jobs.registerAdmin or api.jobs.createOrganisation: bootstrapPlatform makes the admin and the organisation itself. Turn the other two Jobs off (docs/install.md, step 7)" }}
-{{- end }}
-{{- if $api.jobs.platformOperator.enabled }}
-{{- fail "api.jobs.bootstrapPlatform (a new installation) cannot run with api.jobs.platformOperator (an installation that exists): enable only one of them (docs/upgrade.md, The platform operator)" }}
-{{- end }}
 {{- $args := list "onboard" "bootstrap-platform"
   (printf "--admin-email=%s" (required "api.jobs.bootstrapPlatform.adminEmail is required" $bootstrap.adminEmail))
   (printf "--admin-name=%s" (required "api.jobs.bootstrapPlatform.adminName is required" $bootstrap.adminName))
@@ -54,17 +34,6 @@ password (15 characters or more) is a file of its own Secret. */}}
 {{- $password := dict "secret" (required "api.jobs.bootstrapPlatform.passwordSecret is required" $bootstrap.passwordSecret) "key" $bootstrap.passwordKey }}
 {{- $jobs = append $jobs (dict "name" "api-bootstrap-platform" "args" $args "password" $password) }}
 {{- end }}
-{{- /* An installation that exists: the platform operator mark of one of
-its organisations, then the platform admin right of one of its admins. The
-init container "set-operator" runs first: when it refuses the organisation,
-the Job fails and gives no right. Both commands change nothing when the
-result exists. No password and no secret is an argument. */}}
-{{- if $api.jobs.platformOperator.enabled }}
-{{- $operator := $api.jobs.platformOperator }}
-{{- $setArgs := list "platform" "set-operator" (printf "--organisation-id=%s" (required "api.jobs.platformOperator.organisationId is required (the id of the organisation that becomes the platform operator)" $operator.organisationId)) $config }}
-{{- $args := list "platform" "grant-admin" (printf "--email=%s" (required "api.jobs.platformOperator.adminEmail is required (the e-mail address of an admin of that organisation)" $operator.adminEmail)) $config }}
-{{- $jobs = append $jobs (dict "name" "api-platform-operator" "args" $args "before" (list (dict "name" "set-operator" "args" $setArgs))) }}
-{{- end }}
 {{- /* The read-only users of the readers of the api database that are on: "read-access apply" connects with the DataBase section of the api
 and an admin user. */}}
 {{- if .Values.readAccess.jobs.enabled }}
@@ -74,23 +43,6 @@ and an admin user. */}}
 {{- $args := list "read-access" "apply" $config (printf "--reader=%s" $reader) (printf "--user=%s" $user.username) "--password-file=/run/secrets/read-access/password" (printf "--admin-user=%s" $admin.user) "--admin-password-file=/run/secrets/read-access-admin/password" }}
 {{- $jobs = append $jobs (dict "name" (printf "api-read-access-%s" $reader) "args" $args "readerPassword" (dict "secret" $user.secret "key" $user.key) "adminPassword" (dict "secret" $admin.secret "key" $admin.key) "backoffLimit" 6) }}
 {{- end }}
-{{- end }}
-{{- if $api.jobs.createOrganisationType.enabled }}
-{{- $args := list "onboard" "create-organisation-type" (printf "--type=%s" (required "api.jobs.createOrganisationType.type is required" $api.jobs.createOrganisationType.type)) $config }}
-{{- $jobs = append $jobs (dict "name" "api-create-organisation-type" "args" $args) }}
-{{- end }}
-{{- /* The organisation of the first admin: the login refuses an admin
-without an organisation. The Job tries again until the admin and the
-organisation type exist (the Jobs of this revision run at the same time). */}}
-{{- if $api.jobs.createOrganisation.enabled }}
-{{- $create := $api.jobs.createOrganisation }}
-{{- $email := $create.adminEmail | default $api.jobs.registerAdmin.email }}
-{{- $type := $create.type | default $api.jobs.createOrganisationType.type }}
-{{- $args := list "onboard" "create-organisation" (printf "--admin-email=%s" (required "api.jobs.createOrganisation.adminEmail (or api.jobs.registerAdmin.email) is required" $email)) (printf "--name=%s" (required "api.jobs.createOrganisation.name is required" $create.name)) (printf "--type=%s" (required "api.jobs.createOrganisation.type (or api.jobs.createOrganisationType.type) is required" $type)) (printf "--location=%s" (required "api.jobs.createOrganisation.location is required" $create.location)) (printf "--policy-url=%s" (required "api.jobs.createOrganisation.policyUrl is required (the URL of the privacy policy of the organisation)" $create.policyUrl)) $config }}
-{{- with $create.description }}
-{{- $args = append $args (printf "--description=%s" .) }}
-{{- end }}
-{{- $jobs = append $jobs (dict "name" "api-create-organisation" "args" $args "backoffLimit" 6) }}
 {{- end }}
 {{- /* The Jobs run as a non-root user with a read-only root file system
 (api.jobs.podSecurityContext, .containerSecurityContext; empty: the values
@@ -142,25 +94,6 @@ spec:
             {{- include "ow.api.volumeMounts" $ | nindent 12 }}
             - name: tmp
               mountPath: /tmp
-        {{- /* The commands that run before the command of the Job, in
-        this order (init containers run one after the other). */}}
-        {{- range $step := $job.before }}
-        - name: {{ $step.name }}
-          image: {{ include "ow.image" (list $ $api.image) }}
-          imagePullPolicy: {{ include "ow.imagePullPolicy" (list $ $api.image) }}
-          command: ["/app/bin/igrant-api"]
-          args:
-            {{- toYaml $step.args | nindent 12 }}
-          {{- include "ow.containerSecurityContext" (list $ $jobPod) | nindent 10 }}
-          {{- with $api.jobs.resources }}
-          resources:
-            {{- toYaml . | nindent 12 }}
-          {{- end }}
-          volumeMounts:
-            {{- include "ow.api.volumeMounts" $ | nindent 12 }}
-            - name: tmp
-              mountPath: /tmp
-        {{- end }}
       containers:
         - name: command
           image: {{ include "ow.image" (list $ $api.image) }}
@@ -189,9 +122,9 @@ spec:
               readOnly: true
             {{- end }}
             {{- if $job.password }}
-            # The password of "onboard register-admin" or "onboard
-            # bootstrap-platform" (--password-file): a file of its own
-            # Secret, never an argument or a variable.
+            # The password of "onboard bootstrap-platform"
+            # (--password-file): a file of its own Secret, never an argument
+            # or a variable.
             - name: onboard-password
               mountPath: /run/secrets/onboard
               readOnly: true

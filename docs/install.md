@@ -205,9 +205,3 @@ When no platform admin can log in (for example the only platform admin left), gi
 ```bash
 kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform grant-admin --email admin2@example.org --config=/etc/igrant-api/config.yaml
 ```
-
-## The Jobs of the earlier releases
-
-The Jobs `api.jobs.registerAdmin`, `api.jobs.createOrganisationType` and `api.jobs.createOrganisation` stay in the chart, with the same values, for the values files that use them. They make an admin and an organisation without the platform operator mark and without the platform admin right: the functions of a platform admin stay hidden in the dashboard. Do not use them for the first organisation of a new installation. The render stops when `bootstrapPlatform` is enabled together with `registerAdmin` or `createOrganisation`.
-
-An installation that got its first organisation from these Jobs makes that organisation the platform operator with the Job `api.jobs.platformOperator` (see [Values reference](values-reference.md#api-and-gateway)).

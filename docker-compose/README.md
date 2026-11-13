@@ -288,14 +288,6 @@ The wallet login of the admins: the configuration of the api has no
 operator organisation is the organisation of the wallet login, when it is
 the wallet provider and its OIDC extension is on.
 
-The targets `make admin` and `make organisation` of the earlier releases
-stay. They make an admin (a password of 12 characters or more, with at
-least one special character) and an
-organisation without the platform operator mark and without the platform
-admin right: the functions of a platform admin stay hidden in the
-dashboard. Do not use them for the first organisation of a new
-installation.
-
 ## Operation
 
 | Task | Command |
@@ -738,11 +730,8 @@ the function is off, and the api answers that it is not configured.
 | `make down` | Stop and remove the containers. The data stays. |
 | `make reset` | Remove the containers and all data (asks first). |
 | `make platform-operator ADMIN_EMAIL=... ADMIN_NAME=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORGANISATION_TYPE=...]` | A new installation: create the platform operator organisation and its first platform admin. |
-| `make platform-set-operator ORGANISATION_ID=...` | An installation that exists: give an organisation the platform operator mark. |
-| `make platform-grant-admin ADMIN_EMAIL=...` | Give an admin of the platform operator organisation the platform admin right. |
+| `make platform-grant-admin ADMIN_EMAIL=...` | Recovery when no platform admin can log in: give an admin of the platform operator organisation the platform admin right. |
 | `make platform-status` | The platform operator organisation and the platform admins (reads only). |
-| `make admin ADMIN_EMAIL=... ADMIN_NAME=... ADMIN_PHONE=...` | Earlier releases: create an admin without an organisation. |
-| `make organisation ADMIN_EMAIL=... ORG_NAME=... ORG_LOCATION=... ORG_POLICY_URL=... [ORG_DESCRIPTION=...]` | Earlier releases: create the organisation of that admin, without the platform operator mark. |
 | `make openbao-status` | The seal status of OpenBao. |
 | `make db-shell` | The SQL shell of the database server. |
 

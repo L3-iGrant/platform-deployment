@@ -194,10 +194,10 @@ def main() -> int:
         check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
         for file in ("api.yaml", "webhook.yaml"):
             check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
-    # The operator Jobs of the api are off by default: no Job makes an
-    # admin, an organisation or the platform operator.
+    # The operator Job of the api is off by default: no Job makes the
+    # platform operator.
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
-        r"-api-(bootstrap-platform|platform-operator|register-admin|create-organisation(-type)?)-\d+$", d["metadata"]["name"]))
+        r"-api-bootstrap-platform-\d+$", d["metadata"]["name"]))
     check(not operator_jobs, f"the default values render the operator Jobs {operator_jobs}")
     consent = config_map_file(f"{RELEASE}-consent", "config.yaml")
     if consent:

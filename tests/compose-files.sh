@@ -569,16 +569,14 @@ PY
   else
     bad "make platform-operator: $dry"
   fi
-  if dry="$(make -n platform-set-operator ORGANISATION_ID=6731f0c2a1b2c3d4e5f60789 2>&1)" \
-    && grep -q -F 'platform set-operator --organisation-id "6731f0c2a1b2c3d4e5f60789"' <<< "$dry" \
-    && dry="$(make -n platform-grant-admin ADMIN_EMAIL=admin@example.com 2>&1)" \
+  if dry="$(make -n platform-grant-admin ADMIN_EMAIL=admin@example.com 2>&1)" \
     && grep -q -F 'platform grant-admin --email "admin@example.com"' <<< "$dry" \
     && dry="$(make -n platform-status 2>&1)" && grep -q -F 'platform status' <<< "$dry"; then
-    ok "make platform-set-operator, platform-grant-admin and platform-status"
+    ok "make platform-grant-admin and platform-status"
   else
     bad "the platform operator targets: $dry"
   fi
-  if make platform-operator > /dev/null 2>&1 || make platform-set-operator > /dev/null 2>&1 || make platform-grant-admin > /dev/null 2>&1; then
+  if make platform-operator > /dev/null 2>&1 || make platform-grant-admin > /dev/null 2>&1; then
     bad "a platform operator target runs without its values"
   else
     ok "the platform operator targets stop without their values"

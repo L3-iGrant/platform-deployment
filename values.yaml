@@ -892,21 +892,15 @@ api:
   #
   # An installation has one platform operator organisation, and its platform
   # admins make the other organisations in the dashboard. Only the command
-  # line makes the platform operator: bootstrapPlatform for a new
-  # installation (docs/install.md, step 7), platformOperator for an
-  # organisation that exists.
-  # registerAdmin, createOrganisationType and createOrganisation stay for the
-  # values files that use them: they make an admin and an organisation
-  # without the platform operator mark.
+  # line makes the platform operator: bootstrapPlatform (docs/install.md,
+  # step 7).
   jobs:
     # -- A new installation: makes the platform operator organisation and
     # its first admin with the platform admin right, in one command
     # (igrant-api onboard bootstrap-platform). It also makes the organisation
     # type when no type has the name. Idempotent: a second run with the same
     # values changes nothing, and the password of an account that exists
-    # does not change. Do not use it for an installation that has
-    # organisations: use platformOperator. The render stops when
-    # registerAdmin, createOrganisation or platformOperator is also enabled.
+    # does not change. Use it only for a new installation.
     bootstrapPlatform:
       enabled: false
       # -- The e-mail address (login name) and the name of the first
@@ -931,59 +925,6 @@ api:
       type: ""
       location: ""
       policyUrl: ""
-    # -- An installation that exists: gives one of its organisations the
-    # platform operator mark (igrant-api platform set-operator), then gives
-    # one admin of that organisation the platform admin right (igrant-api
-    # platform grant-admin). The organisation must be the wallet provider or
-    # have no wallet. There is no transfer and no removal of the mark.
-    # Idempotent.
-    platformOperator:
-      enabled: false
-      # -- The id of the organisation (required when enabled).
-      organisationId: ""
-      # -- The e-mail address of an admin of that organisation (required
-      # when enabled). An admin with a password of less than 15 characters
-      # sets a new password at the next login.
-      adminEmail: ""
-    # -- Makes an admin account without an organisation (igrant-api onboard
-    # register-admin). For the platform operator of a new installation, use
-    # bootstrapPlatform. Idempotent: an existing account with the e-mail
-    # address is not changed. The password needs 12 characters or more
-    # and at least one special character.
-    registerAdmin:
-      enabled: false
-      # -- The e-mail address, the name and the phone number of the admin
-      # (all required when enabled).
-      email: ""
-      name: ""
-      phone: ""
-      # -- Existing Secret and key with the password of the admin. The Job
-      # mounts it as a file (--password-file); it is never an argument.
-      passwordSecret: ""
-      passwordKey: password
-    # -- Makes an organisation type when no type has the name (igrant-api
-    # onboard create-organisation-type). Idempotent.
-    createOrganisationType:
-      enabled: false
-      type: ""
-    # -- Makes the organisation of an admin without an organisation
-    # (igrant-api onboard create-organisation): the login refuses an admin
-    # without an organisation. The organisation does not get the platform
-    # operator mark. Idempotent: an admin with an organisation is not
-    # changed. The Job tries again until the admin and the type exist.
-    createOrganisation:
-      enabled: false
-      # -- Empty: api.jobs.registerAdmin.email.
-      adminEmail: ""
-      # -- The name, the location and the URL of the privacy policy of the
-      # organisation (required when enabled).
-      name: ""
-      location: ""
-      policyUrl: ""
-      # -- At most 500 characters.
-      description: ""
-      # -- The organisation type. Empty: api.jobs.createOrganisationType.type.
-      type: ""
     # -- Resources of the Jobs, their migrate init container and the api
     # migration hook.
     resources:

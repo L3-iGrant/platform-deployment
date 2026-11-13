@@ -414,18 +414,9 @@ guard "client address" "clientAddress" "${shamir[@]}" --set 'clientAddress.trust
 guard "unknown value" "Additional property" "${shamir[@]}" --set postgres.enabled=true
 guard "privacy dashboard network policy without Kubernetes API address" "networkPolicy.egress.profiles.kubeApi" "${shamir[@]}" --set networkPolicy.enabled=true --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards
 guard "sslMode verify-full without CA" "needs the CA of the server" "${shamir[@]}" -f "$examples/postgresql-external.yaml" --set database.tls.caSecret= --set database.tls.sslMode=verify-full
-admin=(--set api.jobs.registerAdmin.enabled=true --set api.jobs.registerAdmin.email=admin@example.org --set api.jobs.registerAdmin.passwordSecret=s)
-guard "first admin without name" "api.jobs.registerAdmin.name" "${shamir[@]}" "${admin[@]}" --set-string api.jobs.registerAdmin.phone=+4612345678
-guard "first admin without phone" "api.jobs.registerAdmin.phone" "${shamir[@]}" "${admin[@]}" --set api.jobs.registerAdmin.name=Admin
 guard "OpenBao update strategy" "openbao.updateStrategy" "${shamir[@]}" --set openbao.updateStrategy=Sometimes
-organisation=(--set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.adminEmail=admin@example.org --set api.jobs.createOrganisation.type=Technology)
-guard "first organisation without name" "api.jobs.createOrganisation.name" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy
-guard "first organisation without policy URL" "api.jobs.createOrganisation.policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm
-guard "first organisation without admin" "api.jobs.createOrganisation.adminEmail" "${shamir[@]}" --set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy --set api.jobs.createOrganisation.type=Technology
-guard "first organisation policy URL not http" "policyUrl" "${shamir[@]}" "${organisation[@]}" --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm --set api.jobs.createOrganisation.policyUrl=ftp://example.org/privacy
-# The platform operator Jobs: the required values, one path at a time, an
-# http or https policy URL, an organisation id without other characters,
-# and no password as a value (the password is a file of a Secret).
+# The platform operator Job: the required values, an http or https policy
+# URL, and no password as a value (the password is a file of a Secret).
 bootstrap=(-f "$here/values/operator-jobs-bootstrap.yaml")
 guard "platform operator without admin e-mail" "api.jobs.bootstrapPlatform.adminEmail" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminEmail=
 guard "platform operator without admin name" "api.jobs.bootstrapPlatform.adminName" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminName=
@@ -436,11 +427,6 @@ guard "platform operator without location" "api.jobs.bootstrapPlatform.location"
 guard "platform operator without policy URL" "api.jobs.bootstrapPlatform.policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=
 guard "platform operator policy URL not http" "policyUrl" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=ftp://example.org/privacy
 guard "platform operator password as a value" "Additional property password" "${shamir[@]}" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.password=not-a-value
-guard "platform operator with the first admin Job" "api.jobs.bootstrapPlatform cannot run with api.jobs.registerAdmin" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-old.yaml"
-guard "platform operator of a new and of an existing installation" "enable only one of them" "${shamir[@]}" "${bootstrap[@]}" -f "$here/values/operator-jobs-upgrade.yaml"
-guard "existing platform operator without organisation id" "api.jobs.platformOperator.organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.organisationId=
-guard "existing platform operator without admin e-mail" "api.jobs.platformOperator.adminEmail" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.adminEmail=
-guard "existing platform operator organisation id with a space" "organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set-string "api.jobs.platformOperator.organisationId=6731 --allow-last"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
 # A folder that a process writes must be on an emptyDir of its pod (the
 # root file system is read-only).
@@ -517,23 +503,10 @@ renders "OpenBao OnDelete removes rollingUpdate" "rollingUpdate: null" "${shamir
 renders "OpenBao RollingUpdate when set" "type: RollingUpdate" "${shamir[@]}" --set openbao.updateStrategy=RollingUpdate
 # The wallet reads a key just after it makes it: no read on a standby.
 renders "OpenBao standbys forward reads" "disable_standby_reads = true" "${shamir[@]}"
-# The organisation of the first admin: the e-mail and the type of the other
-# two Jobs, and the Job tries again until they exist.
-first=(--set api.jobs.registerAdmin.enabled=true --set api.jobs.registerAdmin.email=admin@example.org --set api.jobs.registerAdmin.name=Admin
-  --set-string api.jobs.registerAdmin.phone=+4612345678 --set api.jobs.registerAdmin.passwordSecret=s
-  --set api.jobs.createOrganisationType.enabled=true --set api.jobs.createOrganisationType.type=Technology
-  --set api.jobs.createOrganisation.enabled=true --set api.jobs.createOrganisation.name=Org --set api.jobs.createOrganisation.location=Stockholm
-  --set api.jobs.createOrganisation.policyUrl=https://example.org/privacy)
-renders "first organisation admin from registerAdmin" "--admin-email=admin@example.org" "${shamir[@]}" "${first[@]}"
-renders "first organisation type from createOrganisationType" "--type=Technology" "${shamir[@]}" "${first[@]}"
-renders "first organisation Job" "name: t-api-create-organisation-1" "${shamir[@]}" "${first[@]}"
 # The operator Jobs of the api (tests/check_operator_jobs.py): none by
-# default; the three Jobs of the earlier releases render as before (their
-# values file of the earlier install page); the platform operator of a new
-# installation (onboard bootstrap-platform) and of an installation that
-# exists (platform set-operator, then platform grant-admin). The password is
-# a file of its own Secret, never an argument, a variable or a ConfigMap
-# value.
+# default; the platform operator of a new installation (onboard
+# bootstrap-platform). The password is a file of its own Secret, never an
+# argument, a variable or a ConfigMap value.
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result
@@ -547,9 +520,7 @@ operator_jobs() {
   fi
 }
 operator_jobs none
-operator_jobs old -f "$here/values/operator-jobs-old.yaml"
 operator_jobs bootstrap -f "$here/values/operator-jobs-bootstrap.yaml"
-operator_jobs operator -f "$here/values/operator-jobs-upgrade.yaml"
 # The feature gate of the gateway (Features.enforce): on by default, off
 # with gateway.features.enforce false, and gateway.extraConfig still wins.
 renders "feature gate on by default" "enforce: true" "${shamir[@]}"

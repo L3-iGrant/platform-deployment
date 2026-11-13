@@ -5,10 +5,7 @@ Usage: check_operator_jobs.py <render.yaml> <case>
 
 The cases:
   none       the default values: no operator Job
-  old        api.jobs.registerAdmin, .createOrganisationType and
-             .createOrganisation (the values files of earlier releases)
   bootstrap  api.jobs.bootstrapPlatform (a new installation)
-  operator   api.jobs.platformOperator (an installation that exists)
 
 For each Job: the command and the arguments of each container, the order of
 the init containers (migrate first), and the password: a file of its own
@@ -24,32 +21,18 @@ import yaml
 RELEASE = "t"
 CONFIG = "--config=/etc/igrant-api/config.yaml"
 PASSWORD_FILE = "--password-file=/run/secrets/onboard/password"
-OPERATOR_JOBS = ("api-bootstrap-platform", "api-platform-operator", "api-register-admin",
-                 "api-create-organisation-type", "api-create-organisation")
+OPERATOR_JOBS = ("api-bootstrap-platform",)
 
 # The Jobs of each case: name -> (init containers after migrate, arguments
 # of the command container, the password Secret or None).
 CASES = {
     "none": {},
-    "old": {
-        "api-register-admin": ([], ["onboard", "register-admin", "--email=admin@example.org", PASSWORD_FILE, CONFIG,
-                                    "--name=First Admin", "--phone=+4612345678"], ("first-admin", "password")),
-        "api-create-organisation-type": ([], ["onboard", "create-organisation-type", "--type=Technology", CONFIG], None),
-        "api-create-organisation": ([], ["onboard", "create-organisation", "--admin-email=admin@example.org",
-                                         "--name=Example Organisation", "--type=Technology", "--location=Stockholm",
-                                         "--policy-url=https://example.org/privacy", CONFIG], None),
-    },
     "bootstrap": {
         "api-bootstrap-platform": ([], ["onboard", "bootstrap-platform", "--admin-email=admin@example.org",
                                         "--admin-name=First Admin", PASSWORD_FILE,
                                         "--organisation-name=Example Wallet Provider", "--type=Technology",
                                         "--location=Stockholm", "--policy-url=https://example.org/privacy", CONFIG],
                                    ("platform-admin", "first-password")),
-    },
-    "operator": {
-        "api-platform-operator": ([("set-operator", ["platform", "set-operator",
-                                                     "--organisation-id=6731f0c2a1b2c3d4e5f60789", CONFIG])],
-                                  ["platform", "grant-admin", "--email=admin@example.org", CONFIG], None),
     },
 }
 

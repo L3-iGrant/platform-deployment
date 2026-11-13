@@ -1,9 +1,0 @@
-# An installation that exists: the platform operator mark of an
-# organisation and the platform admin right of one of its admins
-# (tests/check_operator_jobs.py operator).
-api:
-  jobs:
-    platformOperator:
-      enabled: true
-      organisationId: 6731f0c2a1b2c3d4e5f60789
-      adminEmail: admin@example.org
