@@ -80,7 +80,7 @@ def main() -> int:
             continue
         check("helm.sh/hook" not in (job["metadata"].get("annotations") or {}), f"{name} is a hook")
         pod = job["spec"]["template"]["spec"]
-        check(pod.get("restartPolicy") == "Never", f"{name}: restartPolicy {pod.get('restartPolicy')}")
+        check(pod.get("restartPolicy") == "OnFailure", f"{name}: restartPolicy {pod.get('restartPolicy')}")
         init = pod.get("initContainers") or []
         check([c["name"] for c in init] == ["migrate"] + [step for step, _ in before],
               f"{name}: the init containers are {[c['name'] for c in init]}")

@@ -35,10 +35,7 @@ spec:
   {{- with $g.revisionHistoryLimit }}
   revisionHistoryLimit: {{ . }}
   {{- end }}
-  {{- with $g.strategy }}
-  strategy:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+  {{- include "ow.rollout" $g | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list . "gateway") | nindent 6 }}
@@ -55,9 +52,7 @@ spec:
       # The gateway does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.checkStopBudget" (list "gateway" $g 5 20) }}
-      # The stop budget: drain + graceful shutdown + margin; no
-      # preStop (the process drains itself; the distroless image has no
-      # /bin/sleep).
+      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds | int }}
       containers:
         - name: gateway
@@ -84,6 +79,7 @@ spec:
           livenessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- include "ow.preStopSleep" $g.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list . $g) | nindent 10 }}
           {{- with $g.resources }}
           resources:

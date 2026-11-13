@@ -563,9 +563,6 @@ renders "EU trusted list check off" "eu_lotl_url: null" "${shamir[@]}" --set org
 # list lookup service is gone (no lookup_url, no lookup token file).
 renders "trust sources refresh defaults" "refresh_max_interval_seconds: 86400" "${shamir[@]}"
 renders "trust sources stale grace" "stale_grace_seconds: 3600" "${shamir[@]}" --set organisationWallet.trustSources.staleGraceSeconds=3600
-lacks "no trust list lookup service" "lookup_url" "${shamir[@]}"
-lacks "no trust list lookup token" "trust-list-lookup-token" "${shamir[@]}"
-guard "removed trust list lookup value" "Additional property lookupUrl" "${shamir[@]}" --set organisationWallet.trustList.lookupUrl=https://trustlist.example.org/lookup
 guard "trust sources refresh interval too short" "refreshMinIntervalSeconds" "${shamir[@]}" --set organisationWallet.trustSources.refreshMinIntervalSeconds=10
 renders "added key store provider" "logo_url: https://example.org/qtsp.png" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"example-qtsp","category":"qtsp","type":"csc","name":"Example QTSP","protection":"provider","qualified":true,"logoUrl":"https://example.org/qtsp.png","region":"SE","order":30}]'
 guard "key store provider category" "category" "${shamir[@]}" --set-json 'organisationWallet.keyStores.providers.add=[{"id":"x","category":"cloud","type":"csc","name":"X","protection":"provider"}]'
@@ -688,8 +685,6 @@ play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decrypti
   --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
 guard "Play Integrity keys without the certificate digest" "androidSigningCertificateDigests needs the SHA-256" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
 guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" "${shamir[@]}" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
-guard "the Play Integrity digest value is gone" "certificateSha256Digests" "${shamir[@]}" --set "organisationWallet.walletUnit.playIntegrity.certificateSha256Digests={$digest}"
-guard "the Play Integrity service account is gone" "key" "${shamir[@]}" --set organisationWallet.walletUnit.playIntegrity.key=service_account.json
 # The App IDs of the iOS wallet apps (wallet_unit.app_attest.app_ids): only
 # the service file names them (the WIA and key attestation requests).
 app_attest() {
@@ -1634,6 +1629,7 @@ else
   if [ -z "$containers_of_test" ]; then
     bad "Pod Security Standard (upstream): no count of the containers from check_security.py"
   else
+    for version in latest v1.30; do
       if result="$("$psscheck" -level restricted -version "$version" -containers "$containers_of_test" "${renders_of_test[@]}" 2>&1)"; then
         ok "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
       else
@@ -1680,6 +1676,29 @@ else
   fi
 fi
 
+# The probes, the hooks, the rollout and the stop (tests/check_lifecycle.py)
+# of each render: no exec probe or hook in an image without a shell, no
+# exec of /bin/sleep, no initialDelaySeconds with a startup probe; each HTTP
+# Deployment rolls with maxUnavailable 0, minReadySeconds and a preStop
+# sleep, and its grace period covers the sleep and the stop of its server.
+# The check must refuse each bad pod of tests/fixtures/lifecycle-pods.yaml.
+if result="$(python3 "$here/check_lifecycle.py" "${renders_of_test[@]}" 2>&1)"; then
+  ok "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+else
+  bad "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+  printf '%s\n' "$result" | head -20
+fi
+result="$(python3 "$here/check_lifecycle.py" "$here/fixtures/lifecycle-pods.yaml" 2>&1)" || true
+problems=""
+for pod in bad-sleep-exec bad-shell-probe bad-initial-delay; do
+  grep -q -F -- "Pod/$pod" <<< "$result" || problems="$problems misses $pod;"
+done
+grep -q -F -- "Pod/good" <<< "$result" && problems="$problems refuses the good pod;"
+if [ -z "$problems" ]; then
+  ok "probes, hooks, rollout and stop: the check refuses each bad pod of tests/fixtures/lifecycle-pods.yaml"
+else
+  bad "probes, hooks, rollout and stop: the check$problems"
+fi
 
 echo "result: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

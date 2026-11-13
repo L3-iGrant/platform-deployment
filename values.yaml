@@ -631,6 +631,17 @@ api:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
+  # -- The rollout of the Deployments of the api and of the webhook handler:
+  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
+  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
+  # available minReadySeconds after it is ready: a pod that fails just after
+  # its start stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   # -- Host name of the api (required). The auth gateway receives every
   # request of this host. On premise it is an internal host
   # (docs/exposure.md).
@@ -771,17 +782,20 @@ api:
   nats:
     timeout: 5
     maxConcurrentHandlers: 64
-  # -- The stop of the api and webhook pods (Server.drainSeconds,
-  # Server.gracefulShutdownSeconds): at SIGTERM /readyz answers 503
-  # "draining" at once, and the server keeps accepting for drainSeconds;
-  # then it waits at most gracefulShutdownSeconds for the requests in
-  # progress and the NATS drain. No preStop: the process drains itself. The
-  # render stops when terminationGracePeriodSeconds is below drainSeconds +
+  # -- The stop of the api and webhook pods (docs/security-context.md, "The
+  # stop of a pod"): first the preStop sleep of preStopSeconds (the pod
+  # serves on while Kubernetes removes it from the endpoints); then at
+  # SIGTERM /readyz answers 503 "draining" at once, the server keeps
+  # accepting for drainSeconds (Server.drainSeconds), and it waits at most
+  # gracefulShutdownSeconds (Server.gracefulShutdownSeconds) for the
+  # requests in progress and the NATS drain. The render stops when
+  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
   # gracefulShutdownSeconds + 5.
   server:
+    preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 35
+    terminationGracePeriodSeconds: 40
   # -- The limits of the installation that the api checks (the section
   # Limits of the api and webhook files). An empty value writes no key, and
   # the api uses its default. Set a value only with the images of the
@@ -806,25 +820,36 @@ api:
   # GOMEMLIMIT): the api reads no configuration from the environment.
   extraEnv: []
   # -- Probes of the api core: startup and liveness /healthz (the process
-  # runs, no dependency check), readiness /readyz (503 while the database,
-  # NATS or the wallet views are not ready).
+  # runs, no dependency check), readiness /readyz: the api checks the
+  # database every 2 s on one connection outside its pools, and /readyz
+  # fails when no check passed for 10 s; NATS and the wallet views are start
+  # gates (/readyz waits for them only at the start). The readiness probe
+  # (2 s, timeout 2 s, 2 failures) takes a pod with a broken database path
+  # out of the Service in about 14 s; an interruption of up to 6 s changes
+  # nothing. An outage of the database of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
   startupProbe:
     httpGet:
       path: /healthz
       port: http
     periodSeconds: 2
-    failureThreshold: 30
+    timeoutSeconds: 3
+    failureThreshold: 90
   readinessProbe:
     httpGet:
       path: /readyz
       port: http
-    periodSeconds: 10
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
   livenessProbe:
     httpGet:
       path: /healthz
       port: http
-    initialDelaySeconds: 30
-    periodSeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   resources:
     requests:
       cpu: 20m
@@ -978,25 +1003,34 @@ api:
   webhook:
     replicas: 1
     # -- Probes of the webhook handler: startup and liveness /healthz (the
-    # process runs), readiness /readyz (503 while the database, NATS or the
-    # JetStream consumers are not ready).
+    # process runs), readiness /readyz: the database check of the api core
+    # (every 2 s, outside the pools; /readyz fails when no check passed for
+    # 10 s), NATS and the JetStream consumers as start gates. The readiness
+    # probe is 5 s x 2 failures (timeout 2 s): the handler sends no
+    # response to a client, so a slower exit is enough. The startup probe
+    # gives the process 180 s (90 x 2 s); the liveness probe starts after it
+    # (no initialDelaySeconds).
     startupProbe:
       httpGet:
         path: /healthz
         port: http
       periodSeconds: 2
-      failureThreshold: 30
+      timeoutSeconds: 3
+      failureThreshold: 90
     readinessProbe:
       httpGet:
         path: /readyz
         port: http
-      periodSeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 2
+      failureThreshold: 2
     livenessProbe:
       httpGet:
         path: /healthz
         port: http
-      initialDelaySeconds: 30
-      periodSeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
     resources:
       requests:
         cpu: 15m
@@ -1058,22 +1092,32 @@ gateway:
     digest: ""
   # -- Two or more replicas: the gateway is in front of all api requests.
   replicas: 2
-  # -- Rolling update: a new pod is ready before an old pod stops.
+  # -- The rollout of the Deployment of the gateway: new pods are ready before
+  # old pods stop (maxUnavailable 0), with at most a quarter more pods during
+  # the rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
+  # after it is ready: a pod that fails just after its start stops the rollout
+  # before an old pod stops.
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
+      maxSurge: 25%
       maxUnavailable: 0
+  minReadySeconds: 30
   revisionHistoryLimit: 5
   # -- Gateway.listenPort: 1024 or more (non-root).
   listenPort: 8070
-  # -- The stop of the gateway pods (Gateway.drainSeconds,
-  # Gateway.gracefulShutdownSeconds): the same behaviour as the api. The
-  # render stops when terminationGracePeriodSeconds is below drainSeconds +
+  # -- The stop of the gateway pods (docs/security-context.md, "The stop
+  # of a pod"): first the preStop sleep of preStopSeconds (the pod serves
+  # on while Kubernetes removes it from the endpoints and the proxies);
+  # then at SIGTERM the drain (Gateway.drainSeconds: /readyz answers 503,
+  # the server still accepts) and the wait for the requests in progress
+  # (Gateway.gracefulShutdownSeconds). The render stops when
+  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
   # gracefulShutdownSeconds + 5.
+  preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
-  terminationGracePeriodSeconds: 35
+  terminationGracePeriodSeconds: 40
   # -- Log level (Log.level). Empty: api.logLevel.
   logLevel: ""
   upstreams:
@@ -1167,25 +1211,31 @@ gateway:
   # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes: startup and liveness /healthz (the process runs), readiness
-  # /readyz (the database, the keys).
+  # /readyz: the gateway checks the database every 2 s on one connection
+  # outside its pool, and /readyz fails when no check passed for 10 s. The
+  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
+  # database path out of the Service in about 14 s; an interruption of up
+  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
   startupProbe:
     httpGet:
       path: /healthz
       port: http
     periodSeconds: 2
-    failureThreshold: 30
+    timeoutSeconds: 3
+    failureThreshold: 90
   readinessProbe:
     httpGet:
       path: /readyz
       port: http
-    periodSeconds: 5
-    timeoutSeconds: 3
-    failureThreshold: 3
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
   livenessProbe:
     httpGet:
       path: /healthz
       port: http
-    initialDelaySeconds: 10
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
@@ -1441,20 +1491,63 @@ consent:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 2
+  # -- The rollout of the Deployment of consent: new pods are ready before old
+  # pods stop (maxUnavailable 0), with at most a quarter more pods during the
+  # rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
+  # after it is ready: a pod that fails just after its start stops the rollout
+  # before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   logLevel: info
   nats:
     rpcTimeoutSeconds: 15
     readRpcTimeoutSeconds: 5
   maxRequestBodyBytes: 5242880
-  # -- The stop of the consent pods (Server.drainSeconds,
-  # Server.gracefulShutdownSeconds): the drain, then the wait for the
-  # requests in progress, the NATS drain and the outbox relay. The render
-  # stops when terminationGracePeriodSeconds is below drainSeconds +
-  # gracefulShutdownSeconds + 5.
+  # -- The stop of the consent pods (docs/security-context.md, "The stop of
+  # a pod"): first the preStop sleep of preStopSeconds; then at SIGTERM the
+  # drain (Server.drainSeconds), the wait for the requests in progress, the
+  # NATS drain and the outbox relay (Server.gracefulShutdownSeconds). The
+  # render stops when terminationGracePeriodSeconds is below
+  # preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5.
   server:
+    preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 35
+    terminationGracePeriodSeconds: 40
+  # -- Probes of consent on its admin port (8081): startup and liveness
+  # /healthz, readiness /readyz: consent checks the database every 2 s on
+  # one connection outside its pool, and /readyz fails when no check passed
+  # for 10 s; NATS and the views of its readers are start gates. The
+  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
+  # database path out of the Service in about 14 s; an interruption of up
+  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
+  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
+  # liveness probe starts after it (no initialDelaySeconds).
+  startupProbe:
+    httpGet:
+      path: /healthz
+      port: admin
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 90
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: admin
+    periodSeconds: 2
+    timeoutSeconds: 2
+    failureThreshold: 2
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: admin
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   # -- GatewayToken: consent always verifies the internal token of the
   # gateway. Clock difference that exp and nbf accept: 1 to 300 seconds.
   gatewayToken:
@@ -2015,6 +2108,17 @@ organisationWallet:
       readOnlyRootFilesystem: true
       capabilities:
         drop: ["ALL"]
+  # -- The rollout of the Deployments of the wallet service and config roles:
+  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
+  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
+  # available minReadySeconds after it is ready: a pod that fails just after
+  # its start stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
   # -- Extra keys of the wallet configuration, deep-merged over the keys of
   # the chart in the files of all roles (nested keys). Do not put a secret
   # here. Not log_file: the chart writes no log file (the processes log to
@@ -2140,6 +2244,50 @@ enterpriseDashboard:
     # -- Empty: global.imageTag.
     tag: ""
   replicas: 1
+  # -- The rollout of the Deployment of the dashboard: new pods are ready
+  # before old pods stop (maxUnavailable 0), with at most a quarter more pods
+  # during the rollout (maxSurge 25 %). A new pod counts as available
+  # minReadySeconds after it is ready: a pod that fails just after its start
+  # stops the rollout before an old pod stops.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  minReadySeconds: 30
+  # -- The stop of the dashboard pods (docs/security-context.md, "The stop
+  # of a pod"): the preStop sleep of preStopSeconds (nginx serves on while
+  # Kubernetes removes the pod from the endpoints), then the stop signal
+  # of the image (SIGQUIT: nginx ends the requests in progress, then
+  # stops). The render stops when terminationGracePeriodSeconds is below
+  # preStopSeconds + 10.
+  preStopSeconds: 10
+  terminationGracePeriodSeconds: 30
+  # -- Probes of the dashboard (nginx): each the start page /.
+  # The startup probe gives the process 180 s (90 x 2 s); the liveness probe
+  # starts after it (no initialDelaySeconds). Each timeout (3 s) is above
+  # the time of the check.
+  startupProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 2
+    timeoutSeconds: 3
+    failureThreshold: 90
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
   # -- Host name of the dashboard (required). On premise it is an
   # internal host (docs/exposure.md).
   host: ""

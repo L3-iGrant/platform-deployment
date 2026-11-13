@@ -1340,6 +1340,45 @@
         "replicas": {
           "type": "integer"
         },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "RollingUpdate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxSurge": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                },
+                "maxUnavailable": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                }
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
         "host": {
           "type": "string",
           "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
@@ -1620,16 +1659,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "events": {
-              "description": "Not used: the effective features of each organisation select its webhook event types. The chart does not render the value and accepts it for one release (docs/upgrade.md, The webhook event types).",
-              "type": "array",
-              "items": {
-                "type": [
-                  "string",
-                  "integer"
-                ]
-              }
-            },
             "deliveryRetentionDays": {
               "type": "integer"
             }
@@ -1654,6 +1683,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "preStopSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
             "drainSeconds": {
               "type": "integer"
             },
@@ -1964,13 +1997,53 @@
           "type": "integer"
         },
         "strategy": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "RollingUpdate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxSurge": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                },
+                "maxUnavailable": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                }
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
         },
         "revisionHistoryLimit": {
           "type": "integer"
         },
         "listenPort": {
           "type": "integer"
+        },
+        "preStopSeconds": {
+          "type": "integer",
+          "minimum": 1
         },
         "drainSeconds": {
           "type": "integer"
@@ -2632,6 +2705,45 @@
         "replicas": {
           "type": "integer"
         },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "RollingUpdate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxSurge": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                },
+                "maxUnavailable": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                }
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
         "logLevel": {
           "type": "string"
         },
@@ -2654,6 +2766,10 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "preStopSeconds": {
+              "type": "integer",
+              "minimum": 1
+            },
             "drainSeconds": {
               "type": "integer"
             },
@@ -2664,6 +2780,15 @@
               "type": "integer"
             }
           }
+        },
+        "startupProbe": {
+          "type": "object"
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
         },
         "gatewayToken": {
           "type": "object",
@@ -3659,7 +3784,8 @@
               "type": "integer"
             },
             "preStopSeconds": {
-              "type": "integer"
+              "type": "integer",
+              "minimum": 1
             },
             "terminationGracePeriodSeconds": {
               "type": "integer"
@@ -3687,6 +3813,45 @@
               "type": "object"
             }
           }
+        },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "RollingUpdate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxSurge": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                },
+                "maxUnavailable": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                }
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
         },
         "extraConfig": {
           "type": "object"
@@ -3895,6 +4060,62 @@
         },
         "replicas": {
           "type": "integer"
+        },
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "RollingUpdate"
+              ]
+            },
+            "rollingUpdate": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "maxSurge": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                },
+                "maxUnavailable": {
+                  "type": [
+                    "integer",
+                    "string"
+                  ],
+                  "pattern": "^[0-9]+%$"
+                }
+              }
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        "minReadySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "preStopSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "startupProbe": {
+          "type": "object"
+        },
+        "readinessProbe": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "type": "object"
         },
         "host": {
           "type": "string",

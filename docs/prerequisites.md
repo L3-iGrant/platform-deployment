@@ -6,8 +6,8 @@ This page lists what your cluster, your network and your workstation need before
 
 | Item | Requirement |
 | --- | --- |
-| Kubernetes | 1.25 or later. |
-| Helm | 3.8 or later. |
+| Kubernetes | 1.30 or later: the pods stop with the sleep action of the preStop hooks (on by default from 1.30), because the images have no shell and no sleep program. |
+| Helm | 3.10 or later. Tested: 3.10.3, 3.16.2 (the version of the tests of the chart), 3.19.0 and 4.0.0. Helm 3.9 and earlier cannot render the chart. With Helm 4, `helm template` needs `--kube-version 1.30` or later (its default is Kubernetes 1.20); `helm install` and `helm upgrade` use the version of the cluster. |
 | Ingress | An ingress controller (for example ingress-nginx or Traefik) or a Gateway API implementation (for example Envoy Gateway, kgateway or Istio). The chart does not install one. With the Gateway API, your Gateway has an HTTPS listener and a policy that passes the client address (see [Exposure](exposure.md)). |
 | DNS | Three host names that point to your ingress controller or Gateway: the API, the organisation wallet and the dashboard (for example `api.example.org`, `wallet.example.org` and `dashboard.example.org`). The API and the dashboard must have the same registrable domain. |
 | TLS | Certificates for the three host names: TLS Secrets in the release namespace, or TLS at your Gateway or load balancer. cert-manager is optional (see `examples/exposure-ingress-nginx-cert-manager.yaml`). |

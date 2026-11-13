@@ -53,6 +53,7 @@ type result struct {
 
 func main() {
 	levelText := flag.String("level", "restricted", "the level: privileged, baseline or restricted")
+	versionText := flag.String("version", "latest", "the version of the standard, for example latest or v1.30")
 	want := flag.Int("containers", -1, "the expected count of containers (-1: no check, but at least 1)")
 	flag.Parse()
 	level, err := api.ParseLevel(*levelText)

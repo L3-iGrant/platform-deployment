@@ -119,11 +119,9 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 6
-          lifecycle:
-            # The Service removes the pod before OpenBao stops.
-            preStop:
-              exec:
-                command: ["/bin/sleep", "5"]
+          # The Service removes the pod before OpenBao stops (the sleep
+          # action of Kubernetes: no sleep program needed in the image).
+          {{- include "ow.preStopSleep" 5 | nindent 10 }}
           volumeMounts:
             - name: config
               mountPath: {{ $paths.config | dir }}
