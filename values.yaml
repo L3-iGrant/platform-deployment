@@ -2156,31 +2156,6 @@ organisationWallet:
   # for some of the queues; together the groups must run every queue. A
   # list: your list replaces the whole default list.
   workers:
-    # -- The /tmp folder of each worker pod (the root file system is
-    # read-only). The monthly audit export (audit.export, queue maintenance;
-    # only with audit.bucket.name) writes one month of the audit log of one
-    # data scope two times to /tmp/ows-audit-export-*: the export and the
-    # download that checks it. Thus /tmp is on disk, never in memory.
-    # sizeLimit: the most data in /tmp of one pod. Give at least two times
-    # the largest month of one data scope (docs/workers.md, "The /tmp folder
-    # of the workers"). A group can override these values with its own
-    # tmp.
-    tmp:
-      # -- emptyDir (default): the ephemeral storage of the node. Kubernetes
-      # evicts the pod when /tmp holds more than sizeLimit, and the export
-      # runs again from its message on another pod. The node must have the
-      # free disk space.
-      sizeLimit: 10Gi
-      # -- true: /tmp is a generic ephemeral volume in place of the emptyDir:
-      # a PersistentVolumeClaim of sizeLimit that Kubernetes makes with the
-      # pod and deletes with the pod (for exports that are larger than the
-      # free disk of the nodes).
-      volume:
-        enabled: false
-        # -- The storage class of the claim. Empty: global.storageClass,
-        # else the default storage class of the cluster. "-": no storage
-        # class.
-        storageClass: ""
     groups:
       # name: lower-case letters, digits and -; the Deployment name has at
       #   most 63 characters.
@@ -2192,9 +2167,6 @@ organisationWallet:
       #   limit of the actors of the queues, else an actor stops before its
       #   end and runs again from its message.
       # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
-      # tmp (optional): the /tmp folder of the pods of the group, with the
-      #   keys of organisationWallet.workers.tmp (sizeLimit, volume). Each
-      #   key that you give replaces the key of workers.tmp.
       - name: main
         queues: [realtime, attestation, status, kms]
         replicas: 2

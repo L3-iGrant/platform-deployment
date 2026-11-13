@@ -174,45 +174,11 @@ The copy of the issuances of earlier releases has an alert on a log line, not on
 
 ## The /tmp folder of the workers
 
-The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write their temporary files to `/tmp`. The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes one month of the audit log of one data scope two times to `/tmp/ows-audit-export-*`: the export, and the download that checks it. The files stay only while the export runs.
+The root file system of the worker pods is read-only (see [Security settings of the containers](security-context.md)). The workers write only their temporary files to `/tmp`: an `emptyDir` in memory of 64Mi, the same as in the other wallet pods. The files of `/tmp` count against the memory limit of the worker container.
 
-| Value | Description | Default |
-| --- | --- | --- |
-| `organisationWallet.workers.tmp.sizeLimit` | The most data in `/tmp` of one worker pod (`Ki`, `Mi`, `Gi` or `Ti`). Give at least two times the largest month of one data scope | `10Gi` |
-| `organisationWallet.workers.tmp.volume.enabled` | `false`: an `emptyDir` on the disk of the node (never in memory). `true`: a generic ephemeral volume, a PersistentVolumeClaim of `sizeLimit` that Kubernetes makes with the pod and deletes with the pod | `false` |
-| `organisationWallet.workers.tmp.volume.storageClass` | The storage class of the claim (empty: `global.storageClass`, else the default class; `-`: none) | `""` |
-| `organisationWallet.workers.groups[].tmp` | The same keys for one group: each key that you give replaces the key of `workers.tmp` | none |
+The monthly audit export (`audit.export`, queue `maintenance`, only with an audit bucket) writes no local file: it reads the month in pages and sends each chain in parts of at most 16 MiB to the bucket. Its memory peak is about 263 to 424 MiB for one export (at most 16 open parts of 16 MiB, one page and one chunk of 8 MiB), so two exports at the same time stay below 1 GiB, inside the memory limit of the workers (1536Mi). This needs the wallet image of the release with the streamed export; the chart and the images of a release belong together (see [Upgrade](upgrade.md#the-non-root-containers)).
 
-Size: the audit log grows with the activity of the organisations. Read the size of the largest monthly partition of the audit log of each data scope in the wallet database, and give two times that size and a margin. As an estimate, at 4,000,000 wallet units the audit log grows by about 400 GB each month for all data scopes together: one month of one data scope can need tens to hundreds of GB in `/tmp`.
-
-- With the `emptyDir`, the kubelet evicts a pod that writes more than `sizeLimit`, and the export runs again from its message on another pod. The nodes must have the free disk space (the ephemeral storage). The `sizeLimit` is a limit, not a reservation.
-- With a volume (`volume.enabled: true`), the storage class gives the space. Each pod of each group gets its own claim: give the large size only to the group with the queue `maintenance`, for example:
-
-```yaml
-organisationWallet:
-  workers:
-    groups:
-      - name: main
-        queues: [realtime, attestation, status, kms]
-        replicas: 2
-        processes: 1
-        threads: 8
-        shutdownTimeoutSeconds: 600
-        terminationGracePeriodSeconds: 630
-      - name: maintenance
-        queues: [maintenance]
-        replicas: 1
-        processes: 1
-        threads: 2
-        shutdownTimeoutSeconds: 14400
-        terminationGracePeriodSeconds: 14430
-        tmp:
-          sizeLimit: 200Gi
-          volume:
-            enabled: true
-```
-
-Your list replaces the whole default list: give all keys of each group, also its `resources`.
+There is no value for `/tmp` of the workers: the values `organisationWallet.workers.tmp` and `organisationWallet.workers.groups[].tmp` of an earlier chart are gone, and the schema refuses them.
 
 ## Network policies
 

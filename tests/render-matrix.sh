@@ -434,8 +434,9 @@ guard "existing platform operator without organisation id" "api.jobs.platformOpe
 guard "existing platform operator without admin e-mail" "api.jobs.platformOperator.adminEmail" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set api.jobs.platformOperator.adminEmail=
 guard "existing platform operator organisation id with a space" "organisationId" "${shamir[@]}" -f "$here/values/operator-jobs-upgrade.yaml" --set-string "api.jobs.platformOperator.organisationId=6731 --allow-last"
 guard "feature gate not a boolean" "enforce" "${shamir[@]}" --set-string gateway.features.enforce=off
-guard "worker /tmp size not a size" "organisationWallet.workers.tmp.sizeLimit" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10GB
-guard "worker /tmp without a size" "sizeLimit is required" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=null
+# The /tmp of the workers is 64Mi in memory (the audit export writes no
+# local file): the schema refuses the removed values.
+guard "removed worker /tmp size" "Additional property tmp is not allowed" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=10Gi
 # A folder that a process writes must be on an emptyDir of its pod (the
 # root file system is read-only).
 guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" "${shamir[@]}" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
@@ -1238,9 +1239,6 @@ else
   printf '%s\n' "$problems" | sed 's/^/  /' | head -10
 fi
 lacks "no state or cache endpoint by default" "redis-state-ca.crt" "${shamir[@]}"
-# The /tmp folder of the workers (organisationWallet.workers.tmp): an
-# emptyDir on disk with sizeLimit, or a generic ephemeral volume of that
-# size; the tmp of a group replaces the keys of workers.tmp.
 # /tmp of the api: an upload of 100 MiB with a /tmp of 100Mi (and the
 # memory limits for it); a body of 32 MiB stays in memory, so a small /tmp
 # is enough for it.
@@ -1248,17 +1246,12 @@ renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" "${shamir[@]}" --se
   --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
 renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" "${shamir[@]}" --set gateway.proxy.maxBodyBytes.file=33554432 \
   --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
-renders "worker /tmp on the disk of the node" "sizeLimit: 10Gi" "${shamir[@]}"
-renders "worker /tmp size" "sizeLimit: 200Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.sizeLimit=200Gi
-renders "worker /tmp as an ephemeral volume" "storage: 10Gi" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
-renders "worker /tmp volume storage class" "storageClassName: fast" "${shamir[@]}" --set organisationWallet.workers.tmp.volume.enabled=true \
-  --set organisationWallet.workers.tmp.volume.storageClass=fast
 worker_group='{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430'
-renders "worker /tmp of a group" "sizeLimit: 300Gi" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"
+guard "removed /tmp of a worker group" "Additional property tmp is not allowed" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"
 # The writable paths of the pods that run as a non-root user with a
 # read-only root file system: /tmp of each api, webhook, dashboard and wallet
-# pod (the worker /tmp on disk), the socket folder of the bundled server.
+# pod (in memory, 64Mi; the worker /tmp too), the socket folder of the
+# bundled server.
 if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
   bad "writable paths: $(head -c 200 "$out/writable.err")"
 elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
@@ -1270,8 +1263,8 @@ expected = {
     ("Deployment", "t-dashboard"): {"/tmp": {"sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-service"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-config"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-server": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-worker-main"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
-    ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"sizeLimit": "10Gi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-main"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
+    ("Deployment", "t-wallet-worker-maintenance"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}, "/run/ows-worker": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("Deployment", "t-wallet-clock"): {"/tmp": {"medium": "Memory", "sizeLimit": "64Mi"}},
     ("StatefulSet", "t-postgres"): {"/tmp": {"sizeLimit": "64Mi"}, "/var/run/postgresql": {"medium": "Memory", "sizeLimit": "1Mi"}},
     ("StatefulSet", "t-nats"): {"/var/run/nats": {"medium": "Memory", "sizeLimit": "1Mi"}},
@@ -1677,8 +1670,7 @@ fi
 # --- 7. The security settings of the containers -------------------------------
 # Each container of each render of this test (the matrix, the other cases
 # above, and one render with the optional containers: the metrics exporter
-# of Valkey, the operator Jobs of the api, the /tmp volume claims of the
-# workers):
+# of Valkey and the operator Jobs of the api):
 # - tests/check_security.py: a non-root user with a UID and a GID other than
 #   0, no privilege escalation, a read-only root file system, all
 #   capabilities dropped and none added, not privileged, seccomp
@@ -1695,8 +1687,7 @@ fi
 # each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container
 # and an AppArmor annotation, which the chart does not render).
 if ! helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" \
-    -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true \
-    --set organisationWallet.workers.tmp.volume.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
+    -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
   bad "security settings: helm template with the optional containers"
   sed 's/^/  /' "$out/security-options.err" | head -10
 fi
