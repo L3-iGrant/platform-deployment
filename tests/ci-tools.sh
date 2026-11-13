@@ -32,11 +32,11 @@ archive="$(fetch https://github.com/yannh/kubeconform/releases/download/v0.6.7/k
 tar -xzf "$archive" -C "$work" kubeconform
 install -m 0755 "$work/kubeconform" "$tools/bin/kubeconform"
 
-# nats-server 2.12.3 (the version of nats.image: nats-server -t of the
+# nats-server 2.12.15 (the version of nats.image: nats-server -t of the
 # configurations).
-archive="$(fetch https://github.com/nats-io/nats-server/releases/download/v2.12.3/nats-server-v2.12.3-linux-amd64.tar.gz 3f113d8f3d64f28239e12deeca9c9941104def9e2a8461fa076b0065b4e76327)"
-tar -xzf "$archive" -C "$work" nats-server-v2.12.3-linux-amd64/nats-server
-install -m 0755 "$work/nats-server-v2.12.3-linux-amd64/nats-server" "$tools/bin/nats-server"
+archive="$(fetch https://github.com/nats-io/nats-server/releases/download/v2.12.15/nats-server-v2.12.15-linux-amd64.tar.gz 58ab8131f819263897e2fc38e503e1b755b63bcafeecc7d12582487df48ca15e)"
+tar -xzf "$archive" -C "$work" nats-server-v2.12.15-linux-amd64/nats-server
+install -m 0755 "$work/nats-server-v2.12.15-linux-amd64/nats-server" "$tools/bin/nats-server"
 
 # Python with PyYAML (the checks of the renders and of the Compose files).
 python3 -m venv "$tools/venv"

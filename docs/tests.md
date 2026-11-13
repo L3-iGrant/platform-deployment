@@ -50,7 +50,7 @@ Three tests run real servers in containers of local images (they never pull; the
 ```bash
 tests/valkey-pods.sh valkey/valkey:8.1.10-alpine     # the pods of the bundled Valkey
 tests/compose-valkey.sh valkey/valkey:8.1.10-alpine  # the Valkey services of docker-compose/
-tests/nats-store.sh nats:2.12.3-alpine natsio/nats-box:0.18.1 --files 200000   # the JetStream store across a rollback
+tests/nats-store.sh nats:2.12.15-alpine natsio/nats-box:0.18.1 --files 200000 --earlier-image nats:2.12.3-alpine   # the JetStream store across a rollback
 tests/wallet-commands.sh <registry>/eudi-wallet:<tag> # each wallet command of the chart and of Compose in the wallet image
 ```
 

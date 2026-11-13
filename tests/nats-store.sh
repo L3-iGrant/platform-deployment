@@ -38,18 +38,30 @@
 #    (Always), of a start with OnRootMismatch, and of store-check (it reads
 #    only the metadata).
 #
-# Usage: tests/nats-store.sh <nats image> <nats-box image> [--files N]
+# Usage: tests/nats-store.sh <nats image> <nats-box image> [--files N] [--earlier-image <nats image>]
+#   --earlier-image: the NATS image of the earlier release (steps 1 and 3,
+#   NATS as root), for example nats:2.12.3-alpine; default: <nats image>.
+#   The store must stay readable across the change of the version.
 #   The images must be local (the script never pulls), for example the
-#   image of nats.image (nats:2.12.3-alpine) and natsio/nats-box. The
+#   image of nats.image (nats:2.12.15-alpine) and natsio/nats-box. The
 #   containers, the volumes and the network have unique names, and the
 #   script removes them at the end. On a shared Docker host, run it inside
 #   your lock of the Docker tests.
 set -euo pipefail
 
-nats_image="${1:?usage: tests/nats-store.sh <nats image> <nats-box image> [--files N]}"
-box_image="${2:?usage: tests/nats-store.sh <nats image> <nats-box image> [--files N]}"
+usage="usage: tests/nats-store.sh <nats image> <nats-box image> [--files N] [--earlier-image <nats image>]"
+nats_image="${1:?$usage}"
+box_image="${2:?$usage}"
+shift 2
 files=200000
-if [ "${3:-}" = "--files" ]; then files="${4:?--files needs a number}"; fi
+earlier_image="$nats_image"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --files) files="${2:?--files needs a number}"; shift 2 ;;
+    --earlier-image) earlier_image="${2:?--earlier-image needs an image}"; shift 2 ;;
+    *) echo "$usage" >&2; exit 2 ;;
+  esac
+done
 here="$(cd "$(dirname "$0")" && pwd)"
 chart="$(dirname "$here")"
 prefix="nats-store-test-$(openssl rand -hex 4)"
@@ -100,12 +112,13 @@ store_check() {
     --security-opt no-new-privileges:true --network none --memory 64m --memory-swap 64m \
     -v "$1:/data:ro" -v "$prefix-script:/etc/nats-config:ro" --entrypoint /bin/sh "$nats_image" -c "$script"
 }
-# start <volume> <user>: nats-server with JetStream (store_dir /data).
+# start <volume> <user>: nats-server with JetStream (store_dir /data). As
+# root: the earlier release (its image); else this chart (its image).
 start() {
   docker rm -f "$prefix-nats" > /dev/null 2>&1 || true
-  local user=(--user 0:0)
-  [ "$2" = root ] || user=(--user "$uid:$uid" --group-add "$uid" --read-only --cap-drop ALL --security-opt no-new-privileges:true)
-  docker run -d --pull never --name "$prefix-nats" --network "$net" "${user[@]}" -v "$1:/data" "$nats_image" -js -sd /data > /dev/null
+  local user=(--user 0:0) run_image="$earlier_image"
+  [ "$2" = root ] || { user=(--user "$uid:$uid" --group-add "$uid" --read-only --cap-drop ALL --security-opt no-new-privileges:true); run_image="$nats_image"; }
+  docker run -d --pull never --name "$prefix-nats" --network "$net" "${user[@]}" -v "$1:/data" "$run_image" -js -sd /data > /dev/null
   for _ in $(seq 1 50); do
     nats_cli account info > /dev/null 2>&1 && return 0
     sleep 0.2
@@ -118,6 +131,7 @@ messages() { nats_cli stream info "$1" --json 2>/dev/null | sed -n 's/^ *"messag
 publish() { nats_cli pub --jetstream "$1" hello --count "$2" > /dev/null 2>&1; }
 listing() { docker run --rm --pull never --user 0:0 --network none -v "$1:/data:ro" --entrypoint sh "$nats_image" -c 'find /data -exec stat -c "%n %u %g %a %s %Y" {} + | sort | md5sum'; }
 
+echo "== the images: earlier release $earlier_image ($(docker run --rm --pull never "$earlier_image" nats-server --version)), this chart $nats_image ($(docker run --rm --pull never "$nats_image" nats-server --version))"
 echo "== 1. the earlier release: NATS as root"
 start "$vol" root
 nats_cli stream add OLD --subjects 'old.>' --storage file --defaults > /dev/null
