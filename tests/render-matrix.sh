@@ -991,6 +991,15 @@ renders "one worker group: its configuration key" "worker-all.yaml: |" "${shamir
 lacks "one worker group: no Deployment of the default groups" "name: t-wallet-worker-main" "${shamir[@]}" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" "${shamir[@]}" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
 renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+# The SSRF allow list of the wallet (organisationWallet.ssrf.allowedPrivate):
+# no key by default (an image without it gets no new key); the entries in
+# each wallet file; the render stops for a loopback or metadata network and
+# for an entry that is no host name, address or CIDR.
+lacks "no SSRF allow list by default" "ssrf_protection" "${shamir[@]}" --show-only templates/wallet/configmap.yaml
+renders "the SSRF allow list in the wallet files" "allowed_private:" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
+guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
+guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
+guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
 # The alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh
 # runs them with promtool): none by default, only with the ServiceMonitor.
 lacks "no PrometheusRule by default" "kind: PrometheusRule" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true

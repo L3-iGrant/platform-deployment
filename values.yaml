@@ -1981,6 +1981,19 @@ organisationWallet:
   # keys in their own OpenBao (Transit engine), in their cloud KMS or at a
   # QTSP. The local key store of this installation (OpenBao Transit) is
   # always there for every organisation.
+  # -- The SSRF guard of the wallet (ssrf_protection.allowed_private;
+  # organisation-wallet-suite#740, the wallet image must have it): the
+  # private hosts that the wallet may call, for an installation whose public
+  # hosts (the status lists, the metadata, the offers of its organisations)
+  # have private addresses, for example on premise. Each entry is a host
+  # name (exact) or an IP address or CIDR (for example 10.20.0.0/16).
+  # Loopback, link-local, the cloud metadata addresses, unspecified,
+  # multicast and reserved addresses are never allowed. Empty (default):
+  # only public addresses, and the chart writes no key. With network
+  # policies, also give the address to networkPolicy.egress.profiles.platform
+  # (docs/network-policies.md).
+  ssrf:
+    allowedPrivate: []
   keyStores:
     # -- kms.organisation_key_store_types: the types that admins may add, in
     # this order: an external OpenBao (Transit engine), a QTSP (remote

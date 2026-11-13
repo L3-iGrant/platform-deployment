@@ -302,6 +302,20 @@ gateway ends quiet streams. */ -}}
 builds the public image URIs of the routes that the gateway sends to it. */ -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
+{{- /* The private hosts that the SSRF guard of the wallet allows
+(organisationWallet.ssrf.allowedPrivate; organisation-wallet-suite#740):
+only with entries, so an image without the key gets no new key. The wallet
+refuses an entry that covers loopback, link-local or the cloud metadata
+addresses; the render stops for the plain cases. */ -}}
+{{- with $w.ssrf.allowedPrivate -}}
+{{- range $entry := . -}}
+{{- $text := lower (toString $entry) -}}
+{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
+{{- fail (printf "organisationWallet.ssrf.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
+{{- end -}}
 {{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
 {{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
 {{- $config | toYaml -}}
