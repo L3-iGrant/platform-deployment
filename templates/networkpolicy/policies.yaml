@@ -134,6 +134,12 @@ spec:
   egress:
     - to:
         {{- include "ow.netpol.selectorPeer" $np.dns | nindent 8 }}
+        {{- /* DNS servers outside the pod network (NodeLocal DNSCache, a
+        resolver of the node or of the network): networkPolicy.dns.cidrs. */}}
+        {{- range $cidr := ($np.dns.cidrs | default list) }}
+        - ipBlock:
+            cidr: {{ $cidr }}
+        {{- end }}
       ports:
         {{- toYaml $np.dns.ports | nindent 8 }}
 {{- /* One policy per egress profile with a target. A profile that is not
@@ -152,6 +158,13 @@ in the matrix selects no pod of the release, so it gets no policy here. */}}
 {{- end }}
 {{- if or $profile.namespaceSelector $profile.podSelector }}
 {{- $peers = append $peers (dict "namespaceSelector" ($profile.namespaceSelector | default dict) "podSelector" ($profile.podSelector | default dict)) }}
+{{- end }}
+{{- /* platform: the public hosts of this platform. In the cluster, the
+address of the load balancer of the ingress controller often goes directly to
+the pods of the ingress controller (kube-proxy, Cilium): they are always a
+target (networkPolicy.ingressController). */}}
+{{- if eq $name "platform" }}
+{{- $peers = append $peers (dict "namespaceSelector" ($np.ingressController.namespaceSelector | default dict) "podSelector" ($np.ingressController.podSelector | default dict)) }}
 {{- end }}
 {{- if $peers }}
 ---

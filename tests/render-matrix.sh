@@ -1025,6 +1025,77 @@ renders "scrape of the workers and the clock with network policies" "port: healt
   --show-only templates/networkpolicy/policies.yaml
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --show-only templates/networkpolicy/policies.yaml
+# DNS servers outside the pod network (networkPolicy.dns.cidrs): an ipBlock
+# next to the DNS pods in the DNS policy; none by default.
+dns_policy() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc["metadata"]["name"].endswith("netpol-dns"):
+        peers = doc["spec"]["egress"][0]["to"]
+        if peers[0].get("podSelector", {}).get("matchLabels") != {"k8s-app": "kube-dns"}:
+            print("the DNS pods are not the first peer:", peers[0])
+        blocks = [peer["ipBlock"]["cidr"] for peer in peers if "ipBlock" in peer]
+        if blocks != expect:
+            print("ipBlocks", blocks, "expected", expect)
+        break
+else:
+    print("no DNS policy")
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "DNS policy: $name"
+  else
+    bad "DNS policy: $name: $(printf '%s' "$problems" | head -c 300)"
+  fi
+}
+dns_policy "the DNS pods only by default" '[]'
+dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.20.10/32"]' --set-json 'networkPolicy.dns.cidrs=["169.254.20.10/32"]'
+# The egress profile platform (the public hosts of this platform): the pods
+# of networkPolicy.ingressController are always a target; the wallet roles
+# have it by default, the other roles do not.
+platform_profile() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+policy, labelled = None, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "t-netpol-egress-profile-platform":
+        policy = doc
+    template = (doc.get("spec") or {}).get("template") or {}
+    labels = (template.get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-platform") == "true":
+        labelled.add(labels["netpol.igrant.io/role"])
+if policy is None:
+    sys.exit("no platform policy")
+rule = policy["spec"]["egress"][0]
+if rule["to"] != expect["to"]:
+    print("targets", rule["to"])
+if [p["port"] for p in rule["ports"]] != expect["ports"]:
+    print("ports", rule["ports"])
+if sorted(labelled) != expect["roles"]:
+    print("roles with the profile", sorted(labelled))
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "platform profile: $name"
+  else
+    bad "platform profile: $name: $(printf '%s' "$problems" | head -c 400)"
+  fi
+}
+ingress_nginx='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}, "podSelector": {}}'
+platform_profile "the ingress controller on 80 and 443, the wallet roles" \
+  "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
+platform_profile "a load balancer address, other ports, also the webhook handler" \
+  "{\"to\": [{\"ipBlock\": {\"cidr\": \"192.0.2.80/32\"}}, $ingress_nginx], \"ports\": [8000, 8443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\", \"webhook\"]}" \
+  --set-json 'networkPolicy.egress.profiles.platform={"cidrs":["192.0.2.80/32"],"ports":[8000,8443]}' \
+  --set-json 'networkPolicy.egress.roles.webhook=["internet-any-port","platform"]'
+guard "no platform profile for the clock" 'the egress profile "platform" is not allowed for the network role "wallet-clock"' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-clock=["platform"]'
 
 # The bundled NATS (nats.tls, nats.tlsCa).
 guard "NATS CA of an external NATS with the bundled NATS" "nats.tlsCa is the CA of an external NATS" "${shamir[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
