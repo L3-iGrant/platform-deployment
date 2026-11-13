@@ -1,0 +1,124 @@
+# Pods for the test of tests/check_lifecycle.py (tests/render-matrix.sh,
+# section 7): each pod "bad-*" has one fault (a preStop exec of /bin/sleep,
+# an exec probe in an image without a shell, a liveness initialDelaySeconds
+# with a startup probe); the pod "good" has none.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good
+spec:
+  containers:
+  - name: main
+    image: registry.example.org/igrantio/eudi-wallet:1
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 10
+    startupProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 2
+      failureThreshold: 90
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8080
+      timeoutSeconds: 3
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-sleep-exec
+spec:
+  containers:
+  - name: main
+    image: registry.example.org/igrantio/eudi-wallet:1
+    lifecycle:
+      preStop:
+        exec:
+          command:
+          - /bin/sleep
+          - '10'
+    startupProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 2
+      failureThreshold: 90
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8080
+      timeoutSeconds: 3
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-shell-probe
+spec:
+  containers:
+  - name: main
+    image: registry.example.org/igrantio/api:1
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 10
+    startupProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 2
+      failureThreshold: 90
+    readinessProbe:
+      exec:
+        command:
+        - /bin/sh
+        - -c
+        - 'true'
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      timeoutSeconds: 3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-initial-delay
+spec:
+  containers:
+  - name: main
+    image: registry.example.org/igrantio/eudi-wallet:1
+    lifecycle:
+      preStop:
+        sleep:
+          seconds: 10
+    startupProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      periodSeconds: 2
+      failureThreshold: 90
+    readinessProbe:
+      httpGet:
+        path: /readyz
+        port: 8080
+      timeoutSeconds: 3
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: 8080
+      timeoutSeconds: 3
+      initialDelaySeconds: 30

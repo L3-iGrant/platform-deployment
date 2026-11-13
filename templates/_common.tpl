@@ -361,3 +361,35 @@ The bytes of a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or
 {{- $factor := get (dict "" 1 "k" 1000 "M" 1000000 "G" 1000000000 "T" 1000000000000 "P" 1000000000000000 "Ki" 1024 "Mi" 1048576 "Gi" 1073741824 "Ti" 1099511627776 "Pi" 1125899906842624) $unit -}}
 {{- mulf (float64 $number) (float64 $factor) | ceil | int64 -}}
 {{- end }}
+
+{{/*
+The rollout of the Deployment of an HTTP component (docs/security-context.md,
+"The stop of a pod"): minReadySeconds and the strategy of its values
+(default: RollingUpdate, maxSurge 25 %, maxUnavailable 0). Call with the
+values of the component. Output at the indentation of the Deployment spec.
+*/}}
+{{- define "ow.rollout" -}}
+minReadySeconds: {{ .minReadySeconds | int }}
+{{- with .strategy }}
+strategy:
+  {{- toYaml . | nindent 2 }}
+{{- end }}
+{{- end }}
+
+{{/*
+The preStop of the container of an HTTP component: the sleep action of
+Kubernetes (1.30 or later; no shell and no sleep program in the image). The
+pod serves on for these seconds while Kubernetes removes it from the
+endpoints, the Services and the proxies; then the container gets its stop
+signal. Call with the seconds (1 or more). Output at the indentation of the
+container.
+*/}}
+{{- define "ow.preStopSleep" -}}
+{{- if lt (. | int) 1 -}}
+{{- fail (printf "a preStopSeconds of %v: give 1 or more seconds (the pod must serve on while Kubernetes removes it from the endpoints)" .) -}}
+{{- end -}}
+lifecycle:
+  preStop:
+    sleep:
+      seconds: {{ . | int }}
+{{- end }}

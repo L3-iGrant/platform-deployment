@@ -13,6 +13,7 @@ metadata:
     {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
   replicas: {{ ternary $api.replicas $api.webhook.replicas (eq $role "api") }}
+  {{- include "ow.rollout" $api | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
@@ -41,8 +42,7 @@ spec:
       automountServiceAccountToken: false
       {{- end }}
       {{- include "ow.checkStopBudget" (list "api.server" $api.server 5 20) }}
-      # The stop budget: drain + graceful shutdown + margin; no
-      # preStop, the process drains itself.
+      # The stop budget: preStop sleep + drain + graceful shutdown + margin.
       terminationGracePeriodSeconds: {{ $api.server.terminationGracePeriodSeconds | int }}
       {{- if eq $role "api" }}
       initContainers:
@@ -101,6 +101,7 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- end }}
+          {{- include "ow.preStopSleep" $api.server.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list $ $api) | nindent 10 }}
           {{- with (ternary $api.resources $api.webhook.resources (eq $role "api")) }}
           resources:

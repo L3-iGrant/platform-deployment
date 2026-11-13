@@ -462,6 +462,20 @@ guard "api memory limit below the request and /tmp" "api.resources: the memory r
 guard "webhook memory limit below the request and /tmp" "api.webhook.resources: the memory request (32Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (90Mi)" "${shamir[@]}" \
   --set api.webhook.resources.limits.memory=90Mi
 guard "api /tmp size not a size" "api.tmp.sizeLimit" "${shamir[@]}" --set api.tmp.sizeLimit=64MB
+# The stop of the HTTP pods (ow.checkStopBudget, the dashboard guard and the
+# schema): the grace period covers the preStop sleep and the stop of the
+# server; a preStop of 0 seconds and a strategy other than RollingUpdate
+# stop the render.
+guard "gateway stop budget with the preStop" "gateway.terminationGracePeriodSeconds (35) must be at least preStopSeconds (10) + drainSeconds (5) + gracefulShutdownSeconds (20) + 5 = 40" "${shamir[@]}" \
+  --set gateway.terminationGracePeriodSeconds=35
+guard "api stop budget with the preStop" "api.server.terminationGracePeriodSeconds (40) must be at least preStopSeconds (15)" "${shamir[@]}" --set api.server.preStopSeconds=15
+guard "consent stop budget with the preStop" "consent.server.terminationGracePeriodSeconds (39)" "${shamir[@]}" --set consent.server.terminationGracePeriodSeconds=39
+guard "dashboard stop budget" "enterpriseDashboard.terminationGracePeriodSeconds (15) must be at least preStopSeconds (10) + 10" "${shamir[@]}" \
+  --set enterpriseDashboard.terminationGracePeriodSeconds=15
+guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gracefulShutdownSeconds (20) + backgroundShutdownSeconds (10) = 50 must be below terminationGracePeriodSeconds (45)" "${shamir[@]}" \
+  --set organisationWallet.server.preStopSeconds=20
+guard "preStop of 0 seconds" "preStopSeconds" "${shamir[@]}" --set api.server.preStopSeconds=0
+guard "rollout strategy Recreate" "strategy" "${shamir[@]}" --set gateway.strategy.type=Recreate
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must have.
@@ -1671,7 +1685,7 @@ fi
 #   RuntimeDefault, no host namespace, and the SELinux, AppArmor, procMount
 #   and hostProcess rules of the Pod Security Standard;
 # - tests/psscheck: the Pod Security Standard "restricted" (latest, and
-#   v1.25, the lowest Kubernetes version of the chart) with the upstream
+#   v1.30, the lowest Kubernetes version of the chart) with the upstream
 #   library k8s.io/pod-security-admission, the code of the admission plugin.
 #   It must read the same count of containers as check_security.py. It
 #   needs Go (the version of tests/psscheck/go.mod) and the modules of
@@ -1706,7 +1720,7 @@ else
   if [ -z "$containers_of_test" ]; then
     bad "Pod Security Standard (upstream): no count of the containers from check_security.py"
   else
-    for version in latest v1.25; do
+    for version in latest v1.30; do
       if result="$("$psscheck" -level restricted -version "$version" -containers "$containers_of_test" "${renders_of_test[@]}" 2>&1)"; then
         ok "Pod Security Standard (upstream) $(printf '%s' "$result" | tail -n 1)"
       else
@@ -1751,6 +1765,30 @@ else
   else
     bad "security checks of tests/fixtures/pss-pods.yaml:$problems"
   fi
+fi
+
+# The probes, the hooks, the rollout and the stop (tests/check_lifecycle.py)
+# of each render: no exec probe or hook in an image without a shell, no
+# exec of /bin/sleep, no initialDelaySeconds with a startup probe; each HTTP
+# Deployment rolls with maxUnavailable 0, minReadySeconds and a preStop
+# sleep, and its grace period covers the sleep and the stop of its server.
+# The check must refuse each bad pod of tests/fixtures/lifecycle-pods.yaml.
+if result="$(python3 "$here/check_lifecycle.py" "${renders_of_test[@]}" 2>&1)"; then
+  ok "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+else
+  bad "probes, hooks, rollout and stop: $(printf '%s' "$result" | tail -n 1)"
+  printf '%s\n' "$result" | head -20
+fi
+result="$(python3 "$here/check_lifecycle.py" "$here/fixtures/lifecycle-pods.yaml" 2>&1)" || true
+problems=""
+for pod in bad-sleep-exec bad-shell-probe bad-initial-delay; do
+  grep -q -F -- "Pod/$pod" <<< "$result" || problems="$problems misses $pod;"
+done
+grep -q -F -- "Pod/good" <<< "$result" && problems="$problems refuses the good pod;"
+if [ -z "$problems" ]; then
+  ok "probes, hooks, rollout and stop: the check refuses each bad pod of tests/fixtures/lifecycle-pods.yaml"
+else
+  bad "probes, hooks, rollout and stop: the check$problems"
 fi
 
 echo "result: ${pass} passed, ${fail} failed"

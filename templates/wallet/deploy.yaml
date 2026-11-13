@@ -17,12 +17,7 @@ metadata:
     {{- include "ow.labels" (list $ $component) | nindent 4 }}
 spec:
   replicas: {{ $settings.replicas }}
-  minReadySeconds: 5
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+  {{- include "ow.rollout" $w | nindent 2 }}
   selector:
     matchLabels:
       {{- include "ow.selectorLabels" (list $ $component) | nindent 6 }}
@@ -91,10 +86,10 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 4
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sleep", {{ $w.server.preStopSeconds | int | toString | quote }}]
+          # The preStop sleep (the sleep action: the image has no shell and no
+          # sleep program), then SIGTERM: the server waits for its requests
+          # and its background tasks (ow.wallet.checkServer).
+          {{- include "ow.preStopSleep" $w.server.preStopSeconds | nindent 10 }}
           {{- include "ow.containerSecurityContext" (list $ $w) | nindent 10 }}
           {{- with $settings.resources }}
           resources:

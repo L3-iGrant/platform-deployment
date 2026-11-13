@@ -576,6 +576,8 @@ Before step 2:
 3. Uploads above 32 MiB: when you raised `gateway.proxy.maxBodyBytes.file` or `.default` above 32 MiB, set `api.tmp.sizeLimit` to at least that size and raise the memory limits of the api and of the webhook handler by the same size (see [Security settings of the containers](security-context.md#the-tmp-folder-of-the-api)). Else the render stops.
 4. A policy engine of your cluster (for example Kyverno or Gatekeeper) that refuses sysctls: allow `net.ipv4.ip_unprivileged_port_start` for the pods of the api, the webhook handler, consent and the dashboard. Kubernetes allows it without a kubelet setting (a safe sysctl).
 5. The workers: the `/tmp` of each worker pod is an `emptyDir` on the disk of the node with `organisationWallet.workers.tmp.sizeLimit` (default `10Gi`). With an audit bucket, the monthly export writes one month of one data scope two times to it. Check that the nodes have the free ephemeral storage, or use a volume (see [Workers and clock](workers.md#the-tmp-folder-of-the-workers)).
+6. Kubernetes 1.30 or later: the pods stop with the sleep action of the preStop hooks (the images have no shell and no `sleep` program). Helm refuses the chart on an older cluster (`kubeVersion`).
+7. Your own stop settings: each HTTP pod now sleeps `preStopSeconds` (10 s) before its stop signal, and the render stops when `terminationGracePeriodSeconds` does not cover the sleep and the stop of the server (see [Security settings of the containers](security-context.md#the-stop-of-a-pod)). The defaults are 40 s for the api, the gateway and consent. A values file that sets `terminationGracePeriodSeconds` to 35 gets the message of the budget: raise it.
 
 During step 3:
 

@@ -42,7 +42,7 @@ import yaml
 # The volume types of the Pod Security Standard "restricted".
 VOLUME_TYPES = {"configMap", "csi", "downwardAPI", "emptyDir", "ephemeral", "persistentVolumeClaim", "projected", "secret"}
 # The safe sysctls of the Pod Security Standard "baseline" in Kubernetes
-# 1.25 (the lowest version of the chart).
+# 1.30 (the lowest version of the chart).
 SAFE_SYSCTLS = {"kernel.shm_rmid_forced", "net.ipv4.ip_local_port_range", "net.ipv4.ip_unprivileged_port_start",
                 "net.ipv4.tcp_syncookies", "net.ipv4.ping_group_range"}
 # The SELinux types of the Pod Security Standard "baseline" (an empty type

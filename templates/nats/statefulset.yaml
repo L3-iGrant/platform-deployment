@@ -78,6 +78,8 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          # Readiness and liveness start after the startup probe (no
+          # initialDelaySeconds).
           startupProbe:
             httpGet:
               path: /healthz
@@ -90,7 +92,6 @@ spec:
             httpGet:
               path: /healthz?js-server-only=true
               port: monitor
-            initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -98,7 +99,6 @@ spec:
             httpGet:
               path: /healthz?js-enabled-only=true
               port: monitor
-            initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
