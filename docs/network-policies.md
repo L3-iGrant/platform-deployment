@@ -44,6 +44,21 @@ A wallet role reads URLs on the public hosts of this platform: the status list o
 
 The issuer, the verifier and the holder of the wallet call other vendors: credential issuers and their metadata, verifiers, trust lists, status lists and JWKS on the public internet. The specifications allow a URL with any port and a host with an IPv4 or IPv6 address. Thus the wallet roles (`wallet-service`, `wallet-config`, `wallet-worker`) have the egress profile `internet-any-port` by default: any port of each public IPv4 and IPv6 address (`0.0.0.0/0` and `::/0` less the private, link-local and shared ranges and `networkPolicy.clusterCidrs`). The SSRF guard of the wallet keeps the private addresses closed in the wallet itself. Do not remove `internet-any-port` from these roles: a call to a vendor on a port other than 443 or 80 would fail. On a cluster without IPv6, the IPv6 block has no effect (the network policy controller of k3s logs that it ignores it).
 
+### The egress of each role
+
+Each role that calls a URL that an organisation, a customer or another vendor configures has `internet-any-port` (any port of each public IPv4 and IPv6 address). A role that calls only fixed hosts of the installation has `internet` (ports 443 and 80) or no internet profile:
+
+| Role | Profile (default) | The calls and the reason |
+| --- | --- | --- |
+| `wallet-service`, `wallet-config`, `wallet-worker` | `internet-any-port` | The issuers, verifiers, trust lists, status lists, JWKS and metadata of other vendors (any URL that the specifications allow), the cloud key stores, the audit bucket. |
+| `api` | `internet-any-port`, `smtp` | The webhooks of the customers (`payloadUrl`, often with a port such as 8443), the OIDC providers of the admins and of the organisations (discovery, JWKS, token), the extensions (for example the OpenID conformance suite), the SMS service. |
+| `webhook` | `internet-any-port` | The webhooks of the customers (`payloadUrl`). |
+| `consent` | `internet-any-port` | The Data Space of an organisation: the base URL that the organisation configures (discovery, the metadata of its authorisation server, token, `notification_endpoint`). |
+| `gateway` | `internet` | Only the upstreams of `gateway.upstreams` (the services of the chart in the cluster; an upstream outside the cluster on port 443 or 80). No URL of an organisation. |
+| `dashboard`, `wallet-clock`, `db`, `nats`, `redis`, `job` | none | No call outside the cluster. |
+
+The network policy is not the only protection: a cluster can run without network policies. Each of these callers also has an SSRF guard in its code that refuses the private, loopback, link-local and metadata addresses: the wallet (`ssrf_protection`), the api and the webhook handler (`OutboundHttp.ssrfProtectionDisabled: false`, the default) and consent (`OutboundHttp.ssrfProtectionDisabled: false`, the default).
+
 ## Jobs and new pods
 
 A network policy controller applies the rules to a new pod after a short time (on k3s, some seconds). In that time, the first connection of a new pod can fail. The Jobs and the hooks of the chart use `restartPolicy: OnFailure` and a `backoffLimit` of 3 or more: the container starts again in the same pod, and then the rules are in place. With `restartPolicy: Never`, each retry is a new pod with the same delay.

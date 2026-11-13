@@ -84,8 +84,11 @@ forbidden:
 # are values of the deployment (chart: networkPolicy.egress).
 profiles:
   internet: {roles: [api, webhook, gateway, consent, wallet-service, wallet-config, wallet-worker, job]}
-  # the wallet roles: the URLs of other vendors can have any port
-  internet-any-port: {roles: [api, webhook, wallet-service, wallet-config, wallet-worker]}
+  # the roles that call URLs of organisations, customers or other
+  # vendors (any port): the webhooks and the OIDC providers of the api, the
+  # webhooks of the webhook handler, the Data Space of consent, the issuers,
+  # verifiers, trust lists and status lists of the wallet roles
+  internet-any-port: {roles: [api, webhook, consent, wallet-service, wallet-config, wallet-worker]}
   metadata: {roles: [api, webhook, wallet-service, wallet-config, wallet-worker, job]}
   kms: {roles: [wallet-service, wallet-config, wallet-worker, job]}
   cloudKms: {roles: [wallet-service, wallet-config, wallet-worker]}   # a private endpoint of a cloud KMS (the key store types gcp-kms, aws-kms, azure-key-vault)

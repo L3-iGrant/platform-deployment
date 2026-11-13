@@ -1090,10 +1090,10 @@ for doc in yaml.safe_load_all(sys.stdin):
         roles.add(labels["netpol.igrant.io/role"])
 if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
     print("internet-any-port has ports", seen.get("t-netpol-egress-profile-internet-any-port"))
-if sorted(roles) != ["api", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
+if sorted(roles) != ["api", "consent", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
     print("roles with any port", sorted(roles))
 ' 2>&1)" && [ -z "$problems" ]; then
-  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family; any port for the api, the webhook handler and the wallet roles"
+  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family; any port for the api, the webhook handler, consent and the wallet roles"
 else
   bad "the internet profiles: $(printf '%s' "$problems" | head -c 400)"
 fi

@@ -1422,14 +1422,20 @@ networkPolicy:
     # -- The profiles of each role (pod labels). The chart OpenBao needs no
     # external target.
     roles:
+      # Any port of a public IPv4 or IPv6 address for each role that calls a
+      # URL of an organisation, a customer or another vendor (see
+      # docs/network-policies.md, "The egress of each role"): the api (the
+      # webhooks, the OIDC providers), the webhook handler (the webhooks),
+      # consent (the Data Space of an organisation) and the wallet roles.
+      # The gateway calls only the upstreams of gateway.upstreams.
       api: [internet-any-port, smtp]
       webhook: [internet-any-port]
       gateway: [internet]
-      consent: [internet]
-      # The wallet roles reach any port of a public address: an issuer, a
-      # verifier, a trust list, a status list, a JWKS or the metadata of
-      # another vendor can have a URL with a port (the specifications allow
-      # it). The SSRF guard of the wallet keeps the private addresses out.
+      consent: [internet-any-port]
+      # The wallet roles: an issuer, a verifier, a trust list, a status
+      # list, a JWKS or the metadata of another vendor can have a URL with a
+      # port (the specifications allow it). The SSRF guard of the wallet
+      # keeps the private addresses out.
       wallet-service: [internet-any-port, platform, kms, cloudKms]
       wallet-config: [internet-any-port, platform, kms, cloudKms]
       wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
