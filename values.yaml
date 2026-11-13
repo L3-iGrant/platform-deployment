@@ -798,8 +798,8 @@ api:
   # -- Extra keys of the api configuration, deep-merged over the keys of the
   # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
   # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
-  # The root file system is read-only: a log file (Log.file.path) must be
-  # below /tmp/.
+  # Not Log.file: the chart writes no log file (the processes log to
+  # stdout).
   # Not Installation: the chart writes it (docs/components.md).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables (for example
@@ -1148,7 +1148,8 @@ gateway:
     enforce: true
   # -- Extra keys of the gateway configuration, deep-merged over the keys of
   # the chart (exact key names; no secrets). Not Installation: the chart
-  # writes it (docs/components.md).
+  # writes it (docs/components.md). Not Log.file: the chart writes no log
+  # file (the gateway logs to stdout).
   extraConfig: {}
   # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
   extraEnv: []
@@ -1471,7 +1472,8 @@ consent:
     podSecurityContext: {}
     containerSecurityContext: {}
   # -- Extra keys of the consent configuration, deep-merged over the keys of
-  # the chart (exact key names). Do not put a secret here.
+  # the chart (exact key names). Do not put a secret here. Not Log.file: the
+  # chart writes no log file (consent logs to stdout).
   extraConfig: {}
   extraEnv: []
   resources:
@@ -1993,8 +1995,8 @@ organisationWallet:
         drop: ["ALL"]
   # -- Extra keys of the wallet configuration, deep-merged over the keys of
   # the chart in the files of all roles (nested keys). Do not put a secret
-  # here. The root file system is read-only: a log file (log_file.path)
-  # must be below /tmp.
+  # here. Not log_file: the chart writes no log file (the processes log to
+  # stdout).
   extraConfig: {}
   # -- Extra environment variables. Only runtime variables: the wallet reads
   # no configuration from the environment (only EUDI_WALLET_CONFIG).

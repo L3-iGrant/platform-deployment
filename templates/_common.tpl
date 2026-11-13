@@ -330,3 +330,19 @@ context. Output: a JSON list of texts.
 {{- end -}}
 {{- toJson $lines -}}
 {{- end }}
+
+{{/*
+Render guard: the chart writes no log file. In Kubernetes each process logs
+to stdout and stderr: the container log, which the kubelet rotates
+(containerLogMaxSize, containerLogMaxFiles) and which your log agent
+collects. A log file in a pod has no reader, it is lost with the pod, and a
+full volume evicts the pod (the defaults of a rotating log file are 100 MB
+x 6 files). Call with (list "<values key>" "<config key>" <path>). Output:
+nothing; the render stops when the path is not empty.
+*/}}
+{{- define "ow.noLogFile" -}}
+{{- $path := (index . 2) | default "" | toString -}}
+{{- if $path -}}
+{{- fail (printf "%s sets %s %q: the chart writes no log file in Kubernetes. Each process logs to stdout and stderr: the container log, which the kubelet rotates and your log agent collects. Remove %s from %s" (index . 0) (index . 1) $path (index . 1) (index . 0)) -}}
+{{- end -}}
+{{- end }}
