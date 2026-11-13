@@ -1053,6 +1053,128 @@ renders "scrape of the workers and the clock with network policies" "port: healt
   --show-only templates/networkpolicy/policies.yaml
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --show-only templates/networkpolicy/policies.yaml
+# DNS servers outside the pod network (networkPolicy.dns.cidrs): an ipBlock
+# next to the DNS pods in the DNS policy; none by default.
+dns_policy() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc and doc["metadata"]["name"].endswith("netpol-dns"):
+        peers = doc["spec"]["egress"][0]["to"]
+        if peers[0].get("podSelector", {}).get("matchLabels") != {"k8s-app": "kube-dns"}:
+            print("the DNS pods are not the first peer:", peers[0])
+        blocks = [peer["ipBlock"]["cidr"] for peer in peers if "ipBlock" in peer]
+        if blocks != expect:
+            print("ipBlocks", blocks, "expected", expect)
+        break
+else:
+    print("no DNS policy")
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "DNS policy: $name"
+  else
+    bad "DNS policy: $name: $(printf '%s' "$problems" | head -c 300)"
+  fi
+}
+dns_policy "the DNS pods only by default" '[]'
+dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.20.10/32"]' --set-json 'networkPolicy.dns.cidrs=["169.254.20.10/32"]'
+# The egress to the public internet (the conformance with other vendors):
+# 0.0.0.0/0 and ::/0, each with the excepts of its family (also of
+# networkPolicy.clusterCidrs); the wallet roles reach any port by default.
+# IPv6: no multicast, and in the NAT64 prefix 64:ff9b::/96 only the images
+# of the IPv4 ranges that are never public: a public IPv4 vendor through
+# NAT64 (an IPv6-only cluster with DNS64) stays open, the NAT64 images of a
+# private, loopback or metadata address are closed. No IPv4-mapped address
+# (the API server refuses it).
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+    --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
+import sys, yaml
+import ipaddress
+want = {"0.0.0.0/0": ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"],
+        "::/0": ["fc00::/7", "fe80::/10", "ff00::/8", "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112",
+                 "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104", "fd00:10::/56"]}
+# address: open (True) or closed (False) in each internet profile
+probes = {"93.184.215.14": True, "2001:db8:ffff::1": True, "64:ff9b::5db8:d70e": True, "64:ff9b::808:808": True,
+          "64:ff9b::a00:1": False, "64:ff9b::ac1f:ffff": False, "64:ff9b::c0a8:101": False, "64:ff9b::6440:1": False,
+          "64:ff9b::a9fe:a9fe": False, "64:ff9b::7f00:1": False, "64:ff9b::1": False, "ff02::1": False,
+          "fd00:10::5": False, "fe80::1": False, "10.1.2.3": False, "169.254.169.254": False}
+def is_open(blocks, address):
+    address = ipaddress.ip_address(address)
+    return any(address in ipaddress.ip_network(cidr) and not any(address in ipaddress.ip_network(e) for e in (excepts or []))
+               for cidr, excepts in blocks.items() if ipaddress.ip_network(cidr).version == address.version)
+seen, roles = {}, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] in ("t-netpol-egress-profile-internet", "t-netpol-egress-profile-internet-any-port"):
+        blocks = {peer["ipBlock"]["cidr"]: peer["ipBlock"].get("except") for peer in doc["spec"]["egress"][0]["to"]}
+        if blocks != want:
+            print(doc["metadata"]["name"], blocks)
+        for address, expect in probes.items():
+            if is_open(blocks, address) != expect:
+                print(doc["metadata"]["name"], address, "open" if expect else "closed", "expected")
+        mapped = [e for c in blocks.values() for e in (c or []) if ipaddress.ip_network(e).version == 6 and ipaddress.ip_network(e).network_address.ipv4_mapped]
+        if mapped:
+            print(doc["metadata"]["name"], "IPv4-mapped excepts", mapped)
+        seen[doc["metadata"]["name"]] = doc["spec"]["egress"][0].get("ports")
+    labels = (((doc.get("spec") or {}).get("template") or {}).get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-internet-any-port") == "true":
+        roles.add(labels["netpol.igrant.io/role"])
+if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
+    print("internet-any-port has ports", seen.get("t-netpol-egress-profile-internet-any-port"))
+if sorted(roles) != ["api", "consent", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
+    print("roles with any port", sorted(roles))
+' 2>&1)" && [ -z "$problems" ]; then
+  ok "the internet profiles: IPv4 and IPv6 with the excepts of each family (NAT64: only the never-public images); any port for the api, the webhook handler, consent and the wallet roles"
+else
+  bad "the internet profiles: $(printf '%s' "$problems" | head -c 400)"
+fi
+# The egress profile platform (the public hosts of this platform): the pods
+# of networkPolicy.ingressController are always a target; the wallet roles
+# have it by default, the other roles do not.
+platform_profile() {
+  local name="$1" expect="$2"; shift 2
+  local problems
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
+      "$@" 2>&1 | python3 -c '
+import json, sys, yaml
+expect = json.loads(sys.argv[1])
+policy, labelled = None, set()
+for doc in yaml.safe_load_all(sys.stdin):
+    if not doc:
+        continue
+    if doc.get("kind") == "NetworkPolicy" and doc["metadata"]["name"] == "t-netpol-egress-profile-platform":
+        policy = doc
+    template = (doc.get("spec") or {}).get("template") or {}
+    labels = (template.get("metadata") or {}).get("labels") or {}
+    if labels.get("netpol.igrant.io/egress-platform") == "true":
+        labelled.add(labels["netpol.igrant.io/role"])
+if policy is None:
+    sys.exit("no platform policy")
+rule = policy["spec"]["egress"][0]
+if rule["to"] != expect["to"]:
+    print("targets", rule["to"])
+if [p["port"] for p in rule["ports"]] != expect["ports"]:
+    print("ports", rule["ports"])
+if sorted(labelled) != expect["roles"]:
+    print("roles with the profile", sorted(labelled))
+' "$expect" 2>&1)" && [ -z "$problems" ]; then
+    ok "platform profile: $name"
+  else
+    bad "platform profile: $name: $(printf '%s' "$problems" | head -c 400)"
+  fi
+}
+ingress_nginx='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}, "podSelector": {}}'
+platform_profile "the ingress controller on 80 and 443, the wallet roles" \
+  "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
+platform_profile "a load balancer address, other ports, also the webhook handler" \
+  "{\"to\": [{\"ipBlock\": {\"cidr\": \"192.0.2.80/32\"}}, $ingress_nginx], \"ports\": [8000, 8443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\", \"webhook\"]}" \
+  --set-json 'networkPolicy.egress.profiles.platform={"cidrs":["192.0.2.80/32"],"ports":[8000,8443]}' \
+  --set-json 'networkPolicy.egress.roles.webhook=["internet-any-port","platform"]'
+guard "no platform profile for the clock" 'the egress profile "platform" is not allowed for the network role "wallet-clock"' "${shamir[@]}" --set-json 'networkPolicy.egress.roles.wallet-clock=["platform"]'
 
 # NATS 2.14 (pinned by digest); the render stops for 2.15 and later (the
 # acks of the format v2 and the permissions of the format v1); the routes

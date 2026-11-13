@@ -77,7 +77,7 @@ organisationWallet:
       #   existingSecret: ows-audit-bucket-ca   # the CA of a store with a private certificate
 ```
 
-With network policies, the workers reach a store with a public address through the egress profile `internet` (port 443). For a store in your network, set the egress profile `auditBucket` (`networkPolicy.egress.profiles.auditBucket.cidrs` and `.ports`; see [Network policies](network-policies.md)).
+With network policies, the workers reach a store with a public address through the egress profile `internet-any-port`. For a store in your network, set the egress profile `auditBucket` (`networkPolicy.egress.profiles.auditBucket.cidrs` and `.ports`; see [Network policies](network-policies.md)).
 
 ### Type gcs: Google Cloud Storage
 
@@ -120,7 +120,7 @@ organisationWallet:
         existingSecret: ows-audit-bucket
 ```
 
-With network policies, the workers reach Google Cloud Storage through the egress profile `internet` (port 443). With Workload Identity, also add the profile `metadata` to the role `wallet-worker` (see [Network policies](network-policies.md)).
+With network policies, the workers reach Google Cloud Storage through the egress profile `internet-any-port`. With Workload Identity, also add the profile `metadata` to the role `wallet-worker` (see [Network policies](network-policies.md)).
 
 ### Without a bucket
 

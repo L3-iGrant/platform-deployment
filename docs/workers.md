@@ -180,7 +180,7 @@ The monthly audit export (`audit.export`, queue `maintenance`, only with an audi
 
 ## Network policies
 
-The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet` also gives the actor of the Android attestation status list its source (`android.googleapis.com`, port 443); for a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
+The network role `wallet-worker` reaches the database, NATS, OpenBao and Valkey, with the egress profiles `internet-any-port`, `platform`, `kms`, `cloudKms` and `auditBucket` (default; `metadata` is allowed too). The profile `internet-any-port` also gives the actor of the Android attestation status list its source (`android.googleapis.com`, port 443); for a mirror in your network, add a profile with its address to `networkPolicy.egress.roles.wallet-worker`. The network role `wallet-clock` reaches only the database and Valkey. See [Network policies](network-policies.md).
 
 ## Check
 

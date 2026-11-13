@@ -1311,8 +1311,12 @@ networkPolicy:
         kubernetes.io/metadata.name: ingress-nginx
     podSelector: {}
   # -- The DNS pods. OpenShift: namespace openshift-dns, pods
-  # dns.operator.openshift.io/daemonset-dns: default, port 5353.
+  # dns.operator.openshift.io/daemonset-dns: default, port 5353. cidrs: the
+  # addresses of DNS servers that are not pods of the cluster network, for
+  # example the address of NodeLocal DNSCache (169.254.20.10/32) or of a
+  # resolver of the node or of your network (docs/network-policies.md).
   dns:
+    cidrs: []
     namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: kube-system
@@ -1340,20 +1344,33 @@ networkPolicy:
   # Example: [{hosts: ["redis-1.example.org"], cidrs: ["192.0.2.50/32"], ports: [6379, 26379]}]
   externalRedis: []
   # -- Pod and Service CIDRs of the cluster, excluded from the internet
-  # profiles.
+  # profiles (0.0.0.0/0 and ::/0; each block excludes the entries of its
+  # family). A dual-stack cluster: give its IPv6 ranges too.
   clusterCidrs: []
   egress:
     # -- External targets: cidrs (with except) and/or namespaceSelector +
     # podSelector; ports [] = all ports. A profile without a target renders
-    # no rule.
+    # no rule. The except list of the internet profiles: the private,
+    # shared and link-local IPv4 ranges; the unique local, link-local and
+    # multicast IPv6 ranges; and in the NAT64 prefix 64:ff9b::/96 only the
+    # images of the IPv4 ranges that are never public (10/8, 172.16/12,
+    # 192.168/16, 100.64/10, 169.254/16, 127/8, 0/8). Thus an IPv6-only
+    # cluster with DNS64 reaches the public IPv4 addresses through NAT64.
+    # With a NAT64 prefix of your network, add the images of these ranges in
+    # that prefix (docs/network-policies.md). The list has no ::ffff:0:0/96:
+    # Kubernetes refuses an IPv4-mapped address, and a packet never has one.
     profiles:
       internet:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: [443, 80]
       internet-any-port:
-        cidrs: ["0.0.0.0/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16"]
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
         ports: []
       # -- The metadata server of a cloud (for example the default
       # credentials of the client of a cloud service).
@@ -1379,6 +1396,19 @@ networkPolicy:
       auditBucket:
         cidrs: []
         ports: [443]
+      # -- The public hosts of this platform (the hosts of the api, the
+      # wallet and the dashboard), for a wallet role that reads a status
+      # list, the metadata or a credential offer of an organisation of the
+      # same platform. The target is always the pods of
+      # networkPolicy.ingressController: in the cluster, the address of the
+      # load balancer often goes directly to them. ports: the container
+      # ports of these pods (ingress-nginx 80 and 443; Traefik 8000 and
+      # 8443; Envoy Gateway 10080 and 10443). cidrs: the address of your
+      # load balancer when it is in a private range and the traffic goes to
+      # it (docs/network-policies.md).
+      platform:
+        cidrs: []
+        ports: [80, 443]
       smtp:
         cidrs: []
         ports: [587]
@@ -1389,13 +1419,23 @@ networkPolicy:
     # -- The profiles of each role (pod labels). The chart OpenBao needs no
     # external target.
     roles:
+      # Any port of a public IPv4 or IPv6 address for each role that calls a
+      # URL of an organisation or another vendor (see
+      # docs/network-policies.md, "The egress of each role"): the api (the
+      # webhooks, the OIDC providers), the webhook handler (the webhooks),
+      # consent (the Data Space of an organisation) and the wallet roles.
+      # The gateway calls only the upstreams of gateway.upstreams.
       api: [internet-any-port, smtp]
       webhook: [internet-any-port]
       gateway: [internet]
-      consent: [internet]
-      wallet-service: [internet, kms, cloudKms]
-      wallet-config: [internet, kms, cloudKms]
-      wallet-worker: [internet, kms, cloudKms, auditBucket]
+      consent: [internet-any-port]
+      # The wallet roles: an issuer, a verifier, a trust list, a status
+      # list, a JWKS or the metadata of another vendor can have a URL with a
+      # port (the specifications allow it). The SSRF guard of the wallet
+      # keeps the private addresses out.
+      wallet-service: [internet-any-port, platform, kms, cloudKms]
+      wallet-config: [internet-any-port, platform, kms, cloudKms]
+      wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
       wallet-clock: []
   # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
   monitoring:

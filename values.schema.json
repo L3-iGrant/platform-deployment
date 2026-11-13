@@ -2304,6 +2304,12 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
+            "cidrs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "namespaceSelector": {
               "type": "object"
             },
