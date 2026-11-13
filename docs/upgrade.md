@@ -162,6 +162,8 @@ A rollback to a release with the scheduler needs the job store table again: the 
 
 From the release with the connection budget, the bundled PostgreSQL has `max_connections` 250 and the memory 2048Mi (requests and limits of `database.resources`), so that the pools of the default values fit (see [Database](database.md#connection-budget)). The upgrade restarts the server once: the components lose their connections for some seconds and connect again. If your values set `database.postgresql.parameters.max_connections` or `database.resources`, check them with the rule: the render stops when the pools of your release need more.
 
+From the release with the health connections, the api core, the webhook handler, the gateway and consent each open one more connection to the database for each pod, outside their pools (a check every 2 seconds). The connection budget counts it: with the default values the pools need 227 connections (15 free). A values file with more replicas or larger pools and a `max_connections` near the earlier sum can now stop the render: then raise `max_connections` and `database.resources` together (see [Database](database.md#connection-budget)).
+
 ## The Play Integrity keys of the wallet
 
 From the release that checks the Play Integrity token of an Android

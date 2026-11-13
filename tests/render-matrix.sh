@@ -342,19 +342,19 @@ notes "external OpenBao" "Make the platform operator organisation and its first 
 notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of the bundled server" "can open 221 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
-notes "connection budget of an external server" "set max_connections of your server to at least 226" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
+notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
+notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 notes "api.webhooks.events of an earlier values file" "WARNING: api.webhooks.events is not used" -f "$examples/openbao-shamir.yaml" \
   --set-json 'api.webhooks.events=["consent.allowed"]'
 notes "without the wallet" "The organisation wallet is not installed" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
 # The readers of the views of a service that is not installed open no
 # connection: without the wallet, the api core and the webhook handler have
-# no reader pool, and consent one reader (67 = 1 x 15 + 1 x 10 + 2 x 10 +
-# 2 x 11); without consent, the wallet config role has one reader (221 less
-# 2 x 16 of consent and 10).
-notes "connection budget without the wallet" "can open 67 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
-notes "connection budget without consent" "can open 179 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
+# no reader pool, and consent one reader (73 = 1 x 16 + 1 x 11 + 2 x 11 +
+# 2 x 12, with the health connection of each pod); without consent, the
+# wallet config role has one reader (227 less 2 x 17 of consent and 10).
+notes "connection budget without the wallet" "can open 73 connections to it" -f "$examples/openbao-shamir.yaml" --set organisationWallet.enabled=false
+notes "connection budget without consent" "can open 183 connections to it" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false
 
 # --- 4. The render guards --------------------------------------------------------
 # Each case: the values that must stop the render, and a text of the message.
@@ -1142,12 +1142,12 @@ guard "worker threads above the largest pool of the wallet" "organisationWallet.
 # The connection budget (docs/database.md, "Connection budget"): the pools
 # of the release, with the most pods of each Deployment, and the hooks fit
 # in max_connections of the bundled server less its reserved connections.
-renders "connection budget at the limit of the bundled server" "max_connections=229" "${shamir[@]}" --set database.postgresql.parameters.max_connections=229
-guard "connection budget one over the limit" "can open 221 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=228
+renders "connection budget at the limit of the bundled server" "max_connections=235" "${shamir[@]}" --set database.postgresql.parameters.max_connections=235
+guard "connection budget one over the limit" "can open 227 connections to the bundled database server" "${shamir[@]}" --set database.postgresql.parameters.max_connections=234
 guard "connection budget counts the reserved connections" "less the 13 reserved connections" "${shamir[@]}" \
-  --set database.postgresql.parameters.max_connections=229 --set-string database.postgresql.parameters.reserved_connections=10
+  --set database.postgresql.parameters.max_connections=235 --set-string database.postgresql.parameters.reserved_connections=10
 guard "connection budget counts the replicas" "wallet config 3 x 36" "${shamir[@]}" --set organisationWallet.config.replicas=3 \
-  --set database.postgresql.parameters.max_connections=229
+  --set database.postgresql.parameters.max_connections=235
 renders "no connection budget check with an external server" "kind: StatefulSet" "${shamir[@]}" -f "$examples/postgresql-external.yaml" --set api.replicas=20
 # The connection pooler (database.pooler): the wallet files of the
 # processes with sessions name it, and the budget counts its server
