@@ -1054,6 +1054,14 @@ renders "scrape of the workers and the clock with network policies" "port: healt
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" "${shamir[@]}" -f "$examples/networkpolicy.yaml" \
   --show-only templates/networkpolicy/policies.yaml
 
+# NATS 2.14 (pinned by digest); the render stops for 2.15 and later (the
+# acks of the format v2 and the permissions of the format v1); the routes
+# of a NATS cluster use mutual TLS (verify).
+renders "NATS 2.14.10 by digest" "image: docker.io/library/nats@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e" "${shamir[@]}"
+guard "NATS 2.15 (the acks of the format v2)" "NATS 2.15 and later send the JetStream acks on subjects of the format v2" "${shamir[@]}" --set nats.image.tag=2.15.3-alpine
+guard "NATS 3" "NATS 2.15 and later send the JetStream acks" "${shamir[@]}" --set nats.image.tag=3.0.0
+renders "NATS with an own tag without a version" "nats.conf" "${shamir[@]}" --set nats.image.tag=mirror --set nats.image.digest=
+renders "the routes of NATS with mutual TLS" "verify: true" "${shamir[@]}" --set nats.replicas=3 --show-only templates/nats/configmap.yaml
 # The bundled NATS (nats.tls, nats.tlsCa).
 guard "NATS CA of an external NATS with the bundled NATS" "nats.tlsCa is the CA of an external NATS" "${shamir[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
 renders "NATS with own certificate" "secretName: my-nats-tls" "${shamir[@]}" --set nats.tls.existingSecret=my-nats-tls --show-only templates/nats/statefulset.yaml

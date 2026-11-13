@@ -45,6 +45,7 @@ Two tests run Valkey against a real server, in containers of a local image (they
 ```bash
 tests/valkey-pods.sh valkey/valkey:8.1.10-alpine     # the pods of the bundled Valkey
 tests/compose-valkey.sh valkey/valkey:8.1.10-alpine  # the Valkey services of docker-compose/
+tests/nats-routes.sh nats:2.14.10-alpine            # only the NATS servers of the chart open a route
 tests/tls-strict.sh python:3.13-slim-trixie          # the TLS certificates against the strict checks of Python 3.13
 tests/wallet-commands.sh <registry>/eudi-wallet:<tag> # each wallet command of the chart and of Compose in the wallet image
 ```
