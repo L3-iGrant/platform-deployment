@@ -165,6 +165,44 @@ of the release change, so it cannot read the new ConfigMaps of the release.
 {{- end }}
 
 {{/*
+The limits of the CSV import of individuals that the api reads from
+api.extraConfig.Uploads (api-gateway#2408): individualImportMaxFileBytes
+(65536 to 20971520) and individualImportMaxRows (1 to 9000); absent or 0 is
+the default of the api (5 MiB, 5000). The dashboard gets the same values in
+its config.json (admin-dashboard#3434), so that it refuses only the files
+that the api refuses. The render stops for a value that the api refuses at
+its start: not a whole number, or out of its range. Call with the root
+context. Output: JSON with the keys that are set (as whole numbers).
+*/}}
+{{- define "ow.api.importLimits" -}}
+{{- $uploads := dig "Uploads" dict (.Values.api.extraConfig | default dict) -}}
+{{- $out := dict -}}
+{{- range $key, $range := dict "individualImportMaxFileBytes" (list 65536 20971520) "individualImportMaxRows" (list 1 9000) -}}
+{{- if hasKey ($uploads | default dict) $key -}}
+{{- $value := get $uploads $key -}}
+{{- $text := toString $value -}}
+{{- if or (kindIs "float64" $value) (kindIs "float32" $value) -}}
+{{- if ne (floor $value) ($value | float64) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number: the api and the dashboard read it in whole units" $key $value) -}}
+{{- end -}}
+{{- $text = printf "%.0f" ($value | float64) -}}
+{{- end -}}
+{{- if not (regexMatch "^[0-9]+$" $text) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number of 0 or more: the api and the dashboard read it in whole units" $key $value) -}}
+{{- end -}}
+{{- $number := $text | int64 -}}
+{{- if ne $number 0 -}}
+{{- if or (lt $number (index $range 0 | int64)) (gt $number (index $range 1 | int64)) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%s) is not between %v and %v (or 0, the default): the api refuses it at its start, and the dashboard would use its default" $key $text (index $range 0) (index $range 1)) -}}
+{{- end -}}
+{{- $_ := set $out $key $number -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end }}
+
+{{/*
 Render guard of the memory of the uploads of the api core (api.extraConfig
 Uploads and ImageUpload, api-gateway#2408): each upload in progress (an
 image or a CSV import of individuals) holds its file in memory, at most
@@ -174,6 +212,7 @@ the largest file must fit below the memory limit. Call with the root
 context. Output: nothing.
 */}}
 {{- define "ow.api.checkUploads" -}}
+{{- $_ := include "ow.api.importLimits" . -}}
 {{- $api := .Values.api -}}
 {{- $config := $api.extraConfig | default dict -}}
 {{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}

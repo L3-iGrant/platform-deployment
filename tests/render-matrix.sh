@@ -1475,6 +1475,25 @@ renders "CSV import of 20 MiB with the file class for it" "kind: Deployment" "${
 guard "gateway file class below the image upload of the api" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
 guard "8 uploads of 100 MiB above the memory limit of the api" "Uploads.maxInProgress (8) x the largest upload file (104791040 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
 guard "too many uploads in progress for the memory limit of the api" "Uploads.maxInProgress (60) x the largest upload file (5242880 bytes" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+# The limits of the CSV import in config.json of the dashboard
+# (admin-dashboard#3434): the values of api.extraConfig.Uploads, as whole
+# numbers, only when they are set; the render stops for a value that the api
+# refuses at its start; a change restarts the dashboard pods (the checksum
+# of config.json).
+lacks "no import limits in config.json of the dashboard by default" "individualImport" "${shamir[@]}" --show-only templates/dashboard/configmap.yaml
+renders "the import file limit of the api in config.json of the dashboard" '"individualImportMaxFileBytes": 10485760' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":10485760,"individualImportMaxRows":9000}}' --set gateway.proxy.maxBodyBytes.file=11000000 --show-only templates/dashboard/configmap.yaml
+renders "the import row limit of the api in config.json of the dashboard" '"individualImportMaxRows": 9000' "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9000}}' --show-only templates/dashboard/configmap.yaml
+lacks "the default 0 of the api is not in config.json of the dashboard" "individualImport" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":0}}' --show-only templates/dashboard/configmap.yaml
+guard "import rows above 9000" "api.extraConfig.Uploads.individualImportMaxRows (9001) is not between 1 and 9000" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9001}}'
+guard "import file below 64 KiB" "api.extraConfig.Uploads.individualImportMaxFileBytes (1000) is not between 65536 and 20971520" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":1000}}'
+guard "import rows not a whole number" "api.extraConfig.Uploads.individualImportMaxRows (50.5) must be a whole number" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":50.5}}'
+guard "import rows not a number" "api.extraConfig.Uploads.individualImportMaxRows (5k) must be a whole number of 0 or more" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
+if [ "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
+     "$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+  ok "a new import limit restarts the dashboard pods (the checksum of config.json)"
+else
+  bad "a new import limit restarts the dashboard pods (the checksum of config.json)"
+fi
 renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" "${shamir[@]}" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 worker_group='{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430'
 guard "removed /tmp of a worker group" "Additional property tmp is not allowed" "${shamir[@]}" --set-json "organisationWallet.workers.groups=[${worker_group},\"tmp\":{\"sizeLimit\":\"300Gi\"}}]"

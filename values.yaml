@@ -2389,7 +2389,10 @@ enterpriseDashboard:
     timeouts: {}
   # -- config.json of the dashboard. Empty baseUrl: the api public URL.
   # Empty walletUrl: the organisation wallet public URL. Empty appVersion:
-  # the image tag.
+  # the image tag. The chart also writes the limits of the CSV import of
+  # individuals of the api (api.extraConfig.Uploads
+  # .individualImportMaxFileBytes and .individualImportMaxRows) when they
+  # are set, so that the dashboard and the api have the same limits.
   configuration:
     baseUrl: ""
     walletUrl: ""
