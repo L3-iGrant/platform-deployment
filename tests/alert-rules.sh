@@ -25,7 +25,7 @@ if ! docker image inspect "$image" > /dev/null 2>&1; then
   echo "the image $image is not local (the test never pulls)" >&2
   exit 2
 fi
-base=(-f "$here/values/keys.yaml" -f "$chart/examples/site.yaml" -f "$chart/examples/openbao-shamir.yaml")
+base=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml")
 if helm template t "$chart" --namespace ow "${base[@]}" | grep -q "^kind: PrometheusRule"; then
   bad "a PrometheusRule without organisationWallet.prometheusRule.enabled"
 else

@@ -58,7 +58,7 @@ fi
 # The api image: global.imageRegistry of values.yaml, the repository "api"
 # and the release tag.
 if [ -z "$local_program" ] && [ -z "$image" ]; then
-  if [ -z "$tag" ] || [ "$tag" = "2026.10.x" ]; then
+  if [ -z "$tag" ]; then
     echo "make-keys: give the release tag of your installation (--tag), for example --tag 2026.10.1" >&2
     exit 2
   fi

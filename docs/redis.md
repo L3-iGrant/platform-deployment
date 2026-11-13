@@ -6,7 +6,7 @@ This page explains Valkey with Sentinel in the chart, and what your own Valkey o
 
 The organisation wallet uses Valkey (a Redis-compatible server) for three things: the work queue of its background jobs, the short-lived single-use values (the nonces and the proof ids that a replay check refuses the second time), and the caches that its replicas share. The gateway will use it for the failure counters of unknown API keys. Valkey is never a record: the evidence, the audit log, the locks and the status list counters stay in the database. When Valkey is not available, the routes that need it answer 503, and the jobs run later from the database. The pods stay ready (their readiness does not depend on Valkey).
 
-By default (`redis.mode: bundled`), the chart runs Valkey with Sentinel. With `redis.mode: external`, the processes use your Valkey or Redis (`examples/redis-external.yaml`, see [External Valkey or Redis](#external-valkey-or-redis)).
+By default (`redis.mode: bundled`), the chart runs Valkey with Sentinel. With `redis.mode: external`, the processes use your Valkey or Redis (`profiles/redis-external.yaml`, see [External Valkey or Redis](#external-valkey-or-redis)).
 
 ## Bundled Valkey
 
@@ -137,7 +137,7 @@ With `redis.mode: external`, the chart runs no Valkey. Your server can be Valkey
 | `maxmemory-policy noeviction` and AOF `everysec` | An eviction would delete queue messages or nonces |
 | TLS, and one ACL user for each process kind (`redis.users`) | Security |
 
-The values (see `examples/redis-external.yaml`):
+The values (see `profiles/redis-external.yaml`):
 
 | Value | Description |
 | --- | --- |

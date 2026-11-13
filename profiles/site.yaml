@@ -1,0 +1,20 @@
+# Your installation. Copy this file to my-site.yaml, set the release tag and
+# your host names, and install with the keys file of scripts/make-keys.sh
+# and one exposure profile (docs/install.md):
+#
+#   helm install ows ./platform-deployment -n ows \
+#     -f ./ows-keys/values-keys.yaml -f my-site.yaml \
+#     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml
+global:
+  # Required: the release tag of your version, for example "2026.10.1".
+  imageTag: ""
+api:
+  # The api host. On premise it is internal (profiles/exposure-on-premise.yaml).
+  host: api.example.org
+organisationWallet:
+  # The public host of the organisation wallet.
+  host: wallet.example.org
+enterpriseDashboard:
+  # The dashboard host. It must share the registrable domain of the api host
+  # (the login cookie).
+  host: dashboard.example.org

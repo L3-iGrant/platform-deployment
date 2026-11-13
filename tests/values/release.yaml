@@ -1,0 +1,4 @@
+# The release tag of the tests: profiles/site.yaml leaves global.imageTag
+# empty, and the render stops without it.
+global:
+  imageTag: "2026.10.0"

@@ -25,7 +25,7 @@ An on-premise installation exposes only the service routes. Only the wallet host
 | Dashboard host (`<release>-dashboard`) | Internal | `enterpriseDashboard.exposure`: the same as the API host |
 | `<release>-wallet-config` | In the cluster only | No route |
 
-`examples/exposure-on-premise.yaml` does this with two ingress-nginx controllers: the public IngressClass `nginx` for the wallet host, and the internal IngressClass `nginx-internal` for the other hosts (the default `exposure.ingress.className`, so that a host is internal unless you name the public class). The admins open the dashboard from the internal network, and their browser calls the API host there.
+`profiles/exposure-on-premise.yaml` does this with two ingress-nginx controllers: the public IngressClass `nginx` for the wallet host, and the internal IngressClass `nginx-internal` for the other hosts (the default `exposure.ingress.className`, so that a host is internal unless you name the public class). The admins open the dashboard from the internal network, and their browser calls the API host there.
 
 The wallet host serves only the public routes of the wallet: the service role of the wallet has only the route group `service`. The configuration routes are in the config role, which has no route.
 
@@ -51,7 +51,7 @@ The chart exposes the API host as one path (`api.exposure.path`, default `/`) to
 
 ## What your proxy must do
 
-Your proxy only routes the traffic: the platform does the CORS checks, the authentication and the rate limits. The chart sets no annotation of a controller. The exposure examples (`examples/exposure-*.yaml`) set what the platform needs:
+Your proxy only routes the traffic: the platform does the CORS checks, the authentication and the rate limits. The chart sets no annotation of a controller. The exposure profiles (`profiles/exposure-*.yaml`) set what the platform needs:
 
 - request bodies of up to 10 MiB (API and wallet hosts);
 - requests of up to 60 seconds (the Envoy default is 15 seconds);
@@ -60,7 +60,7 @@ Your proxy only routes the traffic: the platform does the CORS checks, the authe
 - request headers of up to 16 KiB each (wallet host): the wallets and the verifiers of other vendors send JWTs with certificate chains in headers (`OAuth-Client-Attestation`, `OAuth-Client-Attestation-PoP`, `DPoP`);
 - the requests of other vendors as they are: the headers, the bodies (`application/x-www-form-urlencoded`, `application/json`, `application/jwt`) and the paths below `/.well-known/`. A rule of a web application firewall or a CDN that changes or refuses them breaks the conformance with the specifications.
 
-With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (`examples/exposure-envoy-gateway.yaml` has one for Envoy Gateway). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty: then every request has the address of a Gateway pod, the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
+With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (`profiles/exposure-envoy-gateway.yaml` has one for Envoy Gateway). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty: then every request has the address of a Gateway pod, the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
 
 ## The settings for each controller
 
@@ -71,14 +71,14 @@ With the Gateway API, the client address needs a Gateway policy that sets the he
 | Request headers of up to 16 KiB each (wallet host) | `large-client-header-buffers: "4 16k"` in the ConfigMap of the controller (the default `4 8k` refuses a larger header line with 400) | No setting (the Envoy default is 60 KiB for all headers) |
 | Server-sent event streams of up to 3900 s (API host) | `proxy-read-timeout: "3900"`, `proxy-send-timeout: "3900"` | `api.exposure.timeouts.request: 3900s` |
 | No buffering of the event streams (API host) | `proxy-buffering: "off"` | No setting (Envoy streams the response) |
-| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP` and a Gateway policy that sets `X-Real-IP` to the client address and replaces a value that the client sends (Envoy Gateway: the ClientTrafficPolicy in `examples/exposure-envoy-gateway.yaml`; kgateway: a header policy of your Gateway that does the same) |
+| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP` and a Gateway policy that sets `X-Real-IP` to the client address and replaces a value that the client sends (Envoy Gateway: the ClientTrafficPolicy in `profiles/exposure-envoy-gateway.yaml`; kgateway: a header policy of your Gateway that does the same) |
 | The client address at the proxy | A load balancer in front of the controller passes the client address (for example the PROXY protocol: `use-proxy-protocol: "true"` in the controller configuration) | The same (Envoy Gateway: `proxyProtocol: {}` in a ClientTrafficPolicy of the Gateway) |
 
 `exposure-kgateway.yaml` has these settings without the client address header: add the header together with the policy of your Gateway.
 
 ## Proxies in front of the cluster
 
-The metadata routes of the issuers on the wallet host (`/.well-known/openid-credential-issuer/...`, `/.well-known/oauth-authorization-server/...`, `/.well-known/jwt-vc-issuer/...`) and the JWKS of an issuer (`/organisation/<wallet id>/service/<version>/jwks` and `/organisation/<wallet id>/service/jwks`) answer with `Cache-Control: max-age=60` and a strong `ETag`; a request with a matching `If-None-Match` gets 304 without a body. The chart and the exposure examples set no cache rule. A CDN or a proxy that keeps these answers must keep the header `Vary: Accept` of the credential issuer metadata (`Accept: application/jwt` gives the signed metadata, with its own `ETag`). A change of the metadata then shows after at most 60 seconds in the wallet pods, plus the time that your cache keeps the answer.
+The metadata routes of the issuers on the wallet host (`/.well-known/openid-credential-issuer/...`, `/.well-known/oauth-authorization-server/...`, `/.well-known/jwt-vc-issuer/...`) and the JWKS of an issuer (`/organisation/<wallet id>/service/<version>/jwks` and `/organisation/<wallet id>/service/jwks`) answer with `Cache-Control: max-age=60` and a strong `ETag`; a request with a matching `If-None-Match` gets 304 without a body. The chart and the exposure profiles set no cache rule. A CDN or a proxy that keeps these answers must keep the header `Vary: Accept` of the credential issuer metadata (`Accept: application/jwt` gives the signed metadata, with its own `ETag`). A change of the metadata then shows after at most 60 seconds in the wallet pods, plus the time that your cache keeps the answer.
 
 Behind a CDN or another proxy, set `clientAddress.trustedProxies` and `clientAddress.trustedProxyHeader` together.
 

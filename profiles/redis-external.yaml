@@ -30,7 +30,7 @@ redis:
     walletWorker: {username: wallet-worker, passwordSecret: ows-redis-wallet-worker, passwordKey: password}
     walletClock: {username: wallet-clock, passwordSecret: ows-redis-wallet-clock, passwordKey: password}
     gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
-# With network policies (examples/networkpolicy.yaml): the addresses of your
+# With network policies (profiles/network-policies.yaml): the addresses of your
 # servers and Sentinels.
 networkPolicy:
   externalRedis:

@@ -11,7 +11,7 @@ This page upgrades an installation to a new release of the platform.
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-     -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml \
+     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml \
      --wait --timeout 15m
    ```
 

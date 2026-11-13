@@ -50,13 +50,17 @@ helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace 
 Container image. Call with (list $ .Values.<component>.image).
 The registry is image.registry, else global.imageRegistry; the tag is
 image.tag, else global.imageTag (the release tag of the iGrant.io images). An
-empty registry gives "repository:tag".
+empty registry gives "repository:tag". An image without a tag and a digest
+stops the render.
 */}}
 {{- define "ow.image" -}}
 {{- $root := index . 0 -}}
 {{- $image := index . 1 -}}
 {{- $registry := $image.registry | default $root.Values.global.imageRegistry -}}
 {{- $tag := $image.tag | toString | default ($root.Values.global.imageTag | toString) -}}
+{{- if and (not $tag) (not $image.digest) -}}
+{{- fail "global.imageTag is required: the release tag of your version" -}}
+{{- end -}}
 {{- $reference := printf "%s:%s" $image.repository $tag -}}
 {{- if $image.digest }}{{- $reference = printf "%s@%s" $image.repository $image.digest -}}{{- end -}}
 {{- if $registry -}}

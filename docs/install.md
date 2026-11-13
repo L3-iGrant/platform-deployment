@@ -19,7 +19,7 @@ kubectl -n ows create secret docker-registry igrant-registry-creds \
 
 Check: `kubectl -n ows get secret igrant-registry-creds` shows the Secret with the type `kubernetes.io/dockerconfigjson`.
 
-Ask iGrant.io for the release tag of your version (for example `2026.10.1`). You set it as `global.imageTag` in step 3: the default `2026.10.x` is a placeholder, and no image has this tag. With your own mirror, also set `global.imageRegistry` and `global.imagePullSecrets`.
+Ask iGrant.io for the release tag of your version (for example `2026.10.1`). You set it as `global.imageTag` in step 3: the render stops without it. With your own mirror, also set `global.imageRegistry` and `global.imagePullSecrets`.
 
 ## Step 2: the keys
 
@@ -37,38 +37,41 @@ Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernet
 
 ## Step 3: the values of your installation
 
-Copy `examples/site.yaml` to `my-site.yaml` and set the release tag (`global.imageTag`) and your host names. Then choose one file from each group of `examples/`:
+Copy `./platform-deployment/profiles/site.yaml` to `my-site.yaml`. Set `global.imageTag` to your release tag and set your three host names.
 
-| Group | Files | Read first |
+Then choose the profiles in `./platform-deployment/profiles/` that fit your cluster. A profile that you leave out keeps the default of the chart.
+
+| Profile | Use it for | Read first |
 | --- | --- | --- |
-| Database | `postgresql-bundled.yaml`, `postgresql-external.yaml` | [Database](database.md) |
-| OpenBao | `openbao-shamir.yaml` (the bundled OpenBao, manual unseal), `openbao-external.yaml` (your OpenBao) | [OpenBao](openbao.md) |
-| Exposure | `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-envoy-gateway.yaml`, `exposure-kgateway.yaml`, `exposure-none.yaml` | [Exposure](exposure.md) |
-| Redis (optional) | `redis-external.yaml` (your Valkey or Redis). Without it, the chart runs Valkey with Sentinel | [Redis](redis.md) |
-| Network policies (optional) | `networkpolicy.yaml` | [Network policies](network-policies.md) |
+| `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-envoy-gateway.yaml`, `exposure-kgateway.yaml`, `exposure-on-premise.yaml`, `exposure-none.yaml` | How the hosts reach the platform (one is required) | [Exposure](exposure.md) |
+| `database-external.yaml` | Your PostgreSQL server. Without it, the chart runs one PostgreSQL 18 server. | [Database](database.md) |
+| `openbao-external.yaml` | Your OpenBao. Without it, the chart runs OpenBao with the Shamir seal (manual unseal). | [OpenBao](openbao.md) |
+| `redis-external.yaml` | Your Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
+| `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
+| `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
 
-An installation has consent management and the organisation wallet by default. For an installation without consent or without the wallet, set `consent.enabled: false` or `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: the OpenBao file has no effect, and you do not do step 5.
+An installation has consent management and the organisation wallet by default. For an installation without consent or without the wallet, set `consent.enabled: false` or `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: an OpenBao profile has no effect, and you do not do step 5.
 
-Copy the files that you use (for example to `my-database.yaml`, `my-openbao.yaml` and `my-exposure.yaml`) and adapt their values (for example the Gateway name or the TLS Secret names). Each file names the Secrets to create before the install, for example the database admin password. Create these Secrets now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
+Copy a profile before you change it (for example to `my-exposure.yaml` for other TLS Secret names or another Gateway). Each profile names the Secrets that you create before the install, for example the database admin password. Create them now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 
 Check: the render has no error:
 
 ```bash
 helm template ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-  -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml > /tmp/ows.yaml
+  -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml > /tmp/ows.yaml
 ```
 
-The command writes the manifests to `/tmp/ows.yaml` and shows no error. A wrong or missing value stops it with a message that names the value (for example `api.host is required`).
+The command writes the manifests to `/tmp/ows.yaml` and shows no error. A wrong or missing value stops it with a message that names the value (for example `global.imageTag is required: the release tag of your version`).
 
-When you use optional files, add them to this command and to every `helm install` and `helm upgrade` command of this documentation (for example `-f my-networkpolicy.yaml`).
+Add each other profile that you use to this command and to every `helm install` and `helm upgrade` command of this documentation (for example `-f ./platform-deployment/profiles/network-policies.yaml`).
 
 ## Step 4: install
 
 ```bash
 helm install ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-  -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml \
+  -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml \
   --timeout 15m
 ```
 
@@ -152,7 +155,7 @@ The Job `bootstrapPlatform` of the chart runs `igrant-api onboard bootstrap-plat
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-     -f my-database.yaml -f my-openbao.yaml -f my-exposure.yaml -f platform-operator.yaml
+     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml -f platform-operator.yaml
    ```
 
 3. Check: `kubectl -n ows get jobs` shows `ows-api-bootstrap-platform-<revision>` as `Complete`, and its log has one JSON line with `organisationId`, `adminId` and `"created":true`:

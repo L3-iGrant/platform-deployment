@@ -32,9 +32,9 @@ bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
 # The commands of the chart and of Compose: one JSON line each (where,
 # command, the environment, the configuration file and its path).
-values=(-f "$here/values/keys.yaml" -f "$chart/examples/site.yaml" -f "$chart/examples/openbao-shamir.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
+values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
 for extra in hsm-signer-local.yaml hsm-signer-dpod.yaml; do
-  [ -f "$chart/examples/$extra" ] && values+=(-f "$chart/examples/$extra")
+  [ -f "$chart/profiles/$extra" ] && values+=(-f "$chart/profiles/$extra")
 done
 helm template t "$chart" --namespace ow "${values[@]}" > "$work/render.yaml"
 # A copy of docker-compose/ with the .env of the example and the files of

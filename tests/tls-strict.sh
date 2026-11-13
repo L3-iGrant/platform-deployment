@@ -97,7 +97,7 @@ check() {
 }
 
 # 1 and 2: the TLS Secrets of a render with all bundled servers.
-helm template t "$chart" --namespace ow -f "$here/values/keys.yaml" -f "$chart/examples/site.yaml" -f "$chart/examples/openbao-shamir.yaml" \
+helm template t "$chart" --namespace ow -f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" \
   --show-only templates/secrets.yaml > "$work/secrets.yaml"
 python3 - "$work/secrets.yaml" "$work" <<'PY'
 import base64, os, sys, yaml

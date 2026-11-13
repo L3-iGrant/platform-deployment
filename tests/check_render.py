@@ -8,9 +8,9 @@ Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <netwo
     on the public IngressClass); networkpolicy: off | on;
   database-logs: on (default) | off (database.postgresql.logDdlAndConnections
     false);
-  redis: bundled (default) | external (examples/redis-external.yaml).
+  redis: bundled (default) | external (profiles/redis-external.yaml).
 
-The values are tests/values/keys.yaml, examples/site.yaml and one example
+The values are tests/values/keys.yaml, profiles/site.yaml and one profile
 file of each group (see tests/render-matrix.sh). The script writes one line
 per failed check and exits 1 when a check fails. It never prints a Secret
 value: it reads only the names and the keys of the Secrets.
@@ -75,7 +75,7 @@ REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replica
                   "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
 REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
 REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507"
-# The values of examples/redis-external.yaml.
+# The values of profiles/redis-external.yaml.
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
 REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
 

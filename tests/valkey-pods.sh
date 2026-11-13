@@ -38,8 +38,10 @@ set -euo pipefail
 image="${1:?usage: tests/valkey-pods.sh <image>}"
 here="$(cd "$(dirname "$0")" && pwd)"
 chart="$(dirname "$here")"
-examples="$chart/examples"
+profiles="$chart/profiles"
 keys="$here/values/keys.yaml"
+# profiles/site.yaml with the release tag of the tests.
+site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
 work="$(mktemp -d)"
 prefix="valkey-pods-test-$(openssl rand -hex 4)"
 domain=t-redis-headless.ow.svc
@@ -67,8 +69,8 @@ docker image inspect "$image" > /dev/null 2>&1 || { echo "the image $image is no
 
 # The files of the pods from a render of the chart (release t, namespace ow),
 # with the exporter (the ACL user metrics).
-helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
-  -f "$examples/exposure-none.yaml" --set redis.metrics.enabled=true > "$work/render.yaml"
+helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
+  -f "$profiles/exposure-none.yaml" --set redis.metrics.enabled=true > "$work/render.yaml"
 python3 - "$work/render.yaml" "$work" <<'PY'
 import base64, os, sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]

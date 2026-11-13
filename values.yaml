@@ -1,1122 +1,329 @@
-# iGrant.io platform
-#
-# The chart installs the platform: the auth gateway, the API (with the OIDC
-# provider) and its webhook handler, consent management, the organisation
-# wallet (service, config, workers and clock), the enterprise
-# dashboard, and the dependencies of the platform: NATS with JetStream, one
-# database server (or an external server), OpenBao (the key management
-# service of the wallet; or an external OpenBao) and Valkey with Sentinel
-# (or your Valkey or Redis). The cluster must already have an ingress
-# controller or a Gateway API implementation (see docs/prerequisites.md).
-#
-# REQUIRED VALUES (the render stops, with a message, while one is missing;
-# the examples/ folder has one values file per scenario, and
-# scripts/make-keys.sh makes the keys and writes their values):
-# - global.imageTag: the release tag of your version (the default is a
-#   placeholder: the render does not stop, but the pods cannot pull);
-# - the host names: api.host, organisationWallet.host,
-#   enterpriseDashboard.host, and the exposure of each (exposure.*);
-# - the keys (scripts/make-keys.sh): api.keyStorage.tokenSigning.activeKid,
-#   gateway.internalToken.activeKid, gateway.publicKeys.*,
-#   serviceKeys.publicJwks.*, <service>.serviceEnvelope.activeKid,
-#   nats.auth.users.*;
-# - OpenBao: an external OpenBao needs openbao.external.address and
-#   openbao.wallet.existingSecret;
-# - an external database (database.mode external) needs
-#   database.external.host, and an admin user or
-#   database.auth.existingSecret;
-# - an external Valkey or Redis (redis.mode external) needs
-#   redis.external.sentinels or .address, and the password Secret of each
-#   user in redis.users.
-#
-# The chart makes the passwords that you do not set (a random value at the
-# first installation; "helm upgrade" keeps the value from the Secret).
-
-# -- Object name prefix. Empty: the release name.
-fullnameOverride: ""
-
-# -- The value of the label app.kubernetes.io/name. This label is also in
-# the selectors, and Kubernetes does not let an upgrade change a selector.
-# Empty: the chart name (platform).
-nameOverride: ""
+# iGrant.io platform: the auth gateway, the api, consent management, the
+# organisation wallet and the enterprise dashboard, with PostgreSQL, NATS,
+# OpenBao and Valkey (each bundled, or your own server).
+# Install guide: docs/install.md. Every value: docs/values-reference.md.
+# profiles/ has ready values files: site.yaml (copy it for your own values),
+# one exposure-*.yaml (required) and optional ones (database, OpenBao, Redis,
+# network policies, minimal).
+# Required: global.imageTag, api.host, organisationWallet.host,
+# enterpriseDashboard.host and the keys of scripts/make-keys.sh. The render
+# stops with a message while a required value is missing.
 
 global:
-  # -- Registry of the iGrant.io images (the registry of iGrant.io for
-  # customers). An image with its own "registry" value does not use it.
+  # -- Registry of the iGrant.io images. An image with its own registry ignores it.
   imageRegistry: europe-docker.pkg.dev/jenkins-189019/igrantio
-  # -- The release tag of the iGrant.io images (api, gateway,
-  # consent-management-backend, eudi-wallet, dashboard, openbao): set the
-  # tag of your release. "2026.10.x" is a placeholder:
-  # no image has this tag. An image with its own "tag" value does not use it.
-  imageTag: "2026.10.x"
-  # -- Names of the image pull Secrets of all pods (make them before the
-  # installation; see docs/install.md).
-  imagePullSecrets:
-    - igrant-registry-creds
-  # -- imagePullPolicy of all images (each image can override it).
+  # -- Required: the release tag of your version (the render stops without it).
+  imageTag: ""
+  # -- Image pull Secrets of all pods (create them before the install).
+  imagePullSecrets: [igrant-registry-creds]
+  # -- Pull policy of all images (each image can override it).
   imagePullPolicy: IfNotPresent
-  # -- Storage class of all volumes. Empty: the default storage class of the
-  # cluster. "-": no storage class.
+  # -- Storage class of all volumes. Empty: the cluster default. "-": none.
   storageClass: ""
-  # -- Priority class of all pods (the class must exist). Empty: none.
+  # -- Priority class of all pods (it must exist). Empty: none.
   priorityClassName: ""
-  # -- Pod security context of each pod, under the podSecurityContext of
-  # the component: a key of the component replaces the same key here (as a
-  # whole), and each other key stays, for example seLinuxOptions or
-  # supplementalGroups of your cluster. Each component has its own default
-  # (a non-root user, docs/security-context.md), and Helm merges your keys
-  # into it: set a key to null to remove it. The notes name each key here
-  # that a component also sets. On OpenShift, set runAsUser, runAsGroup and
-  # fsGroup of each component to null (the SCC sets them).
+  # -- Pod security context of all pods, under the value of each component.
   podSecurityContext: {}
-  # -- Container security context of each container, under the
-  # containerSecurityContext of the component (the same rule).
+  # -- Container security context of all containers, under the value of each component.
   containerSecurityContext: {}
-  # -- Node selector, tolerations and affinity of all pods.
   nodeSelector: {}
   tolerations: []
   affinity: {}
-  # -- Labels on all objects.
   labels: {}
   # -- Scheme of the public URLs.
   publicScheme: https
 
-# How the services with a host (the api host, the wallet host, the
-# dashboard host) are exposed. The chart never installs an ingress
-# controller or a Gateway: they must exist in the cluster. Each host can
-# override these values in <component>.exposure, for example an internal
-# IngressClass for the api and dashboard hosts of an on-premise
-# installation, where only the wallet host is public (docs/exposure.md).
-# The proxy only routes: CORS, authentication and rate limits are in the
-# services.
+# -- Prefix of the object names (<fullname>). Empty: the release name.
+fullnameOverride: ""
+# -- Value of the label app.kubernetes.io/name (a selector label). Empty: platform.
+nameOverride: ""
+
+# The exposure of the api, wallet and dashboard hosts (docs/exposure.md).
 exposure:
-  # -- "ingress" (a networking.k8s.io/v1 Ingress), "gatewayAPI" (a
-  # gateway.networking.k8s.io/v1 HTTPRoute to your Gateway) or "none" (only
-  # the Services; you make the routes).
+  # -- ingress (an Ingress), gatewayAPI (an HTTPRoute to your Gateway) or none (Services only).
   type: ingress
   ingress:
-    # -- ingressClassName. Empty: the default IngressClass of the cluster.
+    # -- IngressClass of every Ingress. Empty: the cluster default.
     className: ""
-    # -- Annotations of every Ingress (free form, for example the settings
-    # of your controller or a cert-manager issuer). See examples/.
+    # -- Annotations of every Ingress, for example the settings of your controller.
     annotations: {}
   gatewayAPI:
-    # -- The Gateway of every HTTPRoute (required for gatewayAPI), for
-    # example [{name: platform, namespace: gateway-system, sectionName: https}].
+    # -- Your Gateway, required for gatewayAPI: [{name, namespace, sectionName}].
     parentRefs: []
     # -- Annotations of every HTTPRoute.
     annotations: {}
-    # -- timeouts of the route rules ({request, backendRequest}, Gateway API
-    # durations such as "3900s"). Empty: the default of your implementation.
+    # -- Timeouts of the route rules ({request, backendRequest}). Empty: the Gateway default.
     timeouts: {}
 
-# The address of the client behind your proxies (the gateway and the api
-# use it for the IP allow-list of the API keys and for the rate limits).
-# Empty (default): the address of the TCP peer.
+# The client address behind your proxies: the rate limits and the IP allow-lists.
 clientAddress:
-  # -- A request header that your entry proxy sets to the address of its
-  # TCP peer and that a client cannot set (the proxy replaces it), for
-  # example X-Real-IP with ingress-nginx.
+  # -- Header with the client address, set by your entry proxy (X-Real-IP). Empty: the TCP peer.
   header: ""
-  # -- Address ranges (CIDR) of trusted proxies in front of the entry proxy
-  # (for example a CDN), and the header in which they send the client
-  # address. Set both or none.
+  # -- CIDRs of trusted proxies in front of the entry proxy, for example a CDN.
   trustedProxies: []
+  # -- Header in which the trusted proxies send the client address.
   trustedProxyHeader: ""
 
-# The database of the whole platform. ONE engine for all components: the api
-# (and its OIDC provider), the auth gateway, consent, the organisation
-# wallet, the migration and read access Jobs and the NetworkPolicy ports.
-# Each component has its own database and its own owner user (the user name
-# is the database name). The init hook makes the databases and the users
-# at each install and upgrade, before the other database hooks (bundled, or
-# external with an admin user).
-database:
-  # -- The engine of all components: "postgresql" (PostgreSQL 18), the only
-  # supported engine. The api, consent and the organisation wallet accept
-  # only PostgreSQL: another value (for example mysql) stops the render.
-  engine: postgresql
-  # -- "bundled": the chart runs ONE server of the engine (StatefulSet
-  # <fullname>-postgres). "external": you give the server
-  # (database.external).
-  mode: bundled
-  # -- Database (= owner user) name and password of each component. Empty
-  # password: random (kept across upgrades). The wallet keeps its tables in
-  # data scopes: schemas in its database. The wallet processes connect with
-  # their own database roles, not as the owner user: the wallet database
-  # name is the prefix of their names (at most 43 characters, for example
-  # igrant_wallet_launcher_app). See docs/database.md.
-  databases:
-    api:
-      name: igrant_api
-      password: ""
-    oidc:
-      name: igrant_oidc
-      password: ""
-    consent:
-      name: igrant_consent
-      password: ""
-    wallet:
-      name: igrant_wallet
-      password: ""
-  auth:
-    # -- Password of the admin user "postgres" of the bundled server.
-    # Empty: random.
-    adminPassword: ""
-    # -- Existing Secret with one key per database name (igrant_api,
-    # igrant_oidc, igrant_consent, igrant_wallet) and, for bundled, the
-    # admin password (key POSTGRES_PASSWORD). Then the chart does not make
-    # the database Secret. Required for external without an admin user
-    # (only without the organisation wallet).
-    existingSecret: ""
-  external:
-    # -- Host name of the external server (required for external).
-    host: ""
-    # -- Port. Empty: 5432.
-    port: ""
-    # -- An admin user of the external server. With it, the init hook makes
-    # the databases and the owner users, the roles hook makes the database
-    # roles of the wallet, and the read access Jobs use it. Required with
-    # the organisation wallet. Empty user (only without the wallet): the
-    # databases and the users exist; give their passwords in
-    # database.auth.existingSecret.
-    admin:
-      user: ""
-      passwordSecret: ""
-      passwordKey: password
-  # -- The connection pool of each process (docs/database.md, "Connection
-  # budget"). api, webhook, oidc, gateway, consent: maxConns, minConns of
-  # DataBase and Extensions.oidc.database. apiReadAccess: the read-only
-  # connections of the api core and of the webhook handler to the wallet
-  # views (ReadAccess.wallet).
-  pools:
-    api: {maxConns: 10, minConns: 2}
-    webhook: {maxConns: 5, minConns: 1}
-    oidc: {maxConns: 5, minConns: 1}
-    gateway: {maxConns: 10, minConns: 2}
-    consent: {maxConns: 6, minConns: 2}
-    apiReadAccess: {maxConns: 5, minConns: 1}
-    # The organisation wallet, for each process: poolSize and maxOverflow
-    # of the session pool (database.pool_size, database.max_overflow), and
-    # allocationPoolSize, the connections of the status list allocations
-    # (database.allocation_pool_size).
-    walletService: {poolSize: 12, maxOverflow: 4, allocationPoolSize: 5}
-    walletConfig: {poolSize: 8, maxOverflow: 4, allocationPoolSize: 2}
-    # A worker process: the session pool has one connection for each
-    # thread of its group (database.pool_size), and maxOverflow more.
-    walletWorker: {maxOverflow: 2, allocationPoolSize: 2}
-  # A connection pooler in transaction mode in front of the server, for
-  # the organisation wallet (docs/database.md, "Connection pooler"):
-  # PgBouncer 1.21 or later with pool_mode transaction and
-  # max_prepared_statements above 0. The chart does not run it.
-  pooler:
-    # -- Host name of the pooler (its certificate must name it). Empty: the
-    # wallet connects to the server. With a host, the sessions of the
-    # service, config and worker processes (and of the HSM signer manager)
-    # go through the pooler; the locks, the clock, the allocations, the
-    # readers of the views and the hooks connect to the server.
-    host: ""
-    port: 6432
-    # -- The most connections that the pooler opens to the server for the
-    # wallet database (the sum of its pools for the wallet database roles).
-    # Required with a host and the bundled server: the connection budget
-    # counts them in place of the session pools of the wallet.
-    serverConnections: 0
-  tls:
-    # -- TLS between the components and the server. bundled: the components
-    # verify the server with its CA (the bundled server always serves TLS,
-    # also with false, so an upgrade can turn this on). external: the server
-    # has TLS.
-    enabled: true
-    # -- bundled: an existing kubernetes.io/tls Secret with tls.crt, tls.key
-    # and ca.crt. The certificate must have the name
-    # <fullname>-postgres.<namespace>.svc. Empty: the chart makes a
-    # CA and a certificate (10 years, kept across upgrades).
-    existingSecret: ""
-    # -- external: an existing Secret with the CA certificate (PEM) of the
-    # server. The components verify the certificate and the host name with
-    # it. Empty: sslmode "require" (encryption without verification).
-    caSecret: ""
-    caKey: ca.crt
-    # -- The sslmode of all components and of the init hook (disable,
-    # require, verify-ca or verify-full). Empty: "verify-full"
-    # with a CA, else "require"; "disable" without TLS. verify-ca and
-    # verify-full need a CA.
-    sslMode: ""
-  # The bundled PostgreSQL server.
-  postgresql:
-    image:
-      registry: docker.io
-      repository: library/postgres
-      tag: "18.6"
-    # -- Server parameters (postgres -c name=value). Sized for the memory of
-    # database.resources (2048Mi): shared_buffers, about 5 MB for each of
-    # the max_connections, and autovacuum (3 x maintenance_work_mem).
-    # Change max_connections and the memory together. The render stops
-    # when the pools of the release can open more connections than
-    # max_connections less the reserved ones (docs/database.md,
-    # "Connection budget").
-    parameters:
-      max_connections: "250"
-      shared_buffers: 192MB
-      effective_cache_size: 512MB
-      work_mem: 2MB
-      maintenance_work_mem: 64MB
-      idle_session_timeout: 10min
-      password_encryption: scram-sha-256
-    # -- The server logs each DDL statement (log_statement = 'ddl': CREATE,
-    # ALTER, DROP, GRANT, REVOKE and the role statements) and each
-    # connection and disconnection (log_connections, log_disconnections =
-    # on) to the container log. A value of the same name in parameters wins.
-    # false: the chart sets none of the three. See docs/database.md.
-    logDdlAndConnections: true
-  persistence:
-    size: 50Gi
-    storageClass: ""
-  # -- The resources of the bundled server. The memory must hold the
-  # PostgreSQL parameters above under load.
-  resources:
-    requests:
-      cpu: 250m
-      memory: 2048Mi
-    limits:
-      cpu: "2"
-      memory: 2048Mi
-  # -- The bundled server and the init hook (database-init) run as the user
-  # postgres of the image (UID 999, GID 999), not as root. fsGroup: the
-  # group of the data volume and of the secret files (mode 0440 and 0640).
-  # OnRootMismatch: the kubelet changes the group of the files of the data
-  # volume only when the top folder does not have it (a large volume
-  # starts faster). The server writes only to the data volume and to
-  # emptyDir volumes (/var/run/postgresql: the socket and the lock file;
-  # /tmp).
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 999
-    runAsGroup: 999
-    fsGroup: 999
-    fsGroupChangePolicy: OnRootMismatch
-    seccompProfile:
-      type: RuntimeDefault
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
-  priorityClassName: ""
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  imagePullSecrets: []
-
-# NATS with JetStream (messaging between the services).
-nats:
-  # -- Deploy NATS. false: use an external NATS server (nats.external.url)
-  # with JetStream.
-  enabled: true
-  image:
-    registry: docker.io
-    repository: library/nats
-    # -- 2.14.10. The 2.12 line gets no more fixes (the last release is
-    # 2.12.15): 2.14.10 has the fixes of the published advisories, also of
-    # those of the cluster routes (GHSA-5v9x-4f9q-q7qj, GHSA-27c4-m7hq-v6pw,
-    # GHSA-4fpp-8grw-j976), and 2.14.6 fixed the stop of the writes of an
-    # R3 stream after a restart of 2 of its 3 servers (nats-server #8501,
-    # #8519). Not 2.15 or later: 2.15 changes the default subject of the
-    # JetStream acks to the format v2, and the users of the chart have the
-    # permissions $JS.ACK.<stream>.<consumer>.> of the format v1 (the render
-    # stops). The digest pins the image index of the tag.
-    tag: 2.14.10-alpine
-    digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
-  external:
-    url: ""
-  # NATS users: one nkey user per service process in the global account,
-  # with only the subjects of the process (see docs/nats-users.md).
-  # Required: the server has no user without credentials, so each process
-  # needs its pair. nkey: the public user nkey (it starts with U; no
-  # secret). seedSecret/seedKey: an existing Secret with the seed (it starts
-  # with SU) that the process reads as a file. scripts/make-keys.sh makes
-  # the pairs.
-  auth:
-    users:
-      api: {nkey: "", seedSecret: "", seedKey: seed}
-      apiWebhook: {nkey: "", seedSecret: "", seedKey: seed}
-      consent: {nkey: "", seedSecret: "", seedKey: seed}
-      walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
-      walletService: {nkey: "", seedSecret: "", seedKey: seed}
-      # -- The workers of the wallet (all groups). The clock connects to no
-      # NATS.
-      walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
-  # -- Replicas of the JetStream streams and KV buckets that the services
-  # make, with file storage. ONE value for all services: two services that
-  # ensure the same stream must use the same replicas. Empty: nats.replicas
-  # when the chart runs NATS, else 1 (with an external NATS, set its cluster
-  # size).
-  jetstreamReplicas: ""
-  # -- max_payload of the NATS server (bytes, or a size such as 4MB). An
-  # external NATS needs the same value (ConfigMap
-  # <fullname>-nats-authorization).
-  maxPayload: 4MB
-  # -- An external NATS with TLS (nats.enabled false): an existing Secret
-  # with the CA certificate (PEM) of the server. The services read it as a
-  # file. Empty: no TLS CA.
-  tlsCa:
-    existingSecret: ""
-    key: ca.crt
-  # The bundled NATS always has TLS: for the clients (port 4222) and, with
-  # mutual TLS, for the routes between the servers (port 6222: a server
-  # accepts a route only with a certificate of the CA).
-  tls:
-    # -- Existing kubernetes.io/tls Secret with tls.crt, tls.key and
-    # ca.crt. The certificate must have the names <fullname>-nats.<namespace>.svc
-    # and *.<fullname>-nats-headless (also with .<namespace>.svc), and the
-    # server and client use. Empty: the chart makes a CA and a certificate
-    # (10 years, kept across upgrades).
-    existingSecret: ""
-  # -- Number of NATS servers. More than 1 makes a cluster.
-  replicas: 3
-  jetstream:
-    maxFileStore: 10Gi
-    maxMemoryStore: "0"
-  persistence:
-    size: 10Gi
-    storageClass: ""
-  # -- The config reloader sidecar: it reloads nats.conf (for example a new
-  # NATS user) without a restart of the NATS pods. The pods share the
-  # process namespace. false: a change of the users restarts the NATS pods.
-  reloader:
-    enabled: true
-    image:
-      registry: docker.io
-      repository: natsio/nats-server-config-reloader
-      tag: "0.21.1"
-    resources:
-      requests:
-        cpu: 10m
-        memory: 32Mi
-  resources:
-    requests:
-      cpu: 15m
-      memory: 32Mi
-  # -- NATS and the reloader run as the user 65532 and the group 65532 (the
-  # images have no user: any UID that is not 0). The reloader sends SIGHUP
-  # to nats-server, thus the containers must have the same user. fsGroup:
-  # the group of the JetStream store and of the TLS files (mode 0440).
-  # OnRootMismatch: the kubelet sets the group of the files of the store
-  # only when the top folder does not have it (the first start). NATS
-  # writes only to the store (/data) and to the emptyDir of the pid file
-  # (/var/run/nats).
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 65532
-    runAsGroup: 65532
-    fsGroup: 65532
-    fsGroupChangePolicy: OnRootMismatch
-    seccompProfile:
-      type: RuntimeDefault
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
-  priorityClassName: ""
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  imagePullSecrets: []
-
-# Valkey with Sentinel (docs/redis.md): the work queue, the single-use
-# values (nonces and proof ids) and the shared caches of the organisation
-# wallet, and the failure counters of the gateway. Valkey is never a record:
-# the evidence stays in the database. The wallet roles and the gateway each
-# log in with their own ACL user.
-redis:
-  # -- "bundled": the chart runs Valkey with Sentinel (StatefulSet
-  # <fullname>-redis: each pod has a data container and a Sentinel
-  # container). "external": your Valkey or Redis (redis.external; its
-  # requirements are in docs/redis.md).
-  mode: bundled
-  # -- The name of the primary that the Sentinels monitor (1 to 64 letters,
-  # digits, . _ -).
-  masterName: ows
-  # -- The ACL users of the processes: one user for each wallet process kind
-  # and one for the gateway (the bundled Valkey keeps the names default,
-  # replication, sentinel, probe and metrics for itself). username: the ACL user. passwordSecret,
-  # passwordKey: an existing Secret with its password (letters, digits and
-  # . _ ~ + / = -). Empty passwordSecret: bundled: the Secret
-  # <fullname>-redis-users of the chart (key: the values key, for example
-  # walletService; random, kept across upgrades); external: required.
-  users:
-    walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
-    walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
-    walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
-    walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
-    gateway: {username: gateway, passwordSecret: "", passwordKey: password}
-  # The client settings of the wallet (the keys of its redis section).
-  client:
-    # -- The longest wait for a new connection and for each answer, in
-    # seconds (more than 0, at most 60). A route that needs Valkey answers
-    # 503 after them.
-    connectTimeoutSeconds: 2
-    # -- At most 3 decimals (whole milliseconds).
-    timeoutSeconds: 2
-    # -- The longest wait, in milliseconds (1 to 10000), for a replica to
-    # confirm a single-use value (WAIT 1). Without the confirmation the
-    # wallet refuses the value with 503. At most half of timeoutSeconds in
-    # whole milliseconds (2 x replicaWaitMilliseconds <= timeoutSeconds x
-    # 1000): a longer wait ends as a socket timeout, and the wallet refuses
-    # the configuration (the render stops).
-    replicaWaitMilliseconds: 100
-  # Your Valkey or Redis (mode external). It must meet the requirements of
-  # docs/redis.md: version 7.2 or later, Sentinel or one primary with
-  # replicas (not Redis Cluster), TLS, maxmemory-policy noeviction, AOF,
-  # min-replicas-to-write 1, and the ACL users of redis.users with their
-  # rights.
-  external:
-    # -- The Sentinels (host:port; an IPv6 address in brackets), for
-    # example ["redis-1.example.org:26379", "redis-2.example.org:26379",
-    # "redis-3.example.org:26379"]. They monitor the primary
-    # redis.masterName.
-    sentinels: []
-    # -- Without Sentinel: the address (host:port) of the primary of a
-    # single-shard server that keeps its address over a failover (for
-    # example a Redis Enterprise database). Set sentinels or address.
-    address: ""
-    # -- true: the processes log in to the Sentinels with their ACL user.
-    # false: the Sentinels accept clients without a login.
-    sentinelAuth: true
-    # -- Existing Secret with the CA certificate (PEM) of the servers and
-    # the Sentinels. Empty: the system CAs. The certificates must name the
-    # hosts that the clients connect to (the Sentinels, and the primary
-    # that the Sentinels give).
-    caSecret: ""
-    caKey: ca.crt
-  # Separate groups of your own Valkey or Redis for the single-use values
-  # of the wallet (state: the nonces and the proof ids) and for its caches
-  # (cache). Not enabled (default): the group of redis.mode (the queue)
-  # keeps them. A group has the requirements of redis.external; a cache
-  # group can evict keys (maxmemory-policy allkeys-lru) and needs no AOF
-  # and no replica (docs/redis.md). The wallet processes log in with their
-  # ACL users of redis.users and the same passwords.
-  state:
-    # -- true: the wallet keeps its single-use values on this group.
-    enabled: false
-    # -- The Sentinels of the group (host:port; an IPv6 address in
-    # brackets). They monitor the primary state.masterName.
-    sentinels: []
-    # -- Without Sentinel: the address (host:port) of the primary. Set
-    # sentinels or address.
-    address: ""
-    # -- The name of the primary that the Sentinels of the group monitor
-    # (1 to 64 letters, digits, . _ -). Required with sentinels.
-    masterName: ""
-    # -- true: the processes log in to the Sentinels with their ACL user.
-    sentinelAuth: true
-    # -- Existing Secret with the CA certificate (PEM) of the group. Empty:
-    # the system CAs.
-    caSecret: ""
-    caKey: ca.crt
-  cache:
-    # -- true: the wallet keeps its caches on this group.
-    enabled: false
-    # -- The Sentinels of the group (host:port; an IPv6 address in
-    # brackets). They monitor the primary cache.masterName.
-    sentinels: []
-    # -- Without Sentinel: the address (host:port) of the primary. Set
-    # sentinels or address.
-    address: ""
-    # -- The name of the primary that the Sentinels of the group monitor
-    # (1 to 64 letters, digits, . _ -). Required with sentinels.
-    masterName: ""
-    # -- true: the processes log in to the Sentinels with their ACL user.
-    sentinelAuth: true
-    # -- Existing Secret with the CA certificate (PEM) of the group. Empty:
-    # the system CAs.
-    caSecret: ""
-    caKey: ca.crt
-  # The bundled Valkey (mode bundled). Settings: AOF everysec, noeviction,
-  # min-replicas-to-write 1, min-replicas-max-lag 10, TLS also for the
-  # replication, no default user.
-  image:
-    registry: docker.io
-    repository: valkey/valkey
-    tag: 8.1.10-alpine
-    # -- The digest of the tag. With a digest, the image reference is
-    # <repository>@<digest> (your mirror keeps it).
-    digest: sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
-  # -- The pods: an odd number of 3 or more. Each pod has a data server and
-  # a Sentinel.
-  replicas: 3
-  sentinel:
-    # -- The number of Sentinels that must agree that the primary is down
-    # (1 to redis.replicas). A failover also needs a majority of the
-    # Sentinels.
-    quorum: 2
-    downAfterMilliseconds: 5000
-    failoverTimeoutMilliseconds: 60000
-    resources:
-      requests:
-        cpu: 10m
-        memory: 16Mi
-      limits:
-        memory: 64Mi
-  # -- The memory for the data of each server (a number with kb, mb or gb).
-  # Keep it well below the memory limit: the server needs more for the
-  # AOF rewrite and the replication.
-  maxmemory: 512mb
-  tls:
-    # -- Existing kubernetes.io/tls Secret with tls.crt, tls.key and ca.crt.
-    # The certificate must have the names
-    # *.<fullname>-redis-headless.<namespace>.svc,
-    # <fullname>-redis-sentinel.<namespace>.svc and 127.0.0.1, and the
-    # client and server use. Empty: the chart makes a CA and a certificate
-    # (10 years, kept across upgrades).
-    existingSecret: ""
-  persistence:
-    size: 8Gi
-    storageClass: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      memory: 1Gi
-  metrics:
-    # -- true: each Valkey pod gets the container metrics, the Prometheus
-    # exporter of its data server (port 9121, /metrics). It logs in with
-    # the ACL user metrics, which reads only INFO and the lengths of the
-    # slow log and of the latency events, never a key and never the
-    # configuration (docs/redis.md#metrics).
-    enabled: false
-    image:
-      registry: docker.io
-      repository: oliver006/redis_exporter
-      tag: v1.94.0
-      # -- The digest of the tag. With a digest, the image reference is
-      # <repository>@<digest> (your mirror keeps it).
-      digest: sha256:0842ef7110e62b40bbde2d5c11f38c6fbd99f7100c75e3866637c1b335a1eff7
-    resources:
-      requests:
-        cpu: 10m
-        memory: 32Mi
-      limits:
-        memory: 128Mi
-    # -- The ServiceMonitor <fullname>-redis-metrics of the Prometheus
-    # Operator (its CRD must exist) and a headless Service of the
-    # exporters. Needs redis.metrics.enabled.
-    serviceMonitor:
-      enabled: false
-      interval: 30s
-      labels: {}
-  # -- The image runs as the user 999 (valkey) and the group 1000.
-  # fsGroup: the group of the data volume and of the secret files (mode
-  # 0440).
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 999
-    runAsGroup: 1000
-    fsGroup: 1000
-    seccompProfile:
-      type: RuntimeDefault
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
-  priorityClassName: ""
-  nodeSelector: {}
-  tolerations: []
-  # -- For example a pod anti-affinity on the host name, so that each pod
-  # runs on its own node (docs/redis.md).
-  affinity: {}
-  imagePullSecrets: []
-
-# API (and the webhook handler, the same image). The OIDC provider runs in
-# the api process. The chart renders the api configuration as YAML
-# (ConfigMap <fullname>-api), mounted as /etc/igrant-api/config.yaml. The
-# file has no secret: each secret is a file in /run/secrets/igrant-api/ (a
-# projected volume of Secret keys, mode 0440).
+# The api core and the webhook handler (one image). The OIDC provider runs in the api.
 api:
+  # -- Run the api and the webhook handler. false: no gateway either (docs/components.md).
   enabled: true
-  image:
-    registry: ""
-    repository: api
-    # -- Empty: global.imageTag.
-    tag: ""
+  # -- Empty registry and tag: global.imageRegistry and global.imageTag.
+  image: {registry: "", repository: api, tag: ""}
   replicas: 1
-  # -- The rollout of the Deployments of the api and of the webhook handler:
-  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
-  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
-  # available minReadySeconds after it is ready: a pod that fails just after
-  # its start stops the rollout before an old pod stops.
+  # -- Rollout of the api and webhook Deployments: new pods first (docs/security-context.md).
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Host name of the api (required). The auth gateway receives every
-  # request of this host. On premise it is an internal host
-  # (docs/exposure.md).
+  # -- Required: host name of the api. The gateway receives every request of this host.
   host: ""
-  # -- The exposure of the api host (see exposure). The api host carries
-  # server-sent event streams of up to 3900 s and bodies of up to 10 MiB:
-  # see docs/exposure.md.
+  # -- Exposure of the api host. Empty values: the values of exposure.
   exposure:
-    # -- ingress, gatewayAPI or none. Empty: exposure.type.
+    # -- ingress, gatewayAPI or none.
     type: ""
-    # -- ingress: ingressClassName. Empty: exposure.ingress.className.
+    # -- ingress: the IngressClass.
     className: ""
-    # -- Annotations, added to exposure.ingress.annotations (ingress) or
-    # exposure.gatewayAPI.annotations (gatewayAPI).
+    # -- Added to the annotations of exposure.ingress or exposure.gatewayAPI.
     annotations: {}
     path: /
     # -- Prefix or Exact (gatewayAPI: PathPrefix or Exact).
     pathType: Prefix
-    tls:
-      # -- ingress: the TLS Secret of the host (in the release namespace).
-      # Empty: no TLS block (the TLS ends in front of the cluster).
-      secretName: ""
-    # -- gatewayAPI: parentRefs of this route. Empty:
-    # exposure.gatewayAPI.parentRefs.
+    # -- ingress: the TLS Secret of the host. Empty: no TLS block.
+    tls: {secretName: ""}
+    # -- gatewayAPI: the parentRefs of this route.
     parentRefs: []
-    # -- gatewayAPI: timeouts of this route. Empty:
-    # exposure.gatewayAPI.timeouts.
+    # -- gatewayAPI: the timeouts of this route.
     timeouts: {}
-  # -- ServiceEnvelope: the api signs and verifies its NATS messages
-  # (issuer igrant-api; it trusts igrant-consent-management and
-  # eudi-wallet). activeKid: the kid of the active key in the private JWKS
-  # (required). signingKey: the existing Secret with the private JWKS (empty
-  # name: <fullname>-api-service-key).
+  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
   serviceEnvelope:
     activeKid: ""
-    signingKey:
-      existingSecret: ""
-      key: service-jwks.json
+    signingKey: {existingSecret: "", key: service-jwks.json}
     lifetimeSeconds: 60
     clockSkewSeconds: 60
-  # -- Existing Secret with the key "api-secret-key" (ApiSecretKeyFile: the
-  # HMAC key of the login rate limits). Empty: the Secret <fullname>-api of
-  # the chart holds it.
+  # -- Secret with api-secret-key, the HMAC key of the login rate limits. Empty: <fullname>-api.
   existingSecret: ""
-  # -- The value of api-secret-key when the chart makes the Secret. Empty:
-  # random (kept across upgrades).
+  # -- api-secret-key when the chart makes the Secret. Empty: random, kept across upgrades.
   apiSecretKey: ""
-  # -- Log level (Log.level): debug, info, warn or error.
+  # -- debug, info, warn or error.
   logLevel: info
-  # The api is the identity and access management: it checks the passwords
-  # and keeps the accounts and the wallet links in its own database.
   iam:
-    # -- The provider name that the api stores with the wallet login of each
-    # admin (Iam.IdPAlias). Do not change it after the first wallet login.
+    # -- Provider name of the admin wallet logins. Do not change it after the first login.
     idpAlias: login-with-eudi-wallet
-  # -- Authentication of the organisation admins (AdminAuth).
   adminAuth:
     walletLogin:
-      # -- The id of the organisation whose OpenID provider the admins use
-      # for the wallet login (the api is the relying party). Empty: the
-      # platform operator organisation, when it is the wallet provider and
-      # its OIDC extension is on. Empty and no such platform operator
-      # organisation: the admins have no wallet login.
+      # -- Organisation of the OpenID provider of the admin wallet login.
       organisationId: ""
-  # -- Public URL of the dashboard (Dashboard.url: links in the e-mails and
-  # the same-site check of the login cookie). Empty: the public URL of
-  # enterpriseDashboard.host. The dashboard and the api must have the same
-  # registrable domain (for example dashboard.example.com and
-  # api.example.com).
+  # -- Public URL of the dashboard. Empty: the URL of enterpriseDashboard.host.
   dashboardUrl: ""
-  # -- Key Secrets of the api. The chart does not make them:
-  # scripts/make-keys.sh does (see docs/keys.md). Each existingSecret:
-  # empty means "<fullname>-<default name>". The api pods do not start until
-  # the Secrets exist.
+  # -- Key Secrets of scripts/make-keys.sh (docs/keys.md). The api pods wait until they exist.
   keyStorage:
-    # -- Token hash secret file (HMAC-SHA256 of the API keys and of the
-    # opaque tokens at rest).
-    tokenHash:
-      existingSecret: ""   # empty: <fullname>-api-token-hash
-      key: token-hash-secret.json
-    # -- JWKS file with the ES256 keys that sign the api tokens.
+    # -- HMAC secret of the API keys and opaque tokens. Empty Secret: <fullname>-api-token-hash.
+    tokenHash: {existingSecret: "", key: token-hash-secret.json}
+    # -- ES256 JWKS that signs the api tokens. Empty Secret: <fullname>-api-token-signing.
     tokenSigning:
-      existingSecret: ""   # empty: <fullname>-api-token-signing
+      existingSecret: ""
       key: jwks.json
-      # -- kid of the key that signs (KeyStorage.tokenSigningActiveKid). It
-      # must be in the JWKS file. Required.
+      # -- Required: the kid of the signing key. It must be in the JWKS.
       activeKid: ""
-    # -- Wrapping keys of the envelope encryption of the OIDC provider keys
-    # in the database.
-    dbWrapping:
-      existingSecret: ""   # empty: <fullname>-api-db-wrapping
-      key: db-wrapping-keys.json
-  # -- SMTP server for the e-mails of the api. Empty host: no e-mail.
+    # -- Wrapping keys of the OIDC provider keys. Empty Secret: <fullname>-api-db-wrapping.
+    dbWrapping: {existingSecret: "", key: db-wrapping-keys.json}
+  # -- SMTP server of the api e-mails. Empty host: no e-mail.
   smtp:
     host: ""
     port: 587
     username: ""
-    # -- Do not use: put the password in existingSecret. When existingSecret
-    # is set, the chart ignores this value; else the Secret <fullname>-api
-    # holds it (key smtp-password). Empty: no SMTP authentication.
+    # -- Do not use: set existingSecret. Empty password and Secret: no SMTP login.
     password: ""
-    # -- Existing Secret with the SMTP password (Smtp.passwordFile).
+    # -- Existing Secret with the SMTP password.
     existingSecret: ""
     passwordKey: smtp-password
-    # -- Sender address of the e-mails (Smtp.adminEmail). The SMTP user must
-    # be allowed to send as this address.
+    # -- Sender address. The SMTP user must be allowed to send as it.
     adminEmail: ""
-    # -- Reply-To address of the e-mails (Smtp.replyTo). Empty: none.
+    # -- Reply-To address. Empty: none.
     replyTo: ""
   # -- Twilio account for SMS. Empty accountSid and existingSecret: no SMS.
   twilio:
-    # -- Do not use: put the values in existingSecret. Else the Secret
-    # <fullname>-api holds them.
+    # -- Do not use: set existingSecret.
     accountSid: ""
     authToken: ""
-    # -- Existing Secret with the Twilio account SID and auth token
-    # (Twilio.accountSidFile, Twilio.authTokenFile).
+    # -- Existing Secret with the account SID and the auth token.
     existingSecret: ""
     accountSidKey: twilio-account-sid
     authTokenKey: twilio-auth-token
-  # -- The Data Verifier mobile app: the api publishes these values in
-  # /.well-known/assetlinks.json and /.well-known/apple-app-site-association
-  # of the api host. Empty androidPackageName: the api ignores this block.
+  # -- App links of the Data Verifier app on the api host. Empty androidPackageName: none.
   verifierApp:
     androidPackageName: ""
     androidSha256CertFingerprints: []
     appleAppIds: []
-  # The effective features of each organisation select its webhook event
-  # types: the chart has no list of event types.
   webhooks:
-    # -- Days that the api keeps webhook delivery records.
+    # -- Days that the api keeps the webhook delivery records.
     deliveryRetentionDays: 10
   # -- Days that the api keeps the action logs of each organisation.
   actionLogRetentionDays: 30
-  # -- timeout: the NATS connect timeout in seconds. maxConcurrentHandlers:
-  # the NATS requests that one api process handles at the same time.
-  nats:
-    timeout: 5
-    maxConcurrentHandlers: 64
-  # -- The stop of the api and webhook pods (docs/security-context.md, "The
-  # stop of a pod"): first the preStop sleep of preStopSeconds (the pod
-  # serves on while Kubernetes removes it from the endpoints); then at
-  # SIGTERM /readyz answers 503 "draining" at once, the server keeps
-  # accepting for drainSeconds (Server.drainSeconds), and it waits at most
-  # gracefulShutdownSeconds (Server.gracefulShutdownSeconds) for the
-  # requests in progress and the NATS drain. The render stops when
-  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
-  # gracefulShutdownSeconds + 5.
+  # -- NATS connect timeout (seconds) and the NATS requests that one process handles at once.
+  nats: {timeout: 5, maxConcurrentHandlers: 64}
+  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
   server:
     preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
     terminationGracePeriodSeconds: 40
-  # -- The limits of the installation that the api checks (the section
-  # Limits of the api and webhook files). An empty value writes no key, and
-  # the api uses its default.
   limits:
-    # -- Limits.maxOrganisations: the most organisations of the
-    # installation (1 to 100: a smaller value than the default, never a larger one). The create of one more organisation gets
-    # 409 organisation_limit_reached; the organisations that exist stay.
-    # Empty: the default of the api (100). An installation with more than
-    # 100 organisations keeps them, but it cannot make a new organisation.
+    # -- The most organisations, 1 to 100. Empty: the api default (100).
     maxOrganisations: ""
-  # -- Extra keys of the api configuration, deep-merged over the keys of the
-  # chart (api.yaml and webhook.yaml; exact key names, for example Cors or
-  # IndividualAuth). Do not put a secret here: the ConfigMap is not secret.
-  # Not Log.file: the chart writes no log file (the processes log to
-  # stdout).
-  # Not Installation: the chart writes it (docs/components.md).
+  # -- Extra api configuration keys, deep-merged. Not for secrets, Installation or Log.file.
   extraConfig: {}
-  # -- Extra environment variables. Only runtime variables (for example
-  # GOMEMLIMIT): the api reads no configuration from the environment.
+  # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
-  # -- Probes of the api core: startup and liveness /healthz (the process
-  # runs, no dependency check), readiness /readyz: the api checks the
-  # database every 2 s on one connection outside its pools, and /readyz
-  # fails when no check passed for 10 s; NATS and the wallet views are start
-  # gates (/readyz waits for them only at the start). The readiness probe
-  # (2 s, timeout 2 s, 2 failures) takes a pod with a broken database path
-  # out of the Service in about 14 s; an interruption of up to 6 s changes
-  # nothing. An outage of the database of more than 10 s takes all pods out
-  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
-  # liveness probe starts after it (no initialDelaySeconds).
+  # -- Probes of the api core (docs/security-context.md, "The stop of a pod").
   startupProbe:
-    httpGet:
-      path: /healthz
-      port: http
+    httpGet: {path: /healthz, port: http}
     periodSeconds: 2
     timeoutSeconds: 3
     failureThreshold: 90
   readinessProbe:
-    httpGet:
-      path: /readyz
-      port: http
+    httpGet: {path: /readyz, port: http}
     periodSeconds: 2
     timeoutSeconds: 2
     failureThreshold: 2
   livenessProbe:
-    httpGet:
-      path: /healthz
-      port: http
+    httpGet: {path: /healthz, port: http}
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
   resources:
-    requests:
-      cpu: 20m
-      memory: 272Mi
-    limits:
-      memory: 512Mi
-  # -- /tmp of the api and webhook pods (the root file system is read-only):
-  # the multipart parser of Go keeps a form of up to 32 MiB in memory, and
-  # it writes a larger file part whole to /tmp. An emptyDir in memory of
-  # sizeLimit: when /tmp is full, only the upload that fills it fails (no
-  # space left), never the pod; its files count against the memory limit of
-  # the container. The render stops when the largest body that the gateway
-  # sends to the api (gateway.proxy.maxBodyBytes, the classes default and
-  # file) is above 32 MiB and above sizeLimit, or when the memory request
-  # and sizeLimit together are above the memory limit of the api or of the
-  # webhook container (docs/security-context.md, "The /tmp folder of the
-  # api").
-  tmp:
-    sizeLimit: 64Mi
-  # -- The migrate init container of the api pods (igrant-api migrate).
+    requests: {cpu: 20m, memory: 272Mi}
+    limits: {memory: 512Mi}
+  # -- /tmp of the api and webhook pods, in memory (docs/security-context.md).
+  tmp: {sizeLimit: 64Mi}
+  # -- The migrate init container of the api pods.
   migrate:
     resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
-  # One-off operator Jobs (igrant-api commands). Each is off by default. A
-  # Job runs at "helm install" or "helm upgrade" when it is enabled; its name
-  # has the release revision. Turn it off again after the run.
-  #
-  # An installation has one platform operator organisation, and its platform
-  # admins make the other organisations in the dashboard. Only the command
-  # line makes the platform operator: bootstrapPlatform (docs/install.md,
-  # step 7).
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 256Mi}
+  # -- One-off operator Jobs: a Job runs at each install or upgrade while it is enabled.
   jobs:
-    # -- A new installation: makes the platform operator organisation and
-    # its first admin with the platform admin right, in one command
-    # (igrant-api onboard bootstrap-platform). It also makes the organisation
-    # type when no type has the name. Idempotent: a second run with the same
-    # values changes nothing, and the password of an account that exists
-    # does not change. Use it only for a new installation.
+    # -- The platform operator organisation and its first admin (docs/install.md, step 7).
     bootstrapPlatform:
       enabled: false
-      # -- The e-mail address (login name) and the name of the first
-      # platform admin (required when enabled).
+      # -- Login e-mail and name of the first platform admin (required when enabled).
       adminEmail: ""
       adminName: ""
-      # -- Existing Secret and key with the first password of the admin. The
-      # Job mounts it as a file (--password-file); it is never an argument.
-      # The password of a platform admin needs 15 characters or more (at
-      # most 256) and at least one special character, for example ! # or %.
-      # It must not be a known password or have a part of the e-mail
-      # address, the name or the organisation name. The chart
-      # cannot check a password in a Secret: the Job fails when the api
-      # refuses it, and its log names the failed rules. The admin must set
-      # a new password at the first login.
+      # -- Existing Secret with the first password of the admin, mounted as a file.
       passwordSecret: ""
       passwordKey: password
-      # -- The name, the organisation type (for example Technology), the
-      # location and the URL of the privacy policy of the platform operator
-      # organisation (required when enabled).
+      # -- Name, type, location and privacy policy URL of the organisation (required).
       organisationName: ""
       type: ""
       location: ""
       policyUrl: ""
-    # -- Resources of the Jobs, their migrate init container and the api
-    # migration hook.
+    # -- Resources of the Jobs, their migrate init container and the api migration hook.
     resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 256Mi}
     ttlSecondsAfterFinished: 86400
     # -- Pod security context of the Jobs. Empty: api.podSecurityContext.
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532
       runAsGroup: 65532
-      # Group of the mounted secret files (mode 0440).
       fsGroup: 65532
-      seccompProfile:
-        type: RuntimeDefault
-    # -- Container security context of the Jobs (and their migrate init
-    # container). Empty: api.containerSecurityContext.
+      seccompProfile: {type: RuntimeDefault}
+    # -- Container security context of the Jobs. Empty: api.containerSecurityContext.
     containerSecurityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
-      capabilities:
-        drop: ["ALL"]
+      capabilities: {drop: ["ALL"]}
   webhook:
     replicas: 1
-    # -- Probes of the webhook handler: startup and liveness /healthz (the
-    # process runs), readiness /readyz: the database check of the api core
-    # (every 2 s, outside the pools; /readyz fails when no check passed for
-    # 10 s), NATS and the JetStream consumers as start gates. The readiness
-    # probe is 5 s x 2 failures (timeout 2 s): the handler sends no
-    # response to a client, so a slower exit is enough. The startup probe
-    # gives the process 180 s (90 x 2 s); the liveness probe starts after it
-    # (no initialDelaySeconds).
+    # -- Probes of the webhook handler (readiness 5 s x 2: it answers no client).
     startupProbe:
-      httpGet:
-        path: /healthz
-        port: http
+      httpGet: {path: /healthz, port: http}
       periodSeconds: 2
       timeoutSeconds: 3
       failureThreshold: 90
     readinessProbe:
-      httpGet:
-        path: /readyz
-        port: http
+      httpGet: {path: /readyz, port: http}
       periodSeconds: 5
       timeoutSeconds: 2
       failureThreshold: 2
     livenessProbe:
-      httpGet:
-        path: /healthz
-        port: http
+      httpGet: {path: /healthz, port: http}
       periodSeconds: 10
       timeoutSeconds: 3
       failureThreshold: 3
     resources:
-      requests:
-        cpu: 15m
-        memory: 32Mi
-      limits:
-        memory: 256Mi
-  # -- The api and webhook pods (with the migrate init container). The image
-  # runs as the user nonroot (UID 65532, GID 65532). fsGroup: the group of
-  # the secret files (mode 0440). The api and the webhook handler listen on
-  # port 80 as a non-root user: the sysctl lets the pod open a port below
-  # 1024 without a capability. The processes write only to the emptyDir
-  # /tmp (64Mi).
+      requests: {cpu: 15m, memory: 32Mi}
+      limits: {memory: 256Mi}
+  # -- UID 65532. The sysctl lets the pod listen on port 80 without a capability.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 65532
     runAsGroup: 65532
     fsGroup: 65532
-    seccompProfile:
-      type: RuntimeDefault
-    sysctls:
-      - name: net.ipv4.ip_unprivileged_port_start
-        value: "0"
+    seccompProfile: {type: RuntimeDefault}
+    sysctls: [{name: net.ipv4.ip_unprivileged_port_start, value: "0"}]
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+    capabilities: {drop: ["ALL"]}
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
   imagePullSecrets: []
 
-# The privacy dashboards of the organisations. The api of this chart
-# version cannot deploy them in your cluster: keep enabled false
-# (docs/privacy-dashboard.md). With enabled, the chart only gives the api
-# pods a ServiceAccount with a Role in the namespace (get, create, update,
-# delete of ConfigMaps, Services, Deployments and Ingresses). The privacy
-# dashboard needs consent: without consent, enabled true stops the render.
-privacyDashboard:
-  enabled: false
-  # -- The namespace of the privacy dashboards. It must exist.
-  namespace: ""
-
-# Auth gateway (its own image): it authenticates the requests
-# of the api host (API keys, admin and individual tokens, organisation,
-# sandbox, roles and scopes) and forwards them to the api core, consent or
-# the wallet config role with a signed internal token. Part of every
-# installation with the api: the exposure of the api host always goes to the
-# gateway. Its configuration file is the ConfigMap <fullname>-gateway; its
-# secret files are in /run/secrets/igrant-gateway/.
+# The auth gateway: it checks each request of the api host and sends it on.
 gateway:
-  # -- Image of the gateway. Empty registry, tag or pullPolicy: the values of
-  # api.image (one release). The digest is its own.
-  image:
-    registry: ""
-    repository: gateway
-    tag: ""
-    digest: ""
-  # -- Two or more replicas: the gateway is in front of all api requests.
+  # -- Empty registry, tag or pullPolicy: the values of api.image. The digest is its own.
+  image: {registry: "", repository: gateway, tag: "", digest: ""}
+  # -- Two or more: the gateway is in front of all api requests.
   replicas: 2
-  # -- The rollout of the Deployment of the gateway: new pods are ready before
-  # old pods stop (maxUnavailable 0), with at most a quarter more pods during
-  # the rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
-  # after it is ready: a pod that fails just after its start stops the rollout
-  # before an old pod stops.
+  # -- Rollout: new pods first (docs/security-context.md).
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
   revisionHistoryLimit: 5
-  # -- Gateway.listenPort: 1024 or more (non-root).
+  # -- 1024 or more (the gateway runs as non-root).
   listenPort: 8070
-  # -- The stop of the gateway pods (docs/security-context.md, "The stop
-  # of a pod"): first the preStop sleep of preStopSeconds (the pod serves
-  # on while Kubernetes removes it from the endpoints and the proxies);
-  # then at SIGTERM the drain (Gateway.drainSeconds: /readyz answers 503,
-  # the server still accepts) and the wait for the requests in progress
-  # (Gateway.gracefulShutdownSeconds). The render stops when
-  # terminationGracePeriodSeconds is below preStopSeconds + drainSeconds +
-  # gracefulShutdownSeconds + 5.
+  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
   preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
   terminationGracePeriodSeconds: 40
-  # -- Log level (Log.level). Empty: api.logLevel.
+  # -- Empty: api.logLevel.
   logLevel: ""
   upstreams:
     core:
       # -- Base URL of the api core. Empty: the api Service of the chart.
       url: ""
     consent:
-      # -- Base URL of the consent service of another release. Empty: the
-      # consent Service of the chart; with consent.enabled false, the
-      # installation has no consent (docs/components.md).
+      # -- Consent of another release. Empty: the consent Service of the chart.
       url: ""
-      # -- Time limit of a request to the consent service; after it the
-      # client gets 504 (0: 30 s).
+      # -- Time limit of a consent request; then the client gets 504. 0: 30 s.
       requestTimeoutSeconds: 30
     walletConfig:
-      # -- Base URL of the wallet config role of another release. Empty:
-      # the wallet-config Service of the chart; with
-      # organisationWallet.enabled false, the installation has no wallet
-      # (docs/components.md).
+      # -- Wallet config role of another release. Empty: the Service of the chart.
       url: ""
-      # -- Time limit of a request to the wallet config role; after it the
-      # client gets 504 (0: 60 s).
+      # -- Time limit of a wallet config request; then the client gets 504. 0: 60 s.
       requestTimeoutSeconds: 60
   internalToken:
-    # -- "iss" of the internal tokens.
+    # -- iss of the internal tokens.
     issuer: igrant-gateway
-    # -- kid of the key that signs (Gateway.internalToken.activeKid). It
-    # must be in the JWKS file of signingKey. Required.
+    # -- Required: the kid of the signing key. It must be in the JWKS of signingKey.
     activeKid: ""
-    # -- Lifetime of a token in seconds (1 to 300).
+    # -- Lifetime of a token, 1 to 300 seconds.
     lifetimeSeconds: 60
-    # -- "aud" of the internal tokens for each service that owns routes. The
-    # api core, consent and the wallet config role get the same values.
+    # -- aud of the internal tokens for each upstream.
     audiences:
       core: igrant-api-core
       consent: consent
       walletConfig: wallet-config
-    # -- Existing Secret with the ES256 private JWKS of the gateway. Empty
-    # name: <fullname>-gateway-internal-token.
-    signingKey:
-      existingSecret: ""
-      key: internal-token-jwks.json
-  # -- Public JWKS files (no secret), both required. gatewayJwks: the public
-  # keys of the gateway (the api core, consent and the wallet config role
-  # verify the internal token); the chart makes the shared ConfigMap
-  # <fullname>-igrant-gateway-jwks, or uses existingConfigMap.
-  # tokenVerificationJwks: the public keys of the api tokens (only the
-  # gateway verifies the admin and individual tokens); the chart puts it in
-  # the gateway ConfigMap, or uses existingTokenVerificationConfigMap.
+    # -- Existing Secret with the ES256 private JWKS. Empty: <fullname>-gateway-internal-token.
+    signingKey: {existingSecret: "", key: internal-token-jwks.json}
+  # -- Required public JWKS (no secrets): of the gateway and of the api tokens.
   publicKeys:
     existingConfigMap: ""
     gatewayJwks: ""
@@ -1124,877 +331,264 @@ gateway:
     existingTokenVerificationConfigMap: ""
     tokenVerificationJwks: ""
     tokenVerificationJwksKey: token-verification-jwks.json
-  # -- Connections to the upstreams (Gateway.proxy).
+  # -- Connections to the upstreams.
   proxy:
     dialTimeoutSeconds: 5
     responseHeaderTimeoutSeconds: 120
     idleConnTimeoutSeconds: 90
     maxIdleConnsPerHost: 64
-    # -- The gateway ends a server-sent event stream that sends nothing for
-    # this time (20 to 600). The render stops when it is not at least 2 x
-    # organisationWallet.sse.keepAliveSeconds.
+    # -- End of a silent event stream (20 to 600): at least 2 x the wallet sse.keepAliveSeconds.
     sseIdleTimeoutSeconds: 45
-    # -- The body limits in bytes of the route classes (a larger body gets
-    # 413 at the gateway). 0 = the default of the class (default 1 MiB, file
-    # 5 MiB + 64 KiB, large 10 MiB); else 1024 to 104857600.
-    maxBodyBytes:
-      default: 0
-      file: 0
-      large: 0
-  # -- The feature gate (Features.enforce of the gateway file): the gateway
-  # refuses a route of a product feature that is off for the organisation
-  # of the credential (403, errorKey feature_disabled). A platform admin
-  # sets the features of each organisation in the dashboard.
+    # -- Body limits of the route classes in bytes (413 above). 0: the default of the class.
+    maxBodyBytes: {default: 0, file: 0, large: 0}
   features:
-    # -- true (the default of the gateway): the gate is on. false: the
-    # gateway refuses no route for a feature, and the features only show
-    # and hide the areas of the dashboard. Use false only for an emergency.
+    # -- Refuse the routes of a feature that is off for the organisation. false: emergency only.
     enforce: true
-  # -- Extra keys of the gateway configuration, deep-merged over the keys of
-  # the chart (exact key names; no secrets). Not Installation: the chart
-  # writes it (docs/components.md). Not Log.file: the chart writes no log
-  # file (the gateway logs to stdout).
+  # -- Extra gateway configuration keys, deep-merged. Not for secrets, Installation or Log.file.
   extraConfig: {}
-  # -- Extra environment variables (runtime only, for example GOMEMLIMIT).
+  # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
-  # -- Probes: startup and liveness /healthz (the process runs), readiness
-  # /readyz: the gateway checks the database every 2 s on one connection
-  # outside its pool, and /readyz fails when no check passed for 10 s. The
-  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
-  # database path out of the Service in about 14 s; an interruption of up
-  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
-  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
-  # liveness probe starts after it (no initialDelaySeconds).
+  # -- Probes (docs/security-context.md, "The stop of a pod").
   startupProbe:
-    httpGet:
-      path: /healthz
-      port: http
+    httpGet: {path: /healthz, port: http}
     periodSeconds: 2
     timeoutSeconds: 3
     failureThreshold: 90
   readinessProbe:
-    httpGet:
-      path: /readyz
-      port: http
+    httpGet: {path: /readyz, port: http}
     periodSeconds: 2
     timeoutSeconds: 2
     failureThreshold: 2
   livenessProbe:
-    httpGet:
-      path: /healthz
-      port: http
+    httpGet: {path: /healthz, port: http}
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
   resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      memory: 512Mi
-  # -- Non-root (any UID). fsGroup: the group of the secret files (mode
-  # 0440).
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 512Mi}
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 65532
     runAsGroup: 65532
     fsGroup: 65532
-    seccompProfile:
-      type: RuntimeDefault
+    seccompProfile: {type: RuntimeDefault}
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+    capabilities: {drop: ["ALL"]}
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
-  # -- Empty (and no global.affinity): a preferred pod anti-affinity over
-  # the node host names, so the gateway pods run on different nodes.
+  # -- Empty (and no global.affinity): a preferred anti-affinity over the nodes.
   affinity: {}
   imagePullSecrets: []
 
-# The public keys of the services (no secret): each service signs its NATS
-# messages with its private key, and each receiver verifies the sender with
-# these public keys. The chart makes the shared
-# ConfigMap <fullname>-igrant-service-jwks (keys <issuer>.json) from
-# publicJwks, or uses existingConfigMap with these keys. Required for every
-# service. scripts/make-keys.sh writes them.
-serviceKeys:
-  existingConfigMap: ""
-  publicJwks:
-    igrant-api: ""
-    igrant-consent-management: ""
-    eudi-wallet: ""
-
-# NetworkPolicy templates (docs/network-policies.md). Off by default: turn
-# them on only when the cluster enforces NetworkPolicy (for example Calico,
-# Cilium, OVN-Kubernetes). The rules come from policies/network-matrix.yaml:
-# one ingress policy per destination role, one egress policy per source
-# role, DNS, the egress profiles, and a default deny. The pod labels
-# netpol.igrant.io/role and netpol.igrant.io/egress-<profile> are rendered
-# always, so turning the policies on restarts no pod.
-networkPolicy:
-  enabled: false
-  # -- The pods of your ingress controller or of the data plane of your
-  # Gateway (the sources of the gateway, wallet-service and dashboard
-  # pods). Examples: ingress-nginx {namespaceSelector: {matchLabels:
-  # {kubernetes.io/metadata.name: ingress-nginx}}}; OpenShift router
-  # {namespaceSelector: {matchLabels: {network.openshift.io/policy-group:
-  # ingress}}}.
-  ingressController:
-    namespaceSelector:
-      matchLabels:
-        kubernetes.io/metadata.name: ingress-nginx
-    podSelector: {}
-  # -- The DNS pods. OpenShift: namespace openshift-dns, pods
-  # dns.operator.openshift.io/daemonset-dns: default, port 5353. cidrs: the
-  # addresses of DNS servers that are not pods of the cluster network, for
-  # example the address of NodeLocal DNSCache (169.254.20.10/32) or of a
-  # resolver of the node or of your network (docs/network-policies.md).
-  dns:
-    cidrs: []
-    namespaceSelector:
-      matchLabels:
-        kubernetes.io/metadata.name: kube-system
-    podSelector:
-      matchLabels:
-        k8s-app: kube-dns
-    ports:
-      - {port: 53, protocol: UDP}
-      - {port: 53, protocol: TCP}
-  # -- An external NATS in the cluster (nats.enabled false): its namespace
-  # and pods (port 4222). For a NATS outside the cluster, use externalNats.
-  nats:
-    namespaceSelector: {}
-    podSelector: {}
-  # -- Databases outside the chart (database.mode external, or a
-  # readAccess.<reader>.<owner>.host): their CIDRs and ports. "hosts" is a
-  # note for you: a NetworkPolicy uses only the CIDRs. Empty ports: the port
-  # of database.engine (5432).
-  # Example: [{hosts: ["db.customer.example"], cidrs: ["192.0.2.10/32"], ports: [5432]}]
-  externalDatabases: []
-  # -- A NATS outside the cluster: [{hosts: [...], cidrs: [...], ports: [4222]}].
-  externalNats: []
-  # -- Your Valkey or Redis (redis.mode external): its CIDRs and ports.
-  # Required with redis.mode external. Empty ports: 6379 and 26379.
-  # Example: [{hosts: ["redis-1.example.org"], cidrs: ["192.0.2.50/32"], ports: [6379, 26379]}]
-  externalRedis: []
-  # -- Pod and Service CIDRs of the cluster, excluded from the internet
-  # profiles (0.0.0.0/0 and ::/0; each block excludes the entries of its
-  # family). A dual-stack cluster: give its IPv6 ranges too.
-  clusterCidrs: []
-  egress:
-    # -- External targets: cidrs (with except) and/or namespaceSelector +
-    # podSelector; ports [] = all ports. A profile without a target renders
-    # no rule. The except list of the internet profiles: the private,
-    # shared and link-local IPv4 ranges; the unique local, link-local and
-    # multicast IPv6 ranges; and in the NAT64 prefix 64:ff9b::/96 only the
-    # images of the IPv4 ranges that are never public (10/8, 172.16/12,
-    # 192.168/16, 100.64/10, 169.254/16, 127/8, 0/8). Thus an IPv6-only
-    # cluster with DNS64 reaches the public IPv4 addresses through NAT64.
-    # With a NAT64 prefix of your network, add the images of these ranges in
-    # that prefix (docs/network-policies.md). The list has no ::ffff:0:0/96:
-    # Kubernetes refuses an IPv4-mapped address, and a packet never has one.
-    profiles:
-      internet:
-        cidrs: ["0.0.0.0/0", "::/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
-          "fc00::/7", "fe80::/10", "ff00::/8",
-          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
-        ports: [443, 80]
-      internet-any-port:
-        cidrs: ["0.0.0.0/0", "::/0"]
-        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
-          "fc00::/7", "fe80::/10", "ff00::/8",
-          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106", "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
-        ports: []
-      # -- The metadata server of a cloud (for example the default
-      # credentials of the client of a cloud service).
-      metadata:
-        cidrs: ["169.254.169.254/32"]
-        ports: [80]
-      # -- An external OpenBao (openbao.mode external).
-      kms:
-        cidrs: []
-        namespaceSelector: {}
-        podSelector: {}
-        ports: [8200]
-      # -- A cloud KMS of the key stores (gcp-kms, aws-kms, azure-key-vault)
-      # on an address that the internet profile excludes, for example a
-      # private endpoint of AWS KMS or Azure Key Vault in your network. The
-      # public endpoints of the clouds go through the internet profile.
-      cloudKms:
-        cidrs: []
-        ports: [443]
-      # -- The S3 store of the audit bucket
-      # (organisationWallet.audit.bucket, type s3) on an address that the
-      # internet profile excludes, for example a store in your network.
-      auditBucket:
-        cidrs: []
-        ports: [443]
-      # -- The public hosts of this platform (the hosts of the api, the
-      # wallet and the dashboard), for a wallet role that reads a status
-      # list, the metadata or a credential offer of an organisation of the
-      # same platform. The target is always the pods of
-      # networkPolicy.ingressController: in the cluster, the address of the
-      # load balancer often goes directly to them. ports: the container
-      # ports of these pods (ingress-nginx 80 and 443; Traefik 8000 and
-      # 8443; Envoy Gateway 10080 and 10443). cidrs: the address of your
-      # load balancer when it is in a private range and the traffic goes to
-      # it (docs/network-policies.md).
-      platform:
-        cidrs: []
-        ports: [80, 443]
-      smtp:
-        cidrs: []
-        ports: [587]
-      # -- The Kubernetes API server (the privacy dashboards).
-      kubeApi:
-        cidrs: []
-        ports: [443, 6443]
-    # -- The profiles of each role (pod labels). The chart OpenBao needs no
-    # external target.
-    roles:
-      # Any port of a public IPv4 or IPv6 address for each role that calls a
-      # URL of an organisation or another vendor (see
-      # docs/network-policies.md, "The egress of each role"): the api (the
-      # webhooks, the OIDC providers), the webhook handler (the webhooks),
-      # consent (the Data Space of an organisation) and the wallet roles.
-      # The gateway calls only the upstreams of gateway.upstreams.
-      api: [internet-any-port, smtp]
-      webhook: [internet-any-port]
-      gateway: [internet]
-      consent: [internet-any-port]
-      # The wallet roles: an issuer, a verifier, a trust list, a status
-      # list, a JWKS or the metadata of another vendor can have a URL with a
-      # port (the specifications allow it). The SSRF guard of the wallet
-      # keeps the private addresses out.
-      wallet-service: [internet-any-port, platform, kms, cloudKms]
-      wallet-config: [internet-any-port, platform, kms, cloudKms]
-      wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
-      wallet-clock: []
-  # -- Scrape of the NATS monitor port (8222) from a monitoring namespace.
-  monitoring:
-    enabled: false
-    namespaceSelector: {}
-    podSelector: {}
-
-# Read-only database users of the reads between the services. A reader
-# service reads the views of an owner service (schema read_v1 or read_v2)
-# with its own read-only user; it never writes there. The owner makes the
-# views in its schema migrations. readAccess.<reader>.<owner>:
-#   username: the read-only user. A PostgreSQL role belongs to the whole
-#     database server, so each reader and owner pair needs its own name.
-#   passwordSecret, passwordKey: an existing Secret with its password.
-#     Empty: the Secret <fullname>-read-access of the chart (key
-#     <reader>-<owner>, random, kept across upgrades).
-#   host, port, name: the owner database. Empty: the database of the owner
-#     in this chart. Set them only for an owner database on another server
-#     (the engine and the TLS settings are always the ones of database.*).
-readAccess:
-  api:
-    # -- The api (start-api, the webhook handler, the operator Jobs) reads
-    # the wallet database (the wallet views).
-    wallet:
-      username: api_wallet_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  consent:
-    # -- Consent reads the api database (the contact views).
-    api:
-      username: consent_api_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-    # -- Consent reads the wallet database (the record events).
-    wallet:
-      username: consent_wallet_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  wallet:
-    # -- The wallet reads the api database (the api views).
-    api:
-      username: wallet_api_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-    # -- The wallet reads the consent database (the data agreement view).
-    consent:
-      username: wallet_consent_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  # -- The Jobs that make the read-only users with the owner command
-  # "read-access apply" (one Job per owner and reader, for example
-  # <fullname>-api-read-access-wallet-<revision>): api for the readers wallet
-  # and consent, consent for the reader wallet, wallet for the readers api
-  # and consent (hooks after the wallet migration hook, for example
-  # <fullname>-wallet-read-access-api). They run at each install and upgrade
-  # (idempotent; a new release can add views). Each Job connects with an
-  # admin user that may make users and grant SELECT on the views: adminUser
-  # and the Secret adminPasswordSecret (key adminPasswordKey). Empty: the
-  # admin user of database.* (the "postgres" user of the bundled server, or
-  # database.external.admin). enabled false: a DBA runs the SQL of
-  # "read-access print-sql" (see docs/read-access.md).
-  jobs:
-    enabled: true
-    api:
-      adminUser: ""
-      adminPasswordSecret: ""
-      adminPasswordKey: ""
-    consent:
-      adminUser: ""
-      adminPasswordSecret: ""
-      adminPasswordKey: ""
-    wallet:
-      adminUser: ""
-      adminPasswordSecret: ""
-      adminPasswordKey: ""
-    ttlSecondsAfterFinished: 86400
-
-# Consent management (data agreements, consent records, data sharing).
-# The auth gateway sends the consent routes to this service.
+# Consent management: data agreements, consent records and data sharing.
 consent:
-  # -- Run consent in this release. false with gateway.upstreams.consent.url:
-  # the consent service of another release. false without the URL: the
-  # installation has no consent (docs/components.md).
+  # -- false: consent of another release (gateway.upstreams.consent.url), or no consent.
   enabled: true
-  image:
-    registry: ""
-    repository: consent-management-backend
-    # -- Empty: global.imageTag.
-    tag: ""
+  # -- Empty registry and tag: global.imageRegistry and global.imageTag.
+  image: {registry: "", repository: consent-management-backend, tag: ""}
   replicas: 2
-  # -- The rollout of the Deployment of consent: new pods are ready before old
-  # pods stop (maxUnavailable 0), with at most a quarter more pods during the
-  # rollout (maxSurge 25 %). A new pod counts as available minReadySeconds
-  # after it is ready: a pod that fails just after its start stops the rollout
-  # before an old pod stops.
+  # -- Rollout: new pods first (docs/security-context.md).
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
   logLevel: info
-  nats:
-    rpcTimeoutSeconds: 15
-    readRpcTimeoutSeconds: 5
+  nats: {rpcTimeoutSeconds: 15, readRpcTimeoutSeconds: 5}
   maxRequestBodyBytes: 5242880
-  # -- The stop of the consent pods (docs/security-context.md, "The stop of
-  # a pod"): first the preStop sleep of preStopSeconds; then at SIGTERM the
-  # drain (Server.drainSeconds), the wait for the requests in progress, the
-  # NATS drain and the outbox relay (Server.gracefulShutdownSeconds). The
-  # render stops when terminationGracePeriodSeconds is below
-  # preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5.
+  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
   server:
     preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
     terminationGracePeriodSeconds: 40
-  # -- Probes of consent on its admin port (8081): startup and liveness
-  # /healthz, readiness /readyz: consent checks the database every 2 s on
-  # one connection outside its pool, and /readyz fails when no check passed
-  # for 10 s; NATS and the views of its readers are start gates. The
-  # readiness probe (2 s, timeout 2 s, 2 failures) takes a pod with a broken
-  # database path out of the Service in about 14 s; an interruption of up
-  # to 6 s changes nothing; an outage of more than 10 s takes all pods out
-  # (by design). The startup probe gives the process 180 s (90 x 2 s); the
-  # liveness probe starts after it (no initialDelaySeconds).
+  # -- Probes on the admin port 8081 (docs/security-context.md, "The stop of a pod").
   startupProbe:
-    httpGet:
-      path: /healthz
-      port: admin
+    httpGet: {path: /healthz, port: admin}
     periodSeconds: 2
     timeoutSeconds: 3
     failureThreshold: 90
   readinessProbe:
-    httpGet:
-      path: /readyz
-      port: admin
+    httpGet: {path: /readyz, port: admin}
     periodSeconds: 2
     timeoutSeconds: 2
     failureThreshold: 2
   livenessProbe:
-    httpGet:
-      path: /healthz
-      port: admin
+    httpGet: {path: /healthz, port: admin}
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
-  # -- GatewayToken: consent always verifies the internal token of the
-  # gateway. Clock difference that exp and nbf accept: 1 to 300 seconds.
   gatewayToken:
+    # -- Clock skew that exp and nbf of the gateway token accept: 1 to 300 seconds.
     clockSkewSeconds: 60
-  # -- ServiceEnvelope: consent signs and verifies its NATS messages
-  # (issuer igrant-consent-management; it trusts igrant-api and
-  # eudi-wallet). activeKid: the kid of the active key in the private JWKS
-  # (required). signingKey: the existing Secret with the private JWKS (empty
-  # name: <fullname>-consent-service-key).
+  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
   serviceEnvelope:
     activeKid: ""
-    signingKey:
-      existingSecret: ""
-      key: service-jwks.json
+    signingKey: {existingSecret: "", key: service-jwks.json}
     lifetimeSeconds: 60
     clockSkewSeconds: 60
-  # -- The consent Jobs (the read access Job) and the migration hooks: TTL,
-  # resources and security contexts. Empty security contexts: the values of
-  # the consent pods.
+  # -- The read access Job and the migration hooks. Empty contexts: the values of the pods.
   jobs:
     ttlSecondsAfterFinished: 86400
     resources:
-      requests:
-        cpu: 50m
-        memory: 64Mi
-      limits:
-        memory: 256Mi
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 256Mi}
     podSecurityContext: {}
     containerSecurityContext: {}
-  # -- Extra keys of the consent configuration, deep-merged over the keys of
-  # the chart (exact key names). Do not put a secret here. Not Log.file: the
-  # chart writes no log file (consent logs to stdout).
+  # -- Extra consent configuration keys, deep-merged. Not for secrets or Log.file.
   extraConfig: {}
   extraEnv: []
   resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      memory: 256Mi
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 256Mi}
+  # -- UID 65532. The sysctl lets the pod listen on port 80 without a capability.
   podSecurityContext:
     runAsUser: 65532
     runAsGroup: 65532
-    # Group of the mounted Secret files (mode 0440).
     fsGroup: 65532
     runAsNonRoot: true
-    seccompProfile:
-      type: RuntimeDefault
-    # Consent listens on port 80 as a non-root user.
-    sysctls:
-      - name: net.ipv4.ip_unprivileged_port_start
-        value: "0"
+    seccompProfile: {type: RuntimeDefault}
+    sysctls: [{name: net.ipv4.ip_unprivileged_port_start, value: "0"}]
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+    capabilities: {drop: ["ALL"]}
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
   imagePullSecrets: []
 
-# OpenBao: the key management service of the wallet (the Transit engine
-# keeps the signing keys). "bundled" (default): the chart runs OpenBao with
-# raft storage and the Shamir seal. "external": an OpenBao that you
-# run (openbao.external). After a bundled install: "bao operator init" and
-# the bootstrap script (see docs/install.md, step 5).
-openbao:
-  # -- "bundled" or "external".
-  mode: bundled
-  # -- Mount path of the Transit engine (bootstrap.sh enables it on the
-  # bundled OpenBao).
-  transitMount: transit
-  # The userpass login of the wallet.
-  wallet:
-    # -- The user name.
-    user: wallet
-    # -- Existing Secret with the password (key passwordKey). Required for
-    # external. Empty (bundled): the chart makes <fullname>-openbao-wallet
-    # (random, kept across upgrades); bootstrap.sh gives it to the user.
-    existingSecret: ""
-    passwordKey: password
-  # An OpenBao that you run (mode external). It needs the Transit engine at
-  # transitMount, the userpass method and a user with the wallet policy (see
-  # docs/openbao.md, "External OpenBao").
-  external:
-    # -- Address, for example https://openbao.example.org:8200 (required).
-    address: ""
-    # -- OpenBao namespace. Empty: the root namespace.
-    namespace: ""
-    # -- Existing Secret with the CA certificate (PEM) of an https address.
-    # Empty: the system CAs.
-    caSecret: ""
-    caKey: ca.crt
-  # -- The seal of the bundled OpenBao: "shamir" (an operator unseals each
-  # pod after each start with the unseal keys: "bao operator unseal").
-  seal: shamir
-  # -- The iGrant.io image: OpenBao 2.7.1, linux/amd64, non-root. Empty
-  # tag: global.imageTag.
-  image:
-    registry: ""
-    repository: openbao
-    tag: ""
-    digest: ""
-  # -- Raft nodes: an odd number (1, 3 or 5). 3 keeps the service when one
-  # node stops.
-  replicas: 3
-  # -- How a changed pod template (for example a new image tag) reaches the
-  # pods: the type of the StatefulSet updateStrategy. Empty: "OnDelete" (a
-  # restarted pod stays sealed until an operator unseals it, so the operator
-  # restarts and unseals one pod at a time; docs/upgrade.md).
-  updateStrategy: ""
-  tls:
-    # -- Existing Secret with tls.crt, tls.key and ca.crt of the listener.
-    # The certificate must have the names <fullname>-openbao.<namespace>.svc,
-    # *.<fullname>-openbao-headless.<namespace>.svc and 127.0.0.1. Empty: the
-    # chart makes a CA and a certificate (10 years, kept across upgrades).
-    existingSecret: ""
-  # -- log_level: trace, debug, info, warn or error.
-  logLevel: info
-  audit:
-    # -- Audit device "file" to stdout (the request and response values are
-    # HMAC-SHA256 hashes).
-    stdout: true
-  # -- Extra HCL of the server configuration (for example telemetry). No
-  # secret here: the ConfigMap is not secret.
-  extraConfig: ""
-  # -- Extra environment variables of the OpenBao container (for example
-  # GOMEMLIMIT).
-  extraEnv: []
-  persistence:
-    size: 10Gi
-    storageClass: ""
-  resources:
-    requests:
-      cpu: 50m
-      memory: 128Mi
-    limits:
-      memory: 512Mi
-  # -- Non-root (any UID). fsGroup: the group of the data volume and of the
-  # secret files (mode 0440).
-  podSecurityContext:
-    runAsNonRoot: true
-    runAsUser: 10001
-    runAsGroup: 10001
-    fsGroup: 10001
-    seccompProfile:
-      type: RuntimeDefault
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
-  priorityClassName: ""
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  imagePullSecrets: []
+# Privacy dashboards: keep them off, this api cannot deploy them (docs/privacy-dashboard.md).
+privacyDashboard:
+  enabled: false
+  # -- Namespace of the privacy dashboards. It must exist.
+  namespace: ""
 
-# Organisation wallet (OpenID4VCI issuer, OpenID4VP verifier, holder and
-# wallet provider). Deployments of one image: service (public routes),
-# config (configuration routes, behind the gateway), the workers (the
-# actors of the queues) and the clock (it sends the cron actors;
-# docs/workers.md).
+# Organisation wallet: service (public routes), config (behind the gateway), workers and clock.
 organisationWallet:
-  # -- Run the organisation wallet in this release. false with
-  # gateway.upstreams.walletConfig.url: the wallet of another release. false
-  # without the URL: the installation has no wallet (docs/components.md).
+  # -- false: the wallet of another release (gateway.upstreams.walletConfig.url), or no wallet.
   enabled: true
-  image:
-    registry: ""
-    repository: eudi-wallet
-    # -- Empty: global.imageTag.
-    tag: ""
-  # -- Public host name of the wallet (required when the installation has
-  # the wallet; the "domain" of the wallet).
+  # -- Empty registry and tag: global.imageRegistry and global.imageTag.
+  image: {registry: "", repository: eudi-wallet, tag: ""}
+  # -- Public host name of the wallet (required with the wallet).
   host: ""
-  # -- The exposure of the wallet host (the same fields as api.exposure).
-  # The wallet accepts bodies of up to 10 MiB.
+  # -- Exposure of the wallet host: the fields of api.exposure.
   exposure:
     type: ""
     className: ""
     annotations: {}
     path: /
     pathType: Prefix
-    tls:
-      secretName: ""
+    tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- log_level: DEBUG, INFO, WARNING, ERROR or CRITICAL.
+  # -- DEBUG, INFO, WARNING, ERROR or CRITICAL.
   logLevel: INFO
   walletUnit:
-    # -- wallet_unit.production_checks_enabled: true: the production
-    # environment of Apple App Attest and the Google Play Integrity check
-    # (store apps). false: the development environment and no Play Integrity
-    # check (development builds of the wallet apps).
+    # -- true: the production checks of the store apps. false: development builds.
     productionChecksEnabled: false
-    # -- SHA-256 (hex, ":" separators allowed) of the signing certificates
-    # of the Android wallet app: the app signing key certificate of the
-    # Play Console (wallet_unit.android_signing_certificate_digests of the
-    # service pods). The Play Integrity check (at least one is required
-    # with playIntegrity.existingSecret), the Android Key Attestation chain
-    # of the registration of a wallet unit and the key attestations check
-    # them. Empty: the chains are checked for the package name only.
+    # -- SHA-256 of the signing certificates of the Android app (required with Play Integrity).
     androidSigningCertificateDigests: []
-    # -- The Play Integrity check of the Android wallet units
-    # (wallet_unit.play_integrity). The wallet decrypts and verifies the
-    # integrity token of a classic Play Integrity request with the response
-    # encryption keys of the app in the Play Console ("Manage and download
-    # my response encryption keys"), and calls Google in no request. Only
-    # the service pods mount the keys. An Android wallet unit needs them
-    # when the production checks are on.
+    # -- Play Integrity of the Android wallet units, checked with the keys of the Play Console.
     playIntegrity:
-      # -- Existing Secret with the decryption key and the verification key
-      # of the Play Console, each the base64 text that the console gives.
-      # Empty: no keys (an Android wallet unit gets no WIA while the
-      # production checks are on).
+      # -- Secret with the decryption key and the verification key of the Play Console.
       existingSecret: ""
-      # -- The key of the decryption key in the Secret.
       decryptionKeyKey: decryption-key
-      # -- The key of the verification key in the Secret.
       verificationKeyKey: verification-key
-      # -- The package name of the Android wallet app.
+      # -- Package name of the Android wallet app.
       packageName: io.igrant.mobileagent
-      # -- The lowest versionCode of the app that gets a WIA. 0: every
-      # version.
+      # -- Lowest versionCode that gets a WIA. 0: every version.
       minVersionCode: 0
-    # -- The App Attest check of the iOS wallet units
-    # (wallet_unit.app_attest of the service pods).
     appAttest:
-      # -- The App IDs (<Team ID>.<bundle id>) of the iOS wallet apps of
-      # this installation. The App Attest attestation of the registration
-      # of a wallet unit, its later assertions and the App Attest objects
-      # of a key attestation request must be for one of them. At least one
-      # is required when productionChecksEnabled is true.
-      appIds:
-        - Y9726WB7V8.io.iGrant.DataWallet
-    # -- The device roots of the wallet units (wallet_unit.trust_anchors_dir):
-    # an existing ConfigMap with the keys google_hardware_attestation_root.pem
-    # (the root of the Android Key Attestation chains) and
-    # apple_app_attestation_root_ca.pem (the root of the App Attest
-    # attestations). The service, config and worker pods mount it. The checks
-    # read both roots only from this folder and refuse the evidence when a
-    # file is missing. Empty: the Google and Apple roots of the image. A test
-    # installation gives its test roots here.
+      # -- App IDs (<Team ID>.<bundle id>) of the iOS apps (required with production checks).
+      appIds: [Y9726WB7V8.io.iGrant.DataWallet]
     trustAnchors:
+      # -- ConfigMap with the device roots of the wallet units. Empty: the roots of the image.
       existingConfigMap: ""
-    # -- wallet_unit.organisation_wallet_units_max: the most organisation
-    # wallet units of the wallet provider of the installation (1 to 100: a
-    # smaller value than the default, never a larger one), in the files of
-    # the service, config and worker pods. The
-    # create of one more organisation wallet (a new organisation) gets 409
-    # organisation_wallet_unit.limit_reached; the units that exist stay.
-    # Empty: the chart writes no key, and the wallet uses its default (100).
+    # -- The most organisation wallet units, 1 to 100. Empty: the wallet default (100).
     organisationWalletUnitsMax: ""
-    # -- wallet_unit.development_apps_allowed: true lets an admin give a
-    # wallet app the build development or simulator, and protocol 2 then
-    # relaxes its device checks for that app (development: the App Attest
-    # development environment and no Play Integrity token; simulator:
-    # placeholder evidence, only the request signature). For test
-    # installations only, never in production. false: such a build is
-    # refused, and every app counts as release. true or false only. Empty:
-    # no key, and the wallet uses its default (false).
+    # -- true: admins may mark an app build development or simulator. Test installations only.
     developmentAppsAllowed: ""
-  # -- The audit log of the wallet (audit.*; docs/audit-log.md): a hash
-  # chain in the wallet database for each data scope and organisation, an
-  # hourly anchor of each scope signed with an installation key (the
-  # Transit key audit-anchor-<scope> of OpenBao), and the monthly exports.
+  # -- Audit log of the wallet (docs/audit-log.md).
   audit:
-    # -- audit.retention_years: the years that the audit events of a data
-    # scope stay in the database (at least 1). The migration hook drops the
-    # months that are older, only after the export of the month is
-    # verified.
+    # -- Years that the audit events of a data scope stay in the database (at least 1).
     retentionYears: 7
-    # -- audit.scope_retention_years: another period for some data scopes
-    # (platform, kms, trust, issuer, authorisation_server, relying_party,
-    # business_wallet, individual_wallet_provider,
-    # business_wallet_provider), for example {kms: 10}.
+    # -- Another period for some data scopes, for example {kms: 10}.
     scopeRetentionYears: {}
-    # -- audit.bucket: the write-once bucket of the copies of the anchors
-    # and of the monthly exports (docs/audit-log.md). Only the workers
-    # write it and mount its credentials. Empty name: no bucket; the
-    # anchors stay in the database only, no month is exported, and no
-    # partition is dropped.
+    # -- Write-once bucket of the anchor copies and the monthly exports. Empty name: no bucket.
     bucket:
-      # -- s3: a bucket of an S3 store with Object Lock and a default
-      # retention in compliance mode; the wallet refuses a bucket without
-      # it. gcs: Google Cloud Storage with a locked retention policy,
-      # through the Google client (until the conformance test of the XML
-      # API of Google decides; docs/audit-log.md).
+      # -- s3 (Object Lock in compliance mode) or gcs (a locked retention policy).
       type: s3
       name: ""
-      # -- The folder of the objects in the bucket, for example
-      # audit/production/ (it ends with /). Empty: the top of the bucket.
+      # -- Folder of the objects, ending with /. Empty: the top of the bucket.
       prefix: ""
-      # -- type s3: the S3 API of the store (https://host or
-      # https://host:port), for example the store of a team outside the
-      # platform. Required with a name.
+      # -- s3: the S3 API, https://host or https://host:port (required with a name).
       endpoint: ""
-      # -- type s3: the region of the signatures, for example eu-west-1.
-      # Required with a name.
+      # -- s3: the region of the signatures, for example eu-west-1 (required with a name).
       region: ""
-      # -- type s3: existing Secret with the access key of the wallet (the
-      # rights of docs/audit-log.md, no delete). Required with a name.
-      accessKey:
-        existingSecret: ""
-        idKey: access-key-id
-        secretKey: secret-access-key
-      # -- type s3: existing Secret with a PEM CA bundle of the TLS
-      # certificate of the store. Empty: the CA bundle of the client.
-      ca:
-        existingSecret: ""
-        key: ca.crt
-      # -- type gcs: the project of the bucket. Empty: the project of the
-      # credentials.
+      # -- s3: Secret with the access key of the wallet (required with a name).
+      accessKey: {existingSecret: "", idKey: access-key-id, secretKey: secret-access-key}
+      # -- s3: Secret with a PEM CA bundle of the store. Empty: the CA bundle of the client.
+      ca: {existingSecret: "", key: ca.crt}
+      # -- gcs: project of the bucket. Empty: the project of the credentials.
       project: ""
-      # -- type gcs: existing Secret with the service account JSON of the
-      # bucket (audit.bucket.credentials_file). Empty: the Google default
-      # credentials, for example Workload Identity (with network policies,
-      # add the egress profile metadata to the role wallet-worker).
-      credentials:
-        existingSecret: ""
-        key: service-account.json
-  # -- The retention purge of the workers (retention.*;
-  # docs/audit-log.md): the days after which the daily purge deletes the
-  # rows.
+      # -- gcs: Secret with the service account JSON. Empty: the Google default credentials.
+      credentials: {existingSecret: "", key: service-account.json}
+  # -- Retention purge of the workers: days after which the daily purge deletes the rows.
   retention:
-    # -- Soft-deleted history rows, after their delete.
     softDeletedDays: 30
-    # -- A deactivated organisation and a deactivated sandbox, after the
-    # deactivation (the delete of an organisation or of a sandbox).
     deactivatedOrganisationDays: 30
     deactivatedSandboxDays: 7
-    # -- The dead letters of the event consumers.
     deadLetterDays: 30
-    # -- The login codes of the conformance tests, after their expiry.
+    # -- Login codes of the conformance tests, after their expiry.
     loginCodeDays: 1
-    # -- The verifier response keys, after the expiry of their verification.
+    # -- Verifier response keys, after the expiry of their verification.
     verifierResponseKeyDays: 1
-    # -- The tokens of the issued credentials, after the issue
-    # (retention.issued_credential_token_days). The issued credential stays;
-    # its read then gives no token. The copy of the issuances of earlier
-    # releases copies only the tokens that are younger.
+    # -- Tokens of the issued credentials, after the issue. The credential stays.
     issuedCredentialTokenDays: 30
-    # -- The rows of one delete statement (1 to 10000).
+    # -- Rows of one delete statement, 1 to 10000.
     batchSize: 500
-  # -- The writes of the issuer status lists (status_list.*, only in the
-  # files of the workers; docs/workers.md). A revocation is final at once in
-  # the issuance and in its event; the actor status_list.write_changes
-  # (queue realtime, every 5 seconds) writes the queued revocations of each
-  # list at most once in writeIntervalSeconds (0 to 50; 0: at each run). A
-  # revocation is in the published list within 60 seconds.
   statusList:
+    # -- Write the revocations of a list at most once in this time (0 to 50; 0: each run).
     writeIntervalSeconds: 30
   trustList:
-    # -- trust_list.eu_lotl_url: the EU list of trusted lists. The wallet
-    # reads it (and the trusted list of the provider's country) to show
-    # whether the key of a qualified trust service provider is qualified.
-    # The wallet pods need outbound https to the list hosts (the egress
-    # profile internet). Empty: no check (the status is always unknown).
+    # -- EU list of trusted lists, for the qualified status of QTSP keys. Empty: no check.
     euLotlUrl: https://ec.europa.eu/tools/lotl/eu-lotl.xml
-  # The refresh of the list trust sources (trust_sources.*). Each
-  # organisation adds its own trust sources: trust anchors (CA
-  # certificates) and lists (ETSI trusted lists, ETSI lists of trusted
-  # entities) at their https URL. A check never downloads a list: it reads
-  # the stored entries. The workers download each list URL once for the
-  # installation, at the earlier of its next update and the last download
-  # plus refreshMaxIntervalSeconds, never before the last download plus
-  # refreshMinIntervalSeconds. The organisations have no interval
-  # setting, only Refresh now. The wallet pods need outbound https to the
-  # list hosts (the egress profile internet).
+  # -- Refresh of the trust lists that the organisations add (docs/values-reference.md).
   trustSources:
-    # -- trust_sources.refresh_max_interval_seconds: the longest time
-    # between two downloads of a list (at least 60).
+    # -- Longest time between two downloads of a list (at least 60).
     refreshMaxIntervalSeconds: 86400
-    # -- trust_sources.refresh_min_interval_seconds: the shortest time
-    # between two scheduled downloads of a list; it also protects the list
-    # servers (at least 60).
+    # -- Shortest time between two scheduled downloads of a list (at least 60).
     refreshMinIntervalSeconds: 3600
-    # -- trust_sources.retry_interval_seconds: the wait after a failed
-    # download. The last good copy of the list stays in use (at least 60).
+    # -- Wait after a failed download; the last good copy stays in use (at least 60).
     retryIntervalSeconds: 900
-    # -- trust_sources.stale_grace_seconds: how long after the next update
-    # of a list its last good copy is still in use. After it, the list is
-    # expired and the checks of its roles give error (at least 0).
+    # -- How long after its next update the last good copy of a list stays in use (at least 0).
     staleGraceSeconds: 259200
-    # -- trust_sources.manual_refresh_min_interval_seconds: the shortest
-    # time between two Refresh now of one trust source; an earlier one
-    # gets 429 (at least 0).
+    # -- Shortest time between two Refresh now of one source; earlier: 429 (at least 0).
     manualRefreshMinIntervalSeconds: 300
-  # The key stores that organisation admins add in the dashboard: signing
-  # keys in their own OpenBao (Transit engine), in their cloud KMS or at a
-  # QTSP. The local key store of this installation (OpenBao Transit) is
-  # always there for every organisation.
-  # -- The SSRF guard of the wallet (ssrf_protection.allowed_private): the
-  # private hosts that the wallet may call, for an installation whose public
-  # hosts (the status lists, the metadata, the offers of its organisations)
-  # have private addresses, for example on premise. Each entry is a host
-  # name (exact) or an IP address or CIDR (for example 10.20.0.0/16).
-  # Loopback, link-local, the cloud metadata addresses, unspecified,
-  # multicast and reserved addresses are never allowed. Empty (default):
-  # only public addresses, and the chart writes no key. With network
-  # policies, also give the address to networkPolicy.egress.profiles.platform
-  # (docs/network-policies.md).
   ssrf:
+    # -- Private hosts, addresses or CIDRs that the wallet may call. Empty: public only.
     allowedPrivate: []
+  # -- Organisation key stores (docs/key-stores.md).
   keyStores:
-    # -- kms.organisation_key_store_types: the types that admins may add, in
-    # this order: an external OpenBao (Transit engine), a QTSP (remote
-    # signing, CSC API), Google Cloud KMS, AWS KMS and Azure Key Vault. The
-    # cloud KMS types call only the official endpoints of their cloud.
-    # [] = only the local key store of this installation.
+    # -- Types that admins may add. []: only the local key store of the installation.
     types: [vault, csc, gcp-kms, aws-kms, azure-key-vault]
-    # -- kms.key_store_providers: the providers of the dashboard cards. An
-    # organisation has at most one key store of each provider. The wallet
-    # has built-in providers (their ids are in the wallet README, setting
-    # kms.key_store_providers); `hide` lists built-in ids that admins cannot
-    # choose, and `add` gives the providers of this installation, for
-    # example a partner QTSP:
-    #   add:
-    #     - id: example-qtsp          # a-z, 0-9 and -, not a built-in id
-    #       category: qtsp            # external-vault, qtsp or remote-signing
-    #       type: csc                 # one of `types` that fits the category
-    #       name: Example QTSP
-    #       logoUrl: https://example.com/logo.png   # optional, https
-    #       protection: provider      # software, hsm-backed or provider
-    #       qualified: true           # only for the category qtsp
-    #       region: SE                # optional, ISO 3166-1 alpha-2
-    #       defaults: {cscUrl: "https://csc.example.com", apiVersion: v2}
-    #       order: 30                 # optional; the built-in entries use 10, 20, ...
+    # -- Providers of the dashboard cards: add your own, hide built-in ones.
     providers:
       add: []
       hide: []
-    # -- kms.allow_private_addresses: true lets a key store address be a
-    # private, loopback or link-local address (key stores in your own
-    # network). false: only public addresses (the SSRF guard).
+    # -- true: a key store address may be private, loopback or link-local. false: public only.
     allowPrivateAddresses: false
-    # -- kms.test_ca: the built-in test CA (up to three test root CAs for
-    # each organisation: mdoc, provider, access). It issues test
-    # certificates for development and testing. They are not on any trusted
-    # list. Switch it off (enabled: false) when the installation must not
-    # offer it: the test CA routes then answer 403, and the CRLs and root
-    # certificates of the test CAs that exist stay available.
+    # -- Built-in test CA, not on any trusted list. false: its routes answer 403.
     testCa:
       enabled: true
-      # -- kms.test_ca.leaf_validity_days: the validity in days (1 to 3650)
-      # of a test certificate when the request gives none. The largest
-      # validity of the preset caps it (for example 457 days for an mdoc
-      # document signer).
+      # -- Validity in days of a test certificate without one in the request (1 to 3650).
       leafValidityDays: 365
-  # -- server.forwarded_allow_ips of the service role: the proxies that the
-  # wallet trusts (IP addresses or networks, or only "*"). Only a request
-  # from one of them can set the client address and the scheme with
-  # X-Forwarded-For and X-Forwarded-Proto. The scheme is part of the DPoP
-  # htu check, so this list must contain the pods (or the nodes) of your
-  # ingress controller or Gateway, else the DPoP check fails. The default is
-  # the loopback and the private and shared address ranges, which hold the
-  # pod network in most clusters. Set the network of your proxy when you
-  # can.
+  # -- Proxies trusted for X-Forwarded-For and -Proto. Include your ingress controller pods.
   forwardedAllowIps:
     - 127.0.0.1
     - ::1
@@ -2003,344 +597,651 @@ organisationWallet:
     - 192.168.0.0/16
     - 100.64.0.0/10
     - fc00::/7
-  # -- internal_auth of the config role: the config routes always check the
-  # internal token of the gateway. Clock difference that exp and nbf
-  # accept: 0 to 300 seconds.
   internalAuth:
+    # -- Clock skew that exp and nbf of the gateway token accept: 0 to 300 seconds.
     clockSkewSeconds: 60
-  # -- service_envelope: every wallet process signs its NATS events (issuer
-  # eudi-wallet), and the config role verifies the signed commands of the
-  # api. activeKid: the kid of the active key in the private JWKS
-  # (required). signingKey: the existing Secret with the private JWKS (empty
-  # name: <fullname>-wallet-service-key).
+  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
   serviceEnvelope:
     activeKid: ""
-    signingKey:
-      existingSecret: ""
-      key: service-jwks.json
+    signingKey: {existingSecret: "", key: service-jwks.json}
     lifetimeSeconds: 60
     clockSkewSeconds: 60
-  # -- nats.connect_retry_seconds: the wait after a failed first connect (it
-  # doubles up to 60 s). nats.command_reply_seconds of the config role (120
-  # to 3600): how long the wallet keeps the reply of a NATS command of the
-  # api, so that a retry of the api gets the same reply. One value for all
-  # config pods: each pod sets the time to live of the reply bucket at its
-  # start.
   nats:
+    # -- Wait after a failed first connect; it doubles up to 60 s.
     connectRetrySeconds: 5
+    # -- How long the config role keeps the reply of an api command for a retry (120 to 3600).
     commandReplySeconds: 300
-  # -- The server-sent event streams of the config role (sse.*):
-  # keepAliveSeconds: the interval of the keep-alive comments (below the
-  # idle limit of the gateway); retryMilliseconds: the reconnect delay that
-  # the client gets; maxStreamsPerWorker: the open streams of one worker
-  # (more: 503); clientQueueSize: the events that wait for one slow client.
+  # -- Server-sent event streams of the config role.
   sse:
+    # -- Interval of the keep-alive comments, below the idle limit of the gateway.
     keepAliveSeconds: 15
+    # -- Reconnect delay that the client gets.
     retryMilliseconds: 30000
+    # -- Open streams of one worker; more get 503.
     maxStreamsPerWorker: 1000
+    # -- Events that wait for one slow client.
     clientQueueSize: 32
-  # -- The replay of the notifications stream (notifications_sse.*).
-  notificationsSse:
-    replayMaxEvents: 500
-    replayLookbackSeconds: 60
-  # -- The presentation-status stream of the config role
-  # (presentation_status_sse.*): recheckSeconds: the stream reads the
-  # record again after this time without an event; maxStreamSeconds: the
-  # longest stream (the request lifetime of 3600 s plus a margin).
-  presentationStatusSse:
-    recheckSeconds: 15
-    maxStreamSeconds: 3900
-  # -- The HTTP server of the service and config roles (server.*).
+  # -- Replay of the notifications stream.
+  notificationsSse: {replayMaxEvents: 500, replayLookbackSeconds: 60}
+  # -- Presentation-status stream: recheck without an event, and the longest stream.
+  presentationStatusSse: {recheckSeconds: 15, maxStreamSeconds: 3900}
+  # -- HTTP server of the service and config roles.
   server:
-    # -- Body limits in bytes (a larger body gets 413 before it is read).
-    # maxBatchRequestBodyBytes: the key attestation; maxLargeRequestBodyBytes:
-    # credential issue, deferred credential update, verification send, DC
-    # API receive, direct_post(.jwt), iar(.jwt); maxRequestBodyBytes: all
-    # other routes. The render stops when gateway.proxy.maxBodyBytes.default
-    # is below maxRequestBodyBytes, or .large is below
-    # maxLargeRequestBodyBytes.
+    # -- Body limits in bytes (413 above). The gateway limits must not be lower.
     maxRequestBodyBytes: 1048576
     maxBatchRequestBodyBytes: 4194304
     maxLargeRequestBodyBytes: 10485760
-    # -- The stop of a pod: the preStop sleep, then the server waits at most
-    # gracefulShutdownSeconds for the open requests, then at most
-    # backgroundShutdownSeconds for the background tasks. The render stops
-    # when the sum is not below terminationGracePeriodSeconds.
+    # -- Pod stop: preStop, open requests, background tasks; the sum is below the grace period.
     gracefulShutdownSeconds: 20
     backgroundShutdownSeconds: 10
     preStopSeconds: 10
     terminationGracePeriodSeconds: 45
-    # -- server.nonce_requests_per_minute: the nonce requests of one client
-    # address (an IPv6 /64 network) in 60 s at the anonymous nonce routes
-    # (the nonce of the wallet provider, the c_nonce of the credential
-    # issuer); more get 429 with Retry-After. The client address comes from
-    # X-Forwarded-For of a trusted proxy (forwardedAllowIps), so the proxy
-    # must pass the client address (docs/exposure.md). Behind a carrier NAT
-    # many phones share one IPv4 address: keep it above their requests at
-    # peak.
+    # -- Nonce requests of one client address (an IPv6 /64) in 60 s; more get 429.
     nonceRequestsPerMinute: 300
-  # -- The hooks of the wallet (the roles, migration and read access hooks):
-  # each reads only its database file, the password of its login and the
-  # CA. Non-root with a read-only root file system.
+  # -- The hooks of the wallet (roles, migration and read access).
   jobs:
     ttlSecondsAfterFinished: 86400
     resources:
-      requests:
-        cpu: 50m
-        memory: 128Mi
-      limits:
-        memory: 512Mi
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {memory: 512Mi}
     podSecurityContext:
       runAsNonRoot: true
       runAsUser: 65532
       runAsGroup: 65532
       fsGroup: 65532
-      seccompProfile:
-        type: RuntimeDefault
+      seccompProfile: {type: RuntimeDefault}
     containerSecurityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
-      capabilities:
-        drop: ["ALL"]
-  # -- The rollout of the Deployments of the wallet service and config roles:
-  # new pods are ready before old pods stop (maxUnavailable 0), with at most a
-  # quarter more pods during the rollout (maxSurge 25 %). A new pod counts as
-  # available minReadySeconds after it is ready: a pod that fails just after
-  # its start stops the rollout before an old pod stops.
+      capabilities: {drop: ["ALL"]}
+  # -- Rollout of the service and config roles: new pods first (docs/security-context.md).
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Extra keys of the wallet configuration, deep-merged over the keys of
-  # the chart in the files of all roles (nested keys). Do not put a secret
-  # here. Not log_file: the chart writes no log file (the processes log to
-  # stdout).
+  # -- Extra wallet configuration keys of all roles, deep-merged. Not for secrets or log_file.
   extraConfig: {}
-  # -- Extra environment variables. Only runtime variables: the wallet reads
-  # no configuration from the environment (only EUDI_WALLET_CONFIG).
+  # -- Extra environment variables, runtime only (the configuration is in EUDI_WALLET_CONFIG).
   extraEnv: []
   service:
     replicas: 1
     resources:
-      requests:
-        cpu: 25m
-        memory: 352Mi
-      limits:
-        memory: 1Gi
+      requests: {cpu: 25m, memory: 352Mi}
+      limits: {memory: 1Gi}
   config:
     replicas: 1
     resources:
-      requests:
-        cpu: 15m
-        memory: 352Mi
-      limits:
-        memory: 1Gi
-  # -- The clock (start-clock; docs/workers.md): it sends the messages of
-  # the cron actors to the queues when their time comes. Only the clock
-  # that holds the leader lock of the database sends, and a clock on a
-  # standby database never leads: two replicas give a take-over within
-  # seconds.
+      requests: {cpu: 15m, memory: 352Mi}
+      limits: {memory: 1Gi}
+  # -- The clock sends the messages of the cron actors. Only the leader sends (docs/workers.md).
   clock:
     replicas: 2
     resources:
-      requests:
-        cpu: 20m
-        memory: 128Mi
-      limits:
-        memory: 384Mi
-  # The workers (dramatiq ows.worker.run:start; docs/workers.md): they run
-  # the actors of the queues realtime, attestation, status, kms and
-  # maintenance. Each group is one Deployment <fullname>-wallet-worker-<name>
-  # for some of the queues; together the groups must run every queue. A
-  # list: your list replaces the whole default list.
+      requests: {cpu: 20m, memory: 128Mi}
+      limits: {memory: 384Mi}
   workers:
+    # -- Worker groups. Your list replaces the whole default list (docs/workers.md).
     groups:
-      # name: lower-case letters, digits and -; the Deployment name has at
-      #   most 63 characters.
-      # queues: the queues of the group.
-      # processes, threads: the worker processes of a pod and the threads
-      #   of each process (one thread runs one actor at a time).
-      # shutdownTimeoutSeconds: at a stop, the longest wait for the running
-      #   actors (--worker-shutdown-timeout): at least the longest time
-      #   limit of the actors of the queues, else an actor stops before its
-      #   end and runs again from its message.
-      # terminationGracePeriodSeconds: at least shutdownTimeoutSeconds + 30.
       - name: main
         queues: [realtime, attestation, status, kms]
         replicas: 2
         processes: 1
         threads: 8
-        # The longest time limit of these queues: 600 s (kms.orphan_check,
-        # held_credential.refresh_statuses).
         shutdownTimeoutSeconds: 600
         terminationGracePeriodSeconds: 630
         resources:
-          requests:
-            cpu: 100m
-            memory: 384Mi
-          limits:
-            memory: 1536Mi
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 1536Mi}
       - name: maintenance
         queues: [maintenance]
         replicas: 1
         processes: 1
         threads: 2
-        # The longest time limit of the queue: audit.export (one month of
-        # one scope), 4 hours. A stop of a pod can take this long.
         shutdownTimeoutSeconds: 14400
         terminationGracePeriodSeconds: 14430
         resources:
-          requests:
-            cpu: 50m
-            memory: 384Mi
-          limits:
-            memory: 1536Mi
-  # -- A ServiceMonitor of /metrics of the servers (port 9190), the workers
-  # and the clock (the CRD of the Prometheus Operator must exist;
-  # docs/workers.md). interval: 15s, the scrape of the alerts of
-  # organisation-wallet-suite.
+          requests: {cpu: 50m, memory: 384Mi}
+          limits: {memory: 1536Mi}
+  # -- ServiceMonitor of /metrics of the servers, workers and clock (Prometheus Operator).
   serviceMonitor:
     enabled: false
     interval: 15s
     labels: {}
-  # -- The alert rules of the wallet as a PrometheusRule of the Prometheus
-  # Operator (the CRD must exist; docs/workers.md, "Alerts"): the stopped
-  # The rules read the targets of serviceMonitor (turn it on too). labels:
-  # for the ruleSelector of your Prometheus. With other monitoring, take the
-  # rules of the docs.
+  # -- PrometheusRule with the alert rules of the wallet; turn on serviceMonitor too.
   prometheusRule:
     enabled: false
     labels: {}
-  # -- The service, config, worker and clock pods. The image runs as the
-  # user ows (UID 65532, GID 65532). fsGroup: the group of the secret files
-  # (mode 0440; with 0400 the user cannot read them). The processes write
-  # only to emptyDir volumes: /tmp of each pod, /run/ows-server (the
-  # metrics files of the servers) and /run/ows-worker (the state files of
-  # the workers). The hooks use organisationWallet.jobs.
+  # -- The service, config, worker and clock pods (UID 65532). The hooks use jobs.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 65532
     runAsGroup: 65532
     fsGroup: 65532
-    seccompProfile:
-      type: RuntimeDefault
+    seccompProfile: {type: RuntimeDefault}
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+    capabilities: {drop: ["ALL"]}
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
   imagePullSecrets: []
 
-# Enterprise dashboard (the web UI of the organisation admins).
+# Enterprise dashboard: the web UI of the organisation admins.
 enterpriseDashboard:
   enabled: true
-  image:
-    registry: ""
-    repository: dashboard
-    # -- Empty: global.imageTag.
-    tag: ""
+  # -- Empty registry and tag: global.imageRegistry and global.imageTag.
+  image: {registry: "", repository: dashboard, tag: ""}
   replicas: 1
-  # -- The rollout of the Deployment of the dashboard: new pods are ready
-  # before old pods stop (maxUnavailable 0), with at most a quarter more pods
-  # during the rollout (maxSurge 25 %). A new pod counts as available
-  # minReadySeconds after it is ready: a pod that fails just after its start
-  # stops the rollout before an old pod stops.
+  # -- Rollout: new pods first (docs/security-context.md).
   strategy:
     type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 0
+    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- The stop of the dashboard pods (docs/security-context.md, "The stop
-  # of a pod"): the preStop sleep of preStopSeconds (nginx serves on while
-  # Kubernetes removes the pod from the endpoints), then the stop signal
-  # of the image (SIGQUIT: nginx ends the requests in progress, then
-  # stops). The render stops when terminationGracePeriodSeconds is below
-  # preStopSeconds + 10.
+  # -- Pod stop: the grace period is at least preStopSeconds + 10.
   preStopSeconds: 10
   terminationGracePeriodSeconds: 30
-  # -- Probes of the dashboard (nginx): each the start page /.
-  # The startup probe gives the process 180 s (90 x 2 s); the liveness probe
-  # starts after it (no initialDelaySeconds). Each timeout (3 s) is above
-  # the time of the check.
+  # -- Probes of nginx on the start page.
   startupProbe:
-    httpGet:
-      path: /
-      port: http
+    httpGet: {path: /, port: http}
     periodSeconds: 2
     timeoutSeconds: 3
     failureThreshold: 90
   readinessProbe:
-    httpGet:
-      path: /
-      port: http
+    httpGet: {path: /, port: http}
     periodSeconds: 5
     timeoutSeconds: 3
     failureThreshold: 3
   livenessProbe:
-    httpGet:
-      path: /
-      port: http
+    httpGet: {path: /, port: http}
     periodSeconds: 10
     timeoutSeconds: 3
     failureThreshold: 3
-  # -- Host name of the dashboard (required). On premise it is an
-  # internal host (docs/exposure.md).
+  # -- Required: host name of the dashboard. On premise it is internal.
   host: ""
-  # -- The exposure of the dashboard host (the same fields as
-  # api.exposure).
+  # -- Exposure of the dashboard host: the fields of api.exposure.
   exposure:
     type: ""
     className: ""
     annotations: {}
     path: /
     pathType: Prefix
-    tls:
-      secretName: ""
+    tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- config.json of the dashboard. Empty baseUrl: the api public URL.
-  # Empty walletUrl: the organisation wallet public URL. Empty appVersion:
-  # the image tag. The chart also writes the limits of the CSV import of
-  # individuals of the api (api.extraConfig.Uploads
-  # .individualImportMaxFileBytes and .individualImportMaxRows) when they
-  # are set, so that the dashboard and the api have the same limits.
+  # -- config.json. Empty values: the api URL, the wallet URL and the image tag.
   configuration:
     baseUrl: ""
     walletUrl: ""
     appVersion: ""
   resources:
-    requests:
-      cpu: 10m
-      memory: 32Mi
-  # -- The image (nginx) runs as the user nginx (UID 101, GID 101). The
-  # dashboard listens on port 80 as a non-root user: the sysctl lets the
-  # pod open a port below 1024 without a capability. nginx writes only to
-  # the emptyDir /tmp (64Mi): its pid file, its temporary files and the
-  # files of the start scripts. The config.json of the ConfigMap is
-  # read-only.
+    requests: {cpu: 10m, memory: 32Mi}
+  # -- nginx runs as UID 101. The sysctl lets the pod listen on port 80 without a capability.
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 101
     runAsGroup: 101
-    seccompProfile:
-      type: RuntimeDefault
-    sysctls:
-      - name: net.ipv4.ip_unprivileged_port_start
-        value: "0"
+    seccompProfile: {type: RuntimeDefault}
+    sysctls: [{name: net.ipv4.ip_unprivileged_port_start, value: "0"}]
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
-    capabilities:
-      drop: ["ALL"]
+    capabilities: {drop: ["ALL"]}
   priorityClassName: ""
   nodeSelector: {}
   tolerations: []
   affinity: {}
   imagePullSecrets: []
+
+# One PostgreSQL server for all components, bundled or external (docs/database.md).
+database:
+  # -- postgresql, the only supported engine (another value stops the render).
+  engine: postgresql
+  # -- bundled (the chart runs <fullname>-postgres) or external (database.external).
+  mode: bundled
+  # -- Database (= owner user) name and password of each component. Empty password: random.
+  databases:
+    api: {name: igrant_api, password: ""}
+    oidc: {name: igrant_oidc, password: ""}
+    consent: {name: igrant_consent, password: ""}
+    wallet: {name: igrant_wallet, password: ""}
+  auth:
+    # -- Password of the admin user postgres of the bundled server. Empty: random.
+    adminPassword: ""
+    # -- Secret with one key per database name (bundled: also POSTGRES_PASSWORD).
+    existingSecret: ""
+  external:
+    # -- Host name of the external server (required for external).
+    host: ""
+    # -- Empty: 5432.
+    port: ""
+    # -- Admin user of the external server (required with the wallet) and its password Secret.
+    admin: {user: "", passwordSecret: "", passwordKey: password}
+  # -- Connection pools of each process (docs/database.md, "Connection budget").
+  pools:
+    api: {maxConns: 10, minConns: 2}
+    webhook: {maxConns: 5, minConns: 1}
+    oidc: {maxConns: 5, minConns: 1}
+    gateway: {maxConns: 10, minConns: 2}
+    consent: {maxConns: 6, minConns: 2}
+    apiReadAccess: {maxConns: 5, minConns: 1}
+    walletService: {poolSize: 12, maxOverflow: 4, allocationPoolSize: 5}
+    walletConfig: {poolSize: 8, maxOverflow: 4, allocationPoolSize: 2}
+    walletWorker: {maxOverflow: 2, allocationPoolSize: 2}
+  # -- Your pooler in transaction mode for the wallet (docs/database.md, "Connection pooler").
+  pooler:
+    # -- Host name of the pooler. Empty: the wallet connects to the server.
+    host: ""
+    port: 6432
+    # -- Server connections of the pooler for the wallet (required with a host and bundled).
+    serverConnections: 0
+  tls:
+    # -- TLS between the components and the server.
+    enabled: true
+    # -- bundled: your kubernetes.io/tls Secret. Empty: the chart makes a CA and a certificate.
+    existingSecret: ""
+    # -- external: Secret with the CA of the server. Empty: sslmode require (no verification).
+    caSecret: ""
+    caKey: ca.crt
+    # -- disable, require, verify-ca or verify-full. Empty: verify-full with a CA, else require.
+    sslMode: ""
+  postgresql:
+    image: {registry: docker.io, repository: library/postgres, tag: "18.6"}
+    # -- Sized for database.resources: change max_connections and the memory together.
+    parameters:
+      max_connections: "250"
+      shared_buffers: 192MB
+      effective_cache_size: 512MB
+      work_mem: 2MB
+      maintenance_work_mem: 64MB
+      idle_session_timeout: 10min
+      password_encryption: scram-sha-256
+    # -- Log each DDL statement, connection and disconnection (docs/database.md).
+    logDdlAndConnections: true
+  persistence: {size: 50Gi, storageClass: ""}
+  # -- The memory must hold the PostgreSQL parameters under load.
+  resources:
+    requests: {cpu: 250m, memory: 2048Mi}
+    limits: {cpu: "2", memory: 2048Mi}
+  # -- The bundled server and the init hook run as postgres (UID 999).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 999
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: ["ALL"]}
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  imagePullSecrets: []
+
+# NATS with JetStream: the messages between the services (docs/nats-users.md).
+nats:
+  # -- false: your NATS with JetStream at nats.external.url.
+  enabled: true
+  image:
+    registry: docker.io
+    repository: library/nats
+    # -- NATS 2.14. Not 2.15 or later: the render stops (docs/nats-users.md).
+    tag: 2.14.10-alpine
+    digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
+  external: {url: ""}
+  # -- One nkey user per process: its public nkey and the Secret with its seed (required).
+  auth:
+    users:
+      api: {nkey: "", seedSecret: "", seedKey: seed}
+      apiWebhook: {nkey: "", seedSecret: "", seedKey: seed}
+      consent: {nkey: "", seedSecret: "", seedKey: seed}
+      walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
+      walletService: {nkey: "", seedSecret: "", seedKey: seed}
+      walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
+  # -- Replicas of the streams and buckets. Empty: nats.replicas, or 1 with an external NATS.
+  jetstreamReplicas: ""
+  # -- max_payload (bytes, or a size such as 4MB). An external NATS needs the same value.
+  maxPayload: 4MB
+  # -- External NATS with TLS: Secret with the CA of the server. Empty: no TLS CA.
+  tlsCa: {existingSecret: "", key: ca.crt}
+  tls:
+    # -- Your TLS Secret of the bundled NATS. Empty: the chart makes a CA and a certificate.
+    existingSecret: ""
+  # -- NATS servers. More than 1 makes a cluster.
+  replicas: 3
+  jetstream: {maxFileStore: 10Gi, maxMemoryStore: "0"}
+  persistence: {size: 10Gi, storageClass: ""}
+  # -- Reloads nats.conf without a restart. false: a change of the users restarts the NATS pods.
+  reloader:
+    enabled: true
+    image: {registry: docker.io, repository: natsio/nats-server-config-reloader, tag: "0.21.1"}
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+  resources:
+    requests: {cpu: 15m, memory: 32Mi}
+  # -- NATS and the reloader run as UID 65532; they must have the same user.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+    fsGroupChangePolicy: OnRootMismatch
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: ["ALL"]}
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  imagePullSecrets: []
+
+# OpenBao: the key management service of the wallet (docs/openbao.md).
+openbao:
+  # -- bundled (initialise it after the install, docs/install.md step 5) or external.
+  mode: bundled
+  # -- Mount path of the Transit engine.
+  transitMount: transit
+  # -- The userpass login of the wallet.
+  wallet:
+    user: wallet
+    # -- Secret with the password (required for external). Empty: <fullname>-openbao-wallet.
+    existingSecret: ""
+    passwordKey: password
+  # -- Your OpenBao (mode external).
+  external:
+    # -- Address, for example https://openbao.example.org:8200 (required).
+    address: ""
+    # -- OpenBao namespace. Empty: the root namespace.
+    namespace: ""
+    # -- Secret with the CA of an https address. Empty: the system CAs.
+    caSecret: ""
+    caKey: ca.crt
+  # -- shamir: an operator unseals each pod after each start.
+  seal: shamir
+  # -- OpenBao 2.7.1, linux/amd64, non-root. Empty registry and tag: the global values.
+  image: {registry: "", repository: openbao, tag: "", digest: ""}
+  # -- Raft nodes: 1, 3 or 5. 3 keeps the service when one node stops.
+  replicas: 3
+  # -- StatefulSet update strategy. Empty: OnDelete (docs/upgrade.md).
+  updateStrategy: ""
+  tls:
+    # -- Your TLS Secret of the listener. Empty: the chart makes a CA and a certificate.
+    existingSecret: ""
+  # -- trace, debug, info, warn or error.
+  logLevel: info
+  audit:
+    # -- File audit device to stdout (the values are HMAC-SHA256 hashes).
+    stdout: true
+  # -- Extra HCL of the server configuration (no secrets), for example telemetry.
+  extraConfig: ""
+  extraEnv: []
+  persistence: {size: 10Gi, storageClass: ""}
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {memory: 512Mi}
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: ["ALL"]}
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  imagePullSecrets: []
+
+# Valkey with Sentinel for the wallet and the gateway. Never a record (docs/redis.md).
+redis:
+  # -- bundled (Valkey with Sentinel, <fullname>-redis) or external (your Valkey or Redis).
+  mode: bundled
+  # -- Name of the primary that the Sentinels monitor (1 to 64 letters, digits, . _ -).
+  masterName: ows
+  # -- ACL user of each process and its password Secret (docs/redis.md, "ACL users").
+  users:
+    walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
+    walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
+    walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
+    walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
+    gateway: {username: gateway, passwordSecret: "", passwordKey: password}
+  # -- Client settings of the wallet.
+  client:
+    # -- Longest wait for a connection and for each answer, in seconds (above 0, at most 60).
+    connectTimeoutSeconds: 2
+    # -- At most 3 decimals.
+    timeoutSeconds: 2
+    # -- Wait for a replica of a single-use value (1 to 10000), at most timeoutSeconds x 500.
+    replicaWaitMilliseconds: 100
+  # -- Your Valkey or Redis (mode external; its requirements: docs/redis.md).
+  external:
+    # -- Sentinels (host:port; an IPv6 address in brackets) that monitor redis.masterName.
+    sentinels: []
+    # -- Without Sentinel: host:port of a primary that keeps its address over a failover.
+    address: ""
+    # -- true: the processes log in to the Sentinels with their ACL user.
+    sentinelAuth: true
+    # -- Secret with the CA of the servers and the Sentinels. Empty: the system CAs.
+    caSecret: ""
+    caKey: ca.crt
+  # -- Your own group for the single-use values of the wallet. Off: the queue group keeps them.
+  state:
+    enabled: false
+    # -- Sentinels of the group (host:port), or address without Sentinel.
+    sentinels: []
+    address: ""
+    # -- Primary that the Sentinels monitor (required with sentinels).
+    masterName: ""
+    sentinelAuth: true
+    # -- Secret with the CA of the group. Empty: the system CAs.
+    caSecret: ""
+    caKey: ca.crt
+  # -- Your own group for the caches of the wallet. Off: the queue group keeps them.
+  cache:
+    enabled: false
+    # -- Sentinels of the group (host:port), or address without Sentinel.
+    sentinels: []
+    address: ""
+    # -- Primary that the Sentinels monitor (required with sentinels).
+    masterName: ""
+    sentinelAuth: true
+    # -- Secret with the CA of the group. Empty: the system CAs.
+    caSecret: ""
+    caKey: ca.crt
+  image:
+    registry: docker.io
+    repository: valkey/valkey
+    tag: 8.1.10-alpine
+    # -- With a digest, the image reference is <repository>@<digest>.
+    digest: sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507
+  # -- Pods: an odd number, 3 or more. Each pod has a data server and a Sentinel.
+  replicas: 3
+  sentinel:
+    # -- Sentinels that must agree that the primary is down (1 to redis.replicas).
+    quorum: 2
+    downAfterMilliseconds: 5000
+    failoverTimeoutMilliseconds: 60000
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+      limits: {memory: 64Mi}
+  # -- Memory for the data of each server (kb, mb or gb). Keep it well below the memory limit.
+  maxmemory: 512mb
+  tls:
+    # -- Your TLS Secret of the bundled Valkey. Empty: the chart makes a CA and a certificate.
+    existingSecret: ""
+  persistence: {size: 8Gi, storageClass: ""}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {memory: 1Gi}
+  metrics:
+    # -- The redis_exporter container in each pod, port 9121 (docs/redis.md#metrics).
+    enabled: false
+    image:
+      registry: docker.io
+      repository: oliver006/redis_exporter
+      tag: v1.94.0
+      # -- With a digest, the image reference is <repository>@<digest>.
+      digest: sha256:0842ef7110e62b40bbde2d5c11f38c6fbd99f7100c75e3866637c1b335a1eff7
+    resources:
+      requests: {cpu: 10m, memory: 32Mi}
+      limits: {memory: 128Mi}
+    # -- ServiceMonitor of the exporters (needs metrics.enabled and the Prometheus Operator).
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      labels: {}
+  # -- Valkey runs as UID 999, GID 1000.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile: {type: RuntimeDefault}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: ["ALL"]}
+  priorityClassName: ""
+  nodeSelector: {}
+  tolerations: []
+  # -- For example a pod anti-affinity on the host name (docs/redis.md).
+  affinity: {}
+  imagePullSecrets: []
+
+# NetworkPolicies: turn them on only when the cluster enforces them (docs/network-policies.md).
+networkPolicy:
+  enabled: false
+  # -- Pods of your ingress controller or of the data plane of your Gateway.
+  ingressController:
+    namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
+    podSelector: {}
+  # -- DNS pods and ports. cidrs: DNS servers outside the pod network (NodeLocal DNSCache).
+  dns:
+    cidrs: []
+    namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+    podSelector: {matchLabels: {k8s-app: kube-dns}}
+    ports:
+      - {port: 53, protocol: UDP}
+      - {port: 53, protocol: TCP}
+  # -- An external NATS in the cluster (port 4222). Outside the cluster: externalNats.
+  nats: {namespaceSelector: {}, podSelector: {}}
+  # -- Databases outside the chart: [{hosts: [...], cidrs: [...], ports: [5432]}].
+  externalDatabases: []
+  # -- A NATS outside the cluster: [{hosts: [...], cidrs: [...], ports: [4222]}].
+  externalNats: []
+  # -- Your Valkey or Redis (required with redis.mode external). Empty ports: 6379 and 26379.
+  externalRedis: []
+  # -- Pod and Service CIDRs of the cluster, excluded from the internet profiles.
+  clusterCidrs: []
+  egress:
+    # -- External targets: cidrs (with except) or selectors, and ports ([]: all ports).
+    profiles:
+      internet:
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106",
+          "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
+        ports: [443, 80]
+      internet-any-port:
+        cidrs: ["0.0.0.0/0", "::/0"]
+        except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "169.254.0.0/16",
+          "fc00::/7", "fe80::/10", "ff00::/8",
+          "64:ff9b::a00:0/104", "64:ff9b::ac10:0/108", "64:ff9b::c0a8:0/112", "64:ff9b::6440:0/106",
+          "64:ff9b::a9fe:0/112", "64:ff9b::7f00:0/104", "64:ff9b::/104"]
+        ports: []
+      # -- The metadata server of a cloud.
+      metadata: {cidrs: ["169.254.169.254/32"], ports: [80]}
+      # -- An external OpenBao (openbao.mode external).
+      kms: {cidrs: [], namespaceSelector: {}, podSelector: {}, ports: [8200]}
+      # -- A cloud KMS of a key store on a private address (a private endpoint).
+      cloudKms: {cidrs: [], ports: [443]}
+      # -- The S3 store of the audit bucket on a private address.
+      auditBucket: {cidrs: [], ports: [443]}
+      # -- The public hosts of this platform, through networkPolicy.ingressController.
+      platform: {cidrs: [], ports: [80, 443]}
+      smtp: {cidrs: [], ports: [587]}
+      # -- The Kubernetes API server (the privacy dashboards).
+      kubeApi: {cidrs: [], ports: [443, 6443]}
+    # -- Egress profiles of each role. A list in your values replaces the default list.
+    roles:
+      api: [internet-any-port, smtp]
+      webhook: [internet-any-port]
+      gateway: [internet]
+      consent: [internet-any-port]
+      wallet-service: [internet-any-port, platform, kms, cloudKms]
+      wallet-config: [internet-any-port, platform, kms, cloudKms]
+      wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
+      wallet-clock: []
+  # -- Scrape of the NATS monitor port and the metrics ports from a monitoring namespace.
+  monitoring: {enabled: false, namespaceSelector: {}, podSelector: {}}
+
+# Read-only database users of the reads between the services (docs/read-access.md).
+readAccess:
+  api:
+    # -- The api reads the wallet views.
+    wallet:
+      username: api_wallet_reader
+      passwordSecret: ""
+      passwordKey: password
+      host: ""
+      port: ""
+      name: ""
+  consent:
+    # -- Consent reads the contact views of the api.
+    api:
+      username: consent_api_reader
+      passwordSecret: ""
+      passwordKey: password
+      host: ""
+      port: ""
+      name: ""
+    # -- Consent reads the record events of the wallet.
+    wallet:
+      username: consent_wallet_reader
+      passwordSecret: ""
+      passwordKey: password
+      host: ""
+      port: ""
+      name: ""
+  wallet:
+    # -- The wallet reads the api views.
+    api:
+      username: wallet_api_reader
+      passwordSecret: ""
+      passwordKey: password
+      host: ""
+      port: ""
+      name: ""
+    # -- The wallet reads the data agreement view of consent.
+    consent:
+      username: wallet_consent_reader
+      passwordSecret: ""
+      passwordKey: password
+      host: ""
+      port: ""
+      name: ""
+  # -- Jobs that make the read-only users. Empty admin values: the admin user of database.
+  jobs:
+    enabled: true
+    api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+    consent: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+    wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+    ttlSecondsAfterFinished: 86400
+
+# Public keys of the signed NATS messages of each service (required; scripts/make-keys.sh).
+serviceKeys:
+  existingConfigMap: ""
+  publicJwks:
+    igrant-api: ""
+    igrant-consent-management: ""
+    eudi-wallet: ""

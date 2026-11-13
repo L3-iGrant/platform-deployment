@@ -1,0 +1,20 @@
+# A small installation for tests and development: one replica of each
+# service and a smaller memory request of the database server. The limits
+# and the worker groups stay, and Valkey keeps 3 pods (Sentinel needs a
+# majority). Not for production: a node drain or failure stops a service
+# until its pod runs on another node.
+gateway:
+  replicas: 1
+consent:
+  replicas: 1
+nats:
+  replicas: 1
+openbao:
+  replicas: 1
+organisationWallet:
+  clock:
+    replicas: 1
+database:
+  resources:
+    requests:
+      memory: 512Mi

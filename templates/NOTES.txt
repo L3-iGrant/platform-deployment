@@ -1,10 +1,5 @@
 The iGrant.io platform {{ .Chart.Version }} is installed in the namespace {{ .Release.Namespace }}.
 {{- $ns := .Release.Namespace }}
-{{- if eq (.Values.global.imageTag | toString) "2026.10.x" }}
-
-WARNING: global.imageTag is the placeholder "2026.10.x": no image has this tag, so the pods cannot pull their images.
-  Set global.imageTag to the release tag of your version (from iGrant.io) and run "helm upgrade".
-{{- end }}
 
 {{- /* The SSRF guards that an extraConfig turns off (docs/security-context.md,
 "The SSRF guards"). */}}
