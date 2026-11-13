@@ -78,7 +78,8 @@ metadata:
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
-  backoffLimit: 1
+  # OnFailure counts the restarts of the container: 3 gives two retries.
+  backoffLimit: 3
   ttlSecondsAfterFinished: {{ $jobs.ttlSecondsAfterFinished | default 86400 }}
   template:
     metadata:
@@ -86,7 +87,11 @@ spec:
         {{- include "ow.labels" (list $root .component) | nindent 8 }}
         {{- include "ow.netpol.labels" (list $root "job" list) | nindent 8 }}
     spec:
-      restartPolicy: Never
+      # OnFailure: a retry restarts the container in the same pod. With
+      # network policies, the first connection of a new pod can fail until
+      # the network policy controller knows the pod; a retry in a new pod
+      # (Never) would meet the same delay each time.
+      restartPolicy: OnFailure
       # The Job does not call the Kubernetes API.
       automountServiceAccountToken: false
       {{- include "ow.podSpecCommon" (list $root $jobPod) | nindent 6 }}
