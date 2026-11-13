@@ -295,6 +295,16 @@ characters. Output: nothing.
 {{- end -}}
 {{- /* The separate groups of the wallet (redis.state, redis.cache). */ -}}
 {{- if $v.organisationWallet.enabled -}}
+{{- /* The wallet refuses a replica wait above half of timeout_seconds of
+the state endpoint (organisation-wallet-suite#749): a longer WAIT ends as
+a socket timeout, the client drops the connection, and while a replica
+stalls each request with a proof or a nonce opens a new TLS connection to
+the primary. All endpoints get redis.client.timeoutSeconds. */ -}}
+{{- $wait := $r.client.replicaWaitMilliseconds | float64 -}}
+{{- $half := mulf ($r.client.timeoutSeconds | float64) 500 -}}
+{{- if gt $wait $half -}}
+{{- fail (printf "redis.client.replicaWaitMilliseconds (%v) must be at most half of redis.client.timeoutSeconds (%v s), that is at most %v ms: the wallet accepts replica_wait_milliseconds at most half of timeout_seconds of the state endpoint (a longer WAIT ends as a socket timeout, and then each request with a proof or a nonce opens a new connection to the primary)" $r.client.replicaWaitMilliseconds $r.client.timeoutSeconds $half) -}}
+{{- end -}}
 {{- range $name := list "state" "cache" -}}
 {{- $g := index $r $name -}}
 {{- if $g.enabled -}}

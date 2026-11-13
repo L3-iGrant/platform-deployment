@@ -122,7 +122,7 @@ redis:
   replica_wait_milliseconds: 100
 ```
 
-`redis.client.connectTimeoutSeconds`, `.timeoutSeconds` and `.replicaWaitMilliseconds` set the last three values. The gateway gets the password file of its user (`redis-password`) and the CA (`redis-ca.crt`) in its secret folder.
+`redis.client.connectTimeoutSeconds`, `.timeoutSeconds` and `.replicaWaitMilliseconds` set the last three values. `replicaWaitMilliseconds` must be at most half of `timeoutSeconds` (`timeoutSeconds` x 500 milliseconds; the defaults 100 and 2 pass): a longer `WAIT` ends as a socket timeout, the client drops the connection, and while a replica stalls each request with a proof or a nonce opens a new TLS connection to the primary. The wallet refuses such a configuration (organisation-wallet-suite#749), and the render stops before it. The gateway gets the password file of its user (`redis-password`) and the CA (`redis-ca.crt`) in its secret folder.
 
 ## External Valkey or Redis
 
@@ -133,7 +133,7 @@ With `redis.mode: external`, the chart runs no Valkey. Your server can be Valkey
 | Redis 7.2 or later, or Valkey 7.2 or later | ACL users, TLS, and the commands below |
 | Sentinel, or one primary with replicas; a single-shard Redis Enterprise database is also accepted. **Not Redis Cluster** (sharded). | The broker script of the queue makes key names inside the script and calls `KEYS` |
 | `EVAL`/`EVALSHA`, `KEYS`, `WAIT`, `SET NX EX` and `INFO` allowed for the users of the wallet (the rights of [ACL users](#acl-users)) | The queue; the replica confirmation of the single-use values (`WAIT 1`); the start check reads `INFO` |
-| At least one replica and `min-replicas-to-write 1` | A single-use value counts only when it reaches a replica |
+| At least one replica and `min-replicas-to-write 1`; at national scale, two replicas or more | A single-use value counts only when it reaches a replica (`WAIT 1`: one replica is enough). With only one replica, a stall or a restart of that replica longer than `redis.client.replicaWaitMilliseconds` gives 503 on each route that checks a proof or a nonce, in each pod. With two replicas, the other one confirms. |
 | `maxmemory-policy noeviction` and AOF `everysec` | An eviction would delete queue messages or nonces |
 | TLS, and one ACL user for each process kind (`redis.users`) | Security |
 

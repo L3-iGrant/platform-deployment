@@ -477,7 +477,9 @@ redis:
     timeoutSeconds: 2
     # -- The longest wait, in milliseconds (1 to 10000), for a replica to
     # confirm a single-use value (WAIT 1). Without the confirmation the
-    # wallet refuses the value with 503.
+    # wallet refuses the value with 503. At most half of timeoutSeconds
+    # (timeoutSeconds x 500): a longer wait ends as a socket timeout, and
+    # the wallet refuses the configuration (the render stops).
     replicaWaitMilliseconds: 100
   # Your Valkey or Redis (mode external). It must meet the requirements of
   # docs/redis.md: version 7.2 or later, Sentinel or one primary with

@@ -66,7 +66,7 @@ The full list with comments is in [values.yaml](../values.yaml); [values.schema.
 | `redis.mode` | `bundled` (Valkey with Sentinel) or `external` (your Valkey or Redis; see [Redis](redis.md)) | `bundled` |
 | `redis.masterName` | The name of the primary that the Sentinels monitor | `ows` |
 | `redis.users.<process>.username`, `.passwordSecret`, `.passwordKey` | The ACL user of `walletService`, `walletConfig`, `walletWorker`, `walletClock` and `gateway`, and an existing Secret with its password (required for external) | `wallet-service`, ..., `gateway`; the Secret of the chart |
-| `redis.client.connectTimeoutSeconds`, `.timeoutSeconds`, `.replicaWaitMilliseconds` | The timeouts of the wallet and its wait for a replica of a single-use value | `2`, `2`, `100` |
+| `redis.client.connectTimeoutSeconds`, `.timeoutSeconds`, `.replicaWaitMilliseconds` | The timeouts of the wallet and its wait for a replica of a single-use value. `replicaWaitMilliseconds` is at most half of `timeoutSeconds` (the render checks it) | `2`, `2`, `100` |
 | `redis.external.sentinels` or `.address`, `.sentinelAuth`, `.caSecret`, `.caKey` | Your Valkey or Redis | `[]`, `""`, `true`, `""` |
 | `redis.state.*`, `redis.cache.*` (`enabled`, `sentinels` or `address`, `masterName`, `sentinelAuth`, `caSecret`, `caKey`) | A separate group of your own Valkey or Redis for the single-use values or for the caches of the wallet (see [Redis](redis.md#separate-groups-for-the-single-use-values-and-the-caches)) | off |
 | `redis.metrics.enabled`, `.image`, `.resources`, `.serviceMonitor.*` | The exporter of each Valkey pod and its ServiceMonitor (see [Redis](redis.md#metrics)) | off; `oliver006/redis_exporter:v1.94.0` (with its digest), 10m/32Mi (limit 128Mi) |

@@ -1277,6 +1277,17 @@ guard "redis user name of the bundled Valkey" 'redis.users.gateway.username "sen
 guard "redis unknown value" "Additional property" "${shamir[@]}" --set redis.cluster=true
 guard "redis client timeout" "redis.client.timeoutSeconds" "${shamir[@]}" --set redis.client.timeoutSeconds=0
 guard "redis replica wait" "redis.client.replicaWaitMilliseconds" "${shamir[@]}" --set redis.client.replicaWaitMilliseconds=20000
+# The replica wait is at most half of the timeout (the check of the wallet,
+# organisation-wallet-suite#749): 1001 ms with 2 s stops the render, 1000
+# ms renders; also with a timeout below one second, and not without the
+# wallet (only the wallet reads the wait).
+guard "redis replica wait above half of the timeout" "redis.client.replicaWaitMilliseconds (1001) must be at most half of redis.client.timeoutSeconds (2 s), that is at most 1000 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
+renders "redis replica wait of half of the timeout" "replica_wait_milliseconds: 1000" "${shamir[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1000 --show-only templates/wallet/configmap.yaml
+guard "redis replica wait above half of a short timeout" "must be at most half of redis.client.timeoutSeconds (0.5 s), that is at most 250 ms" "${shamir[@]}" --set-json redis.client.timeoutSeconds=0.5 --set redis.client.replicaWaitMilliseconds=251
+renders "redis replica wait of half of a short timeout" "replica_wait_milliseconds: 250" "${shamir[@]}" --set-json redis.client.timeoutSeconds=0.5 --set redis.client.replicaWaitMilliseconds=250 --show-only templates/wallet/configmap.yaml
+renders "redis replica wait of 10000 ms with 20 s" "replica_wait_milliseconds: 10000" "${shamir[@]}" --set redis.client.timeoutSeconds=20 --set redis.client.replicaWaitMilliseconds=10000 --show-only templates/wallet/configmap.yaml
+guard "redis replica wait of 10000 ms with 19 s" "must be at most half of redis.client.timeoutSeconds (19 s), that is at most 9500 ms" "${shamir[@]}" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
+renders "redis replica wait without the wallet" "kind: Deployment" "${shamir[@]}" --set organisationWallet.enabled=false --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=("${shamir[@]}" -f "$examples/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
