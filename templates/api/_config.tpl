@@ -163,3 +163,40 @@ of the release change, so it cannot read the new ConfigMaps of the release.
     "Extensions" (dict "oidc" (dict "database" (include "ow.db.goOwner" (dict "root" . "db" "oidc" "secretDir" $dir "passwordFile" "oidc-db-password") | fromJson)))
     "Log" (dict "level" .Values.api.logLevel)) }}
 {{- end }}
+
+{{/*
+Render guard of /tmp of the api and webhook pods (api.tmp.sizeLimit, an
+emptyDir in memory). The multipart parser of Go (r.FormFile, 32 MiB in
+memory) writes a file part above 32 MiB whole to /tmp. The largest body
+that reaches the multipart parser of the api is the larger body limit of
+the gateway classes default and file (gateway.proxy.maxBodyBytes; the
+class large goes only to the wallet). Thus:
+- when that limit is above 32 MiB, /tmp must hold one upload of it, else
+  each such upload fails;
+- the memory request and /tmp together must fit below the memory limit of
+  the container (the files of /tmp count against it), else a full /tmp can
+  make the kernel stop the process.
+Call with the root context. Output: nothing.
+*/}}
+{{- define "ow.api.checkTmp" -}}
+{{- $api := .Values.api -}}
+{{- $limits := .Values.gateway.proxy.maxBodyBytes -}}
+{{- $default := $limits.default | int64 | default 1048576 -}}
+{{- $file := $limits.file | int64 | default (add 5242880 65536) -}}
+{{- $body := max $default $file -}}
+{{- $inMemory := 33554432 -}}
+{{- $tmp := include "ow.quantityBytes" $api.tmp.sizeLimit | int64 -}}
+{{- if and (gt $body $inMemory) (gt $body $tmp) -}}
+{{- fail (printf "api.tmp.sizeLimit (%s, %d bytes) is below the largest body that the gateway sends to the api (%d bytes, gateway.proxy.maxBodyBytes default and file): the api writes a file part above 32 MiB whole to /tmp, so these uploads fail; give api.tmp.sizeLimit at least that size (and raise the memory limit of the api by the same size)" $api.tmp.sizeLimit $tmp $body) -}}
+{{- end -}}
+{{- range $role, $resources := dict "api" $api.resources "webhook" $api.webhook.resources -}}
+{{- $limit := (($resources | default dict).limits | default dict).memory -}}
+{{- if $limit -}}
+{{- $request := (($resources | default dict).requests | default dict).memory | default "0" -}}
+{{- if gt (add (include "ow.quantityBytes" $request | int64) $tmp) (include "ow.quantityBytes" $limit | int64) -}}
+{{- $key := ternary "api.resources" "api.webhook.resources" (eq $role "api") -}}
+{{- fail (printf "%s: the memory request (%s) and api.tmp.sizeLimit (%s) together are above the memory limit (%s): /tmp of the %s pods is in memory and counts against the limit; raise %s.limits.memory" $key $request $api.tmp.sizeLimit $limit $role $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end }}

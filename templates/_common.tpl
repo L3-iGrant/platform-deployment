@@ -346,3 +346,18 @@ nothing; the render stops when the path is not empty.
 {{- fail (printf "%s sets %s %q: the chart writes no log file in Kubernetes. Each process logs to stdout and stderr: the container log, which the kubelet rotates and your log agent collects. Remove %s from %s" (index . 0) (index . 1) $path (index . 1) (index . 0)) -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+The bytes of a Kubernetes quantity, for example 64Mi, 1.5Gi, 500M or
+1048576. Call with the quantity. Output: the number of bytes (an integer).
+*/}}
+{{- define "ow.quantityBytes" -}}
+{{- $text := toString . -}}
+{{- if not (regexMatch "^[0-9]+(\\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|k|M|G|T|P)?$" $text) -}}
+{{- fail (printf "%q is not a quantity such as 64Mi, 1Gi or 500M" $text) -}}
+{{- end -}}
+{{- $number := regexFind "^[0-9]+(\\.[0-9]+)?" $text -}}
+{{- $unit := trimPrefix $number $text -}}
+{{- $factor := get (dict "" 1 "k" 1000 "M" 1000000 "G" 1000000000 "T" 1000000000000 "P" 1000000000000000 "Ki" 1024 "Mi" 1048576 "Gi" 1073741824 "Ti" 1099511627776 "Pi" 1125899906842624) $unit -}}
+{{- mulf (float64 $number) (float64 $factor) | ceil | int64 -}}
+{{- end }}

@@ -831,6 +831,19 @@ api:
       memory: 272Mi
     limits:
       memory: 512Mi
+  # -- /tmp of the api and webhook pods (the root file system is read-only):
+  # the multipart parser of Go keeps a form of up to 32 MiB in memory, and
+  # it writes a larger file part whole to /tmp. An emptyDir in memory of
+  # sizeLimit: when /tmp is full, only the upload that fills it fails (no
+  # space left), never the pod; its files count against the memory limit of
+  # the container. The render stops when the largest body that the gateway
+  # sends to the api (gateway.proxy.maxBodyBytes, the classes default and
+  # file) is above 32 MiB and above sizeLimit, or when the memory request
+  # and sizeLimit together are above the memory limit of the api or of the
+  # webhook container (docs/security-context.md, "The /tmp folder of the
+  # api").
+  tmp:
+    sizeLimit: 64Mi
   # -- The migrate init container of the api pods (igrant-api migrate).
   migrate:
     resources:

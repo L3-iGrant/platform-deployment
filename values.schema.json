@@ -1698,6 +1698,19 @@
         "resources": {
           "type": "object"
         },
+        "tmp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sizeLimit": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*(Ki|Mi|Gi)$"
+            }
+          },
+          "required": [
+            "sizeLimit"
+          ]
+        },
         "migrate": {
           "type": "object",
           "additionalProperties": false,
