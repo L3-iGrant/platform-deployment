@@ -53,6 +53,23 @@ Notes:
 - No log file: each process logs to stdout and stderr, the container log, which the kubelet rotates (`containerLogMaxSize`, `containerLogMaxFiles`) and which your log agent collects. A log file in a pod has no reader, it is lost with the pod, and its rotation (by default 100 MB x 6 files) fills a `/tmp` of 64Mi: the pod is evicted or the process stops. Thus the render stops when `Log.file.path` of `api.extraConfig`, `gateway.extraConfig` or `consent.extraConfig`, or `log_file.path` of `organisationWallet.extraConfig`, is set, also to a path below `/tmp`.
 - The images of the api, the gateway, consent and the wallet have no shell and no `sleep` program (distroless), and the wallet image has no entrypoint script. Each container, Job and probe of the chart starts a program of the image directly (`/app/bin/igrant-api`, `/app/.venv/bin/<command>`, for example `/app/.venv/bin/start-server`), the probes are HTTP probes, and each preStop hook is the sleep action of Kubernetes (`tests/check_lifecycle.py` checks it). Exec probes and hooks are only in the images that have the program: `nats-server` (NATS), the scripts of Valkey, and `pg_isready` (PostgreSQL). Your own commands in the pods (`kubectl exec`) must also call the program directly, for example `kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform status --config=/etc/igrant-api/config.yaml`.
 
+## The SSRF guards
+
+The api core, the webhook handler, consent and the wallet call URLs that an organisation, a customer or another vendor gives: the webhooks (`payloadUrl`), the OIDC providers of the organisations, the Data Space of an organisation, and the issuers, verifiers, trust lists, status lists, JWKS and metadata of other vendors. Each of them has an SSRF guard in its code: it refuses a connection to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8, fc00::/7 or 169.254.169.254), also after a DNS answer or a redirect. The guards are on by default, and the chart does not turn them off. They also protect a cluster without network policies.
+
+| Role | The guard | Off with |
+| --- | --- | --- |
+| api core, webhook handler | `OutboundHttp.ssrfProtectionDisabled` of the api file (default `false`) | `api.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` |
+| consent | `OutboundHttp.ssrfProtectionDisabled` of the consent file (default `false`) | `consent.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` |
+| wallet service, config, workers | `ssrf_protection.enabled` of the wallet files (default `true`) | `organisationWallet.extraConfig.ssrf_protection.enabled: false` |
+
+A guard that is off lets a URL of an organisation reach each private, loopback and metadata address that the pod reaches: the services of your network, the services of the cluster and the credentials of the metadata server of your cloud. The notes of `helm install` and `helm upgrade` then have a warning that names the role. Do not turn a guard off in production. When a host that the platform must call has a private address (on premise), allow only that host:
+
+- the wallet: `organisationWallet.ssrf.allowedPrivate` (host names, addresses or CIDRs; never loopback, link-local or the metadata addresses);
+- the api core, the webhook handler and consent: an allow list of private hosts comes with a later release of these services. Until then, an OIDC provider of the admins in your network can use `allowPrivateNetwork` of its entry in `Iam.providers`.
+
+With network policies, also give the address to the egress profile `platform` (the public hosts of this platform) or to a profile of your own (see [Network policies](network-policies.md)).
+
 ## The stop of a pod
 
 A rolling update and a node drain stop pods while clients still send requests to them. Kubernetes removes a stopping pod from the endpoints of its Services at once, but kube-proxy, the ingress controller or the Gateway learn it some time later; until then they still send new requests to the pod. Thus each HTTP component (the api, the webhook handler, the gateway, consent, the dashboard, the wallet service and config roles) stops in three steps:

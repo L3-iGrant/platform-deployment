@@ -342,6 +342,20 @@ notes "external OpenBao" "Make the platform operator organisation and its first 
 notes "platform operator of an installation that exists" "api.jobs.platformOperator" -f "$examples/openbao-external.yaml"
 notes "URLs" "https://api.example.org" -f "$examples/openbao-shamir.yaml"
 notes "placeholder tag warning" "global.imageTag is the placeholder" -f "$examples/openbao-shamir.yaml"
+# A guard against SSRF that an extraConfig turns off: a warning in the
+# notes that names the role; none by default.
+notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: consent" "WARNING: the SSRF guard of consent is off (consent.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'consent.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" -f "$examples/openbao-shamir.yaml" \
+  --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
+if helm template ows "$notes_chart" --namespace ows -f "$keys" -f "$examples/site.yaml" -f "$examples/openbao-shamir.yaml" \
+    --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+  bad "notes: an SSRF warning with the guards on"
+else
+  ok "notes: no SSRF warning with the guards on"
+fi
 notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections" -f "$examples/openbao-shamir.yaml"
 notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$examples/openbao-shamir.yaml" -f "$examples/postgresql-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" -f "$examples/openbao-shamir.yaml" --set consent.enabled=false

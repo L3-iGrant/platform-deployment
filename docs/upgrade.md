@@ -131,6 +131,10 @@ The service and config pods of the wallet get a memory limit of 1 GiB (`organisa
 
 From this chart version, the bundled NATS is 2.14.10 (before: 2.12.3): the 2.12 line gets no more fixes. The upgrade restarts the NATS pods one at a time; the JetStream store stays (2.14 reads the store of 2.12). A rollback of the chart takes NATS back to the version of the earlier release: NATS supports a downgrade of its store only to 2.11.9 or later. The rollback from 2.14.10 to 2.12.3 and the roll forward were tested with all streams, consumers and messages (`tests/nats-store.sh --earlier-image`). Do not set a tag of 2.15 or later (see [NATS users](nats-users.md#the-version-of-nats)).
 
+## The SSRF guards
+
+From this chart version, the notes of `helm install` and `helm upgrade` warn when a values file turns an SSRF guard off: `api.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` (the api core and the webhook handler), `consent.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` (consent) or `organisationWallet.extraConfig.ssrf_protection.enabled: false` (the wallet). Such a role then calls private, loopback, link-local and cloud metadata addresses for the URLs of organisations, customers and other vendors. Remove the key, and allow only the private hosts that you need (see [Security settings of the containers](security-context.md#the-ssrf-guards); the wallet: `organisationWallet.ssrf.allowedPrivate`).
+
 ## The TLS of the database
 
 The bundled PostgreSQL always serves TLS from this release, also with `database.tls.enabled: false`. A release before it served TLS only with `database.tls.enabled: true`. To turn the TLS of the components on for a bundled server that runs without TLS:
