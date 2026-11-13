@@ -71,8 +71,9 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 | `redis-external.yaml` | Your own Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
 | `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
 | `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
+| `consent.yaml` | Consent management (data agreements and consent records). It is off by default. | [Components](components.md#the-services-of-the-installation) |
 
-By default, an installation has consent management and the organisation wallet. To leave one out, set `consent.enabled: false` or `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: the OpenBao profiles have no effect, and you skip step 5.
+By default, an installation has the organisation wallet and no consent management. To add consent, add `profiles/consent.yaml`. To leave the wallet out, set `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: the OpenBao profiles have no effect, and you skip step 5.
 
 To change a profile, copy it first (for example to `my-exposure.yaml` for other TLS Secret names or another Gateway). Each profile names the Secrets that you must create before the install, for example the database admin password. Create them now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 
@@ -142,7 +143,7 @@ Check: `kubectl -n ows exec ows-openbao-0 -- bao status` shows `Initialized true
 kubectl -n ows get pods,jobs
 ```
 
-Check: after a few minutes, all pods are `Running` and `READY` (the Valkey pods `ows-redis-0`, `ows-redis-1` and `ows-redis-2` show `2/2`), and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
+Check: after a few minutes, all pods are `Running` and `READY` (the Valkey pods `ows-redis-0`, `ows-redis-1` and `ows-redis-2` show `2/2`), and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*` (with consent), `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
 
 A few restarts at the first start are normal (`RESTARTS` 3 to 5):
 

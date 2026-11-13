@@ -7,7 +7,7 @@ The tests of the chart. They run without a cluster.
 `tests/render-matrix.sh` checks the chart without a cluster:
 
 - no em dash or en dash in any text file of the repository (also `docker-compose/`, `scripts/`, `images/` and `.github/`; not the licence texts of other projects); the text of the chart files and of the docs (British English, no names of other key store products), and the relative links of `README.md` and `docs/` (`tests/check_links.py`: each target file and each anchor heading exists). Each image of `values.yaml` is in [Images](images.md), each image of another project is in `THIRD-PARTY-NOTICES.md`, and the licence texts of Valkey and redis_exporter are in `licenses/`;
-- every combination of the profiles (2 database choices, 2 OpenBao choices, 6 exposure profiles, with and without network policies; a default has no profile). Each render goes through `helm template`, `kubeconform -strict` (if installed), `tests/check_hook_order.py install` (see below) and `tests/check_render.py`, which checks:
+- every combination of the profiles, without consent (the default), also with `tests/check_installation.py` (2 database choices, 2 OpenBao choices, 6 exposure profiles, with and without network policies; a default has no profile). Each render goes through `helm template`, `kubeconform -strict` (if installed), `tests/check_hook_order.py install` (see below) and `tests/check_render.py`, which checks:
   - the engine, host, port and TLS of each configuration file, and the server and Jobs of the engine;
   - the exposure objects (on premise: only the wallet host on the public IngressClass; never a route to the wallet's config role);
   - the OpenBao seal, and the database port in the network policies;
@@ -20,6 +20,7 @@ The tests of the chart. They run without a cluster.
   One more render checks the bundled server with the DDL and connection logs off;
 - the network policies of each render with `network-policies.yaml`: `tests/check_network_matrix.py` applies the policies to the pods of the release as Kubernetes does. It proves that each connection of `policies/network-matrix.yaml` is allowed, that every other connection between the pods of the release is denied, and that each forbidden pair is denied;
 - your own Valkey or Redis (`redis-external.yaml`, with two database choices, with and without network policies): no Valkey object, the `redis` section of each wallet role, the Secrets of the users, and egress to your servers only from the wallet roles and the gateway;
+- consent (`consent.yaml`): each exposure profile, with and without network policies, with the same checks and `tests/check_installation.py`; the tests after the matrix use `consent.yaml`;
 - the minimal profile (`minimal.yaml`, with and without network policies): one replica of each service except the worker groups, and 3 Valkey pods;
 - the image pull Secrets of `global.imagePullSecrets` in every pod spec: the Deployments, StatefulSets, Jobs and hooks, also the optional ones;
 - the certificate of the bundled Valkey: the names of the pods, of the Sentinel Service, and 127.0.0.1;

@@ -386,8 +386,8 @@ gateway:
 
 # Consent management: data agreements, consent records and data sharing.
 consent:
-  # -- false: consent of another release (gateway.upstreams.consent.url), or no consent.
-  enabled: true
+  # -- Off by default (profiles/consent.yaml). Consent of another release: gateway.upstreams.consent.url.
+  enabled: false
   # -- Empty registry and tag: global.imageRegistry and global.imageTag.
   image: {registry: "", repository: consent-management-backend, tag: ""}
   replicas: 2

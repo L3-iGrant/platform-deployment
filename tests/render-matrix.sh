@@ -15,7 +15,8 @@
 #    THIRD-PARTY-NOTICES.md, and the licence text of Valkey is in licenses/.
 # 2. The matrix of the profiles (profiles/): every combination of one choice
 #    of each group, with profiles/site.yaml, tests/values/release.yaml and
-#    tests/values/keys.yaml (a default has no file):
+#    tests/values/keys.yaml (a default has no file), without consent (the
+#    default; also tests/check_installation.py no-consent):
 #      database   database-bundled (default), database-external
 #      OpenBao    openbao-shamir (default), openbao-external
 #      exposure   exposure-ingress-nginx, exposure-ingress-nginx-cert-manager,
@@ -30,8 +31,10 @@
 #    tests/check_network_matrix.py (the policies against
 #    policies/network-matrix.yaml). Your own Valkey or Redis (redis-external)
 #    with two database choices, with and without network policies. The
-#    minimal profile, with and without network policies. The certificate of
-#    the bundled Valkey.
+#    minimal profile, with and without network policies. With consent
+#    (profiles/consent.yaml): each exposure, with and without network
+#    policies (also tests/check_installation.py all). The certificate of
+#    the bundled Valkey. The tests after the matrix use profiles/consent.yaml.
 # 3. The next steps (NOTES.txt).
 # 4. The render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
@@ -63,6 +66,9 @@ profiles="$chart/profiles"
 keys="$here/values/keys.yaml"
 # profiles/site.yaml with the release tag of the tests.
 site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
+# With consent (profiles/consent.yaml; consent is off by default): the
+# services of the tests after the matrix.
+all=("${site[@]}" -f "$profiles/consent.yaml")
 out=""
 if [ "${1:-}" = "--keep" ]; then
   out="${2:?--keep needs a folder}"
@@ -214,12 +220,52 @@ for database in database-bundled database-external; do
         if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
           good=0
         fi
+        if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" no-consent 2>&1)"; then
+          printf '%s\n' "$result" | sed 's/^/  /' | head -10
+          good=0
+        fi
         if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
           good=0
         fi
         if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
       done
     done
+  done
+done
+# With consent (profiles/consent.yaml): the bundled database, the seal
+# shamir, each exposure, with and without network policies.
+for exposure in exposure-ingress-nginx exposure-ingress-nginx-cert-manager exposure-envoy-gateway exposure-kgateway exposure-none exposure-on-premise; do
+  for policies in none network-policies; do
+    name="consent-$exposure-$policies"
+    args=(-f "$keys" "${all[@]}" -f "$profiles/$exposure.yaml")
+    [ "$policies" = network-policies ] && args+=(-f "$profiles/network-policies.yaml")
+    if ! helm template t "$chart" --namespace ow "${args[@]}" > "$out/$name.yaml" 2> "$out/$name.err"; then
+      bad "$name: helm template"
+      sed 's/^/  /' "$out/$name.err" | head -10
+      continue
+    fi
+    good=1
+    if [ -n "$kubeconform_bin" ] && ! "$kubeconform_bin" -strict -summary -kubernetes-version 1.30.0 -cache "$kubeconform_cache" \
+        -schema-location default \
+        -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+        "$out/$name.yaml" > "$out/$name.kubeconform" 2>&1; then
+      echo "  kubeconform:"; grep -v '^Summary' "$out/$name.kubeconform" | sed 's/^/  /' | head -10
+      good=0
+    fi
+    if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql bundled shamir "$(exposure_of "$exposure")" "$([ "$policies" = network-policies ] && echo on || echo off)"; then
+      good=0
+    fi
+    if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
+      good=0
+    fi
+    if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" all 2>&1)"; then
+      printf '%s\n' "$result" | sed 's/^/  /' | head -10
+      good=0
+    fi
+    if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+      good=0
+    fi
+    if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
   done
 done
 # The DDL and connection logs of the bundled server off
@@ -313,7 +359,7 @@ for policies in none network-policies; do
   if ! python3 - "$out/$name.yaml" <<'PY'
 import sys, yaml
 docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
-want = {"t-api": 1, "t-webhook": 1, "t-gateway": 1, "t-consent": 1, "t-dashboard": 1, "t-wallet-service": 1,
+want = {"t-api": 1, "t-webhook": 1, "t-gateway": 1, "t-dashboard": 1, "t-wallet-service": 1,
         "t-wallet-config": 1, "t-wallet-clock": 1, "t-wallet-worker-main": 2, "t-wallet-worker-maintenance": 1,
         "t-postgres": 1, "t-nats": 1, "t-openbao": 1, "t-redis": 3}
 got = {d["metadata"]["name"]: d["spec"].get("replicas") for d in docs if d["kind"] in ("Deployment", "StatefulSet")}
@@ -391,7 +437,7 @@ printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes\ndata:\n  note
 notes() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" "$@" --show-only templates/zz-test-notes.yaml 2>&1)"; then
+  if ! text="$(helm template ows "$notes_chart" --namespace ows -f "$keys" "${all[@]}" "$@" --show-only templates/zz-test-notes.yaml 2>&1)"; then
     bad "notes $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     ok "notes $name"
@@ -410,7 +456,7 @@ notes "SSRF guard off: consent" "WARNING: the SSRF guard of consent is off (cons
   --set-json 'consent.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
 notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" \
   --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
-if helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" \
+if helm template ows "$notes_chart" --namespace ows -f "$keys" "${all[@]}" \
     --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
   bad "notes: an SSRF warning with the guards on"
 else
@@ -433,7 +479,7 @@ notes "connection budget without consent" "can open 183 connections to it" --set
 guard() {
   local name="$1" expect="$2"; shift 2
   local err
-  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 >/dev/null)"; then
+  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 >/dev/null)"; then
     bad "guard $name: the render did not stop"
   elif grep -q -F -- "$expect" <<< "$err"; then
     # A here-string, as in renders: with pipefail, "printf | grep -q"
@@ -537,7 +583,7 @@ guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreat
 renders() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1)"; then
     bad "renders $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     # A here-string: with pipefail, "printf | grep -q" of a large render
@@ -551,7 +597,7 @@ renders() {
 lacks() {
   local name="$1" unexpected="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1)"; then
     bad "lacks $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$unexpected" <<< "$text"; then
     bad "lacks $name: has \"$unexpected\""
@@ -573,7 +619,7 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result
-  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 > "$file")"; then
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 > "$file")"; then
     bad "operator Jobs $case: $(printf '%s' "$result" | head -c 300)"
   elif result="$(python3 "$here/check_operator_jobs.py" "$file" "$case" 2>&1)"; then
     ok "operator Jobs $case"
@@ -616,7 +662,7 @@ test_ca() {
   local name="$1" expect="$2"; shift 2
   local text problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" --show-only templates/wallet/configmap.yaml 2> "$out/test-ca.err")"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" --show-only templates/wallet/configmap.yaml 2> "$out/test-ca.err")"; then
     bad "test CA $name: $(head -c 200 "$out/test-ca.err")"
   elif problems="$(python3 -c '
 import json, sys, yaml
@@ -646,7 +692,7 @@ audit() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/audit.yaml" 2> "$out/audit.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/audit.yaml" 2> "$out/audit.err"; then
     bad "audit $name: $(head -c 200 "$out/audit.err")"
   elif problems="$(python3 - "$out/audit.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -684,7 +730,7 @@ play_integrity() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
     bad "play integrity $name: $(head -c 200 "$out/play.err")"
   elif problems="$(python3 - "$out/play.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -731,7 +777,7 @@ app_attest() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
     bad "app attest $name: $(head -c 200 "$out/app-attest.err")"
   elif problems="$(python3 - "$out/app-attest.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -766,7 +812,7 @@ trust_anchors() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/anchors.yaml" 2> "$out/anchors.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/anchors.yaml" 2> "$out/anchors.err"; then
     bad "trust anchors $name: $(head -c 200 "$out/anchors.err")"
   elif problems="$(python3 - "$out/anchors.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -812,7 +858,7 @@ installation_limits() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/limits.yaml" 2> "$out/limits.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/limits.yaml" 2> "$out/limits.err"; then
     bad "installation limits $name: $(head -c 200 "$out/limits.err")"
   elif problems="$(python3 - "$out/limits.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -877,7 +923,7 @@ guard "organisation wallet unit limit as a string" "organisationWallet.walletUni
 development_apps() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" \
       --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -916,13 +962,13 @@ guard "development apps as a text without the schema" 'organisationWallet.wallet
 # service needs no key of it: the cases remove its public keys and its NATS
 # users. Each case is also an install (tests/check_hook_order.py) and, with
 # network policies, the network matrix (tests/check_network_matrix.py).
-no_consent=(--set consent.enabled=false --set serviceKeys.publicJwks.igrant-consent-management=null --set nats.auth.users.consent=null)
+no_consent=(--set consent.enabled=false)
 no_wallet=(--set organisationWallet.enabled=false --set organisationWallet.host= --set serviceKeys.publicJwks.eudi-wallet=null
   --set nats.auth.users.walletConfig=null --set nats.auth.users.walletService=null --set nats.auth.users.walletWorker=null)
 installation() {
   local name="$1" case="$2"; shift 2
   local file="$out/installation-${name// /-}.yaml" result good=1
-  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 > "$file")"; then
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 > "$file")"; then
     bad "installation $name: $(printf '%s' "$result" | head -c 300)"
     return
   fi
@@ -1082,7 +1128,7 @@ renders "metrics Service of a worker group (also the pods that are not ready)" "
 # The health port of the workers and of the clock (the scrape of
 # /metrics): open only to the monitoring namespace (networkPolicy.monitoring).
 # The port metrics of the servers: open only to the monitoring namespace.
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
     --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
     --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import sys, yaml
@@ -1108,7 +1154,7 @@ lacks "no scrape of the workers and the clock without the monitoring namespace" 
 dns_policy() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
       "$@" --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -1139,7 +1185,7 @@ dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.
 # NAT64 (an IPv6-only cluster with DNS64) stays open, the NAT64 images of a
 # private, loopback or metadata address are closed. No IPv4-mapped address
 # (the API server refuses it).
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
     --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
 import sys, yaml
 import ipaddress
@@ -1188,7 +1234,7 @@ fi
 platform_profile() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
       "$@" 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -1278,7 +1324,7 @@ renders "no connection budget check with an external server" "kind: StatefulSet"
 pooler=(--set database.pooler.host=pgbouncer.ow.svc --set database.pooler.serverConnections=40)
 renders "pooler in the wallet files" "host: pgbouncer.ow.svc" "${pooler[@]}" --show-only templates/wallet/configmap.yaml
 lacks "no pooler without its host" "pooler" --show-only templates/wallet/configmap.yaml
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "${pooler[@]}" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "${pooler[@]}" \
     --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
 import sys, yaml
 data = yaml.safe_load(sys.stdin)["data"]
@@ -1303,7 +1349,7 @@ renders "the reader pool of the api" "maxConns: 9" --set database.pools.apiReadA
 redis_sts() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" --show-only templates/redis/statefulset.yaml 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" --show-only templates/redis/statefulset.yaml 2>&1)"; then
     bad "Valkey pods $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     ok "Valkey pods $name"
@@ -1413,7 +1459,7 @@ guard "redis state with network policies without addresses" "networkPolicy.exter
 groups=(--set redis.state.enabled=true --set-json 'redis.state.sentinels=["state-1.example.org:26379","state-2.example.org:26379"]'
   --set redis.state.masterName=state --set redis.state.caSecret=state-ca
   --set redis.cache.enabled=true --set redis.cache.address=cache.example.org:6380 --set redis.cache.sentinelAuth=false)
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
     --set-json 'networkPolicy.externalRedis=[{"cidrs":["198.51.100.0/24"]}]' "${groups[@]}" > "$out/redis-groups.yaml" 2> "$out/redis-groups.err"; then
   bad "Valkey groups: $(head -c 200 "$out/redis-groups.err")"
 elif problems="$(python3 - "$out/redis-groups.yaml" <<'PY' 2>&1
@@ -1502,8 +1548,8 @@ guard "import rows not a number" 'api.extraConfig.Uploads.individualImportMaxRow
 guard "import rows as a text of digits" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text: give a number, not a text' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5000"}}'
 guard "import file bytes as a text of digits" 'api.extraConfig.Uploads.individualImportMaxFileBytes ("5242880") is a text: give a number, not a text' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":"5242880"}}'
 guard "import rows as a text in a values file" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text' -f "$here/fixtures/import-rows-text.yaml"
-if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
-     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
+     "$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
   ok "a new import limit restarts the dashboard pods (the checksum of config.json)"
 else
   bad "a new import limit restarts the dashboard pods (the checksum of config.json)"
@@ -1513,7 +1559,7 @@ renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --s
 # read-only root file system: /tmp of each api, webhook, dashboard and wallet
 # pod (in memory, 64Mi; the worker /tmp too), the socket folder of the
 # bundled server.
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
   bad "writable paths: $(head -c 200 "$out/writable.err")"
 elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
 import sys, yaml
@@ -1555,7 +1601,7 @@ fi
 
 # The JetStream store of the bundled NATS: the user and the group 65532,
 # fsGroup and OnRootMismatch, and no init container.
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" \
     --show-only templates/nats/statefulset.yaml > "$out/nats-store.yaml" 2> "$out/nats-store.err"; then
   bad "NATS store: $(head -c 200 "$out/nats-store.err")"
 elif problems="$(python3 - "$out/nats-store.yaml" <<'PY'
@@ -1583,7 +1629,7 @@ fi
 # use the value of the component).
 global_security=(--set-json 'global.podSecurityContext={"seLinuxOptions":{"level":"s0:c123,c456"},"supplementalGroups":[4321],"runAsUser":4242}'
   --set-json 'global.containerSecurityContext={"seLinuxOptions":{"type":"container_t"}}')
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
     --set redis.metrics.enabled=true "${global_security[@]}" > "$out/global-security.yaml" 2> "$out/global-security.err"; then
   bad "global security contexts: $(head -c 200 "$out/global-security.err")"
 elif problems="$(python3 - "$out/global-security.yaml" <<'PY'
@@ -1633,7 +1679,7 @@ for key, component in values.items():
 print(f"global.podSecurityContext.runAsUser does not apply to {', '.join(sorted(paths))}: the podSecurityContext of each sets runAsUser")
 PY
 )"
-if ! text="$(helm template t "$notes_chart" --namespace ow -f "$keys" "${site[@]}" "${global_security[@]}" \
+if ! text="$(helm template t "$notes_chart" --namespace ow -f "$keys" "${all[@]}" "${global_security[@]}" \
     --show-only templates/zz-test-notes.yaml 2>&1)"; then
   bad "global security contexts: notes: $(printf '%s' "$text" | head -c 200)"
 elif grep -q -F -- "$expected" <<< "$text" && ! grep -q -F "global.podSecurityContext.supplementalGroups" <<< "$text" \
@@ -1646,7 +1692,7 @@ fi
 # The image pull Secrets of the values (global.imagePullSecrets) in every
 # pod spec: the Deployments, StatefulSets, Jobs and hooks, also the optional
 # ones (the operator Job of the api, the metrics exporter of Valkey).
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
     --set redis.metrics.enabled=true --set-json 'global.imagePullSecrets=["igrant-registry-creds","mirror-creds"]' \
     > "$out/pull-secrets.yaml" 2> "$out/pull-secrets.err"; then
   bad "image pull Secrets: helm template: $(head -c 200 "$out/pull-secrets.err")"
@@ -1693,7 +1739,7 @@ fi
 install_order() {
   local name="$1" database="$2"; shift 2
   local case="$out/install-$database-${name// /-}"
-  local args=(-f "$keys" "${site[@]}" -f "$profiles/exposure-ingress-nginx.yaml")
+  local args=(-f "$keys" "${all[@]}" -f "$profiles/exposure-ingress-nginx.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   if ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case.yaml" 2> "$case.err"; then
     bad "install $name ($database): helm template"
@@ -1708,7 +1754,7 @@ install_order() {
 # has the values of each case.
 upgrade_order() {
   local name="$1" database="$2"; shift 2
-  local args=(-f "$keys" "${site[@]}"
+  local args=(-f "$keys" "${all[@]}"
     -f "$profiles/exposure-ingress-nginx.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
@@ -1726,7 +1772,7 @@ upgrade_order() {
 # components on; the new release has the values of each case.
 upgrade_removes() {
   local name="$1" database="$2"; shift 2
-  local args=(-f "$keys" "${site[@]}"
+  local args=(-f "$keys" "${all[@]}"
     -f "$profiles/exposure-ingress-nginx.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
@@ -1771,7 +1817,7 @@ mkdir -p "$lookup_chart"
 cp -R "$chart/Chart.yaml" "$chart/values.yaml" "$chart/values.schema.json" "$chart/templates" "$chart/files" "$chart/policies" "$lookup_chart/"
 lookup_line='{{- $secret := lookup "v1" "Secret" $root.Release.Namespace (index . 1) -}}'
 stub_line='{{- $secret := index ($root.Files.Get "earlier-secrets.json" | fromJson) (index . 1) -}}'
-lookup_args=(-f "$keys" "${site[@]}")
+lookup_args=(-f "$keys" "${all[@]}")
 if [ "$(grep -c -F -- "$lookup_line" "$lookup_chart/templates/_helpers.tpl")" != 1 ]; then
   bad "upgrade keeps the values of the Secrets: ow.lookupSecretKey has not the lookup line of the test"
 elif ! helm template t "$chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/secrets-new.yaml" 2> "$out/secrets.err"; then
@@ -1878,7 +1924,7 @@ fi
 # AppArmor Unconfined, SELinux spc_t, procMount Unmasked, hostProcess), and
 # each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container
 # and an AppArmor annotation, which the chart does not render).
-if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" \
     -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
   bad "security settings: helm template with the optional containers"
   sed 's/^/  /' "$out/security-options.err" | head -10
@@ -1914,7 +1960,7 @@ else
   fi
   # The mutant of the values: both checks refuse it, each for the four
   # fields.
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/pss-mutant.yaml" \
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/pss-mutant.yaml" \
       > "$out/mutants/pss-mutant.yaml" 2> "$out/mutants/pss-mutant.err"; then
     bad "security checks refuse the mutant: helm template: $(head -c 200 "$out/mutants/pss-mutant.err")"
   else

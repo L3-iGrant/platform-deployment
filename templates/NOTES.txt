@@ -34,7 +34,7 @@ Public URLs (exposure {{ .Values.exposure.type }} by default; make sure your DNS
 
 Installed services: {{ join ", " $services }} (Installation.services in the api and gateway files).
 {{- if not (has "consent" $services) }}
-  Consent is not installed: the gateway answers 404 to the consent routes, and the dashboard shows no consent area (docs/components.md).
+  Consent is not installed: the gateway answers 404 to the consent routes, and the dashboard shows no consent area (docs/components.md). To install it, add profiles/consent.yaml.
 {{- end }}
 {{- if not (has "wallet" $services) }}
   The organisation wallet is not installed: the gateway answers 404 to the wallet routes, and the dashboard shows no wallet area (docs/components.md).

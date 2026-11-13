@@ -56,16 +56,16 @@ The default values give these maximums. They are starting values, not measuremen
 | api core | 1 | 10 + 5 (OIDC) + 5 (reader) + 1 (health) = 21 | 21 |
 | webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) + 1 (health) = 16 | 16 |
 | gateway | 2 | 10 + 1 (health) = 11 | 22 |
-| consent | 2 | 6 + 5 + 5 (readers) + 1 (health) = 17 | 34 |
+| consent (with `profiles/consent.yaml`) | 2 | 6 + 5 + 5 (readers) + 1 (health) = 17 | 0 (34) |
 | wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
-| wallet config | 1 | 8 + 4 + 2 + 20 (readers) + 1 + 1 (mint) = 36 | 36 |
+| wallet config | 1 | 8 + 4 + 2 + 10 (readers; 20 with consent) + 1 + 1 (mint) = 26 (36) | 26 (36) |
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| **Total** | | | **227** |
+| **Total** | | | **183** (227 with consent) |
 | the hooks | | | 5 |
 | the superuser (`superuser_reserved_connections`) | | | 3 |
-| **`max_connections` of the bundled server** | | | **250** (15 free) |
+| **`max_connections` of the bundled server** | | | **250** (59 free; 15 with consent) |
 
 ## Connection pooler
 

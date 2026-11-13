@@ -125,6 +125,8 @@ def main() -> int:
         text = handle.read()
     docs = [d for d in yaml.safe_load_all(text) if d]
     failures: list[str] = []
+    # Consent is optional (consent.enabled, profiles/consent.yaml).
+    consent_on = any(d.get("kind") == "Deployment" and d["metadata"]["name"] == f"{RELEASE}-consent" for d in docs)
 
     def check(condition: bool, message: str) -> None:
         if not condition:
@@ -199,12 +201,12 @@ def main() -> int:
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
         r"-api-bootstrap-platform-\d+$", d["metadata"]["name"]))
     check(not operator_jobs, f"the default values render the operator Jobs {operator_jobs}")
-    consent = config_map_file(f"{RELEASE}-consent", "config.yaml")
+    consent = config_map_file(f"{RELEASE}-consent", "config.yaml") if consent_on else {}
     if consent:
         go_section("consent DataBase", consent["DataBase"])
         for owner in ("api", "wallet"):
             go_section(f"consent ReadAccess.{owner}", consent["ReadAccess"][owner])
-    consent_migrate = config_map_file(f"{RELEASE}-consent", "migrate.yaml")
+    consent_migrate = config_map_file(f"{RELEASE}-consent", "migrate.yaml") if consent_on else {}
     if consent_migrate:
         go_section("consent migrate.yaml DataBase", consent_migrate["DataBase"])
     openbao_address = EXTERNAL_OPENBAO if openbao == "external" else f"https://{RELEASE}-openbao.{NAMESPACE}.svc:8200"
@@ -239,8 +241,9 @@ def main() -> int:
         check(wallet.get("status_list") == ({"write_interval_seconds": 30} if file in WORKER_FILES else None),
               f"wallet {file} has status_list {wallet.get('status_list')!r}")
         if file == "config.yaml":
-            for owner in ("api", "consent"):
+            for owner in ("api", "consent") if consent_on else ("api",):
                 wallet_section(f"wallet config.yaml read_access.{owner}", wallet["read_access"][owner])
+            check(consent_on or "consent" not in wallet["read_access"], "wallet config.yaml has read_access.consent without consent")
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
         # The limit of the organisation wallet units is not set by default:
@@ -369,6 +372,8 @@ def main() -> int:
         (f"{RELEASE}-wallet-migrate", "wallet"),
         (f"{RELEASE}-wallet-read-access", "wallet"),
     ):
+        if "-consent-" in name and not consent_on:
+            continue
         hook = config_map_file(name, "config.yaml")
         if not hook:
             continue
@@ -426,18 +431,18 @@ def main() -> int:
     if db_secret:
         keys = set(db_secret.get("data", {}))
         admin = {facts["admin_key"]}
-        expected = {"igrant_api", "igrant_oidc", "igrant_consent", "igrant_wallet"} | (admin if mode == "bundled" else set())
+        expected = {"igrant_api", "igrant_oidc", "igrant_wallet"} | ({"igrant_consent"} if consent_on else set()) | (admin if mode == "bundled" else set())
         check(keys == expected, f"the database Secret {server} has the keys {sorted(keys)}, not {sorted(expected)}")
     else:
         check(False, f"the database Secret {server} is missing")
     read_access = [d for d in docs if d.get("kind") == "Job" and "-read-access-" in d["metadata"]["name"]]
-    check(len(read_access) == 5, f"{len(read_access)} read access Jobs, not 5")
+    check(len(read_access) == (5 if consent_on else 2), f"{len(read_access)} read access Jobs, not {5 if consent_on else 2}")
     for doc in docs:
         if doc.get("kind") == "Job":
             spec = doc["spec"]["template"]["spec"]
             check(spec.get("automountServiceAccountToken") is False, f"Job {doc['metadata']['name']} mounts a service account token")
     readers = find("Secret", f"{RELEASE}-read-access")
-    check(readers is not None and set(readers.get("data", {})) == {"api-wallet", "consent-api", "consent-wallet", "wallet-api", "wallet-consent"},
+    check(readers is not None and set(readers.get("data", {})) == ({"api-wallet", "consent-api", "consent-wallet", "wallet-api", "wallet-consent"} if consent_on else {"api-wallet", "wallet-api"}),
           "the read access Secret is missing or has other keys")
     check(not any(d.get("kind") == "CronJob" for d in docs), "a CronJob is rendered")
 
@@ -525,6 +530,7 @@ def main() -> int:
         ("Job", f"{RELEASE}-wallet-read-access-api", install_upgrade, "5"),
         ("Job", f"{RELEASE}-wallet-read-access-consent", install_upgrade, "5"),
     )
+    hooks = tuple(hook for hook in hooks if consent_on or not hook[1].endswith("-consent"))
     for kind, name, when, weight in hooks:
         doc = find(kind, name)
         if doc is None:
@@ -537,7 +543,7 @@ def main() -> int:
     # The api and consent migration hooks stay pre-upgrade (and post-upgrade),
     # after the init hook.
     for name, when in ((f"{RELEASE}-api-migrate", "pre-upgrade"), (f"{RELEASE}-consent-migrate", "pre-upgrade"),
-                       (f"{RELEASE}-consent-migrate-after", "post-upgrade")):
+                       (f"{RELEASE}-consent-migrate-after", "post-upgrade"))[:3 if consent_on else 1]:
         doc = find("Job", name)
         check(doc is not None and annotations(doc).get("helm.sh/hook") == when, f"the hook {name} is not {when}")
         check(doc is not None and int(annotations(doc).get("helm.sh/hook-weight", "0")) > -27, f"the hook {name} does not run after the init hook")
@@ -760,7 +766,7 @@ def main() -> int:
         if "nats-seed" in mounted:
             check(mounted.get("nats-ca.crt") == (f"{RELEASE}-nats-tls", "ca.crt"), f"{doc['kind']} {doc['metadata']['name']} has a NATS user but not the NATS CA")
     for name, key, path in ((f"{RELEASE}-api", "api.yaml", ("Nats", "tlsCaFile")), (f"{RELEASE}-api", "webhook.yaml", ("Nats", "tlsCaFile")),
-                            (f"{RELEASE}-consent", "config.yaml", ("Nats", "tlsCaFile"))):
+                            (f"{RELEASE}-consent", "config.yaml", ("Nats", "tlsCaFile")))[:3 if consent_on else 2]:
         section = (config_map_file(name, key) or {}).get(path[0]) or {}
         check(str(section.get(path[1], "")).endswith("/nats-ca.crt"), f"{name} {key} has no {'.'.join(path)}")
     for file in KMS_FILES:
@@ -768,7 +774,7 @@ def main() -> int:
         check(section.get("tls_ca_file") == "/run/secrets/eudi-wallet/nats-ca.crt", f"wallet {file} has no nats.tls_ca_file")
     users = re.findall(r"^\s*# (\S+)$", nats_conf, re.M)
     # The clock connects to no NATS: it has no user.
-    check(users == ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-worker"],
+    check(users == [u for u in ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-worker"] if consent_on or u != "consent"],
           f"the NATS users are {users}")
     # The WIA pool refill is an actor of the workers (P3-B): no NATS user
     # publishes or subscribes to ows.wia_pool.refill_requested.

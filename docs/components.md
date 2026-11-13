@@ -25,9 +25,9 @@ An installation has consent management, the organisation wallet, or both. Each s
 
 | Values | The service is |
 | --- | --- |
-| `consent.enabled: true` (the default) | Installed: this release runs consent |
+| `consent.enabled: true` (`profiles/consent.yaml`) | Installed: this release runs consent |
 | `consent.enabled: false` and `gateway.upstreams.consent.url` | Installed: the consent service of another release |
-| `consent.enabled: false` and no `gateway.upstreams.consent.url` | Not installed |
+| `consent.enabled: false` (the default) and no `gateway.upstreams.consent.url` | Not installed |
 | `organisationWallet.enabled: true` (the default) | Installed: this release runs the organisation wallet |
 | `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` | Installed: the organisation wallet of another release |
 | `organisationWallet.enabled: false` and no `gateway.upstreams.walletConfig.url` | Not installed |
@@ -51,11 +51,11 @@ Without the organisation wallet:
 - The api and consent read no wallet views (no `readAccess.api.wallet` and `readAccess.consent.wallet`).
 - `organisationWallet.host` is not required. The api file has no `OpenIdDeployment`, and the dashboard has no `walletUrl`.
 
-For example, for an installation without consent, put this in `my-site.yaml`:
+For example, to add consent, add `profiles/consent.yaml`, or put this in `my-site.yaml`:
 
 ```yaml
 consent:
-  enabled: false
+  enabled: true
 ```
 
 Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart. A release without the api (`api.enabled: false`) has no gateway, so it cannot see which services the installation has: it keeps the reads and trusts of all services. To add or remove a service later, see [Upgrade](upgrade.md#the-services-of-the-installation).

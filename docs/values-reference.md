@@ -138,7 +138,7 @@ This page lists every value of the chart, what it does and its default.
 
 | Value | Description | Default |
 | --- | --- | --- |
-| `consent.enabled` | Run consent management in this release. `false` with `gateway.upstreams.consent.url`: the consent service of another release. `false` without the URL: the installation has no consent (see [Components](components.md#the-services-of-the-installation)) | `true` |
+| `consent.enabled` | Run consent management in this release. `profiles/consent.yaml` turns it on. `false` with `gateway.upstreams.consent.url`: the consent service of another release. `false` without the URL: the installation has no consent (see [Components](components.md#the-services-of-the-installation)) | `false` |
 | `consent.replicas` | Consent management | `2` |
 | `consent.logLevel`, `.nats.rpcTimeoutSeconds`, `.nats.readRpcTimeoutSeconds`, `.maxRequestBodyBytes` | The log level, the NATS request timeouts in seconds (`Nats.rpcTimeoutSeconds`, `Nats.readRpcTimeoutSeconds` of the consent file) and the largest request body in bytes (`Http.maxRequestBodyBytes`) | `info`, `15`, `5`, `5242880` |
 | `consent.gatewayToken.clockSkewSeconds`, `organisationWallet.internalAuth.clockSkewSeconds` | Consent and the wallet config routes always verify the internal token of the gateway: the clock difference that `exp` and `nbf` accept (consent 1 to 300 seconds, the wallet 0 to 300) | `60` |

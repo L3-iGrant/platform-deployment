@@ -1,0 +1,6 @@
+# Consent management: the consent service, its database, its read-only
+# users and its NATS user. The keys file of scripts/make-keys.sh already has
+# the consent key and the NATS user. The privacy dashboards stay off
+# (privacyDashboard.enabled).
+consent:
+  enabled: true
