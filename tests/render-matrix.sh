@@ -1482,20 +1482,27 @@ mkdir -p "$nats_chart"
 cp -R "$chart/Chart.yaml" "$chart/values.yaml" "$chart/values.schema.json" "$chart/templates" "$chart/files" "$chart/policies" "$nats_chart/"
 nats_lookup_line='{{- $live := lookup "apps/v1" "StatefulSet" $root.Release.Namespace (include "ow.name" (list $root "nats")) -}}'
 nats_stub_line='{{- $live := $root.Files.Get "live-nats.json" | fromJson -}}'
+revision_lookup_line='{{- $revision := lookup "apps/v1" "ControllerRevision" $root.Release.Namespace (index . 1) -}}'
+revision_stub_line='{{- $revision := $root.Files.Get "live-revision.json" | fromJson -}}'
 { printf '{{- define "test.notes" -}}\n'; cat "$chart/templates/NOTES.txt"; printf '\n{{- end }}\n'; } > "$nats_chart/templates/_test_notes.tpl"
 rm "$nats_chart/templates/NOTES.txt"
 printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes\ndata:\n  notes: |\n{{ include "test.notes" . | indent 4 }}\n' > "$nats_chart/templates/zz-test-notes.yaml"
 printf '{}' > "$nats_chart/live-nats.json"
-if [ "$(grep -c -F -- "$nats_lookup_line" "$nats_chart/templates/nats/_nats.tpl")" != 1 ]; then
-  bad "NATS store repair: ow.nats.liveStatefulSet has not the lookup line of the test"
+printf '{}' > "$nats_chart/live-revision.json"
+if [ "$(grep -c -F -- "$nats_lookup_line" "$nats_chart/templates/nats/_nats.tpl")" != 1 ] \
+    || [ "$(grep -c -F -- "$revision_lookup_line" "$nats_chart/templates/nats/_nats.tpl")" != 1 ]; then
+  bad "NATS store repair: ow.nats.liveStatefulSet or ow.nats.liveRevision has not the lookup line of the test"
 else
   NATS_LOOKUP_LINE="$nats_lookup_line" NATS_STUB_LINE="$nats_stub_line" perl -pi -e 's/\Q$ENV{NATS_LOOKUP_LINE}\E/$ENV{NATS_STUB_LINE}/' "$nats_chart/templates/nats/_nats.tpl"
+  NATS_LOOKUP_LINE="$revision_lookup_line" NATS_STUB_LINE="$revision_stub_line" perl -pi -e 's/\Q$ENV{NATS_LOOKUP_LINE}\E/$ENV{NATS_STUB_LINE}/' "$nats_chart/templates/nats/_nats.tpl"
   # live <case> <expected fsGroupChangePolicy> <text of the notes, or -> <JSON of the StatefulSet in the cluster> [helm args]
-  # -: the notes have no repair text.
+  # -: the notes have no repair text. LIVE_REVISION: the JSON of the
+  # ControllerRevision of status.currentRevision in the cluster (default {}).
   live() {
     local name="$1" policy="$2" note="$3" json="$4"; shift 4
     local rendered got
     printf '%s' "$json" > "$nats_chart/live-nats.json"
+    printf '%s' "${LIVE_REVISION:-{\}}" > "$nats_chart/live-revision.json"
     if ! rendered="$(helm template t "$nats_chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" "$@" \
         --show-only templates/nats/statefulset.yaml --show-only templates/zz-test-notes.yaml 2>&1)"; then
       bad "NATS store repair, $name: $(printf '%s' "$rendered" | head -c 200)"
@@ -1529,8 +1536,18 @@ for doc in yaml.safe_load_all(open(sys.argv[1])):
     "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,\"template\":{\"spec\":{\"securityContext\":{\"runAsUser\":65532},\"containers\":[{\"name\":\"nats\",\"securityContext\":{\"runAsUser\":0}}]}}},$status_done}"
   live "upgrade of the release with non-root NATS" OnRootMismatch - \
     "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},$status_done}"
-  live "rollout not complete" Always "$repair_note" \
-    "{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},\"status\":{\"observedGeneration\":4,\"currentRevision\":\"t-nats-1\",\"updateRevision\":\"t-nats-2\",\"replicas\":3,\"updatedReplicas\":1}}"
+  # A rollout that is not complete: Always only when the pods of the current
+  # revision run NATS as root (or the revision cannot be read); an upgrade
+  # some seconds after an upgrade of non-root NATS gives no Always (no
+  # ownership walk, no two more rollouts).
+  incomplete="{\"metadata\":{\"generation\":4},\"spec\":{\"replicas\":3,$hardened},\"status\":{\"observedGeneration\":4,\"currentRevision\":\"t-nats-1\",\"updateRevision\":\"t-nats-2\",\"replicas\":3,\"updatedReplicas\":1}}"
+  LIVE_REVISION='{"metadata":{"name":"t-nats-1"},"data":{"spec":{"template":{"$patch":"replace","spec":{"containers":[{"name":"nats"}]}}}}}' \
+    live "rollout not complete, the current revision runs NATS as root" Always "$repair_note" "$incomplete"
+  LIVE_REVISION='{"metadata":{"name":"t-nats-1"},"data":{"spec":{"template":{"$patch":"replace","spec":{"securityContext":{"runAsUser":65532,"fsGroup":65532},"containers":[{"name":"nats"},{"name":"reloader"}]}}}}}' \
+    live "an upgrade 3 s after an upgrade (rollout not complete, the current revision not root)" OnRootMismatch - "$incomplete"
+  LIVE_REVISION='{"metadata":{"name":"t-nats-1"},"data":{"spec":{"template":{"$patch":"replace","spec":{"securityContext":{"runAsUser":1000,"fsGroup":1000},"containers":[{"name":"nats"}]}}}}}' \
+    live "rollout not complete from the release of the user 1000" OnRootMismatch - "$incomplete"
+  live "rollout not complete, the current revision cannot be read" Always "$repair_note" "$incomplete"
   live "rollout not seen by the controller" Always "$repair_note" \
     "{\"metadata\":{\"generation\":5},\"spec\":{\"replicas\":3,$hardened},$status_done}"
   live "Always of the values" Always "WARNING: nats.podSecurityContext.fsGroupChangePolicy is Always" \
