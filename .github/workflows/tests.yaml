@@ -1,7 +1,15 @@
+#   tests/nats-routes.sh (only the NATS servers of the chart open a route),
+#   tests/alert-rules.sh (the alert rules of the wallet with promtool).
     name: Valkey, NATS and TLS in containers
       NATS_IMAGE: nats:2.14.10-alpine@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e
       # The NATS of the earlier release (the upgrade and the rollback).
       # Python 3.13 (the strict TLS checks of the wallet).
       PYTHON_IMAGE: python:3.13-slim-trixie
+      # promtool (the alert rules of the wallet).
+      PROMETHEUS_IMAGE: prom/prometheus:v3.5.0
       - name: tests/tls-strict.sh
         run: tests/tls-strict.sh "$PYTHON_IMAGE"
+      - name: tests/nats-routes.sh
+        run: tests/nats-routes.sh "$NATS_IMAGE"
+      - name: tests/alert-rules.sh
+        run: tests/alert-rules.sh "$PROMETHEUS_IMAGE"

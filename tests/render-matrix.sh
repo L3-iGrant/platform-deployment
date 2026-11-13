@@ -1035,6 +1035,12 @@ renders "the SSRF allow list in the wallet files" "allowed_private:" "${shamir[@
 guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
 guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
 guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" "${shamir[@]}" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
+# The alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh
+# runs them with promtool): none by default, only with the ServiceMonitor.
+lacks "no PrometheusRule by default" "kind: PrometheusRule" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true
+renders "PrometheusRule of the wallet: the stopped audit exports are critical" "alert: AuditExportStopped" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
+renders "PrometheusRule of the wallet: the labels for the rule selector" "release: kube-prometheus" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
+guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" "${shamir[@]}" --set organisationWallet.prometheusRule.enabled=true
 # The servers (service and config): a headless Service of the port metrics
 # (9190) and the job wallet-server; the ServiceMonitor names the jobs with
 # the label metrics.igrant.io/job.

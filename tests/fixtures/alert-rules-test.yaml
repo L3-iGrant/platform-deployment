@@ -1,0 +1,81 @@
+# Unit tests of the alert rules of templates/wallet/prometheusrule.yaml
+# (promtool test rules; tests/alert-rules.sh writes rules.yaml from a
+# render in the namespace ow).
+rule_files:
+  - rules.yaml
+evaluation_interval: 1m
+tests:
+  # A stopped month of the scope issuer: critical after 10 minutes; the
+  # scope kms with 0 gives no alert; two worker pods give one alert (max).
+  - interval: 1m
+    input_series:
+      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="issuer"}'
+        values: '0 1x30'
+      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-2",scope="issuer"}'
+        values: '0 1x30'
+      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="kms"}'
+        values: '0x30'
+      # Another release (another namespace) is not this alert.
+      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="other",pod="o-1",scope="kms"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: AuditExportStopped
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: AuditExportStopped
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: ow
+              scope: issuer
+            exp_annotations:
+              summary: "The audit export of issuer is stopped"
+              description: "1 closed month(s) of the audited scope issuer in ow: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
+  # No partition of the current month: critical after 5 minutes, and the
+  # warning of fewer than 2 future months after 1 hour.
+  - interval: 1m
+    input_series:
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",table="platform.audit_event"}'
+        values: '-1x90'
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",table="issuer.issuance"}'
+        values: '3x90'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PartitionOfTheMonthMissing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              namespace: ow
+              table: platform.audit_event
+            exp_annotations:
+              summary: "No partition of the current month for platform.audit_event"
+              description: "The table platform.audit_event in ow has no partition of the current month: an insert fails."
+      - eval_time: 70m
+        alertname: PartitionMonthsAheadLow
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: ow
+              table: platform.audit_event
+            exp_annotations:
+              summary: "Fewer than 2 future monthly partitions of platform.audit_event"
+              description: "The table platform.audit_event in ow has partitions for -1 month(s) after the current month. Check the partition job of the queue maintenance."
+  # A revocation older than 60 s for more than 2 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'ows_status_list_change_age_seconds{job="wallet-worker",namespace="ow"}'
+        values: '0 0 90 150 210 270'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: IssuerStatusListWritesLate
+        exp_alerts: []
+      - eval_time: 5m
+        alertname: IssuerStatusListWritesLate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: ow
+            exp_annotations:
+              summary: "A revocation is not in the published status list after 60 s"
+              description: "The oldest queued revocation of a status list in ow is 270 s old. Check the worker group of the queue realtime and the clock."
