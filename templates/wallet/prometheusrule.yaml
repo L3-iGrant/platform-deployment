@@ -38,6 +38,19 @@ spec:
           annotations:
             summary: "The audit export of {{ "{{" }} $labels.scope {{ "}}" }} is stopped"
             description: "{{ "{{" }} $value {{ "}}" }} closed month(s) of the audited scope {{ "{{" }} $labels.scope {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }}: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
+        # A month waits for its export index (audit partitions index, the
+        # hook Job <release>-wallet-export-index after each install and
+        # upgrade). On a normal release the value goes to 0 in seconds; the
+        # first build of a large month can take hours (each build has a
+        # statement timeout of 6 hours).
+        - alert: AuditExportIndexWaiting
+          expr: max by (namespace, scope) (ows_audit_export_index_waiting_partitions{{ $selector }}) > 0
+          for: 8h
+          labels:
+            severity: warning
+          annotations:
+            summary: "Audit months of {{ "{{" }} $labels.scope {{ "}}" }} wait for their export index"
+            description: "{{ "{{" }} $value {{ "}}" }} partition(s) of the audited scope {{ "{{" }} $labels.scope {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }} have no verified export and no valid export index after 8 hours: their export waits. Check the Job <release>-wallet-export-index (audit partitions index) and its log, then run the upgrade again."
         - alert: PartitionMonthsAheadLow
           expr: max by (namespace, table) (ows_partition_months_ahead{{ $selector }}) < 2
           for: 1h

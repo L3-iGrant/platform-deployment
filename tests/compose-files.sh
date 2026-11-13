@@ -266,6 +266,7 @@ roles = ["migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_ap
 wallet = {
     "wallet-database-roles": (admin, "database-init"),
     "wallet-migrate": ("igrant_wallet_migrator", "wallet-database-roles"),
+    "wallet-export-index": ("igrant_wallet_migrator", "wallet-migrate"),
     "wallet-read-access-api": (admin, "wallet-migrate"),
     "wallet-read-access-consent": (admin, "wallet-migrate"),
     "wallet-config": ("igrant_wallet_launcher_app", "wallet-migrate"),
@@ -1021,6 +1022,7 @@ expected = {
     "consent": (CONSENT, ["/tmp"], []),
     "wallet-database-roles": (WALLET, ["/tmp"], []),
     "wallet-migrate": (WALLET, ["/tmp"], []),
+    "wallet-export-index": (WALLET, ["/tmp"], []),
     "wallet-read-access-api": (WALLET, ["/tmp"], []),
     "wallet-read-access-consent": (WALLET, ["/tmp"], []),
     "wallet-config": (WALLET, ["/tmp"], []),

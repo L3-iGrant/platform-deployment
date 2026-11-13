@@ -403,6 +403,30 @@ services:
     depends_on:
       wallet-database-roles: {condition: service_completed_successfully}
 
+  # The export index of the audit events (audit partitions index), as the
+  # migrator, after wallet-migrate: the index of the monthly export on each
+  # partitioned table and partition. It finds nothing to do on a normal
+  # start and ends in seconds; on the first start with the step, a large
+  # month that is not exported can take hours. No service waits for it;
+  # the export of a month waits until its index is valid.
+  wallet-export-index:
+    <<: [*job, *hardened]
+    image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    user: "65532:65532"
+    tmpfs:
+      - /tmp:size=64m
+    entrypoint: ["/app/.venv/bin/audit", "partitions", "index"]
+    environment:
+      EUDI_WALLET_CONFIG: /etc/eudi-wallet/migrate.yaml
+    labels:
+      io.igrant.config-sha256.wallet-migrate-config: ${CONFIG_SHA256_WALLET_MIGRATE_CONFIG:?run make configs}
+    configs:
+      - {source: wallet-migrate-config, target: /etc/eudi-wallet/migrate.yaml}
+    secrets:
+      - {source: db-igrant-wallet-migrator-password, target: /run/secrets/eudi-wallet/database-password}
+    depends_on:
+      wallet-migrate: {condition: service_completed_successfully}
+
   # The owner of a database makes the read-only users of the other services
   # on its views (rule <reader>_<owner>_reader) with its read-access command.
   # The admin user (DB_ADMIN_USER) makes the users. The api image has no

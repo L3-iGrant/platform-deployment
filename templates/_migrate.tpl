@@ -23,8 +23,10 @@ of the earlier release wrote during the rolling update.
 
 Call with (dict
   "root" $
-  "hook" "pre-upgrade"|"post-upgrade"|"post-install,pre-upgrade"
+  "hook" "pre-upgrade"|"post-upgrade"|"post-install,pre-upgrade"|"post-install,post-upgrade"
                                          optional; default pre-upgrade
+  "weight" <int>                         optional; the hook weight of the Job (default -5;
+                                         the ConfigMap gets the weight - 5)
   "component" "<name suffix>"            the ConfigMap and the Job
   "values" <service values>              image, podSecurityContext, containerSecurityContext, ...
   "jobs" <jobs values>                   ttlSecondsAfterFinished, resources, podSecurityContext, containerSecurityContext (empty: the service values)
@@ -46,6 +48,7 @@ Call with (dict
 {{- $steps := .steps -}}
 {{- $hook := . -}}
 {{- $when := .hook | default "pre-upgrade" -}}
+{{- $weight := ternary .weight -5 (hasKey . "weight") | int -}}
 {{- range $event := splitList "," $when -}}
 {{- if not (has $event (list "post-install" "pre-upgrade" "post-upgrade")) -}}
 {{- fail (printf "ow.migrateHook: hook %q must be post-install, pre-upgrade or post-upgrade (comma-separated)" $when) -}}
@@ -60,7 +63,7 @@ metadata:
     {{- include "ow.labels" (list $root .component) | nindent 4 }}
   annotations:
     helm.sh/hook: {{ $when }}
-    helm.sh/hook-weight: "-10"
+    helm.sh/hook-weight: {{ sub $weight 5 | quote }}
     helm.sh/hook-delete-policy: before-hook-creation
 data:
   {{ base .configPath }}: |
@@ -75,7 +78,7 @@ metadata:
     {{- include "ow.labels" (list $root .component) | nindent 4 }}
   annotations:
     helm.sh/hook: {{ $when }}
-    helm.sh/hook-weight: "-5"
+    helm.sh/hook-weight: {{ $weight | quote }}
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   # OnFailure counts the restarts of the container: 3 gives two retries.

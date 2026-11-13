@@ -1,0 +1,34 @@
+{{- /*
+The export index of the audit events of the wallet (ow.migrateHook, helm
+post-install and post-upgrade, after the migration hook and the read access
+Jobs): "audit partitions index" (organisation-wallet-suite#731) as the
+migrator <prefix>_migrator, with the configuration and the password of the
+migration hook (it reads only the database section, and makes the objects
+as <prefix>_owner). It builds the index of the export
+(ix_audit_event_occurred_at_chain_id_sequence_number): first on each
+partitioned table <scope>.audit_event, then on each partition that needs it
+(CREATE INDEX CONCURRENTLY on a partition with rows). The monthly export
+waits until each index is valid. On a normal release it finds nothing to do
+and ends in seconds; on the first release with the step, a large month that
+is not exported can take hours: Helm waits up to --timeout
+(docs/upgrade.md, "The export index of the audit log"). It holds an
+advisory lock of its own, so two runs at the same time are safe (the
+second exits 1 and runs again), and a migration of the next release does
+not wait for it.
+*/}}
+{{- if .Values.organisationWallet.enabled }}
+{{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" .) "key" "migrator" }}
+{{- include "ow.migrateHook" (dict
+  "root" .
+  "hook" "post-install,post-upgrade"
+  "weight" 15
+  "component" "wallet-export-index"
+  "values" .Values.organisationWallet
+  "jobs" .Values.organisationWallet.jobs
+  "configPath" "/etc/eudi-wallet-migrate/config.yaml"
+  "config" (include "ow.wallet.migrateConfig" (list . (include "ow.wallet.databaseUser" (list . "migrator")) "database-password"))
+  "env" (list (dict "name" "EUDI_WALLET_CONFIG" "value" "/etc/eudi-wallet-migrate/config.yaml"))
+  "steps" (list (dict "name" "export-index" "command" (list "/app/.venv/bin/audit" "partitions" "index")))
+  "secrets" (include "ow.migrateHook.secrets" (include "ow.wallet.databaseFiles" (list . "database-password" $password) | fromJson) | fromJsonArray)
+  "secretDir" (include "ow.wallet.secretDir" .)) }}
+{{- end }}

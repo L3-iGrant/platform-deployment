@@ -127,6 +127,18 @@ The roles hook makes the new database role `<prefix>_clock` (a new key `clock` o
 
 Check after step 3: the Deployments `ows-wallet-worker-main`, `ows-wallet-worker-maintenance` and `ows-wallet-clock` are ready, and exactly one clock leads (see [Workers and clock](workers.md#check)).
 
+## The export index of the audit log
+
+From this chart version (with the wallet image of organisation-wallet-suite#731), the hook Job `<release>-wallet-export-index` runs `audit partitions index` after each install and upgrade (post-install and post-upgrade, after the migration hook; see [Audit log](audit-log.md#the-export-index)). The migration hook (pre-upgrade) does not build this index, so it stays short.
+
+Helm waits for a hook Job until it ends, at most `--timeout` (default 5 minutes). On a normal release the step ends in seconds. On the FIRST upgrade to this version, a database with large months that are not exported yet (the current month and the month before) needs one build of the index for each such partition: for a month of 200 GB, from about half an hour to some hours (each build has a statement timeout of 6 hours). For that upgrade:
+
+1. Find the size of the partitions of the audit events in the wallet database: `SELECT inhrelid::regclass, pg_size_pretty(pg_total_relation_size(inhrelid)) FROM pg_inherits JOIN pg_class p ON p.oid = inhparent WHERE p.relname = 'audit_event' ORDER BY pg_total_relation_size(inhrelid) DESC;`. Only the months that are not exported yet need the build.
+2. With large partitions, give `helm upgrade` a long timeout and `--wait`, for example `--wait --timeout 8h`. With `--wait`, the hook starts after the new pods are ready, so the build does not wait for the long transactions of old pods (an export of the earlier release). The new pods run as soon as the rollout ends; only the end of the command waits for the Job.
+3. If Helm stops at its timeout, `helm upgrade` reports `post-upgrade hooks failed` and the release is `failed`, but all objects of the release are in place, and the Job runs on until it ends. Watch it with `kubectl -n ows logs -f job/ows-wallet-export-index`: it ends with `audit partitions index: built the export index of N partitions`. The next `helm upgrade` is normal. Do not start the next upgrade while the Job runs: the hook of the next upgrade deletes the Job (PostgreSQL completes the build in progress), and its new run waits for the lock of that build.
+
+While a month waits for its index, its export waits too: the worker logs a warning for each such month, and the gauge `ows_audit_export_index_waiting_partitions{scope}` is above 0 (the alert `AuditExportIndexWaiting` after 8 hours). For the details of the first run, see the wallet documentation, [The export index](https://github.com/L3-iGrant/organisation-wallet-suite/blob/main/docs/get-started/operations/audit-log.md#the-export-index).
+
 ## The TLS of NATS
 
 From the release with the TLS of NATS, the bundled NATS uses TLS for the clients and mutual TLS for the routes (see [NATS users](nats-users.md#tls)). The upgrade restarts the NATS pods one at a time. A server with TLS does not accept a route without TLS: until the third server has restarted, the cluster can lose its majority, and JetStream does not answer for some minutes. The processes connect again with TLS. The outbox of each service sends the events again; an API call that sends a NATS command in that time gets an error. Do this upgrade in a maintenance window.

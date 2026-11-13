@@ -1020,6 +1020,43 @@ lacks "no PrometheusRule by default" "kind: PrometheusRule" "${shamir[@]}" --set
 renders "PrometheusRule of the wallet: the stopped audit exports are critical" "alert: AuditExportStopped" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
 renders "PrometheusRule of the wallet: the labels for the rule selector" "release: kube-prometheus" "${shamir[@]}" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
 guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" "${shamir[@]}" --set organisationWallet.prometheusRule.enabled=true
+# The export index of the audit log (audit partitions index,
+# organisation-wallet-suite#731): a hook Job post-install and post-upgrade
+# (never pre-upgrade), after the migration hook and the read access Jobs of
+# the wallet, as the migrator with the configuration of the migration,
+# OnFailure, the network role job; nothing without the wallet.
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" -f "$examples/site.yaml" "${shamir[@]}" 2>&1 | python3 -c '
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(sys.stdin) if d]
+jobs = {d["metadata"]["name"]: d for d in docs if d["kind"] == "Job"}
+job = jobs.get("t-wallet-export-index")
+if not job:
+    sys.exit("no Job t-wallet-export-index")
+notes = job["metadata"]["annotations"]
+if sorted(notes["helm.sh/hook"].split(",")) != ["post-install", "post-upgrade"]:
+    print("hook events", notes["helm.sh/hook"])
+weight = int(notes["helm.sh/hook-weight"])
+for name, other in jobs.items():
+    events = (other["metadata"].get("annotations") or {}).get("helm.sh/hook", "")
+    if name != "t-wallet-export-index" and name.startswith("t-wallet-") and "post-install" in events and int(other["metadata"]["annotations"]["helm.sh/hook-weight"]) >= weight:
+        print("runs before", name)
+spec = job["spec"]["template"]["spec"]
+container = spec["containers"][0]
+if container["command"] != ["/app/.venv/bin/audit", "partitions", "index"]:
+    print("command", container["command"])
+if spec["restartPolicy"] != "OnFailure":
+    print("restartPolicy", spec["restartPolicy"])
+if job["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") != "job":
+    print("network role", job["spec"]["template"]["metadata"]["labels"])
+keys = sorted(item["key"] for v in spec["volumes"] if "projected" in v for s in v["projected"]["sources"] for item in s["secret"]["items"])
+if "migrator" not in keys or any(k in keys for k in ("owner", "service", "config", "jobs", "clock", "admin_app")):
+    print("secret keys", keys)
+' 2>&1)" && [ -z "$problems" ]; then
+  ok "export index Job of the audit log: post-install and post-upgrade after the migration, the migrator, OnFailure"
+else
+  bad "export index Job of the audit log: $(printf '%s' "$problems" | head -c 300)"
+fi
+lacks "no export index Job without the wallet" "t-wallet-export-index" "${shamir[@]}" --set organisationWallet.enabled=false
 # The servers (service and config): a headless Service of the port metrics
 # (9190) and the job wallet-server; the ServiceMonitor names the jobs with
 # the label metrics.igrant.io/job.

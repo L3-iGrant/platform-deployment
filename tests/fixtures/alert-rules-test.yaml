@@ -32,6 +32,36 @@ tests:
             exp_annotations:
               summary: "The audit export of issuer is stopped"
               description: "1 closed month(s) of the audited scope issuer in ow: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
+  # Partitions that wait for their export index: a warning after 8 hours
+  # (two worker pods give one alert, max); a value that goes to 0 within
+  # the hours of a first build gives no alert; another namespace and a
+  # scope with 0 give no alert.
+  - interval: 1m
+    input_series:
+      - series: 'ows_audit_export_index_waiting_partitions{job="wallet-worker",namespace="ow",pod="w-1",scope="issuer"}'
+        values: '2x600'
+      - series: 'ows_audit_export_index_waiting_partitions{job="wallet-worker",namespace="ow",pod="w-2",scope="issuer"}'
+        values: '2x600'
+      - series: 'ows_audit_export_index_waiting_partitions{job="wallet-worker",namespace="ow",pod="w-1",scope="kms"}'
+        values: '1x300 0x300'
+      - series: 'ows_audit_export_index_waiting_partitions{job="wallet-worker",namespace="ow",pod="w-1",scope="trust"}'
+        values: '0x600'
+      - series: 'ows_audit_export_index_waiting_partitions{job="wallet-worker",namespace="other",pod="o-1",scope="issuer"}'
+        values: '5x600'
+    alert_rule_test:
+      - eval_time: 7h50m
+        alertname: AuditExportIndexWaiting
+        exp_alerts: []
+      - eval_time: 8h10m
+        alertname: AuditExportIndexWaiting
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              namespace: ow
+              scope: issuer
+            exp_annotations:
+              summary: "Audit months of issuer wait for their export index"
+              description: "2 partition(s) of the audited scope issuer in ow have no verified export and no valid export index after 8 hours: their export waits. Check the Job <release>-wallet-export-index (audit partitions index) and its log, then run the upgrade again."
   # No partition of the current month: critical after 5 minutes, and the
   # warning of fewer than 2 future months after 1 hour.
   - interval: 1m

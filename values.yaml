@@ -2286,8 +2286,9 @@ organisationWallet:
     labels: {}
   # -- The alert rules of the wallet as a PrometheusRule of the Prometheus
   # Operator (the CRD must exist; docs/workers.md, "Alerts"): the stopped
-  # audit exports (critical), the partitions of the next months, the late
-  # writes of the issuer and the age of the Android attestation status list.
+  # audit exports (critical), the months that wait for their export index,
+  # the partitions of the next months, the late writes of the issuer and
+  # the age of the Android attestation status list.
   # The rules read the targets of serviceMonitor (turn it on too). labels:
   # for the ruleSelector of your Prometheus. With other monitoring, take the
   # rules of the docs.

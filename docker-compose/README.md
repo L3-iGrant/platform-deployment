@@ -47,10 +47,10 @@ check: do the next step only when you see the result of the check.
 
 Some services run one time at each start and then stop:
 `database-init`, `wallet-database-roles`, `api-migrate`,
-`consent-migrate`, `wallet-migrate`, `api-read-access-wallet`,
+`consent-migrate`, `wallet-migrate`, `wallet-export-index`, `api-read-access-wallet`,
 `api-read-access-consent`, `consent-read-access`, `wallet-read-access-api`,
 `wallet-read-access-consent`, `openbao-init` and `nats-data-owner`. They create the databases, the
-database roles of the wallet, the database tables, the read-only database
+database roles of the wallet, the database tables and their indexes, the read-only database
 users and the configuration of OpenBao, and give the NATS volume to the
 user of NATS.
 
@@ -616,11 +616,20 @@ each one starts only when the one before it stopped with exit code 0:
    user) create the read-only users of the api and of consent on the wallet
    views (one service for each reader: the wallet image has no shell). The wallet processes start
    after `wallet-migrate`.
+5. `wallet-export-index` (`audit partitions index`, as
+   `igrant_wallet_migrator`) builds the index of the monthly export of the
+   audit events, after `wallet-migrate`. No service waits for it. It finds
+   nothing to do at a normal start and stops in seconds; at the first
+   start of a release with this step, a large month that is not exported
+   yet can take hours. The export of a month waits until its index is
+   valid. `Exited (1)`: a build failed, or another run builds now; do
+   `make up` again. `Exited (2)`: a configuration or connection error.
 
 | Process | Service | Database role |
 |---|---|---|
 | Database roles | `wallet-database-roles` | The admin user (`DB_ADMIN_USER`) |
 | Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
+| Export index of the audit events | `wallet-export-index` | `igrant_wallet_migrator` |
 | Read access | `wallet-read-access-api`, `wallet-read-access-consent` | The admin user (`DB_ADMIN_USER`) |
 | Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
 | Background work | `wallet-worker` | `igrant_wallet_jobs` |
@@ -807,7 +816,7 @@ profiles: a service without these settings fails the test.
 | `wallet-config`, `wallet-service` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `wallet-worker` | `65532:65532` | `/tmp` (the volume `wallet-worker-tmp`, on disk), `/run/ows-worker` (tmpfs, 64 MB) |
 | `wallet-clock` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
-| `wallet-database-roles`, `wallet-migrate`, `wallet-read-access-api`, `wallet-read-access-consent` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
+| `wallet-database-roles`, `wallet-migrate`, `wallet-export-index`, `wallet-read-access-api`, `wallet-read-access-consent` | `65532:65532` | `/tmp` (tmpfs, 64 MB) |
 | `dashboard` | `101:101` | `/tmp` (tmpfs, 64 MB): the pid file and the temporary files of nginx |
 | `postgres` | `999:999` (the user `postgres` of the image) | the volume `postgres-data`, `/var/run/postgresql` and `/tmp` (tmpfs) |
 | `database-init` | `999:999` | `/tmp` (tmpfs, 16 MB) |

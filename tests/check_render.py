@@ -524,6 +524,10 @@ def main() -> int:
         ("ConfigMap", f"{RELEASE}-wallet-read-access", install_upgrade, "0"),
         ("Job", f"{RELEASE}-wallet-read-access-api", install_upgrade, "5"),
         ("Job", f"{RELEASE}-wallet-read-access-consent", install_upgrade, "5"),
+        # The export index of the audit log: after the rollout, and after
+        # the migration on a new installation.
+        ("ConfigMap", f"{RELEASE}-wallet-export-index", "post-install,post-upgrade", "10"),
+        ("Job", f"{RELEASE}-wallet-export-index", "post-install,post-upgrade", "15"),
     )
     for kind, name, when, weight in hooks:
         doc = find(kind, name)
@@ -533,7 +537,7 @@ def main() -> int:
         found = tuple(annotations(doc).get(f"helm.sh/{key}") for key in ("hook", "hook-weight", "hook-delete-policy"))
         check(found == (when, weight, "before-hook-creation"), f"the hook {kind} {name} has {found}, not ({when}, {weight}, before-hook-creation)")
     weights = [int(weight) for _, _, _, weight in hooks]
-    check(weights == sorted(weights), "the hooks are not in the order Secrets, init, roles, migration, read access")
+    check(weights == sorted(weights), "the hooks are not in the order Secrets, init, roles, migration, read access, export index")
     # The api and consent migration hooks stay pre-upgrade (and post-upgrade),
     # after the init hook.
     for name, when in ((f"{RELEASE}-api-migrate", "pre-upgrade"), (f"{RELEASE}-consent-migrate", "pre-upgrade"),
