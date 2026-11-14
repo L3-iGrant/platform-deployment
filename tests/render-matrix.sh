@@ -503,6 +503,23 @@ guard() {
     printf '%s\n' "$err" | sed 's/^/  /' | head -5
   fi
 }
+# A guard of an unknown property name (propertyNames in the schema). Helm
+# 3.18 and later (also Helm 4) refuse the name, but can name a wrong
+# location for the error: a bug of their schema library
+# (santhosh-tekuri/jsonschema issue 276, open). So the message must name the
+# value, or the refused property ("invalid propertyName '<name>'").
+guard_property_name() {
+  local name="$1" expect="$2" property="$3"; shift 3
+  local err
+  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 >/dev/null)"; then
+    bad "guard $name: the render did not stop"
+  elif grep -q -F -- "$expect" <<< "$err" || grep -q -F -- "invalid propertyName '$property'" <<< "$err"; then
+    ok "guard $name"
+  else
+    bad "guard $name: the message lacks \"$expect\" and \"invalid propertyName '$property'\""
+    printf '%s\n' "$err" | sed 's/^/  /' | head -5
+  fi
+}
 # PostgreSQL is the only engine: the template guard (ow.db.engine) refuses
 # any other engine with a message that names the components (the schema has
 # no enum for it). mysql also stops the render when only one of the api,
@@ -1065,10 +1082,10 @@ guard "audit bucket endpoint" "organisationWallet.audit.bucket.endpoint" "${s3[@
 guard "audit bucket name" "organisationWallet.audit.bucket.name" --set organisationWallet.audit.bucket.name=Audit_Bucket
 guard "audit bucket prefix" "organisationWallet.audit.bucket.prefix" "${s3[@]}" --set organisationWallet.audit.bucket.prefix=/audit
 guard "audit retention of at least one year" "organisationWallet.audit.retentionYears" --set organisationWallet.audit.retentionYears=0
-guard "audit retention of a scope without an audit log" "organisationWallet.audit.scopeRetentionYears" --set organisationWallet.audit.scopeRetentionYears.events=3
+guard_property_name "audit retention of a scope without an audit log" "organisationWallet.audit.scopeRetentionYears" events --set organisationWallet.audit.scopeRetentionYears.events=3
 # The wallet provider split replaced the scope wallet_provider with
 # individual_wallet_provider and business_wallet_provider.
-guard "audit retention of the old wallet provider scope" "organisationWallet.audit.scopeRetentionYears" --set organisationWallet.audit.scopeRetentionYears.wallet_provider=10
+guard_property_name "audit retention of the old wallet provider scope" "organisationWallet.audit.scopeRetentionYears" wallet_provider --set organisationWallet.audit.scopeRetentionYears.wallet_provider=10
 renders "audit retention of the individual wallet provider scope" "individual_wallet_provider: 10" --set organisationWallet.audit.scopeRetentionYears.individual_wallet_provider=10
 renders "audit retention of the business wallet provider scope" "business_wallet_provider: 12" --set organisationWallet.audit.scopeRetentionYears.business_wallet_provider=12
 guard "retention purge batch size" "organisationWallet.retention.batchSize" --set organisationWallet.retention.batchSize=20000

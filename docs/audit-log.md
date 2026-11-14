@@ -20,7 +20,7 @@ The workers create the anchor keys when they start: non-exportable Transit keys 
 | Value | Wallet setting | Default |
 | --- | --- | --- |
 | `organisationWallet.audit.retentionYears` | `audit.retention_years`: the years that the events of a data scope stay in the database (at least 1) | `7` |
-| `organisationWallet.audit.scopeRetentionYears` | `audit.scope_retention_years`: a different period for some data scopes, for example `{kms: 10}` | `{}` |
+| `organisationWallet.audit.scopeRetentionYears` | `audit.scope_retention_years`: a different period for some data scopes, for example `{kms: 10}`. An unknown scope stops the render; with Helm 3.18 and later, the message names the scope but can show a wrong path | `{}` |
 | `organisationWallet.audit.bucket.type` | `audit.bucket.type`: `s3` (an S3 store with Object Lock) or `gcs` (Google Cloud Storage through the Google client) | `s3` |
 | `organisationWallet.audit.bucket.name`, `.prefix` | `audit.bucket.name`, `.prefix`: the audit bucket and the folder of the objects (for example `audit/production/`). Empty name: no bucket | `""` |
 | `organisationWallet.audit.bucket.endpoint`, `.region` | Type `s3`: `audit.bucket.endpoint`, `.region`: the S3 API of the store (`https://host` or `https://host:port`) and the signing region. Required with a name | `""` |
