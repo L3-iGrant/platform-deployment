@@ -238,6 +238,31 @@ Rules of the Job:
 - You cannot transfer or remove the platform operator mark.
 - The wallet of the platform operator organisation is the installation's wallet provider. The wallet gets this flag when an admin deploys it, and no route changes the flag later.
 
+## After the installation: the signing key of the wallet provider
+
+No wallet unit becomes operational until the wallet provider has a signing key with an X.509 certificate for its wallet unit attestations (WIAs). Until then, the wallet log shows `Wallet unit attestation signing is not configured. Set cryptographicKeyIdentifier in the wallet provider configuration`. A new installation has no such key. Do these steps once, as a platform admin of the platform operator organisation, after you deploy its wallet (**Getting Started**, **Deploy the wallet**): the wallet pages of the dashboard need a deployed wallet.
+
+In the dashboard:
+
+1. In **Key Management and Signing**, use **Create Key** to make an ES256 key in the key store "Local vault", with a name that you choose, for example `Wallet provider signing key`.
+2. Give the key a certificate:
+   - Production: **Generate CSR** with the preset **Wallet provider signing certificate**. Send the CSR to your CA, then use **Upload Certificate Chain** with the chain that your CA returns.
+   - Test installation: **Generate CSR** with the preset **Wallet provider signing certificate** and **Use the built-in test CA** on. The preset needs **Country (2-letter code)**, **Organisation (O)**, **Organisation identifier** (the ETSI EN 319 412-1 form: type, country, `-`, id, for example `VATSE-5560000000`) and **Common Name (CN)**. The test CA stores the certificate chain on the key. Use it for development and tests only.
+3. For the organisation wallet units: open **Wallet Units** > **Wallet Units (Organisations)** > **Default Configurations**, and select the key as **Cryptographic Key Identifier** in the card **Wallet Unit Attestation Signing**.
+4. When the installation serves the mobile apps: open **Wallet Provider (Individuals)** > **Wallet Solution** > **Edit Signing Keys**, and select the key as **Key of the WIAs**.
+
+Both dialogs save the key with the format `x509`.
+
+With the API (the admin token of a platform admin of the platform operator organisation):
+
+1. `POST /v4/config/ows/key-management/keys` with `{"name": "Wallet provider signing key", "algorithm": "ES256"}` (without `keyStoreId`: the key store "Local vault"). The answer has the `keyId`. `GET /v4/config/ows/key-management/certificate-presets`: the preset id `wallet-provider` is "Wallet provider signing certificate".
+2. Give the key a certificate:
+   - Production: `POST /v4/config/ows/key-management/keys/<key id>/csr`, sign the CSR with your CA, then `POST /v4/config/ows/key-management/keys/<key id>/certificate-chain` as `multipart/form-data` with the file field `certificate_file`: the PEM chain, leaf first, then the intermediates, then the root.
+   - Test installation: `POST /v4/config/ows/key-management/keys/<key id>/test-certificate` with `{"preset": "wallet-provider", "subject": {"country": "SE", "organization": "Example Wallet Provider", "organizationIdentifier": "VATSE-5560000000", "commonName": "Example Wallet Provider WIA"}, "validityDays": 365}`. The preset needs `country`, `organization`, `organizationIdentifier` and `commonName`; a `400` answer names a missing field.
+3. `PATCH /v4/config/ows/wallet-provider/organisation-wallet-unit-configuration` with `{"walletUnitAttestationSigningConfig": {"cryptographicKeyIdentifier": "<key id>", "cryptographicKeyFormat": "x509"}}`. Always send `cryptographicKeyFormat: "x509"`: without it, the wallet stores no format and the refill of the WIA pool fails every minute (`TS3 WIA issuance requires an x509 signing configuration` in the worker log). The dashboard sends it for you. For the mobile apps, send the same to `individual-wallet-unit-configuration`.
+
+Check: within about a minute, `GET /v4/config/ows/holder/wallet-unit/status` (with an API key of an organisation that has an authorised wallet unit) changes from `installed` to `operational`. `GET /v4/config/ows/wallet-provider/organisation-wallet-units` shows `isAuthorised` for each unit; `PUT /v4/config/ows/wallet-provider/organisation-wallet-units/<wallet unit id>` with `{"isAuthorised": true}` authorises one. Turn on extensions that issue credentials to the organisation's own wallet only after the status is `operational`.
+
 ## After the installation: the other organisations and admins
 
 A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Organisations)" ("Platform" without the wallet). You need no Job and no chart command.
