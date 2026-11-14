@@ -113,7 +113,7 @@ Open `.env` and set the values. The file describes each value (the same
 text is in [Settings](#settings)). Every installation must set
 `PLATFORM_TAG`:
 
-- `PLATFORM_TAG`: the release tag, for example `2026.11.5`. `2026.11.x` is a placeholder:
+- `PLATFORM_TAG`: the release tag, for example `2026.11.6`. `2026.11.x` is a placeholder:
   `make secrets` and `make check` stop until you replace it.
 
 If the installation runs behind your reverse proxy (not only on
