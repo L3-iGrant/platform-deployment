@@ -33,7 +33,7 @@ The wallet host serves only the wallet's public routes: the wallet's service rol
 
 Some parts of the dashboard need internet access from the admins' browser: the docs links and guides, and the list of supported IAMs, come from `https://docs.igrant.io`, and the docs search uses `https://typesense.igrant.io`. Without internet access, only these parts do not work.
 
-With network policies, `networkPolicy.ingressController` is the only source of traffic to the gateway, wallet service and dashboard pods. Give a selector that matches the pods of both controllers (the example selects the namespaces `ingress-nginx` and `ingress-nginx-internal`, and sets `matchLabels: null` to remove the default labels of the Envoy pods, see [Network policies](network-policies.md#the-values-that-you-must-set)).
+With network policies, `networkPolicy.ingressController` is the only source of traffic to the gateway, wallet service and dashboard pods. Give a selector that matches the pods of both controllers (the example selects the namespaces `ingress-nginx` and `ingress-nginx-internal`, and sets `matchLabels: null` to remove the default namespace label, see [Network policies](network-policies.md#the-values-that-you-must-set)).
 
 ### The routes of the phone app
 

@@ -1123,15 +1123,10 @@ redis:
 # NetworkPolicies: turn them on only when the cluster enforces them (docs/network-policies.md).
 networkPolicy:
   enabled: false
-  # -- Pods of your ingress controller or Gateway (default: the Envoy pods of the Gateway platform).
+  # -- Pods of your ingress controller or Gateway (default: all pods of the namespace envoy-gateway-system).
   ingressController:
     namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}
-    podSelector:
-      matchLabels:
-        app.kubernetes.io/name: envoy
-        app.kubernetes.io/component: proxy
-        gateway.envoyproxy.io/owning-gateway-name: platform
-        gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
+    podSelector: {}
   # -- DNS pods and ports. cidrs: DNS servers outside the pod network (NodeLocal DNSCache).
   dns:
     cidrs: []

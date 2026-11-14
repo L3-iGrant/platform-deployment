@@ -191,8 +191,8 @@ exposure_of() { case "$1" in exposure-ingress-*) echo ingress ;; exposure-none) 
 # The network matrix check (tests/check_network_matrix.py) of a render,
 # with the model of the ingress controller pods of its exposure profile
 # (tests/fixtures/ingress-controller-pods.yaml; no model for kgateway).
-# "defaults": the chart defaults, which select the Envoy pods of the
-# Gateway platform.
+# "defaults": the chart defaults, which select every pod of the namespace
+# envoy-gateway-system.
 controller_of() { case "$1" in exposure-ingress-nginx*) echo ingress-nginx ;; exposure-on-premise) echo on-premise ;; exposure-kgateway) echo "" ;; *) echo envoy-gateway ;; esac; }
 network_matrix() {
   local file="$1" controller
@@ -1334,9 +1334,9 @@ if sorted(labelled) != expect["roles"]:
     bad "platform profile: $name: $(printf '%s' "$problems" | head -c 400)"
   fi
 }
-envoy='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "envoy-gateway-system"}}, "podSelector": {"matchLabels": {"app.kubernetes.io/component": "proxy", "app.kubernetes.io/name": "envoy", "gateway.envoyproxy.io/owning-gateway-name": "platform", "gateway.envoyproxy.io/owning-gateway-namespace": "envoy-gateway-system"}}}'
+envoy='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "envoy-gateway-system"}}, "podSelector": {}}'
 ingress_nginx='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}, "podSelector": {}}'
-platform_profile "the Envoy pods of the Gateway platform on 10080 and 10443, the load balancer ports 80 and 443, the wallet roles" \
+platform_profile "the pods of envoy-gateway-system on 10080 and 10443, the load balancer ports 80 and 443, the wallet roles" \
   "{\"to\": [$envoy], \"ports\": [80, 443, 10080, 10443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
 platform_profile "ingress-nginx (its profile) on 80 and 443" \
   "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}" \
@@ -1347,8 +1347,7 @@ platform_profile "a load balancer address, other ports, also the webhook handler
   --set-json 'networkPolicy.egress.roles.webhook=["internet-any-port","platform"]'
 guard "no platform profile for the clock" 'the egress profile "platform" is not allowed for the network role "wallet-clock"' --set-json 'networkPolicy.egress.roles.wallet-clock=["platform"]'
 # The network matrix check with the Envoy pods refuses: the platform ports
-# without 10080 and 10443, a selector of the whole namespace (the Envoy
-# Gateway controller and the Envoy pods of other Gateways), and the profile
+# without 10080 and 10443, a selector of another namespace, and the profile
 # platform for the api.
 matrix_refuses() {
   local name="$1" expect="$2"; shift 2
@@ -1366,9 +1365,9 @@ matrix_refuses() {
 matrix_refuses "the platform ports without 10080 and 10443" \
   "the matrix connection wallet-service -> the Envoy pods of the Gateway platform:https (10443) is denied" \
   --set-json 'networkPolicy.egress.profiles.platform.ports=[80,443]'
-matrix_refuses "a selector of the namespace only" \
-  "the connection the Envoy Gateway controller -> gateway:http is allowed but not in the matrix" \
-  --set-json 'networkPolicy.ingressController.podSelector.matchLabels=null'
+matrix_refuses "a selector of another namespace" \
+  "the matrix connection the Envoy pods of the Gateway platform (ingressController) -> gateway:http is denied" \
+  --set-json 'networkPolicy.ingressController.namespaceSelector.matchLabels={"kubernetes.io/metadata.name":"ingress-nginx"}'
 matrix_refuses "the profile platform for the api" \
   "the connection api -> the Envoy pods of the Gateway platform:https (10443) is allowed but not in the matrix" \
   --set-json 'networkPolicy.egress.roles.api=["internet-any-port","smtp","platform"]'

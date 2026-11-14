@@ -6,7 +6,8 @@
 # that source); a pod without "source" gets no connection at all.
 
 # Envoy Gateway v1.10.0 with manifests/envoy-gateway/ (the chart defaults
-# and profiles/exposure-envoy-gateway.yaml).
+# and profiles/exposure-envoy-gateway.yaml). The defaults select every pod
+# of the namespace envoy-gateway-system, so each one is the ingress controller.
 envoy-gateway:
   - name: the Envoy pods of the Gateway platform
     source: ingressController
@@ -22,6 +23,7 @@ envoy-gateway:
     # the declared ports of the envoy container.
     ports: {http: 10080, https: 10443, metrics: 19001, readiness: 19003}
   - name: the Envoy pods of another Gateway
+    source: ingressController
     namespace: envoy-gateway-system
     labels:
       app.kubernetes.io/name: envoy
@@ -32,6 +34,7 @@ envoy-gateway:
       gateway.networking.k8s.io/gateway-name: other
     ports: {http: 10080, https: 10443, metrics: 19001, readiness: 19003}
   - name: the Envoy Gateway controller
+    source: ingressController
     namespace: envoy-gateway-system
     labels: {control-plane: envoy-gateway, app.kubernetes.io/name: gateway-helm, app.kubernetes.io/instance: eg}
     ports: {grpc: 18000, ratelimit: 18001, wasm: 18002, metrics: 19001, webhook: 9443}

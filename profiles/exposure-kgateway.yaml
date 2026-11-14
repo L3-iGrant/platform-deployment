@@ -23,5 +23,4 @@ networkPolicy:
     namespaceSelector:
       matchLabels:
         kubernetes.io/metadata.name: kgateway-system
-    podSelector:
-      matchLabels: null                    # removes the default labels (the Envoy pods)
+    podSelector: {}

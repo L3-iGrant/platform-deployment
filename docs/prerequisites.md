@@ -150,7 +150,7 @@ Only the load balancer may reach the node ports of the Envoy Service (for exampl
 
 With `networkPolicy.enabled: true`, the chart defaults fit this Gateway (see [Network policies](network-policies.md#envoy-gateway)):
 
-- `networkPolicy.ingressController` selects the Envoy pods of the Gateway `platform` in the namespace `envoy-gateway-system` (labels `app.kubernetes.io/name: envoy`, `app.kubernetes.io/component: proxy`, `gateway.envoyproxy.io/owning-gateway-name: platform`, `gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system`). Only these pods reach the gateway, the wallet service and the dashboard.
+- `networkPolicy.ingressController` selects all pods of the namespace `envoy-gateway-system`. Only these pods reach the gateway, the wallet service and the dashboard.
 - With the PROXY protocol and no short cut (above), the calls of the wallet roles to their own hosts go out through the load balancer: the `internet` profiles allow a public load balancer address, and `networkPolicy.egress.profiles.platform.cidrs` takes a private one (ports 80 and 443).
 - Without the PROXY protocol, kube-proxy sends these calls straight to the Envoy pods: the egress profile `platform` allows the Envoy pods on the container ports 10080 and 10443 (the default).
 

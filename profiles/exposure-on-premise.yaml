@@ -51,8 +51,7 @@ networkPolicy:
         - key: kubernetes.io/metadata.name
           operator: In
           values: [ingress-nginx, ingress-nginx-internal]
-    podSelector:
-      matchLabels: null                    # removes the default labels (the Envoy pods)
+    podSelector: {}
   egress:
     profiles:
       platform:
