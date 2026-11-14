@@ -22,7 +22,6 @@
 *.tmproj
 .vscode/
 # Custom ignores
-stable/
 docker-compose/
 images/
 tests/

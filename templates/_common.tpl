@@ -18,9 +18,7 @@ fullnameOverride, else the release name.
 
 {{/*
 Value of the app.kubernetes.io/name label: nameOverride, else the chart
-name. The selectors use this label and an upgrade cannot change a selector,
-so a release installed from the organisationwallet chart sets nameOverride
-organisationwallet.
+name. The selectors use this label and an upgrade cannot change a selector.
 */}}
 {{- define "ow.chartName" -}}
 {{- .Values.nameOverride | default .Chart.Name -}}
