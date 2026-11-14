@@ -24,3 +24,7 @@ networkPolicy:
       matchLabels:
         kubernetes.io/metadata.name: kgateway-system
     podSelector: {}
+  egress:
+    profiles:
+      platform:
+        ports: [80, 443]                   # not the Envoy ports 10080 and 10443 of the default
