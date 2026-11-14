@@ -90,7 +90,7 @@ The Gateway `platform` has the listener `http` (port 80) for the redirect and th
 kubectl apply -f ./platform-deployment/manifests/envoy-gateway/02-gateway.yaml
 ```
 
-Check: `kubectl -n envoy-gateway-system get pods -l gateway.envoyproxy.io/owning-gateway-name=platform` shows 2 pods `Running`, and after a minute `kubectl -n envoy-gateway-system get gateway platform` shows the address of the load balancer under `ADDRESS`. Point the three host names to this address in your DNS. If the load balancer has only a host name (see [A load balancer with the PROXY protocol](#a-load-balancer-with-the-proxy-protocol)), `ADDRESS` shows that host name: create its DNS record first (an A record to the load balancer address from your cloud console), then point the three host names to it (CNAME or A). The listener `https` has no certificate until step 8.
+Check: `kubectl -n envoy-gateway-system get pods -l gateway.envoyproxy.io/owning-gateway-name=platform` shows 2 pods `Running`, and after a minute `kubectl -n envoy-gateway-system get gateway platform` shows the address of the load balancer under `ADDRESS`. Point the three host names to this address in your DNS. If the load balancer has only a host name (see [A load balancer with the PROXY protocol](#a-load-balancer-with-the-proxy-protocol)), `ADDRESS` shows that host name: create its DNS record first (an A record to the load balancer address from your cloud console), then point the three host names to it (CNAME or A). The listener `https` has no certificate until step 8: until then, the Envoy Service and the load balancer have only port 80.
 
 ### Step 5: the client address
 
@@ -134,7 +134,7 @@ Check: after a few minutes, `kubectl -n envoy-gateway-system get certificate pla
 
 ### A load balancer with the PROXY protocol
 
-The services need the client address. A load balancer that passes the client address on as the source address (the Envoy Service has `externalTrafficPolicy: Local`, the Envoy Gateway default) needs nothing more. A load balancer that replaces the source address must send the PROXY protocol, and Envoy must read it:
+The services need the client address. A load balancer that passes the client address on as the source address (the Envoy Service has `externalTrafficPolicy: Local`, the Envoy Gateway default) needs nothing more. With `externalTrafficPolicy: Local`, the load balancer marks the nodes without an Envoy pod as unhealthy: this is expected. A load balancer that replaces the source address must send the PROXY protocol, and Envoy must read it:
 
 - Turn the PROXY protocol on at the load balancer: an annotation of your cloud in `envoyService.annotations` of `01-gatewayclass.yaml`.
 - Turn it on in Envoy: uncomment `proxyProtocol` in `03-client-traffic-policy.yaml`, in the same ClientTrafficPolicy that sets `X-Real-IP` (two ClientTrafficPolicies on one Gateway conflict) (the field `ClientTrafficPolicy.spec.proxyProtocol` of Envoy Gateway v1.5 and later; `enableProxyProtocol: true` before v1.5, deprecated and planned for removal in v1.11).

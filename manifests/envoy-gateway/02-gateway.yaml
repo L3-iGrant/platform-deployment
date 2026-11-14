@@ -6,7 +6,8 @@
 #   chart (profiles/exposure-envoy-gateway.yaml) attach to it from the
 #   release namespace.
 # Envoy listens on the container ports 10080 (http) and 10443 (https); the
-# load balancer Service maps 80 and 443 to them.
+# load balancer Service maps 80 and 443 to them (443 only after the
+# certificate of step 8 exists).
 #   kubectl apply -f 02-gateway.yaml
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
