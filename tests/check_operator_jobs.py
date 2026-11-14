@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks the operator Jobs of the api in one "helm template" output.
+"""Checks the api's operator Jobs in one "helm template" output.
 
 Usage: check_operator_jobs.py <render.yaml> <case>
 
@@ -7,10 +7,10 @@ The cases:
   none       the default values: no operator Job
   bootstrap  api.jobs.bootstrapPlatform (a new installation)
 
-For each Job: the command and the arguments of each container, the order of
-the init containers (migrate first), and the password: a file of its own
-Secret (--password-file), never an argument, a variable or a ConfigMap
-value. The values have no password key (the schema refuses one).
+For each Job: the command and arguments of each container, the order of
+the init containers (migrate first), and the password, which must be a file
+from its own Secret (--password-file), never an argument, a variable or a
+ConfigMap value. The values have no password key (the schema refuses one).
 """
 
 import json
@@ -23,8 +23,8 @@ CONFIG = "--config=/etc/igrant-api/config.yaml"
 PASSWORD_FILE = "--password-file=/run/secrets/onboard/password"
 OPERATOR_JOBS = ("api-bootstrap-platform",)
 
-# The Jobs of each case: name -> (init containers after migrate, arguments
-# of the command container, the password Secret or None).
+# The expected Jobs of each case: name -> (init containers after migrate,
+# arguments of the main container, password Secret and key or None).
 CASES = {
     "none": {},
     "bootstrap": {
@@ -74,7 +74,7 @@ def main() -> int:
         containers = pod.get("containers") or []
         check(len(containers) == 1 and containers[0].get("command") == ["/app/bin/igrant-api"], f"{name}: the containers are {[c.get('command') for c in containers]}")
         check(containers and containers[0].get("args") == args, f"{name}: the arguments are {containers[0].get('args') if containers else None}")
-        # The password: only a file of the Secret, with the fixed path.
+        # The password: only as a file from its Secret, at the fixed path.
         volumes = {v["name"]: v for v in pod.get("volumes") or []}
         mounts = {m["name"]: m for m in (containers[0].get("volumeMounts") if containers else None) or []}
         if password:
@@ -86,7 +86,7 @@ def main() -> int:
         else:
             check("onboard-password" not in volumes and "onboard-password" not in mounts, f"{name} mounts a password")
         for container in init + containers:
-            check(not container.get("env") and not container.get("envFrom"), f"{name}: the container {container['name']} has variables")
+            check(not container.get("env") and not container.get("envFrom"), f"{name}: the container {container['name']} has environment variables")
             for argument in container.get("args") or []:
                 check("password" not in argument.lower() or argument == PASSWORD_FILE, f"{name}: the argument {argument.split('=')[0]} names a password")
     # No ConfigMap names the operator command or its password file.

@@ -1,34 +1,31 @@
 #!/usr/bin/env bash
-# Test of the Valkey services of docker-compose/ (valkey, valkey-replica,
-# valkey-sentinel) against a real server. The script reads the services
-# from "docker compose config" (the image, the user, the entrypoint and
-# command, the tmpfs, the configuration files, the healthchecks and the
-# security settings: the read-only root file system, the dropped
-# capabilities and no-new-privileges) and runs each in a container of a
-# local image with these settings, with test passwords in place of
-# secrets/valkey/, a new volume of the test for each volume of the service
-# (the root file system is read-only), on a network of the test where each
-# container has its service name. It starts them in the order of
-# depends_on.
+# Tests the Valkey services of docker-compose/ (valkey, valkey-replica,
+# valkey-sentinel) against a real server. The script reads the services from
+# "docker compose config" (image, user, entrypoint and command, tmpfs, config
+# files, healthchecks, and the security settings: read-only root file
+# system, dropped capabilities, no-new-privileges) and runs each one in a
+# container of a local image with the same settings. It uses test passwords
+# instead of secrets/valkey/, a new test volume for each service volume (the
+# root file system is read-only), and a test network where each container
+# has its service name. It starts the services in depends_on order.
 #
 # The checks:
-# 1. The start: each service is healthy (its healthcheck), the replica is
-#    in sync, the Sentinel gives valkey as the primary; the files with the
-#    passwords have the mode 600 and no field is left.
-# 2. The ACL users: the rights of the wallet (also the key ows-wallet of the
-#    broker script) and of the gateway, the Sentinel login of the wallet,
-#    and the redis section of each wallet role (the user of the role).
-# 3. A failover: the primary stops (docker pause), the Sentinel promotes
-#    valkey-replica, and valkey comes back as its replica; a new start of
+# 1. Start: each service is healthy (its own healthcheck), the replica is in
+#    sync, and the Sentinel reports valkey as the primary; the password
+#    files have mode 600 and no template field is left.
+# 2. ACL users: the rights of the wallet (also the key ows-wallet of the
+#    broker script) and of the gateway, the wallet's Sentinel login, and the
+#    redis section of each wallet role (with the role's own user).
+# 3. Failover: the primary stops (docker pause), the Sentinel promotes
+#    valkey-replica, and valkey comes back as its replica. A restart of
 #    valkey asks the Sentinel and starts as a replica of valkey-replica,
-#    which then takes a single-use value (WAIT 1).
+#    which then accepts a single-use value (WAIT 1).
 #
 # Usage: tests/compose-valkey.sh <image>
 #   <image>: a local image of Valkey 7.2 or later (the services run as its
-#   user valkey), for example the VALKEY_IMAGE of docker-compose/.env.example.
-#   The script never pulls (--pull never). The containers have unique names
-#   and the script removes them at the end. On a shared Docker host, run it
-#   inside your lock of the Docker tests.
+#   valkey user), for example VALKEY_IMAGE from docker-compose/.env.example.
+#   The script never pulls (--pull never). The containers have unique names,
+#   and the script removes them at the end.
 set -euo pipefail
 
 image="${1:?usage: tests/compose-valkey.sh <image>}"
@@ -69,13 +66,14 @@ if [ ! -f "$compose/.env" ]; then
   cp "$compose/.env.example" "$compose/.env"
   created_env=1
 fi
-# The project needs the files of make configs (generated/configs.env).
+# The project needs the files that make configs writes (generated/configs.env).
 [ -d "$compose/generated" ] || created_generated=1
 (cd "$compose" && python3 -I ./render-configs.py > /dev/null)
 (cd "$compose" && VALKEY_IMAGE="$image" docker compose config --format json) > "$work/project.json"
 
-# The arguments of docker run and of docker exec of each service: one file
-# of lines for each. The secret files of the services are test passwords.
+# Writes the docker run and docker exec arguments of each service, one file
+# per service with one argument per line. The service secrets are test
+# passwords.
 python3 - "$work" "$prefix" <<'PY'
 import json, os, secrets, sys
 work, prefix = sys.argv[1], sys.argv[2]
@@ -114,15 +112,15 @@ for name in ("valkey", "valkey-replica", "valkey-sentinel"):
         handle.write("\n".join(service["entrypoint"] + service["command"]) + "\n")
     test = service["healthcheck"]["test"]
     assert test[0] == "CMD-SHELL"
-    # docker compose config writes $$ for the $ of the healthcheck.
+    # docker compose config escapes each $ of the healthcheck as $$.
     with open(f"{work}/{name}.health", "w") as handle:
         handle.write(test[1].replace("$$", "$"))
 with open(f"{work}/volumes", "w") as handle:
     handle.write("".join(f"{volume}\n" for volume in volumes))
 PY
 
-# A network of the test: each container has its service name (the DNS of
-# Docker), as in the Compose network.
+# A test network where each container resolves by its service name (Docker
+# DNS), as in the Compose network.
 docker network create "$prefix" > /dev/null
 for service in "${services[@]}"; do
   run=()
@@ -132,8 +130,8 @@ done
 echo "server: $(docker exec "$prefix-valkey" valkey-server --version)"
 docker inspect -f '{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.CapDrop}} {{.HostConfig.SecurityOpt}} {{.Config.User}}' "$prefix-valkey" \
   | grep -q -F 'true [ALL] [no-new-privileges:true] 999:1000' \
-  && ok "start: the containers have the settings of the services (read-only, no capability, no new privileges, 999:1000)" \
-  || bad "start: the containers have not the settings of the services"
+  && ok "start: the containers have the service settings (read-only, no capabilities, no new privileges, 999:1000)" \
+  || bad "start: the containers do not have the service settings"
 
 start() {
   local start_args=() line
@@ -150,8 +148,8 @@ wait_until() {
   done
   bad "$what (after ${seconds}s)"
 }
-# as <service> <user> <host> <port> <command>...: one command as an ACL user
-# (its password is the file of its secret).
+# as <service> <user> <host> <port> <command>...: runs one command as an ACL
+# user (the password comes from the user's secret file).
 as() {
   local service="$1" user="$2" host="$3" port="$4"
   shift 4
@@ -160,7 +158,7 @@ as() {
 role_of() { as valkey-sentinel sentinel "$1" 6379 ROLE | head -n 1; }
 primary() { as valkey-sentinel wallet-service valkey-sentinel 26379 SENTINEL get-master-addr-by-name ows | head -n 1; }
 
-# --- 1. The start, in the order of depends_on --------------------------------------
+# --- 1. Start, in depends_on order ------------------------------------------------
 start valkey
 wait_until "start: valkey is healthy" 60 "healthy valkey"
 start valkey-replica
@@ -169,22 +167,22 @@ start valkey-sentinel
 wait_until "start: valkey-sentinel is healthy" 60 "healthy valkey-sentinel"
 [ "$(role_of valkey)" = master ] && [ "$(role_of valkey-replica)" = slave ] && ok "start: valkey is the primary, valkey-replica its replica" \
   || bad "start: the roles are $(role_of valkey) and $(role_of valkey-replica)"
-wait_until "start: the Sentinel gives valkey to the wallet user" 30 '[ "$(primary)" = valkey ]'
+wait_until "start: the Sentinel reports valkey as primary to the wallet user" 30 '[ "$(primary)" = valkey ]'
 docker exec "$prefix-valkey" sh -c 'test "$(stat -c %a /run/valkey/valkey.conf)" = 600 && test "$(stat -c %a /run/valkey/users.acl)" = 600' \
-  && ok "start: the files with the passwords have the mode 600" || bad "start: the mode of the files with the passwords"
+  && ok "start: the password files have mode 600" || bad "start: wrong mode on the password files"
 docker exec "$prefix-valkey-sentinel" sh -c 'grep -q "{password:\|{hash:\|{self}\|{primary}" /run/valkey/sentinel.conf' \
-  && bad "start: a field is left" || ok "start: no field is left"
+  && bad "start: a template field is left" || ok "start: no template field is left"
 
-# --- 2. The ACL users and the wallet sections ---------------------------------------
+# --- 2. ACL users and wallet sections ----------------------------------------------
 session="$(docker exec "$prefix-valkey-sentinel" sh -c "printf 'SET ows:n:wp:o1:h1 1 NX EX 300\nWAIT 1 1000\n' \
   | REDISCLI_AUTH=\"\$(cat /run/secrets/valkey/wallet-service)\" valkey-cli -h valkey -p 6379 -t 2 --user wallet-service" | tr -d '\r' | tr '\n' ' ')"
-[ "$session" = "OK 1 " ] && ok "wallet: SET NX and WAIT 1 (the replica confirms)" || bad "wallet: the session gives $session"
-as valkey-sentinel wallet-config valkey 6379 SET other:key 1 | grep -q NOPERM && ok "wallet: no key outside ows:* and ows-wallet" || bad "wallet: a key outside its namespace"
-as valkey-sentinel wallet-config valkey 6379 CONFIG GET maxmemory | grep -q NOPERM && ok "wallet: no CONFIG" || bad "wallet: CONFIG"
+[ "$session" = "OK 1 " ] && ok "wallet: SET NX and WAIT 1 (the replica confirms)" || bad "wallet: the session returns $session"
+as valkey-sentinel wallet-config valkey 6379 SET other:key 1 | grep -q NOPERM && ok "wallet: no key outside ows:* and ows-wallet" || bad "wallet: can write a key outside its namespace"
+as valkey-sentinel wallet-config valkey 6379 CONFIG GET maxmemory | grep -q NOPERM && ok "wallet: no CONFIG" || bad "wallet: CONFIG is allowed"
 [ "$(as valkey-sentinel wallet-worker valkey 6379 "EVAL \"return redis.call('EXISTS', KEYS[1])\" 1 ows-wallet")" = 0 ] \
   && ok "wallet: EVAL with the key ows-wallet (KEYS[1] of the broker script)" || bad "wallet: EVAL with the key ows-wallet"
-[ "$(as valkey-sentinel gateway valkey 6379 INCR gw:authfail:x)" = 1 ] && ok "gateway: INCR in gw:*" || bad "gateway: INCR"
-as valkey-sentinel gateway valkey 6379 SET ows:n:wp:o1:h2 1 | grep -q NOPERM && ok "gateway: no key of the wallet" || bad "gateway: a key of the wallet"
+[ "$(as valkey-sentinel gateway valkey 6379 INCR gw:authfail:x)" = 1 ] && ok "gateway: INCR in gw:*" || bad "gateway: INCR in gw:* fails"
+as valkey-sentinel gateway valkey 6379 SET ows:n:wp:o1:h2 1 | grep -q NOPERM && ok "gateway: no access to wallet keys" || bad "gateway: can write a wallet key"
 if problems="$(python3 - "$work/project.json" <<'PY' 2>&1
 import json, sys, yaml
 project = json.load(open(sys.argv[1]))
@@ -201,28 +199,29 @@ for role in ("config", "service", "worker", "clock"):
         print(f"wallet-{role} does not mount the password of {user}")
 PY
 )" && [ -z "$problems" ]; then
-  ok "wallet: the redis section and the password of each role (the users of the ACL file)"
+  ok "wallet: each role's redis section and password (users of the ACL file)"
 else
   bad "wallet: $(printf '%s' "$problems" | tr '\n' ';')"
 fi
 
-# --- 3. A failover ---------------------------------------------------------------
+# --- 3. Failover -----------------------------------------------------------------
 docker pause "$prefix-valkey" > /dev/null
 wait_until "failover: the Sentinel promotes valkey-replica" 60 '[ "$(primary)" = valkey-replica ]'
 [ "$(role_of valkey-replica)" = master ] && ok "failover: valkey-replica is the primary" || bad "failover: valkey-replica is $(role_of valkey-replica)"
 docker unpause "$prefix-valkey" > /dev/null
 wait_until "failover: valkey comes back as a replica" 60 '[ "$(role_of valkey)" = slave ]'
-# A new start of valkey (the service restarts): it asks the Sentinel. The
-# user of the service stops its own server (no capability for root).
+# Restart valkey as the service would: on start it asks the Sentinel for the
+# primary. The service user stops its own server (root has no capabilities).
 docker exec "$prefix-valkey" sh -c 'pkill -9 -f "[v]alkey-server" || true; sleep 1; rm -rf /run/valkey/*'
 start valkey
-# in_sync <service>: the data server is a replica with its primary link up.
+# in_sync <service>: true when the data server is a replica with its link to
+# the primary up.
 in_sync() { as valkey-sentinel probe "$1" 6379 INFO replication | grep -q "^master_link_status:up"; }
-wait_until "failover: a new start of valkey is a replica of valkey-replica, in sync" 60 \
+wait_until "failover: valkey restarts as an in-sync replica of valkey-replica" 60 \
   'healthy valkey && in_sync valkey && docker exec '"$prefix-valkey"' grep -q "^replicaof valkey-replica 6379" /run/valkey/valkey.conf'
 session="$(docker exec "$prefix-valkey-sentinel" sh -c "printf 'SET ows:n:wp:o1:h3 1 NX EX 300\nWAIT 1 1000\n' \
   | REDISCLI_AUTH=\"\$(cat /run/secrets/valkey/wallet-service)\" valkey-cli -h valkey-replica -p 6379 -t 2 --user wallet-service" | tr -d '\r' | tr '\n' ' ')"
-[ "$session" = "OK 1 " ] && ok "failover: the new primary takes a single-use value, valkey confirms" || bad "failover: the session gives $session"
+[ "$session" = "OK 1 " ] && ok "failover: the new primary accepts a single-use value and valkey confirms" || bad "failover: the session returns $session"
 
 echo "result: ${pass} passed, ${fail} failed"
 [ "$fail" -eq 0 ]

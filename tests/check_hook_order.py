@@ -1,42 +1,42 @@
 #!/usr/bin/env python3
-"""Checks the order of the hooks of one install or upgrade, without a cluster.
+"""Checks the hook order of one install or upgrade, without a cluster.
 
 Usage:
   check_hook_order.py install <render.yaml>
   check_hook_order.py upgrade <before.yaml> <after.yaml>
 
-The render files are "helm template" outputs of the chart: before has the
-values of the earlier release, after the values of the new release. The
-script replays the steps of Helm 3.16:
+The render files are "helm template" outputs of the chart: <before.yaml>
+with the values of the earlier release, <after.yaml> with the values of the
+new release. The script replays the steps of Helm 3.16:
 
 - install (pkg/action/install.go, performInstall): the pre-install hooks,
-  then the resources of the release, then the post-install hooks;
+  then the release resources, then the post-install hooks;
 - upgrade (pkg/action/upgrade.go, releasingUpgrade): the objects of the
-  earlier release exist (its resources, and its hooks: Helm does not delete
-  a hook). Then the pre-upgrade hooks, then the resources of the new
-  release (pkg/kube/client.go, Update: a resource of the earlier release
-  that the new release does not have is deleted, unless the live object has
-  helm.sh/resource-policy keep), then the post-upgrade hooks.
+  earlier release exist (its resources, and its hooks, because Helm does
+  not delete a hook). Then the pre-upgrade hooks, then the resources of the
+  new release (pkg/kube/client.go, Update: Helm deletes a resource of the
+  earlier release that the new release does not have, unless the live
+  object has helm.sh/resource-policy keep), then the post-upgrade hooks.
 
-Helm runs the hooks of one event one after the other, in the order of
-their weight, then of their name (pkg/action/hooks.go, execHook), and waits
-until each Job is complete. A Job of the resources (not a hook) runs at the
-same time as the other resources and the post-install hooks, so no hook
-can expect its result.
+Helm runs the hooks of one event one at a time, sorted by weight and then
+by name (pkg/action/hooks.go, execHook), and waits until each Job is
+complete. A Job that is a normal resource (not a hook) runs at the same
+time as the other resources and the post-install hooks, so no hook can rely
+on its result.
 
 For each hook Job, the script checks that, when the Job starts:
-- each Secret key and each ConfigMap that it reads exists (a Secret or a
-  ConfigMap that the chart does not render is yours: it exists);
-- each database that it connects to exists, with its user (the database
-  sections of its configuration files). The init Job makes the databases
-  and their owner users (DATABASES), the roles hook of the wallet makes the
-  database roles of the wallet, and the databases and users of the earlier
-  release exist.
-At the end, each Secret key and ConfigMap that a Deployment or a
-StatefulSet of the new release reads exists.
+- each Secret key and ConfigMap that it reads exists (a Secret or ConfigMap
+  that the chart does not render is yours, so it exists);
+- each database that it connects to exists, with its user (from the
+  database sections of its configuration files). The init Job creates the
+  databases and their owner users (DATABASES), the wallet's roles hook
+  creates the wallet's database roles, and the databases and users of the
+  earlier release exist.
+At the end, each Secret key and ConfigMap that a Deployment or StatefulSet
+of the new release reads must exist.
 
-It writes one line for each problem and exits 1 when there is one. It
-prints only names and keys, never a Secret value.
+It prints one line per problem and exits 1 if there is any. It prints only
+names and keys, never a Secret value.
 """
 
 import sys
@@ -134,7 +134,7 @@ def option(command: list, name: str):
 
 
 def admin_users(doc: dict) -> set:
-    """The admin users of the server that a Job names (PGUSER, --admin-user)."""
+    """The server admin users that a Job names (PGUSER, --admin-user)."""
     users = {env_value(doc, "PGUSER")}
     for container in containers(pod_spec(doc)):
         users.add(option((container.get("command") or []) + (container.get("args") or []), "--admin-user"))
@@ -142,16 +142,16 @@ def admin_users(doc: dict) -> set:
 
 
 class Cluster:
-    """The objects, databases and users of the namespace and its server, as the replay goes."""
+    """The objects of the namespace and the databases and users of its server, as the replay proceeds."""
 
     def __init__(self, rendered: list):
-        # A Secret or ConfigMap that the chart renders is made by the chart;
-        # any other one is yours, and exists.
+        # The chart creates the Secrets and ConfigMaps that it renders; any
+        # other one is yours and already exists.
         self.rendered = {key(doc) for doc in rendered if doc.get("kind") in ("Secret", "ConfigMap")}
         self.objects: dict = {}
         self.databases: set = set()
-        # The admin user of the server exists with the server: the user of
-        # the init Job (PGUSER) and the --admin-user of the hook commands.
+        # The server's admin user exists from the start: the init Job's user
+        # (PGUSER) and the --admin-user of the hook commands.
         self.users: set = set()
         for doc in rendered:
             if doc.get("kind") == "Job":
@@ -186,7 +186,7 @@ class Cluster:
         return files
 
     def run_job(self, doc: dict, when: str) -> None:
-        """Checks the inputs of a Job, then records what it makes."""
+        """Checks the inputs of a Job, then records what it creates."""
         self.check_reads(doc, when)
         name = doc["metadata"]["name"]
         for config in self.config_files(doc):
@@ -199,7 +199,7 @@ class Cluster:
         self.record(doc)
 
     def record(self, doc: dict) -> None:
-        """The databases, users and database roles that a Job makes when it is complete."""
+        """Records the databases, users and database roles that a Job creates when it completes."""
         made = env_value(doc, "DATABASES")
         if made:
             self.databases.update(made.split())
@@ -217,8 +217,8 @@ class Cluster:
 
     def run_hooks(self, docs: list, event: str) -> None:
         hooks = [doc for doc in docs if event in events(doc)]
-        # The weight, then the name (hookByWeight); a stable sort keeps the
-        # order of the kinds (the render order) for the same weight and name.
+        # Sort by weight, then by name (hookByWeight); the stable sort keeps
+        # the render order of the kinds for the same weight and name.
         hooks.sort(key=lambda doc: (int(annotations(doc).get("helm.sh/hook-weight", "0")), doc["metadata"]["name"]))
         for doc in hooks:
             if doc["kind"] == "Job":
@@ -240,8 +240,9 @@ def install(after: list) -> list:
     cluster.run_hooks(after, "pre-install")
     for doc in resources(after):
         cluster.apply(doc)
-    # A Job of the resources runs at the same time as the post-install
-    # hooks: its databases do not count for them.
+    # A Job that is a normal resource runs at the same time as the
+    # post-install hooks, so the databases that it creates do not count for
+    # them.
     cluster.run_hooks(after, "post-install")
     cluster.check_workloads(after, "after the install")
     return cluster.problems
@@ -249,7 +250,7 @@ def install(after: list) -> list:
 
 def upgrade(before: list, after: list) -> list:
     cluster = Cluster(after + before)
-    # The earlier release: its resources and its hooks, and what its Jobs made.
+    # The earlier release: its resources and hooks, and what its Jobs created.
     for doc in before:
         cluster.apply(doc)
         if doc["kind"] == "Job":

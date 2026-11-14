@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
-# Test of the TLS certificates that the chart makes (genCA and genSignedCert
-# in templates/secrets.yaml: the bundled PostgreSQL, OpenBao, NATS and
-# Valkey) against the strict checks of RFC 5280 that Python 3.13 uses by
-# default (ssl.create_default_context sets VERIFY_X509_STRICT): the new
-# wallet image (Python 3.13) refuses a server certificate without an
+# Tests the TLS certificates that the chart creates (genCA and genSignedCert
+# in templates/secrets.yaml, for the bundled PostgreSQL, OpenBao, NATS and
+# Valkey) against the strict RFC 5280 checks that Python 3.13 applies by
+# default (ssl.create_default_context sets VERIFY_X509_STRICT). The wallet
+# image runs Python 3.13 and refuses a server certificate without an
 # authority key identifier, and a CA without a subject key identifier, key
 # usage or critical basic constraints.
 #
 # For each TLS Secret of a render:
-# 1. openssl verify -x509_strict -purpose sslserver (OpenSSL of this
-#    computer);
-# 2. a TLS connection in a container of a Python 3.13 image: a server with
-#    tls.crt and tls.key, a client with ssl.create_default_context(cafile=
-#    ca.crt) (strict) and the service name of the certificate.
+# 1. openssl verify -x509_strict -purpose sslserver (the local OpenSSL);
+# 2. a TLS connection in a Python 3.13 container: a server with tls.crt and
+#    tls.key, and a strict client with ssl.create_default_context(cafile=
+#    ca.crt) that checks the certificate's service name.
 # 3. A control: a CA without a subject key identifier and a server
-#    certificate without an authority key identifier: both checks must
-#    refuse them (the test can see the fault).
+#    certificate without an authority key identifier. Both checks must
+#    refuse them, which proves that the test detects the fault.
 #
 # Usage: tests/tls-strict.sh <Python 3.13 image>
 #   For example python:3.13-slim-trixie. The image must be local (the
@@ -38,7 +37,7 @@ assert sys.version_info >= (3, 13), sys.version
 assert ssl.create_default_context().verify_flags & ssl.VERIFY_X509_STRICT, "no VERIFY_X509_STRICT"
 ' || { echo "FAIL $image is not Python 3.13 with VERIFY_X509_STRICT by default"; exit 1; }
 
-# The Python check: a server with the certificate, a client with the CA.
+# The Python check: a server with the certificate and a client with the CA.
 cat > "$work/handshake.py" <<'PY'
 """A TLS connection on 127.0.0.1: the server has the certificate, the client
 checks it with the CA and the name (the default context of Python 3.13 is
@@ -81,7 +80,7 @@ PY
 # check <label> <folder with ca.crt tls.crt tls.key> <expected: accept|refuse>
 check() {
   local label="$1" folder="$2" expect="$3" name openssl_result python_result
-  # The service name of the certificate (the name that the wallet checks).
+  # The certificate's service name (the name that the wallet checks).
   names="$(openssl x509 -in "$folder/tls.crt" -noout -ext subjectAltName 2>/dev/null | tr ',' '\n' | sed -n 's/^ *DNS://p')"
   name="$(grep -m1 '\.svc$' <<< "$names" || head -1 <<< "$names")"
   openssl_result="$(openssl verify -x509_strict -purpose sslserver -CAfile "$folder/ca.crt" "$folder/tls.crt" 2>&1)" && openssl_ok=1 || openssl_ok=0

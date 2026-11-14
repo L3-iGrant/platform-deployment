@@ -1,9 +1,9 @@
 // Command psscheck checks each pod template of rendered manifests against a
 // level of the Pod Security Standards with the upstream library
-// k8s.io/pod-security-admission: the code of the admission plugin of
-// Kubernetes. It covers each control of the standard, also the controls
-// that tests/check_security.py does not have (AppArmor, SELinux, procMount,
-// hostProcess, the ephemeral containers and the annotations of the pod).
+// k8s.io/pod-security-admission, the code of the Kubernetes admission
+// plugin. It covers every control of the standard (also AppArmor, SELinux,
+// procMount, hostProcess, ephemeral containers and pod annotations), as an
+// independent second check next to tests/check_security.py.
 //
 // Usage:
 //
@@ -11,12 +11,12 @@
 //
 // The checker reads the kinds Pod, Deployment, StatefulSet, DaemonSet,
 // ReplicaSet, ReplicationController, Job, CronJob and PodTemplate. It
-// stops with exit code 1 when a pod template breaks the level, when a
-// document cannot be read, when a document of another kind has
-// containers (a kind that the checker does not know), or when the count
-// of the containers (init, normal and ephemeral) is not -containers (the
-// count of tests/check_security.py: both checkers read the same
-// containers). It reads only the pod specs: never a Secret value.
+// exits with code 1 when a pod template breaks the level, when it cannot
+// read a document, when a document of another kind has containers (a kind
+// that the checker does not know), or when the container count (init,
+// normal and ephemeral) is not -containers (the count from
+// tests/check_security.py, so that both checkers read the same
+// containers). It reads only the pod specs, never a Secret value.
 package main
 
 import (
@@ -134,8 +134,8 @@ func (r *result) checkFile(evaluator policy.Evaluator, lv api.LevelVersion, path
 	}
 }
 
-// podOf gives the metadata and the spec of the pod (template) of a
-// document, or a nil spec for a kind without a pod.
+// podOf returns the pod (template) metadata and spec of a document, or a
+// nil spec for a kind without a pod.
 func podOf(kind string, raw []byte) (*metav1.ObjectMeta, *corev1.PodSpec, error) {
 	strict := func(target any) error {
 		decoder := json.NewDecoder(bytes.NewReader(raw))

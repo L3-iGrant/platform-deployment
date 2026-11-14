@@ -1,52 +1,52 @@
 #!/usr/bin/env python3
-"""Checks the security settings of each container of "helm template" outputs.
+"""Checks the security settings of each container in "helm template" outputs.
 
 Usage: check_security.py <render.yaml>...
 
-The target of each container of each pod (Deployment, StatefulSet,
-DaemonSet, ReplicaSet, Job, CronJob, Pod), the init containers and the
-ephemeral containers too:
+The rules for each container of each pod (Deployment, StatefulSet,
+DaemonSet, ReplicaSet, Job, CronJob, Pod), including init and ephemeral
+containers:
 
 - a non-root user: runAsNonRoot true, and runAsUser and runAsGroup are
   numbers other than 0 (the container value, else the pod value);
 - allowPrivilegeEscalation false and readOnlyRootFilesystem true (container);
-- capabilities drop ALL, and no added capability (container);
+- capabilities drop ALL, and none added (container);
 - not privileged (container);
 - seccompProfile RuntimeDefault (the container value, else the pod value);
 - no host port (container);
-- the SELinux options of the Pod Security Standard (the container value
-  and the pod value): no user and no role, and the type empty or one of
-  container_t, container_init_t, container_kvm_t, container_engine_t;
-- the AppArmor profile (the container value, the pod value and the
-  annotations container.apparmor.security.beta.kubernetes.io/<name> of the
-  pod template): RuntimeDefault or Localhost (runtime/default, localhost/*);
+- the SELinux options of the Pod Security Standard (container and pod
+  values): no user and no role, and the type empty or one of container_t,
+  container_init_t, container_kvm_t, container_engine_t;
+- the AppArmor profile (container and pod values, and the pod template
+  annotations container.apparmor.security.beta.kubernetes.io/<name>):
+  RuntimeDefault or Localhost (runtime/default, localhost/*);
 - procMount Default or empty (container);
-- no Windows hostProcess (the container value and the pod value);
-- no host network, no host PID and no host IPC, only the volume types and
-  the safe sysctls of the Pod Security Standard "restricted" (pod).
+- no Windows hostProcess (container and pod values);
+- no host network, host PID or host IPC, and only the volume types and safe
+  sysctls of the Pod Security Standard "restricted" (pod).
 
 tests/psscheck (the upstream library k8s.io/pod-security-admission) checks
-the same renders against the standard itself; tests/render-matrix.sh gives
-it the count of the containers of this script, so that both read the same
+the same renders against the standard itself; tests/render-matrix.sh passes
+it this script's container count, so that both checks read the same
 containers.
 
-The script writes one line for each target that a pod or a container
-misses, and a summary line. It exits 1 when a target is missed. It reads
-only the pod specs: never a Secret value.
+The script prints one line for each rule that a pod or container breaks,
+and a summary line. It exits 1 if a rule is broken. It reads only the pod
+specs, never a Secret value.
 """
 
 import sys
 
 import yaml
 
-# The volume types of the Pod Security Standard "restricted".
+# Volume types that the Pod Security Standard "restricted" allows.
 VOLUME_TYPES = {"configMap", "csi", "downwardAPI", "emptyDir", "ephemeral", "persistentVolumeClaim", "projected", "secret"}
-# The safe sysctls of the Pod Security Standard "baseline" in Kubernetes
-# 1.30 (the lowest version of the chart).
+# Safe sysctls of the Pod Security Standard "baseline" in Kubernetes 1.30
+# (the oldest version that the chart supports).
 SAFE_SYSCTLS = {"kernel.shm_rmid_forced", "net.ipv4.ip_local_port_range", "net.ipv4.ip_unprivileged_port_start",
                 "net.ipv4.tcp_syncookies", "net.ipv4.ping_group_range"}
-# The SELinux types of the Pod Security Standard "baseline" (an empty type
-# is allowed too).
+# SELinux types that the Pod Security Standard "baseline" allows (an empty
+# type is allowed too).
 SELINUX_TYPES = {"container_t", "container_init_t", "container_kvm_t", "container_engine_t"}
 APPARMOR_TYPES = {"RuntimeDefault", "Localhost"}
 APPARMOR_ANNOTATION = "container.apparmor.security.beta.kubernetes.io/"
@@ -90,7 +90,7 @@ def pod_of(doc: dict):
 
 
 def problems_of(pod: dict, container: dict) -> list:
-    """The targets that one container misses."""
+    """The rules that one container breaks."""
     pod_context = pod.get("securityContext") or {}
     context = container.get("securityContext") or {}
 
@@ -130,7 +130,7 @@ def problems_of(pod: dict, container: dict) -> list:
 
 
 def pod_problems_of(pod: dict, annotations: dict) -> list:
-    """The targets that one pod misses."""
+    """The rules that one pod breaks."""
     found = [f"the pod has {key}" for key in ("hostNetwork", "hostPID", "hostIPC") if pod.get(key) is True]
     pod_context = pod.get("securityContext") or {}
     found += selinux_problems(pod_context.get("seLinuxOptions"), "the pod ")

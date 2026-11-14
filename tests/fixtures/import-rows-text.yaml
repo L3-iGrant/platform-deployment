@@ -1,6 +1,6 @@
-# A values file with the import rows of the api as a text (quotes): the api
-# reads a whole number and stops at its start with a text, so the render
-# stops (tests/render-matrix.sh, "import rows as a text in a values file").
+# The api's import row limit as a quoted string. The api reads a whole number
+# and fails at startup on a string, so the render must stop (a check in
+# tests/render-matrix.sh).
 api:
   extraConfig:
     Uploads:

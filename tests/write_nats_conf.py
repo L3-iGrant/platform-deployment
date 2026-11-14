@@ -4,14 +4,14 @@ for "nats-server -t" (no server starts).
 
 Usage: write_nats_conf.py <render.yaml> <folder> [--container]
 
-The folder gets nats.conf of the ConfigMap <release>-nats, with the paths
-of the TLS files, of the data and of the pid file in the folder (with
---container: the paths of the pod, for a container that mounts the folder
-at /etc/nats and the TLS files at /etc/nats-tls), and the
-files tls.crt, tls.key and ca.crt of the TLS Secret <release>-nats-tls of
-the render (the test values of the chart: helm template makes a new CA). The
-test nkeys of tests/values/keys.yaml are not valid nkeys: each one becomes a
-valid public nkey made from its name (no secret).
+The folder gets nats.conf from the ConfigMap <release>-nats, with the paths
+of the TLS files, the data and the pid file moved into the folder (with
+--container: the pod paths, for a container that mounts the folder at
+/etc/nats and the TLS files at /etc/nats-tls), and tls.crt, tls.key and
+ca.crt from the render's TLS Secret <release>-nats-tls (test values: helm
+template makes a new CA). The test nkeys of tests/values/keys.yaml are not
+valid nkeys, so each one becomes a valid public nkey derived from its name
+(no secret).
 """
 
 import base64

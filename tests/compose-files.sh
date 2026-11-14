@@ -1,57 +1,55 @@
 #!/usr/bin/env bash
-# Tests of the files of docker-compose/ for the maintainers. No container
-# starts and no image is pulled: "docker compose config" needs no Docker
-# daemon. Checks:
-#   - docker compose config for each engine (postgresql): the database
-#     server of the engine, the images, and the database type and port in
-#     each configuration file of the components;
-#   - the database roles of the wallet: the service wallet-database-roles,
-#     the order of the one-shot services and the database user of each
-#     wallet configuration;
-#   - the DDL and connection logs of the database server, and
-#     database-init sets the passwords with psql \password (no password in
-#     a statement, so the DDL log does not show one);
-#   - Valkey: the services valkey, valkey-replica and valkey-sentinel (the
-#     image, the start script, the order, the healthchecks with the user
-#     probe, the tmpfs, the password files), the settings of the templates
-#     of config/valkey/, the ACL users and their rights, the passwords of
-#     make secrets, and the redis section and the password file of each
-#     wallet role and of the gateway (tests/compose-valkey.sh runs the
-#     services against a real server);
+# Checks the files of docker-compose/ for maintainers. No container starts
+# and no image is pulled: "docker compose config" needs no Docker daemon.
+# Checks:
+#   - docker compose config for each engine (postgresql): the engine's
+#     database server, the images, and the database type and port in each
+#     component config file;
+#   - the wallet database roles: the service wallet-database-roles, the
+#     order of the one-shot services and the database user of each wallet
+#     config;
+#   - the database server's DDL and connection logs, and that database-init
+#     sets the passwords with psql \password (no password in a statement,
+#     so the DDL log never shows one);
+#   - Valkey: the services valkey, valkey-replica and valkey-sentinel (image,
+#     start script, order, healthchecks with the user probe, tmpfs, password
+#     files), the template settings in config/valkey/, the ACL users and
+#     their rights, the passwords from make secrets, and the redis section
+#     and password file of each wallet role and of the gateway
+#     (tests/compose-valkey.sh runs the services against a real server);
 #   - the worker and the clock: their commands, the health port of each
-#     healthcheck, the state folder of the worker, and the files of the
-#     clock (no NATS seed, no OpenBao password);
-#   - the limits of the installation (MAX_ORGANISATIONS,
-#     MAX_ORGANISATION_WALLET_UNITS): the keys only with a value;
-#   - the webhooks of the api files (no Webhooks.events) and no
+#     healthcheck, the worker state folder, and the clock's files (no NATS
+#     seed, no OpenBao password);
+#   - the installation limits (MAX_ORGANISATIONS,
+#     MAX_ORGANISATION_WALLET_UNITS): the keys appear only with a value;
+#   - the webhooks in the api files (no Webhooks.events) and no
 #     Installation key (Compose installs all services);
-#   - the configuration files (make configs, render-configs.py): the
-#     templates of compose.configs.yaml and the file configs of generated/
-#     (one for each template, no config of content), the same values files
-#     for the render and for the services, the hash label of each service
-#     and its file, only the variables of .env.example in the templates
-#     (no secret), no secret value in a file, and the renderer in a copy
-#     of this folder ($$, ${VAR:+...}, a missing value, the file modes, a
-#     stale file, --check, a second run);
-#   - the security settings of EACH service of all profiles (a service
-#     that the test does not know fails): a read-only root file system, a
-#     non-root user, no capability, no new privileges, the tmpfs and
-#     volumes of the writable paths, no config of content, no host
-#     namespace, no device, only bind mounts of secrets/, no shell in the
-#     api image; the one-shot services of root (nats-data-owner) with only
-#     their capabilities and no network;
+#   - the config files (make configs, render-configs.py): the templates of
+#     compose.configs.yaml and the file configs in generated/ (one per
+#     template, no content config), the same values files for the render
+#     and the services, each service's hash label and its file, only
+#     .env.example variables in the templates (no secrets), no secret value
+#     in a file, and the renderer in a copy of this folder ($$,
+#     ${VAR:+...}, a missing value, file modes, a stale file, --check, a
+#     second run);
+#   - the security settings of EVERY service in all profiles (an unknown
+#     service fails): read-only root file system, non-root user, no
+#     capabilities, no new privileges, tmpfs and volumes for the writable
+#     paths, no content config, no host namespace, no device, only bind
+#     mounts from secrets/, no shell in the api image; the root one-shot
+#     services (nats-data-owner) with only their capabilities and no
+#     network;
 #   - bash -n / sh -n of the scripts;
-#   - nats-server -t of the NATS configuration (when nats-server is on this
-#     computer);
-#   - the text rules of the files (no em or en dash, British English, no
-#     name of a removed product or setting);
+#   - nats-server -t of the NATS config (if nats-server is installed);
+#   - the text rules (no em or en dash, British English, no name of a
+#     removed product or setting);
 #   - the relative links of README.md (tests/check_links.py).
 #
-#   tests/compose-files.sh
+# Usage: tests/compose-files.sh
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../docker-compose"
-# The user of openbao-init (make sets them from your user): fixed values,
-# so that the test gives the same result for each user.
+# The openbao-init user (make sets it from your own user): fixed values,
+# so the test gives the same result for everyone.
 export HOST_UID=4242 HOST_GID=4243
 
 failures=0
@@ -67,11 +65,11 @@ finish() {
   echo "check: $1"
 }
 
-# project_json: docker compose config of the project (with the current
-# environment) as JSON, with the text of each file config of generated/ as
-# "content": the render of the templates with the same environment
-# (render-configs.py --print), so that each case below checks the files
-# that make configs writes for its values.
+# project_json: the project's docker compose config (current environment)
+# as JSON, with each generated/ file config filled in as "content" from the
+# template render with the same environment (render-configs.py --print).
+# So each case below checks the files that make configs writes for its
+# values.
 project_json() {
   local project files
   project="$(mktemp)"
@@ -101,7 +99,7 @@ check_files() {
     cp .env.example .env
     created_env=1
   fi
-  # The files of make configs: the project needs generated/configs.env.
+  # The project needs generated/configs.env from make configs.
   [ -d generated ] || created_generated=1
   if render="$(python3 -I ./render-configs.py 2>&1)"; then
     ok "make configs: ${render#configs: }"
@@ -122,7 +120,7 @@ check_files() {
     if grep -qx "$server" <<< "$services"; then
       ok "$engine: database server $server"
     else
-      bad "$engine: the services must have $server"
+      bad "$engine: no service $server"
     fi
     images="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --images)"
     if grep -Eiq 'hashicorp|(^|/)vault(:|@|$)|keycloak|facade|mongo' <<< "$images"; then
@@ -188,11 +186,11 @@ PY
       fi
       rm -f "$project_file"
     else
-      warn "$engine: configuration files not parsed (python3 with PyYAML is not on this computer)"
+      warn "$engine: configuration files not parsed (python3 with PyYAML is not installed)"
     fi
   done
 
-  # The key stores of the wallet files: the local key store in OpenBao
+  # Key stores in the wallet files: the local key store in OpenBao
   # (local_backend openbao) and the organisation key store types.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
@@ -231,13 +229,13 @@ PY
     fi
   fi
 
-  # The database roles of the wallet: wallet-database-roles (database-roles
-  # apply as the admin user, one password file per login database role)
-  # after database-init, then wallet-migrate as the migrator, then the
-  # read access (admin user) and the wallet processes (launcher and jobs
-  # database roles). The database user of each configuration has the
-  # password file of make secrets for that user, and no service of the
-  # wallet image mounts the password of the owner user igrant_wallet.
+  # Wallet database roles: wallet-database-roles (database-roles apply as
+  # the admin user, one password file per login role) runs after
+  # database-init, then wallet-migrate as the migrator, then the read access
+  # (admin user) and the wallet processes (launcher and jobs roles). The
+  # database user of each config has its password file from make secrets,
+  # and no service of the wallet image mounts the password of the owner
+  # user igrant_wallet.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file admin
     admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/engine/postgresql.env)"
@@ -257,12 +255,12 @@ with open(sys.argv[1], encoding="utf-8") as project_file:
 admin = sys.argv[2]
 services = project["services"]
 problems = []
-# The login database roles of database-roles, by the name without the
-# prefix igrant_wallet (the name of the wallet database).
+# The login roles of database-roles, without the prefix igrant_wallet
+# (the wallet database name).
 roles = ["migrator", "launcher_app", "jobs", "clock", "audit_reader", "issuer_app", "relying_party_app",
          "business_wallet_app", "individual_wp_app", "business_wp_app", "admin_app"]
-# Each service of the wallet image: its database user and the service that
-# it waits for.
+# Each service of the wallet image: its database user and the service it
+# waits for.
 wallet = {
     "wallet-database-roles": (admin, "database-init"),
     "wallet-migrate": ("igrant_wallet_migrator", "wallet-database-roles"),
@@ -276,7 +274,7 @@ wallet = {
 
 
 def secret_file(name):
-    """The file of make secrets of the secret name."""
+    """The make secrets file behind a secret name."""
     return project.get("secrets", {}).get(name, {}).get("file", "")
 
 
@@ -328,7 +326,7 @@ for role, source in sorted(directory.items()):
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print(f"wallet-database-roles ({len(roles)} login database roles), the order and the user of each wallet configuration")
+print(f"wallet-database-roles ({len(roles)} login roles), the order, and the database user of each wallet config")
 PY
 )"; then
         ok "database roles: $output"
@@ -339,9 +337,8 @@ PY
     fi
   fi
 
-  # The DDL and connection logs of the database server: log_statement=ddl,
-  # log_connections=on and log_disconnections=on in the command of postgres,
-  # each server parameter once.
+  # Database server logs: log_statement=ddl, log_connections=on and
+  # log_disconnections=on in the postgres command, each parameter once.
   if command -v python3 > /dev/null; then
     local output project_file
     if ! json="$(project_json 2>&1)"; then
@@ -363,8 +360,8 @@ logs = {name: value for name, value in parameters if name in expected}
 if len(names) != len(set(names)):
     sys.exit(f"a server parameter is set twice: {sorted(names)}")
 if logs != expected:
-    sys.exit(f"the log parameters of postgres are {logs}, not {expected}")
-print("postgres logs the DDL statements, the connections and the disconnections")
+    sys.exit(f"the postgres log parameters are {logs}, not {expected}")
+print("postgres logs DDL statements, connections and disconnections")
 PY
 )"; then
         ok "database logs: $output"
@@ -374,16 +371,16 @@ PY
       rm -f "$project_file"
     fi
   fi
-  # psql \password sends a SCRAM-SHA-256 verifier, never the password: no
-  # password in a statement of database-init.
+  # psql \password sends a SCRAM-SHA-256 verifier, never the password, so
+  # no database-init statement holds a password.
   if grep -q -F '\password' config/database/create-databases.sh && ! grep -q -w 'PASSWORD' config/database/create-databases.sh; then
     ok "database-init sets the passwords with psql \\password"
   else
     bad "database-init sends a password in a statement, not with psql \\password"
   fi
 
-  # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS): the
-  # section kms.test_ca of the wallet files. Empty values: the defaults.
+  # The built-in test CA (TEST_CA_ENABLED, TEST_CA_LEAF_VALIDITY_DAYS):
+  # kms.test_ca in the wallet files. Empty values give the defaults.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local enabled days
     for case_name in default off; do
@@ -421,8 +418,8 @@ PY
     done
   fi
 
-  # The feature gate of the gateway (FEATURES_ENFORCE): Features.enforce in
-  # the gateway file only (the api refuses the section). Empty value: the
+  # The gateway feature gate (FEATURES_ENFORCE): Features.enforce only in
+  # the gateway file (the api refuses the section). An empty value gives the
   # default true.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local gate
@@ -460,13 +457,13 @@ PY
     done
   fi
 
-  # The limits of the installation (MAX_ORGANISATIONS,
-  # MAX_ORGANISATION_WALLET_UNITS): Limits.maxOrganisations in the api and
-  # webhook files and wallet_unit.organisation_wallet_units_max in the
-  # config, service and worker files, as integers, only when the setting
-  # has a value (an api or a wallet of an earlier release refuses the
-  # keys). No other file has them: not the gateway file (the gateway
-  # refuses the section) or the clock file.
+  # Installation limits (MAX_ORGANISATIONS, MAX_ORGANISATION_WALLET_UNITS):
+  # Limits.maxOrganisations in the api and webhook files and
+  # wallet_unit.organisation_wallet_units_max in the config, service and
+  # worker files, as integers, only when the setting has a value (an api or
+  # wallet from an earlier release refuses the keys). No other file has
+  # them: not the gateway file (the gateway refuses the section) and not
+  # the clock file.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local organisations units
     for case_name in default set; do
@@ -519,9 +516,9 @@ PY
     done
   fi
 
-  # The webhooks and the services of the installation: Webhooks of the api
-  # and webhook files has only DeliveryRetentionDays (the effective
-  # features of each organisation select the event types), and no file has
+  # Webhooks and installation services: the Webhooks section of the api and
+  # webhook files has only DeliveryRetentionDays (each organisation's
+  # effective features select the event types), and no file has
   # Installation (Compose installs all services).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     if ! json="$(project_json 2>&1)"; then
@@ -555,10 +552,10 @@ PY
     fi
   fi
 
-  # The platform operator targets of the Makefile (make -n: no container):
-  # the commands of the api, the password of the first platform admin on
-  # standard input (--password-file -, never an argument), and the API core
-  # may publish the deletion of an organisation.
+  # The Makefile's platform operator targets (make -n: no container): the
+  # api commands, the first platform admin's password on standard input
+  # (--password-file -, never an argument), and the API core's right to
+  # publish organisation deletion.
   local dry
   if dry="$(make -n platform-operator ADMIN_EMAIL=admin@example.com ADMIN_NAME='First Admin' ORG_NAME='Example Wallet Provider' \
       ORG_LOCATION=Stockholm ORG_POLICY_URL=https://example.com/privacy 2>&1)" \
@@ -582,14 +579,14 @@ PY
     ok "the platform operator targets stop without their values"
   fi
   if grep -q -F '"api.v1.evt.organisation.deleted"' config/nats/users.conf; then
-    ok "the NATS user of the api publishes api.v1.evt.organisation.deleted"
+    ok "the api NATS user publishes api.v1.evt.organisation.deleted"
   else
     bad "config/nats/users.conf: the api cannot publish api.v1.evt.organisation.deleted (make nats-config)"
   fi
 
-  # The audit log (AUDIT_RETENTION_YEARS): the same retention in the files of
-  # the wallet roles and of wallet-migrate (the partition step), and no audit
-  # bucket. Empty value: the default.
+  # Audit log (AUDIT_RETENTION_YEARS): the same retention in the wallet role
+  # files and in wallet-migrate (the partition step), and no audit bucket.
+  # An empty value gives the default.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local years
     for years in "" 10; do
@@ -625,8 +622,8 @@ PY
     done
   fi
 
-  # Valkey: the three services, the templates of config/valkey/, the ACL
-  # users of make secrets and the redis section of each wallet role.
+  # Valkey: the three services, the templates in config/valkey/, the ACL
+  # users from make secrets and the redis section of each wallet role.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
     if ! json="$(project_json 2>&1)"; then
@@ -656,7 +653,7 @@ for name, (before, role) in order.items():
         problems.append(f"no service {name}")
         continue
     if service.get("image") != image:
-        problems.append(f"{name}: image {service.get('image')!r}, not VALKEY_IMAGE of .env.example")
+        problems.append(f"{name}: image {service.get('image')!r}, not VALKEY_IMAGE from .env.example")
     if service.get("user") != "999:1000" or service.get("entrypoint") != ["/bin/sh", "/etc/valkey/start.sh"] or service.get("command") != [role]:
         problems.append(f"{name}: not start.sh {role} as the user valkey (999:1000)")
     if before and (service.get("depends_on") or {}).get(before, {}).get("condition") != "service_healthy":
@@ -668,7 +665,7 @@ for name, (before, role) in order.items():
     mounted = {s["target"]: project["secrets"][s["source"]]["file"] for s in service.get("secrets", [])}
     for user in users:
         if not mounted.get(f"/run/secrets/valkey/{user}", "").endswith(f"/secrets/valkey/{user}-password"):
-            problems.append(f"{name}: no password file of {user}")
+            problems.append(f"{name}: no password file for {user}")
     targets = {c["target"]: project["configs"][c["source"]]["file"] for c in service.get("configs", [])}
     for target in ("start.sh", "valkey.conf", "users.acl", "sentinel.conf"):
         if not targets.get(f"/etc/valkey/{target}", "").endswith(f"/config/valkey/{target}"):
@@ -681,22 +678,22 @@ for setting in ("appendonly yes", "appendfsync everysec", "maxmemory-policy noev
                 "min-replicas-max-lag 10", "masteruser replication", "masterauth {password:replication}",
                 "aclfile /run/valkey/users.acl", "replica-announce-ip {self}"):
     if setting not in server:
-        problems.append(f"valkey.conf has not {setting!r}")
+        problems.append(f"valkey.conf does not have {setting!r}")
 acl = open("config/valkey/users.acl", encoding="utf-8").read().splitlines()
 expected_acl = ["user default off"] + [f"user {u} on {{hash:{u}}} {wallet_rights}" for u in users if u.startswith("wallet-")] + [f"user gateway on {{hash:gateway}} {gateway_rights}"]
 for line in expected_acl:
     if line not in acl:
-        problems.append(f"users.acl has not {line!r}")
+        problems.append(f"users.acl does not have {line!r}")
 if sorted(re.findall(r"^user (\S+)", "\n".join(acl), re.M)) != sorted(["default"] + users):
-    problems.append("users.acl has other users than default and the users of make secrets")
+    problems.append("users.acl has users other than default and the make secrets users")
 sentinel = open("config/valkey/sentinel.conf", encoding="utf-8").read().splitlines()
 for setting in ("sentinel monitor ows {primary} 6379 1", "sentinel resolve-hostnames yes", "sentinel announce-hostnames yes",
                 "sentinel auth-user ows sentinel", "user default off"):
     if setting not in sentinel:
-        problems.append(f"sentinel.conf has not {setting!r}")
+        problems.append(f"sentinel.conf does not have {setting!r}")
 made = re.search(r"for name in ([a-z -]+); do\n  password \"valkey/", open("secrets.sh", encoding="utf-8").read())
 if not made or sorted(made.group(1).split()) != sorted(users):
-    problems.append("make secrets does not make the password of each Valkey user")
+    problems.append("make secrets does not create a password for each Valkey user")
 for role in ("config", "service", "worker", "clock"):
     user = f"wallet-{role}"
     redis = yaml.safe_load(project["configs"][f"wallet-{role}-config"]["content"]).get("redis")
@@ -710,7 +707,7 @@ for role in ("config", "service", "worker", "clock"):
         problems.append(f"wallet-{role} does not mount the password of {user}")
 mounted = {s["target"]: s["source"] for s in services["gateway"].get("secrets", [])}
 if mounted.get("/run/secrets/igrant-gateway/redis-password") != "valkey-gateway-password":
-    problems.append("the gateway does not mount the password of its Valkey user")
+    problems.append("the gateway does not mount its Valkey user's password")
 if "redis" in project["configs"]["gateway-config"]["content"].lower():
     problems.append("the gateway configuration has a Valkey key (the gateway refuses an unknown key)")
 if problems:
@@ -727,11 +724,10 @@ PY
     fi
   fi
 
-  # The worker and the clock: the command of each (the worker with all
-  # queues), the health port of the healthcheck, the state folder of the
-  # worker, the worker and clock sections, and the files of the clock (only
-  # the password of its database role and of its Valkey user: no NATS seed,
-  # no OpenBao password).
+  # Worker and clock: the command of each (the worker with all queues), the
+  # healthcheck's health port, the worker state folder, the worker and clock
+  # sections, and the clock's files (only the passwords of its database
+  # role and Valkey user: no NATS seed, no OpenBao password).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file
     if ! json="$(project_json 2>&1)"; then
@@ -759,7 +755,7 @@ if clock.get("command") != ["/app/.venv/bin/start-clock"]:
     problems.append(f"wallet-clock: command {clock.get('command')}")
 for name, service, port in (("wallet-worker", worker, 9191), ("wallet-clock", clock, 9192)):
     if f"http://127.0.0.1:{port}/readyz" not in " ".join(service.get("healthcheck", {}).get("test", [])):
-        problems.append(f"{name}: the healthcheck is not /readyz of the port {port}")
+        problems.append(f"{name}: the healthcheck is not /readyz on port {port}")
 if not any(t == "/run/ows-worker" or t.startswith("/run/ows-worker:") for t in worker.get("tmpfs", [])):
     problems.append("wallet-worker: /run/ows-worker is not a tmpfs")
 worker_file = yaml.safe_load(project["configs"]["wallet-worker-config"]["content"])
@@ -771,7 +767,7 @@ if set(clock_file) != {"log_level", "database", "redis", "clock"}:
 if clock_file.get("clock") != {"health_port": 9192}:
     problems.append("wallet-clock: the health port is not 9192")
 if "wallet-scheduler" in project["services"] or "wallet-scheduler-config" in project["configs"]:
-    problems.append("the scheduler is still a service (organisation-wallet-suite removed it)")
+    problems.append("the scheduler is still a service (the wallet no longer has one)")
 targets = sorted(s["target"] for s in clock.get("secrets", []))
 if targets != ["/run/secrets/eudi-wallet/database-password", "/run/secrets/eudi-wallet/redis-password"]:
     problems.append(f"wallet-clock mounts {targets}")
@@ -780,7 +776,7 @@ if "nats" in (clock.get("depends_on") or {}) or "openbao-init" in (clock.get("de
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print("the commands, the health ports, the state folder and the files of the clock")
+print("the commands, the health ports, the state folder and the clock's files")
 PY
 )"; then
         ok "worker and clock: $output"
@@ -791,15 +787,15 @@ PY
     fi
   fi
 
-  # The configuration files (README.md, "Configuration files"): the
-  # templates of compose.configs.yaml, each one in the list of the service
-  # render; one file config of generated/ for each template and no config
-  # of content in the project; the same values files for the render as for
-  # the services (and generated/configs.env only for the services); the
-  # label of each service that reads a file of generated/ is the SHA-256 of
-  # the file; the templates have only the variables of .env.example and of
-  # config/engine/ (the settings: no secret), and each key of a file with a
-  # password, a secret or a seed names a file.
+  # Config files (README.md, "Configuration files"): the templates of
+  # compose.configs.yaml, each listed in the service render; one generated/
+  # file config per template and no content config in the project; the
+  # same values files for the render as for the services (plus
+  # generated/configs.env for the services only); the label of each
+  # service that reads a generated/ file is the file's SHA-256; the
+  # templates use only the variables of .env.example and config/engine/
+  # (settings, no secrets), and each key with a password, a secret or a
+  # seed names a file.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file variables_file
     project_file="$(mktemp)"
@@ -836,7 +832,7 @@ def env_files(path):
 services_files, render_files = env_files("docker-compose.yaml"), env_files("compose.render.yaml")
 if services_files != render_files + ["generated/configs.env"]:
     problems.append(f"the values files of the services {services_files} are not those of the render {render_files} and generated/configs.env")
-# One file config of generated/ for each template, no config of content.
+# One generated/ file config per template, no content config.
 generated = {}
 for name, config in project.get("configs", {}).items():
     if "content" in config:
@@ -848,7 +844,7 @@ for name, config in project.get("configs", {}).items():
             problems.append(f"the config {name} is the file {base}")
         generated[name] = base
 if sorted(generated.values()) != sorted(templates):
-    problems.append(f"the file configs of generated/ {sorted(generated.values())} are not the templates {sorted(templates)}")
+    problems.append(f"the generated/ file configs {sorted(generated.values())} are not the templates {sorted(templates)}")
 # The hash label of each service, and the hash in generated/configs.env.
 hashes = dict(line.split("=", 1) for line in open("generated/configs.env", encoding="utf-8").read().splitlines() if line and not line.startswith("#"))
 labelled = 0
@@ -863,16 +859,16 @@ for service_name, service in project["services"].items():
         labelled += 1
     for label in labels:
         if label.startswith("io.igrant.config-sha256.") and label.split(".", 3)[3] not in sources:
-            problems.append(f"{service_name}: the label {label} without its config")
-# The variables of the templates: only the settings.
+            problems.append(f"{service_name}: the label {label} has no config")
+# Template variables: settings only.
 settings = set()
 for path in (".env.example", "config/engine/postgresql.env"):
     settings |= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", open(path, encoding="utf-8").read(), re.M))
 unknown = sorted(set(variables) - settings)
 if unknown:
-    problems.append(f"the templates use {unknown}, which are not settings of .env.example or config/engine/")
-# Each key with a password, a secret or a seed names a file (an absolute
-# path), in each file of generated/.
+    problems.append(f"the templates use {unknown}, which are not settings in .env.example or config/engine/")
+# In each generated/ file, each key with a password, a secret or a seed
+# names a file (an absolute path).
 def keys(node, path=""):
     if isinstance(node, dict):
         for key, value in node.items():
@@ -891,8 +887,8 @@ for base in sorted(templates):
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print(f"{len(templates)} templates, {len(generated)} file configs of generated/, {labelled} hash labels, "
-      f"{len(variables)} variables of the settings, no secret value")
+print(f"{len(templates)} templates, {len(generated)} generated/ file configs, {labelled} hash labels, "
+      f"{len(variables)} setting variables, no secret value")
 PY
 )"; then
       ok "configuration files: $output"
@@ -902,13 +898,13 @@ PY
     rm -f "$project_file" "$variables_file"
   fi
 
-  # The renderer (render-configs.py) in a copy of this folder, with one more
-  # template: $$ gives $, ${VAR:+...} and a value with $ of the shell are
-  # the rules of Compose; the modes 0644 (files) and 0755 (folder); a file
-  # that is not a template (a stale file, a temporary file of a stopped
-  # run) goes; --check passes, and fails after a change of a value; a
-  # second run writes the same bytes; a missing required value stops the
-  # run before it writes a file.
+  # The renderer (render-configs.py) in a copy of this folder, with one
+  # extra template: $$ gives $, and ${VAR:+...} and a value with a shell $
+  # follow the Compose rules; modes 0644 (files) and 0755 (folder); a file
+  # that is not a template (a stale file, a temporary file of a stopped run)
+  # is removed; --check passes, and fails after a value changes; a second
+  # run writes the same bytes; a missing required value stops the run
+  # before it writes a file.
   if command -v python3 > /dev/null; then
     local copy output
     copy="$(mktemp -d)"
@@ -938,15 +934,15 @@ if got != want:
 if stat.S_IMODE(os.stat("generated/zz-test.yaml").st_mode) != 0o644 or stat.S_IMODE(os.stat("generated").st_mode) != 0o755:
     problems.append("the modes are not 0644 (files) and 0755 (folder)")
 if os.path.exists("generated/stale.yaml") or os.path.exists("generated/.render-left"):
-    problems.append("a file that is not a template stays")
+    problems.append("a file that is not a template is not removed")
 if f"CONFIG_SHA256_ZZ_TEST={hashlib.sha256(want).hexdigest()}" not in open("generated/configs.env").read():
-    problems.append("configs.env has not the SHA-256 of zz-test.yaml")
+    problems.append("configs.env does not have the SHA-256 of zz-test.yaml")
 snapshot = {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")}
 if run("--check").returncode != 0:
     problems.append("--check fails after the render")
 changed = run("--check", extra={"RENDER_TEST": "other"})
 if changed.returncode == 0 or "zz-test.yaml" not in changed.stdout or "configs.env" not in changed.stdout:
-    problems.append(f"--check passes after a change of a value: {changed.stdout.strip()}")
+    problems.append(f"--check passes after a value changes: {changed.stdout.strip()}")
 if run().returncode != 0 or {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
     problems.append("a second run writes other bytes")
 text = open("compose.configs.yaml", encoding="utf-8").read()
@@ -969,17 +965,17 @@ PY
     rm -rf "$copy"
   fi
 
-  # The security settings of EACH service (README.md, "Security settings"),
-  # with all profiles: a read-only root file system, no capability, no new
-  # privileges, its user (UID:GID, not root), the tmpfs (each with a size)
-  # and the volumes of the paths that it writes, no config of "content", no
-  # host namespace, no device, no privileged mode, and only bind mounts of
-  # secrets/ (read-only, but the state folder of openbao-init). A service
-  # that this list does not know fails: add it with its user and its
-  # writable paths. The ports below 1024 come with the sysctl
-  # net.ipv4.ip_unprivileged_port_start. The api image has no shell: no
-  # service of the api image starts a shell. The one-shot services of root
-  # (nats-data-owner) have only their capabilities, and no network.
+  # Security settings of EVERY service (README.md, "Security settings"),
+  # with all profiles: read-only root file system, no capabilities, no new
+  # privileges, its user (UID:GID, not root), tmpfs (each with a size) and
+  # volumes for the paths it writes, no "content" config, no host namespace,
+  # no device, no privileged mode, and only bind mounts from secrets/
+  # (read-only, except the openbao-init state folder). A service that this
+  # list does not know fails: add it with its user and writable paths.
+  # Ports below 1024 need the sysctl net.ipv4.ip_unprivileged_port_start.
+  # The api image has no shell, so no api service starts one. The root
+  # one-shot services (nats-data-owner) have only their capabilities and no
+  # network.
   if command -v python3 > /dev/null; then
     local output project_file
     if ! json="$(COMPOSE_PROFILES='*' docker compose config --format json 2>&1)"; then
@@ -997,8 +993,7 @@ folder, host_user = sys.argv[2], sys.argv[3]
 services = project["services"]
 problems = []
 API, WALLET, CONSENT = "65532:65532", "65532:65532", "65532:65532"
-# Each service: its user, the tmpfs paths and the volume paths that it
-# writes.
+# Each service: its user, and the tmpfs and volume paths it writes.
 expected = {
     "postgres": ("999:999", ["/var/run/postgresql", "/tmp"], ["/var/lib/postgresql"]),
     "database-init": ("999:999", ["/tmp"], []),
@@ -1027,15 +1022,15 @@ expected = {
     "wallet-clock": (WALLET, ["/tmp"], []),
     "dashboard": ("101:101", ["/tmp"], []),
 }
-# The one-shot services of root: the capabilities, the volume paths and the
-# command of each.
+# The root one-shot services: the capabilities, volume paths and command
+# of each.
 NATS_OWNER = ["find", "/data", "(", "!", "-user", "65532", "-o", "!", "-group", "65532", ")",
               "-exec", "chown", "-h", "65532:65532", "{}", "+"]
 root_one_shots = {
     "nats-data-owner": (["CHOWN", "DAC_READ_SEARCH"], ["/data"], NATS_OWNER),
 }
-# The bind mounts that a service may write (all other bind mounts are
-# read-only): the state folder of openbao-init (init.json).
+# Bind mounts that a service may write (all others are read-only): the
+# openbao-init state folder (init.json).
 writable_binds = {("openbao-init", f"{folder}/secrets/openbao")}
 low_ports = {"api", "webhook", "consent", "dashboard"}
 for name in sorted(set(services) - set(expected) - set(root_one_shots)):
@@ -1057,7 +1052,7 @@ for name, service in sorted(services.items()):
             problems.append(f"{name}: {key} host")
     content = [config["source"] for config in service.get("configs") or [] if "content" in project["configs"].get(config["source"], {})]
     if content:
-        problems.append(f"{name}: configs of content {content} (Compose cannot write them into a read-only container)")
+        problems.append(f"{name}: content configs {content} (Compose cannot write them into a read-only container)")
     for entry in service.get("tmpfs") or []:
         if "size=" not in entry:
             problems.append(f"{name}: the tmpfs {entry} has no size")
@@ -1065,11 +1060,11 @@ for name, service in sorted(services.items()):
         if volume.get("type") == "bind":
             source = volume.get("source", "")
             if not source.startswith(f"{folder}/secrets/"):
-                problems.append(f"{name}: a bind mount of {source} (only folders of secrets/)")
+                problems.append(f"{name}: a bind mount of {source} (only folders in secrets/ are allowed)")
             if not volume.get("read_only") and (name, source) not in writable_binds:
                 problems.append(f"{name}: the bind mount of {source} is not read-only")
         elif volume.get("type") != "volume":
-            problems.append(f"{name}: a volume of the type {volume.get('type')}")
+            problems.append(f"{name}: a volume of type {volume.get('type')}")
     targets = [volume.get("target") for volume in service.get("volumes") or [] if volume.get("type") == "volume"]
     if name in root_one_shots:
         caps, paths, entrypoint = root_one_shots[name]
@@ -1140,7 +1135,7 @@ PY
     dir="$(mktemp -d)"
     cp config/nats/nats.conf config/nats/users.conf "$dir/"
     sed -i.orig "s#store_dir: \"/data\"#store_dir: \"${dir}/data\"#" "$dir/nats.conf"
-    # Stand-in public nkeys (no secret) with the names of make secrets.
+    # Stand-in public nkeys (no secrets) with the make secrets names.
     cat > "$dir/nkeys.conf" <<'NKEYS'
 NATS_NKEY_API: "UCEKSPNUPXXRDG7XXDV7QP6OVL65PNZOQE3BC6D2DYMS6VSRZG6KATFL"
 NATS_NKEY_API_WEBHOOK: "UDLNQ4V73THWJRSWY47PSTWVPH2G4AME5ZJ2BD743BNHOLIRQIK46KHY"
@@ -1157,13 +1152,13 @@ NKEYS
     fi
     rm -rf "$dir"
   else
-    warn "NATS configuration not checked (nats-server is not on this computer)"
+    warn "NATS configuration not checked (nats-server is not installed)"
   fi
 
-  # Text rules of the files of this folder (not the generated files): no em
-  # or en dash, British English, none of the removed products and settings,
-  # and no backup or upgrade text. Exceptions (keys that the code reads):
-  # the wallet key "vault" (with its OpenBao comment).
+  # Text rules for this folder (not the generated files): no em or en dash,
+  # British English, no removed products or settings, and no backup or
+  # upgrade text. Exception (a key that the code reads): the wallet key
+  # "vault", with its OpenBao comment.
   local text_files
   text_files="$(find . -type f ! -path './secrets/*' ! -path './generated/*' ! -name .env ! -name '*.orig' | sort)"
   local hits dashes
@@ -1178,8 +1173,8 @@ NKEYS
   hits="$(grep -n -i -E 'hashicorp|vault|kms_key|platform: *database|db-backed|data_key|facade|keycloak|mongo|aries|aca-py|cloud ?agent|\bssi\b|backup|upgrade|migration step|mailpit|rotator|allowplainapikeys' $text_files \
     | grep -v -E '^\./compose\.configs\.yaml:[0-9]+:( +vault:$| +# .*"vault" is| +organisation_key_store_types: \[vault, csc, gcp-kms, aws-kms, azure-key-vault\]$)' || true)"
   if [ -n "$hits" ]; then bad "removed product or setting: $hits"; else ok "no removed product or setting"; fi
-  # The relative links of README.md (also into the docs of the chart): each
-  # target file and each heading of an anchor exists.
+  # The relative links of README.md (also into the chart docs): each target
+  # file and each anchor heading exists.
   if hits="$(python3 ../tests/check_links.py README.md 2>&1)"; then ok "relative links of README.md"; else bad "relative links of README.md: $hits"; fi
 
   [ -z "$created_env" ] || rm -f .env

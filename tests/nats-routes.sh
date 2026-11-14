@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Test of the routes of the bundled NATS (port 6222): only a server with a
-# certificate of the CA of the chart can open a route. Containers of a local
-# NATS image play the 3 NATS pods with the configuration and the TLS Secret
-# of a render (nats.replicas 3; the network aliases are the names of the
-# headless Service). Three intruders try to open a route to t-nats-0:
-#   - a nats-server with its own CA and certificate (TLS, the same cluster
+# Tests the routes of the bundled NATS (port 6222): only a server with a
+# certificate from the chart's CA can open a route. Containers of a local
+# NATS image play the 3 NATS pods, with the configuration and TLS Secret of
+# a render (nats.replicas 3; the network aliases are the headless Service
+# names). Three intruders try to open a route to t-nats-0:
+#   - a nats-server with its own CA and certificate (TLS, same cluster
 #     name);
-#   - a nats-server without the TLS block of its routes (it still has the
-#     files of its own CA for its clients);
+#   - a nats-server without the TLS block for its routes (it still has its
+#     own CA files for its clients);
 #   - a raw TCP client that sends a route CONNECT without TLS.
 # The checks: the 3 servers form the cluster (each sees the 2 others in
 # /routez); after the intruders, each server still sees only the 2 others,
-# all 3 still run, and the log of t-nats-0 has the refusals. The network
+# all 3 still run, and the t-nats-0 log shows the refusals. The network
 # policies (only the NATS pods reach 6222) are checked by
 # tests/check_network_matrix.py in tests/render-matrix.sh.
 #
 # Usage: tests/nats-routes.sh <nats image>
-#   The image must be local (the script never pulls), for example the image
-#   of nats.image (nats:2.14.10-alpine). The containers and the network have
-#   unique names, and the script removes them at the end.
+#   The image must be local (the script never pulls), for example the
+#   chart's nats.image (nats:2.14.10-alpine). The containers and the network
+#   have unique names, and the script removes them at the end.
 set -euo pipefail
 
 image="${1:?usage: tests/nats-routes.sh <nats image>}"
@@ -45,7 +45,7 @@ if ! docker image inspect "$image" > /dev/null 2>&1; then
   exit 2
 fi
 
-# The configuration and the TLS files of a render with 3 servers.
+# The configuration and TLS files of a render with 3 servers.
 helm template t "$chart" --namespace ow -f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" \
   --set nats.replicas=3 > "$work/render.yaml"
 python3 "$here/write_nats_conf.py" "$work/render.yaml" "$work/conf" --container
@@ -94,15 +94,14 @@ python3 - "$work/conf/nats.conf" "$work/intruder-tls/nats.conf" "$work/intruder-
 import re, sys
 source, with_tls, without_tls = sys.argv[1:4]
 config = open(source).read()
-# The routes of the intruders go only to t-nats-0; no authorization block
-# (an intruder has no users).
+# The intruders route only to t-nats-0 and have no authorization block
+# (they have no users).
 config = re.sub(r"routes: \[[^\]]*\]", "routes: [\n        nats://t-nats-0.t-nats-headless:6222\n      ]", config)
 config = re.sub(r"\nauthorization \{.*", "\n", config, flags=re.S)
 open(with_tls, "w").write(config)
 open(without_tls, "w").write(re.sub(r"(cluster \{.*?)\n      tls \{[^}]*\}", r"\1", config, flags=re.S))
 PY
-# The plain intruder keeps the TLS of its clients (port 4222), with the files
-# of its own CA.
+# The plain intruder keeps client TLS (port 4222) with its own CA files.
 cp "$work/intruder-tls/tls.crt" "$work/intruder-tls/tls.key" "$work/intruder-tls/ca.crt" "$work/intruder-plain/"
 chmod 0644 "$work/intruder-tls"/* "$work/intruder-plain"/*
 server intruder-tls "$work/intruder-tls"
@@ -116,7 +115,7 @@ sleep 12
 
 after="$(routes_of t-nats-0)|$(routes_of t-nats-1)|$(routes_of t-nats-2)"
 if [ "$after" = "t-nats-1 t-nats-2|t-nats-0 t-nats-2|t-nats-0 t-nats-1" ]; then
-  ok "after the intruders each server sees only the 2 others ($after)"
+  ok "after the intruders, each server sees only the 2 others ($after)"
 else
   bad "the routes after the intruders: $after"
 fi
@@ -124,12 +123,12 @@ intruder_routes="$(routes_of intruder-tls)/$(routes_of intruder-plain)"
 if [ "$intruder_routes" = "/" ]; then
   ok "no intruder has a route"
 else
-  bad "the routes of the intruders: $intruder_routes"
+  bad "intruder routes: $intruder_routes"
 fi
 running="$(for i in 0 1 2; do docker inspect -f '{{.State.Running}}' "$prefix-t-nats-$i"; done | sort -u | tr '\n' ' ')"
 if [ "$running" = "true " ]; then ok "the 3 servers still run"; else bad "a server stopped: $running"; fi
 log="$(docker logs "$prefix-t-nats-0" 2>&1)"
-# The lines of t-nats-0 about the connections of each intruder (by its address).
+# The t-nats-0 log lines about each intruder's connections (found by its address).
 refusal() { grep -F "$1:" <<< "$log" | grep -i -E "TLS|handshake|closed" | head -1 || true; }
 for intruder in "own CA:$ip_tls" "no TLS block of the routes:$ip_plain" "raw CONNECT without TLS:$ip_raw"; do
   label="${intruder%%:*}"; address="${intruder#*:}"
@@ -137,7 +136,7 @@ for intruder in "own CA:$ip_tls" "no TLS block of the routes:$ip_plain" "raw CON
   if [ -n "$address" ] && [ -n "$line" ]; then
     ok "t-nats-0 refused the intruder ($label, $address): $(sed -E 's/^\[[0-9]+\] [0-9/]+ [0-9:.]+ //' <<< "$line" | cut -c1-150)"
   else
-    bad "no refusal of the intruder ($label, ${address:-no address}) in the log of t-nats-0"
+    bad "no refusal of the intruder ($label, ${address:-no address}) in the t-nats-0 log"
   fi
 done
 echo "result: $pass passed, $fail failed"

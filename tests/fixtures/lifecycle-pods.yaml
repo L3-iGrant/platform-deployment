@@ -1,7 +1,7 @@
-# Pods for the test of tests/check_lifecycle.py (tests/render-matrix.sh,
-# section 7): each pod "bad-*" has one fault (a preStop exec of /bin/sleep,
+# Test pods for tests/check_lifecycle.py (run by tests/render-matrix.sh,
+# section 7). Each "bad-*" pod has one fault (a preStop exec of /bin/sleep,
 # an exec probe in an image without a shell, a liveness initialDelaySeconds
-# with a startup probe); the pod "good" has none.
+# with a startup probe); the "good" pod has none.
 ---
 apiVersion: v1
 kind: Pod

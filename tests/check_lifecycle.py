@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
-"""Checks the probes, the hooks, the rollout and the stop of "helm template" outputs.
+"""Checks the probes, hooks, rollout and stop of "helm template" outputs.
 
 Usage: check_lifecycle.py <render.yaml>...
 
 For each container of each workload:
-- no exec probe and no exec hook in a container of an image without a
-  shell (the iGrant.io images api, gateway, consent-management-backend and
-  eudi-wallet are distroless: they have no /bin/sh and no /bin/sleep). A
-  hook or a probe is then an HTTP or TCP action, the sleep action of
-  Kubernetes, or the program itself (only images with the program may
-  exec: nats-server in NATS, the scripts of Valkey, pg_isready of
-  PostgreSQL);
-- no preStop exec of /bin/sleep in any image (the sleep action of
-  Kubernetes needs no program);
-- a liveness or readiness probe has no initialDelaySeconds when the
+- no exec probe and no exec hook in an image without a shell (the
+  iGrant.io images api, gateway, consent-management-backend and eudi-wallet
+  are distroless: they have no /bin/sh and no /bin/sleep). There, a hook or
+  probe must be an HTTP or TCP action, the Kubernetes sleep action, or the
+  program itself (only images that contain the program may exec it:
+  nats-server in NATS, the Valkey scripts, pg_isready in PostgreSQL);
+- no preStop exec of /bin/sleep in any image (the Kubernetes sleep action
+  needs no program);
+- no initialDelaySeconds on a liveness or readiness probe when the
   container has a startup probe (they start after it).
 
 For each Deployment of an HTTP component (the api, the webhook handler,
 the gateway, consent, the dashboard, the wallet service and config roles):
 - RollingUpdate with maxUnavailable 0 and maxSurge 25%, and
   minReadySeconds 30 or more;
-- a preStop sleep action of 1 or more seconds;
-- terminationGracePeriodSeconds at least the preStop sleep + the stop of
-  the server (the values of the config files: Server/Gateway drainSeconds
-  and gracefulShutdownSeconds for the Go servers; gracefulShutdownSeconds
-  and backgroundShutdownSeconds for the wallet; 10 s for nginx) + 5;
-- a readiness probe with a timeout of 2 s or more and a startup probe with
-  a budget (periodSeconds x failureThreshold) of 180 s or more.
+- a preStop sleep action of 1 second or more;
+- terminationGracePeriodSeconds of at least the preStop sleep + the server
+  stop time + 5 (the stop time comes from the config files: Server/Gateway
+  drainSeconds and gracefulShutdownSeconds for the Go servers;
+  server.graceful_shutdown_seconds and background_shutdown_seconds for the
+  wallet; 10 s for nginx);
+- a readiness probe timeout of 2 s or more, and a startup probe budget
+  (periodSeconds x failureThreshold) of 180 s or more.
 
-The script writes one line for each problem and a summary line, and exits 1
-on a problem. It reads only the pod specs and the ConfigMaps of the server
-settings: never a Secret value.
+The script prints one line per problem and a summary line, and exits 1 if
+there is a problem. It reads only the pod specs and the ConfigMaps with the
+server settings, never a Secret value.
 """
 
 import sys
@@ -63,7 +63,7 @@ def component_of(doc):
 
 
 def server_stop(docs, component):
-    """The seconds of the stop of the server after its stop signal."""
+    """The seconds that the server needs to stop after its stop signal."""
     kind = HTTP[component]
     if kind == "nginx":
         return 10
@@ -137,15 +137,15 @@ def main():
                 sleep = 0
             stop = server_stop(docs, component)
             if stop is None:
-                problems.append(f"{where}: no config file with the stop settings of the server")
+                problems.append(f"{where}: no config file with the server's stop settings")
             elif int(pod.get("terminationGracePeriodSeconds") or 30) < sleep + stop + 5:
-                problems.append(f"{where}: terminationGracePeriodSeconds {pod.get('terminationGracePeriodSeconds')} below the preStop {sleep} s + the stop {stop} s + 5")
+                problems.append(f"{where}: terminationGracePeriodSeconds {pod.get('terminationGracePeriodSeconds')} is below preStop {sleep} s + server stop {stop} s + 5")
             readiness = container.get("readinessProbe") or {}
             if int(readiness.get("timeoutSeconds") or 1) < 2:
                 problems.append(f"{where}: readiness timeout {readiness.get('timeoutSeconds', 1)} s, not 2 s or more")
             startup = container.get("startupProbe") or {}
             if int(startup.get("periodSeconds") or 10) * int(startup.get("failureThreshold") or 3) < 180:
-                problems.append(f"{where}: a startup budget below 180 s")
+                problems.append(f"{where}: startup probe budget below 180 s")
     for problem in problems:
         print(f"  FAIL: {problem}")
     print(f"{len(sys.argv) - 1} renders, {containers} containers, {deployments} HTTP Deployments, {len(problems)} problems")

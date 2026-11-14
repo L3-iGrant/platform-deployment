@@ -1,5 +1,6 @@
-# Test keys (no secret: key ids, empty public JWKS, test public nkeys and
-# Secret names). In an installation, scripts/make-keys.sh writes this file.
+# Test key values. No secrets: key ids, empty public JWKS, test public nkeys
+# and Secret names. In a real installation, scripts/make-keys.sh writes this
+# file.
 api:
   keyStorage:
     tokenSigning:

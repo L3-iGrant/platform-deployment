@@ -1,5 +1,5 @@
-# A new installation: the platform operator organisation and its first
-# platform admin (tests/check_operator_jobs.py bootstrap).
+# A new installation that creates the platform operator organisation and its
+# first platform admin (case "bootstrap" of tests/check_operator_jobs.py).
 api:
   jobs:
     bootstrapPlatform:

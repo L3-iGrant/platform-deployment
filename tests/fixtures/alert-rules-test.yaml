@@ -1,12 +1,12 @@
-# Unit tests of the alert rules of templates/wallet/prometheusrule.yaml
-# (promtool test rules; tests/alert-rules.sh writes rules.yaml from a
-# render in the namespace ow).
+# Unit tests for the alert rules of templates/wallet/prometheusrule.yaml
+# (promtool test rules). tests/alert-rules.sh writes rules.yaml from a render
+# in the namespace ow.
 rule_files:
   - rules.yaml
 evaluation_interval: 1m
 tests:
-  # A stopped month of the scope issuer: critical after 10 minutes; the
-  # scope kms with 0 gives no alert; two worker pods give one alert (max).
+  # A stopped month for the scope issuer: critical after 10 minutes. The
+  # scope kms with 0 gives no alert, and two worker pods give one alert (max).
   - interval: 1m
     input_series:
       - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="issuer"}'
@@ -15,7 +15,7 @@ tests:
         values: '0 1x30'
       - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="kms"}'
         values: '0x30'
-      # Another release (another namespace) is not this alert.
+      # Another release (another namespace) must not raise this alert.
       - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="other",pod="o-1",scope="kms"}'
         values: '1x30'
     alert_rule_test:
@@ -32,8 +32,8 @@ tests:
             exp_annotations:
               summary: "The audit export of issuer is stopped"
               description: "1 closed month(s) of the audited scope issuer in ow: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
-  # No partition of the current month: critical after 5 minutes, and the
-  # warning of fewer than 2 future months after 1 hour.
+  # No partition for the current month: critical after 5 minutes, and the
+  # warning for fewer than 2 future months after 1 hour.
   - interval: 1m
     input_series:
       - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",table="platform.audit_event"}'

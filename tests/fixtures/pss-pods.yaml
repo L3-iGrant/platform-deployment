@@ -1,9 +1,9 @@
-# Pods for the test of the two security checks (tests/render-matrix.sh,
-# section 7): each pod "bad-*" breaks the Pod Security Standard
-# "restricted" in one field, the pod "good" meets it. Both checks
-# (tests/check_security.py and tests/psscheck) must name each bad pod and
-# not the good pod. The chart renders no ephemeral container and no
-# AppArmor annotation: these pods test them.
+# Test pods for the two security checks (run by tests/render-matrix.sh,
+# section 7). Each "bad-*" pod breaks the Pod Security Standard "restricted"
+# in one field; the "good" pod meets it. Both checks (tests/check_security.py
+# and tests/psscheck) must name each bad pod and not the good pod. The chart
+# renders no ephemeral container and no AppArmor annotation, so these pods
+# cover them.
 ---
 apiVersion: v1
 kind: Pod

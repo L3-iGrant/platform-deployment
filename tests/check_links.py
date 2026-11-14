@@ -4,10 +4,10 @@
 Usage: check_links.py <file.md> [<file.md> ...]
 
 For each link [text](target) that is not a URL (http, https, mailto), the
-target file or folder must exist (relative to the folder of the file), and
-an anchor (#name) must be the name of a heading of the target file, as
-GitHub makes it. The script writes one line per broken link and exits 1
-when a link is broken.
+target file or folder must exist (relative to the linking file's folder),
+and an anchor (#name) must be the anchor name that GitHub gives a heading
+of the target file. The script prints one line per broken link and exits 1
+if a link is broken.
 """
 
 import os
@@ -20,7 +20,7 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 
 
 def lines_outside_code(path):
-    """The lines of a Markdown file, without the fenced code blocks."""
+    """The lines of a Markdown file outside fenced code blocks."""
     fenced = False
     with open(path, encoding="utf-8") as file:
         for number, line in enumerate(file, 1):
@@ -33,7 +33,7 @@ def lines_outside_code(path):
 
 def slug(text):
     """The anchor name that GitHub gives a heading."""
-    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # a link: its text
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # a link becomes its text
     text = text.strip().lower()
     text = re.sub(r"[^\w\- ]", "", text)
     return text.replace(" ", "-")

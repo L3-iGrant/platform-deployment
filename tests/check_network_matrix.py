@@ -4,21 +4,20 @@ connection matrix (policies/network-matrix.yaml), without a cluster.
 
 Usage: check_network_matrix.py <render.yaml> <network-matrix.yaml>
 
-The render has networkPolicy.enabled. The script applies the NetworkPolicies
-of the release namespace to the pods of the release as Kubernetes does: a
-pod that a policy of the type Ingress (Egress) selects accepts (opens) only
-the connections that one of these policies allows, and a connection needs
-the egress of its source and the ingress of its destination. A peer with an
-ipBlock is never a pod of the release (the pod addresses are in the cluster
-CIDRs, which the egress profiles exclude). For the roles that run in the
-release:
-- each pod of the release has a role of the matrix;
+The render must have networkPolicy.enabled. The script applies the
+NetworkPolicies of the release namespace to the release pods as Kubernetes
+does: a pod that an Ingress (or Egress) policy selects accepts (or opens)
+only the connections that one of these policies allows, and a connection
+needs both the egress of its source and the ingress of its destination. A
+peer with an ipBlock is never a release pod (pod addresses are in the
+cluster CIDRs, which the egress profiles exclude). For the roles that run
+in the release:
+- each release pod has a role from the matrix;
 - each connection of the matrix is allowed on its port;
-- each allowed connection between two pods of the release is in the
-  matrix (no other port, no other pair);
+- each allowed connection between two release pods is in the matrix (no
+  other port, no other pair);
 - each forbidden pair of the matrix is denied on every port.
-The script writes one line for each failed check and exits 1 when a check
-fails.
+The script prints one line per failed check and exits 1 if a check fails.
 """
 
 import sys
@@ -30,7 +29,7 @@ ROLE = "netpol.igrant.io/role"
 
 
 def selects(selector: dict, labels: dict) -> bool:
-    """True when a label selector selects the labels."""
+    """True if the label selector matches the labels."""
     for key, value in (selector.get("matchLabels") or {}).items():
         if labels.get(key) != value:
             return False
@@ -49,7 +48,7 @@ def selects(selector: dict, labels: dict) -> bool:
 
 
 def namespace_selects(selector) -> bool:
-    """True when a namespaceSelector selects the release namespace (the only label known: its name)."""
+    """True if a namespaceSelector matches the release namespace (the only known label is its name)."""
     if selector is None:
         return True
     return selects(selector, {"kubernetes.io/metadata.name": NAMESPACE})
@@ -83,7 +82,7 @@ def main() -> int:
         labels = doc["spec"]["template"]["metadata"].get("labels") or {}
         role = labels.get(ROLE)
         if role not in matrix["roles"]:
-            failures.append(f"{doc['kind']} {doc['metadata']['name']} has the role {role!r}, not a role of the matrix")
+            failures.append(f"{doc['kind']} {doc['metadata']['name']} has the role {role!r}, which is not in the matrix")
             continue
         ports = {port["name"]: port["containerPort"]
                  for container in doc["spec"]["template"]["spec"]["containers"] for port in container.get("ports", []) if "name" in port}
@@ -113,13 +112,13 @@ def main() -> int:
         for source in connection["from"]:
             expected.add((source, target, port))
             if source in present and target in present:
-                # The port number of the container (a value can change the
-                # default of the matrix, for example gateway.listenPort).
+                # The container's port number (a value can override the
+                # matrix default, for example gateway.listenPort).
                 actual = pods[target]["ports"].get(port, number)
                 if not allowed(source, target, actual, port):
-                    failures.append(f"the connection {source} -> {target}:{port} of the matrix is denied")
+                    failures.append(f"the matrix connection {source} -> {target}:{port} is denied")
     def expected_port(source: str, target: str, number: int, name: str) -> bool:
-        """The matrix names the port, or a port of the matrix has its number (the database port)."""
+        """True if the matrix names the port, or a matrix port has the same number (the database port)."""
         return any((source, target, port) in expected and (port == name or matrix["roles"][target]["ports"][port] == number)
                    for port in matrix["roles"][target]["ports"])
 
@@ -127,7 +126,7 @@ def main() -> int:
         for target in sorted(present):
             for name, number in sorted(pods[target]["ports"].items()):
                 if allowed(source, target, number, name) and not expected_port(source, target, number, name):
-                    failures.append(f"the connection {source} -> {target}:{name} is allowed, but it is not in the matrix")
+                    failures.append(f"the connection {source} -> {target}:{name} is allowed but not in the matrix")
     for rule in matrix["forbidden"]:
         source = rule["from"]
         for target in rule["to"]:

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Test of the alert rules of the wallet (templates/wallet/prometheusrule.yaml)
-# with promtool of a local Prometheus image: the render with
-# organisationWallet.prometheusRule on gives a PrometheusRule whose groups
-# pass "promtool check rules", and the unit tests of
-# tests/fixtures/alert-rules-test.yaml pass ("promtool test rules": a stopped
-# audit export is critical after 10 minutes, a missing partition of the
-# month, a late revocation; another namespace and a scope with 0 give no
-# alert). Without the value, the render has no PrometheusRule.
+# Tests the wallet's alert rules (templates/wallet/prometheusrule.yaml) with
+# promtool from a local Prometheus image. With
+# organisationWallet.prometheusRule on, the render has a PrometheusRule whose
+# groups pass "promtool check rules" and the unit tests in
+# tests/fixtures/alert-rules-test.yaml ("promtool test rules"): a stopped
+# audit export (critical after 10 minutes), a missing partition for the
+# current month, too few future partitions and a late revocation; another
+# namespace and a scope with 0 give no alert. Without the value, the render
+# has no PrometheusRule.
 #
 # Usage: tests/alert-rules.sh <prometheus image>
 #   The image must be local (the script never pulls), for example

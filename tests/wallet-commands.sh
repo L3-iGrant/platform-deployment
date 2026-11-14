@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
-# Test of the commands of the wallet image: each wallet container and Job
-# of the chart (renders with the operator Jobs) and each wallet service of
+# Tests the commands of the wallet image. Each wallet container and Job of
+# the chart (rendered with the operator Jobs) and each wallet service of
 # docker-compose/ must be a full command that runs in the image, which has
 # no shell and no entrypoint script (distroless, ENTRYPOINT []).
 #
 # For each command:
-# 1. the command is explicit, and its program is an absolute path below
-#    /app/.venv/bin (never a shell, never only args for an entrypoint);
-# 2. the program starts in a container of the image as the pod runs it:
-#    the user 65532, a read-only root file system, no capability, no new
-#    privileges, no network, /tmp in memory, and its configuration file of
-#    the render at its path. Without a database or a secret file the
-#    program then stops with its own error (or it still waits after 20 s):
-#    that is a pass. A fail is a program that the runtime cannot start
-#    (exit 126 or 127, "executable file not found", "no such file"), or a
-#    Python import error.
+# 1. the command is explicit, and its program is an absolute path under
+#    /app/.venv/bin (never a shell, never only arguments for an entrypoint);
+# 2. the program starts in a container of the image, run as the pod runs it:
+#    user 65532, a read-only root file system, no capabilities, no new
+#    privileges, no network, /tmp in memory, and the rendered configuration
+#    file at its path. Without a database or a secret file, the program then
+#    stops with its own error (or still waits after 25 s): that is a pass. A
+#    failure is a program that the runtime cannot start (exit 126 or 127,
+#    "executable file not found", "no such file"), or a Python import error.
 #
 # Usage: tests/wallet-commands.sh <wallet image>
 #   The image must be local (the script never pulls).
@@ -30,15 +29,15 @@ fail=0
 ok() { pass=$((pass + 1)); echo "ok   $1"; }
 bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
-# The commands of the chart and of Compose: one JSON line each (where,
-# command, the environment, the configuration file and its path).
+# The wallet commands of the chart and of Compose, one JSON line each (where,
+# command, environment, configuration file and its path).
 values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$chart/profiles/consent.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
 for extra in hsm-signer-local.yaml hsm-signer-dpod.yaml; do
   [ -f "$chart/profiles/$extra" ] && values+=(-f "$chart/profiles/$extra")
 done
 helm template t "$chart" --namespace ow "${values[@]}" > "$work/render.yaml"
-# A copy of docker-compose/ with the .env of the example and the files of
-# make configs (the services read their configuration files from generated/).
+# A copy of docker-compose/ with the example .env and the files that make
+# configs writes (the services read their configuration files from generated/).
 compose="$work/docker-compose"
 cp -R "$chart/docker-compose" "$compose"
 rm -rf "$compose/generated" "$compose/secrets"
@@ -61,7 +60,7 @@ for doc in docs:
                 continue
             env = {e["name"]: e.get("value", "") for e in container.get("env") or [] if "value" in e}
             config_path = env.get("EUDI_WALLET_CONFIG", "/etc/eudi-wallet/config.yaml")
-            # The configuration file of the render at its path.
+            # The rendered configuration file for this path.
             content = None
             for mount in container.get("volumeMounts") or []:
                 volume = volumes.get(mount["name"], {})
@@ -103,7 +102,7 @@ while IFS= read -r line; do
   config="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["config"] or "")' "$line")"
   config_path="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["config_path"])' "$line")"
   if [ "$explicit" != True ] || [[ "${command[0]:-}" != /app/.venv/bin/* ]]; then
-    bad "$where: not a full command of /app/.venv/bin: ${command[*]:-the image default}"
+    bad "$where: not a full command under /app/.venv/bin: ${command[*]:-the image default}"
     continue
   fi
   run=(--rm --pull never --read-only --user 65532:65532 --cap-drop ALL --security-opt no-new-privileges:true --network none

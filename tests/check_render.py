@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks the key facts of one "helm template" output of the chart.
+"""Checks the key facts of one "helm template" render of the chart.
 
 Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs> [<redis>]]
   engine: postgresql; mode: bundled | external;
@@ -10,10 +10,10 @@ Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <netwo
     false);
   redis: bundled (default) | external (profiles/redis-external.yaml).
 
-The values are tests/values/keys.yaml, profiles/site.yaml and one profile
-file of each group (see tests/render-matrix.sh). The script writes one line
-per failed check and exits 1 when a check fails. It never prints a Secret
-value: it reads only the names and the keys of the Secrets.
+The render uses tests/values/keys.yaml, profiles/site.yaml and one profile
+from each group (see tests/render-matrix.sh). The script prints one line per
+failed check and exits 1 if any check fails. It never prints a Secret value:
+it reads only Secret names and keys.
 """
 
 import base64
@@ -28,34 +28,32 @@ NAMESPACE = "ow"
 EXTERNAL_DB_HOST = "db.example.org"
 EXTERNAL_OPENBAO = "https://openbao.example.org:8200"
 HOSTS = {"t-api": "api.example.org", "t-wallet-service": "wallet.example.org", "t-dashboard": "dashboard.example.org"}
-# The public path of the routes of the OIDC provider extension of the api
-# (Extensions.oidc.apiPathBase and qrPollPrefix of the api configuration).
+# Public path of the api's OIDC provider extension routes
+# (Extensions.oidc.apiPathBase and qrPollPrefix in the api config).
 OIDC_PROVIDER_PATH = "/v4/service/platform/extension/oidc"
 KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
-# The facts of each engine of the chart helper ow.db.engines: the name
-# suffix of the bundled server, the port and the admin password key.
+# Per engine, as in the chart helper ow.db.engines: the bundled server's
+# name suffix, the port and the admin password key.
 ENGINES = {"postgresql": {"server": "postgres", "port": 5432, "admin_key": "POSTGRES_PASSWORD"}}
-# The server parameters of the DDL and connection logs of the bundled
-# server (database.postgresql.logDdlAndConnections).
+# Server parameters for the bundled server's DDL and connection logs
+# (database.postgresql.logDdlAndConnections).
 DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnections": "on"}
-# The audit log and the retention purge of the wallet with the defaults of
-# the values: the retention of the audit events in every wallet file and in
-# the migration hook, no audit bucket.
+# The wallet's audit log and retention purge with the default values: the
+# audit retention is in every wallet file and in the migration hook, and
+# there is no audit bucket.
 AUDIT = {"retention_years": 7}
 RETENTION = {"soft_deleted_days": 30, "deactivated_organisation_days": 30, "deactivated_sandbox_days": 7,
              "dead_letter_days": 30, "login_code_days": 1, "verifier_response_key_days": 1,
              "issued_credential_token_days": 30, "batch_size": 500}
-# Valkey: the ACL user of each process (the values key and the user name),
-# the settings of the data servers (WORKERS-AND-REDIS-PLAN.md section 2.7)
-# and the rights of the wallet users (the rights of the wallet tests,
-# organisation-wallet-suite ows/testing/redis_servers.py).
+# Valkey: the ACL user of each process (values key and user name), the
+# data server settings, and the rights of the wallet users (the same
+# rights that the wallet's own tests use).
 REDIS_USERS = {"walletService": "wallet-service", "walletConfig": "wallet-config", "walletWorker": "wallet-worker", "walletClock": "wallet-clock",
                "gateway": "gateway"}
-# The wallet processes with the defaults of the values: the configuration
-# key of each (ConfigMap <release>-wallet), its Deployment, its Valkey
-# user and its database role. The worker groups of
-# organisationWallet.workers.groups: their queues, replicas, processes,
-# threads, shutdown timeout and grace period.
+# The worker groups of organisationWallet.workers.groups with the default
+# values: queues, replicas, processes, threads, shutdown timeout and grace
+# period. Then each wallet process: its config key (ConfigMap
+# <release>-wallet), Deployment, Valkey user and database role.
 WORKER_GROUPS = {
     "main": (["realtime", "attestation", "status", "kms"], 2, 1, 8, 600, 630),
     "maintenance": (["maintenance"], 1, 1, 2, 14400, 14430),
@@ -66,8 +64,8 @@ WALLET_PROCESSES = {
     **{f"worker-{name}.yaml": (f"wallet-worker-{name}", "walletWorker", "jobs") for name in WORKER_GROUPS},
     "clock.yaml": ("wallet-clock", "walletClock", "clock"),
 }
-# The files of the processes with the KMS, the trust list and the audit
-# log (all but the clock, which only sends the cron actors).
+# Files of the processes that use the KMS, the trust list and the audit
+# log: all but the clock, which only sends the cron actors.
 KMS_FILES = [key for key in WALLET_PROCESSES if key != "clock.yaml"]
 WORKER_FILES = [f"worker-{name}.yaml" for name in WORKER_GROUPS]
 REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replication yes", "appendonly yes", "appendfsync everysec",
@@ -75,18 +73,18 @@ REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replica
                   "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
 REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
 REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507"
-# The values of profiles/redis-external.yaml.
+# Values from profiles/redis-external.yaml.
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
 REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
 
-# The NATS durables of the api that the contract removed (contract/v2
-# streams.json removedConsumers): the API core and the webhook handler can
-# only read and delete them.
+# The api's retired NATS durables (the removed consumers of the NATS
+# contract): the API core and the webhook handler can only read and delete
+# them.
 API_RETIRED_DURABLES = ["api-wua-revocation", "api-webhook-issue-credential", "api-webhook-issuer-event", "api-webhook-credential",
                         "api-webhook-present-proof", "api-webhook-presentation"]
 WALLET_NATS_USERS = ["wallet-config", "wallet-service", "wallet-worker"]
 
-# Words that must not be in a render (case-insensitive).
+# Words that must not appear in a render (case-insensitive).
 FORBIDDEN = [
     (r"hashicorp", "the name HashiCorp"),
     (r"keycloak", "Keycloak"),
@@ -104,7 +102,7 @@ FORBIDDEN = [
 
 
 def nats_rights(nats_conf: str) -> dict:
-    """The publish and subscribe subjects of each user of nats.conf, by the name in its comment."""
+    """Publish and subscribe subjects of each nats.conf user, keyed by the name in its comment."""
     rights, name = {}, None
     for line in nats_conf.splitlines():
         match = re.match(r"^\s*# (\S+)$", line)
@@ -185,18 +183,18 @@ def main() -> int:
     gateway = config_map_file(f"{RELEASE}-gateway", "config.yaml")
     if gateway:
         go_section("gateway DataBase", gateway["DataBase"])
-        # The feature gate of the gateway is on by default, and only the
-        # gateway file has the section (the api refuses it).
+        # The gateway feature gate is on by default, and only the gateway
+        # file has the section (the api refuses it).
         check(gateway.get("Features") == {"enforce": True}, f"the gateway Features section is {gateway.get('Features')}")
         for file in ("api.yaml", "webhook.yaml"):
             check("Features" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Features section (only the gateway file has it)")
-        # The limits of the installation are not set by default: no Limits
-        # section in the api files (an api of an earlier release refuses
-        # it), and never in the gateway file (the gateway refuses it).
+        # No installation limits by default: no Limits section in the api
+        # files (an api from an earlier release refuses it), and never in the
+        # gateway file (the gateway refuses it).
         check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
         for file in ("api.yaml", "webhook.yaml"):
             check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
-    # The operator Job of the api is off by default: no Job makes the
+    # The api's operator Job is off by default: no Job creates the
     # platform operator.
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
         r"-api-bootstrap-platform-\d+$", d["metadata"]["name"]))
@@ -236,8 +234,8 @@ def main() -> int:
         check("storage" not in wallet, f"wallet {role}.yaml has a storage section (the PDF files are in the database)")
         check((wallet.get("nats") or {}).get("command_reply_seconds") == (300 if file == "config.yaml" else None),
               f"wallet {file} has nats.command_reply_seconds {(wallet.get('nats') or {}).get('command_reply_seconds')!r}")
-        # The interval of the writes of the issuer status lists: only the
-        # workers write the lists (the actor status_list.write_changes).
+        # Write interval of the issuer status lists: only the workers write
+        # them (actor status_list.write_changes).
         check(wallet.get("status_list") == ({"write_interval_seconds": 30} if file in WORKER_FILES else None),
               f"wallet {file} has status_list {wallet.get('status_list')!r}")
         if file == "config.yaml":
@@ -246,25 +244,24 @@ def main() -> int:
             check(consent_on or "consent" not in wallet["read_access"], "wallet config.yaml has read_access.consent without consent")
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
-        # The limit of the organisation wallet units is not set by default:
-        # a wallet of an earlier release refuses the key.
+        # No organisation wallet unit limit by default: a wallet from an
+        # earlier release refuses the key.
         check("organisation_wallet_units_max" not in (wallet.get("wallet_unit") or {}),
               f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max (the default values set no limit)")
 
-    # The workers and the clock (docs/workers.md): one Deployment for each
-    # worker group (dramatiq with the queues of the group) and the clock
-    # (start-clock); the health port (the probes and /metrics), the stop,
-    # the state folder of the worker processes, no service account token.
-    # The clock file has only the log level, the database, Valkey and the
-    # health port (load_clock_settings of the wallet: no domain, nats or
-    # kms).
+    # Workers and clock (docs/workers.md): one Deployment per worker group
+    # (dramatiq with the group's queues) and one for the clock (start-clock);
+    # the health port (probes and /metrics), the stop, the worker state
+    # folder, no service account token. The clock file has only the log
+    # level, the database, Valkey and the health port (the wallet's
+    # load_clock_settings reads no domain, nats or kms).
     def probe(container: dict, name: str) -> tuple:
         get = ((container.get(name) or {}).get("httpGet") or {})
         return get.get("path"), get.get("port")
 
-    # The metrics of the servers (organisation-wallet-suite): server.metrics_port 9190
-    # (/metrics only) and server.metrics_directory on an emptyDir in memory;
-    # the probes stay on the port of the routes.
+    # Server metrics: server.metrics_port 9190 (/metrics only) and
+    # server.metrics_directory on an in-memory emptyDir; the probes stay on
+    # the routes' port.
     for server_role in ("service", "config"):
         server_file = (config_map_file(f"{RELEASE}-wallet", f"{server_role}.yaml") or {}).get("server") or {}
         check((server_file.get("metrics_port"), server_file.get("metrics_directory")) == (9190, "/run/ows-server"),
@@ -277,12 +274,12 @@ def main() -> int:
             check({"name": "server-metrics", "mountPath": "/run/ows-server"} in server_container.get("volumeMounts", []),
                   f"the {server_role} pods do not mount the metrics folder")
             check({"name": "server-metrics", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}} in server_pod.get("volumes", []),
-                  f"the {server_role} pods have no emptyDir of the metrics folder")
-            check(probe(server_container, "readinessProbe") == ("/readyz", "http"), f"the {server_role} readiness probe is not /readyz of the port http")
+                  f"the {server_role} pods have no emptyDir for the metrics folder")
+            check(probe(server_container, "readinessProbe") == ("/readyz", "http"), f"the {server_role} readiness probe is not /readyz on the port http")
         route_service = find("Service", f"{RELEASE}-wallet-{server_role}")
         if route_service:
             check(all(port.get("port") != 9190 and port.get("targetPort") != "metrics" for port in route_service["spec"]["ports"]),
-                  f"the Service of the {server_role} routes has the metrics port")
+                  f"the {server_role} route Service has the metrics port")
 
     for name, (queues, replicas, processes, threads, shutdown, grace) in WORKER_GROUPS.items():
         component = f"wallet-worker-{name}"
@@ -294,22 +291,22 @@ def main() -> int:
         container = pod["containers"][0]
         command = ["/app/.venv/bin/dramatiq", "ows.worker.run:start", "--processes", str(processes), "--threads", str(threads),
                    "--worker-shutdown-timeout", str(shutdown * 1000), "--worker-fork-timeout", "650000", "--queues", *queues]
-        # Dramatiq starts the health server (a fork process) after the fork
-        # timeout at the latest: the wait is as long as the startup probe.
+        # Dramatiq starts the health server (a fork process) at the latest
+        # after the fork timeout, so the startup probe waits exactly that long.
         startup = container.get("startupProbe") or {}
         check(startup.get("periodSeconds", 0) * startup.get("failureThreshold", 0) * 1000 == 650000,
-              f"the startup probe of the {component} pods does not give the 650 s of --worker-fork-timeout")
+              f"the {component} startup probe does not wait the 650 s of --worker-fork-timeout")
         check(container.get("command") == command, f"the {component} pods have the command {container.get('command')}")
         check(deploy["spec"]["replicas"] == replicas, f"the {component} Deployment has {deploy['spec']['replicas']} replicas, not {replicas}")
         check(pod.get("terminationGracePeriodSeconds") == grace, f"the {component} pods have the grace period {pod.get('terminationGracePeriodSeconds')}, not {grace}")
         check(pod.get("automountServiceAccountToken") is False, f"the {component} pods mount a service account token")
-        check(deploy["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-worker", f"the {component} pods have not the network role wallet-worker")
+        check(deploy["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-worker", f"the {component} pods do not have the network role wallet-worker")
         check(container.get("ports") == [{"name": "health", "containerPort": 9191}], f"the {component} pods have the ports {container.get('ports')}")
         check(probe(container, "livenessProbe") == ("/healthz", "health") and probe(container, "readinessProbe") == ("/readyz", "health")
-              and probe(container, "startupProbe") == ("/healthz", "health"), f"the {component} probes are not /healthz and /readyz of the health port")
+              and probe(container, "startupProbe") == ("/healthz", "health"), f"the {component} probes are not /healthz and /readyz on the health port")
         startup = container.get("startupProbe") or {}
         check(startup.get("periodSeconds", 10) * startup.get("failureThreshold", 3) >= 630,
-              f"the startup probe of the {component} pods ends before the wait for the schema head (630 s)")
+              f"the {component} startup probe gives up before the 630 s wait for the schema head")
         state = next((v for v in pod["volumes"] if v["name"] == "worker-state"), {})
         mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
         check((state.get("emptyDir") or {}).get("medium") == "Memory" and mounts.get("worker-state") == "/run/ows-worker",
@@ -325,29 +322,28 @@ def main() -> int:
         pod = clock["spec"]["template"]["spec"]
         container = pod["containers"][0]
         check(container.get("command") == ["/app/.venv/bin/start-clock"], f"the clock pods have the command {container.get('command')}")
-        check(clock["spec"]["replicas"] == 2, "the clock has not 2 replicas")
+        check(clock["spec"]["replicas"] == 2, "the clock does not have 2 replicas")
         check(pod.get("terminationGracePeriodSeconds") == 30 and pod.get("automountServiceAccountToken") is False,
-              "the clock pods have not the grace period 30 without a service account token")
-        check(clock["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-clock", "the clock pods have not the network role wallet-clock")
+              "the clock pods do not have the grace period 30, or they mount a service account token")
+        check(clock["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "wallet-clock", "the clock pods do not have the network role wallet-clock")
         check(container.get("ports") == [{"name": "health", "containerPort": 9192}], f"the clock pods have the ports {container.get('ports')}")
         check(probe(container, "livenessProbe") == ("/healthz", "health") and probe(container, "readinessProbe") == ("/readyz", "health"),
-              "the clock probes are not /healthz and /readyz of the health port")
+              "the clock probes are not /healthz and /readyz on the health port")
         paths = {item["path"] for source in pod["volumes"][1]["projected"]["sources"] for item in source["secret"]["items"]}
         check({"database-password", "redis-password"} <= paths <= {"database-password", "database-ca.crt", "redis-password", "redis-ca.crt"},
-              f"the clock pods mount {sorted(paths)}, not only the files of the database and of Valkey")
+              f"the clock pods mount {sorted(paths)}, not only the database and Valkey files")
     clock_file = config_map_file(f"{RELEASE}-wallet", "clock.yaml") or {}
-    # The scheduler is gone (organisation-wallet-suite removed it): no
-    # Deployment and no configuration key.
-    check(find("Deployment", f"{RELEASE}-wallet-scheduler") is None, "the Deployment of the scheduler is rendered")
+    # The wallet no longer has a scheduler: no Deployment and no config key.
+    check(find("Deployment", f"{RELEASE}-wallet-scheduler") is None, "the scheduler Deployment is rendered")
     check("scheduler.yaml" not in ((find("ConfigMap", f"{RELEASE}-wallet") or {}).get("data") or {}), "the wallet ConfigMap has scheduler.yaml")
     check(set(clock_file) == {"log_level", "database", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")
     check(clock_file.get("clock") == {"health_port": 9192}, f"the clock file has clock {clock_file.get('clock')!r}")
     if clock_file:
         wallet_section("wallet clock.yaml database", clock_file["database"])
-    # The pools (database.pools; docs/database.md, "Connection budget"): the
-    # session and allocation pools of the service and config roles, one
-    # session connection for each thread of a worker process, the reader of
-    # the wallet views of the api and of the webhook handler.
+    # Connection pools (database.pools; docs/database.md, "Connection
+    # budget"): the session and allocation pools of the service and config
+    # roles, one session connection per worker thread, and the reader pool
+    # that the api and the webhook handler use for the wallet views.
     pools = {"service.yaml": (12, 4, 5), "config.yaml": (8, 4, 2),
              **{f"worker-{name}.yaml": (group[3], 2, 2) for name, group in WORKER_GROUPS.items()}}
     for file, (size, overflow, allocation) in pools.items():
@@ -358,12 +354,12 @@ def main() -> int:
     check(not {"pool_size", "max_overflow", "allocation_pool_size"} & set(clock_database), "wallet clock.yaml has a pool value")
     for key in ("api.yaml", "webhook.yaml"):
         reader = ((config_map_file(f"{RELEASE}-api", key) or {}).get("ReadAccess") or {}).get("wallet") or {}
-        check((reader.get("maxConns"), reader.get("minConns")) == (5, 1), f"api {key} ReadAccess.wallet has not the pool 5/1")
+        check((reader.get("maxConns"), reader.get("minConns")) == (5, 1), f"api {key} ReadAccess.wallet does not have the pool 5/1")
     check(not [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"] == f"{RELEASE}-wallet-metrics"],
-          "the ServiceMonitor of the wallet is rendered without organisationWallet.serviceMonitor.enabled")
+          "the wallet ServiceMonitor is rendered without organisationWallet.serviceMonitor.enabled")
 
-    # The migration hooks and the other hooks of the wallet (their own
-    # ConfigMaps).
+    # The migration hooks and the other wallet hooks (each has its own
+    # ConfigMap).
     for name, kind in (
         (f"{RELEASE}-api-migrate", "go"),
         (f"{RELEASE}-consent-migrate", "go"),
@@ -383,26 +379,26 @@ def main() -> int:
                 go_section(f"{name} Extensions.oidc.database", hook["Extensions"]["oidc"]["database"])
         else:
             wallet_section(f"{name} database", hook["database"])
-            # Only the migration hook reads the retention of the audit log
-            # (the partition step of migrate-database).
+            # Only the migration hook reads the audit log retention (for the
+            # partition step of migrate-database).
             expected = {"log_level", "database"} | ({"audit"} if name == f"{RELEASE}-wallet-migrate" else set())
             check(set(hook) == expected, f"{name} has the keys {sorted(hook)}, not {sorted(expected)}")
             if "audit" in expected:
                 check(hook.get("audit") == AUDIT, f"{name} audit is {hook.get('audit')!r}, not {AUDIT}")
 
     # --- The database server and the Jobs --------------------------------
-    # The database server: the StatefulSet with the network role db.
+    # The database server is the StatefulSet with the network role db.
     servers = [d["metadata"]["name"] for d in docs if d.get("kind") == "StatefulSet"
                and d["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "db"]
     if mode == "bundled":
         check(servers == [server], f"the database StatefulSets are {servers}, not [{server}]")
         svc = find("Service", server)
-        check(svc is not None and svc["spec"]["ports"][0]["port"] == port, f"Service {server} has not port {port}")
+        check(svc is not None and svc["spec"]["ports"][0]["port"] == port, f"Service {server} does not have port {port}")
         tls = find("Secret", f"{server}-tls")
         check(tls is not None and set(tls.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"},
               f"the TLS Secret {server}-tls is missing or has other keys")
-        # The server parameters (postgres -c name=value): each name once,
-        # and the DDL and connection logs unless they are off.
+        # Server parameters (postgres -c name=value): each name once, and
+        # the DDL and connection logs unless they are off.
         sts = find("StatefulSet", server)
         if sts:
             args = sts["spec"]["template"]["spec"]["containers"][0].get("args", [])
@@ -423,8 +419,8 @@ def main() -> int:
     if init_cm:
         script = init_cm["data"]["create-databases.sh"]
         check("CREATE ROLE" in script and "psql" in script, "the init script is not the PostgreSQL script")
-        # psql \password sends a SCRAM-SHA-256 verifier, never the password:
-        # the DDL log of the server must not show a password.
+        # psql \password sends a SCRAM-SHA-256 verifier, never the password,
+        # so the server's DDL log never shows a password.
         check("\\password" in script and not re.search(r"\bPASSWORD\b", script),
               "the init script sends a password in a statement, not with psql \\password")
     db_secret = find("Secret", server)
@@ -446,13 +442,13 @@ def main() -> int:
           "the read access Secret is missing or has other keys")
     check(not any(d.get("kind") == "CronJob" for d in docs), "a CronJob is rendered")
 
-    # --- The database roles of the wallet ------------------------------------
+    # --- Wallet database roles ---------------------------------------------
     # Each wallet process connects with its own database role
-    # (<prefix>_<role>; the prefix is the wallet database name): the hooks
-    # make the roles (the administrator), migrate (the migrator) and give the
-    # read access (the administrator); the pods connect as the launcher or
-    # the jobs role. No wallet pod or Job mounts the password of the database
-    # owner user, and no wallet pod mounts the password of the administrator.
+    # (<prefix>_<role>; the prefix is the wallet database name). The hooks
+    # create the roles and grant read access as the administrator, and
+    # migrate as the migrator; the pods connect as the launcher or jobs role.
+    # No wallet pod or Job mounts the database owner's password, and no
+    # wallet pod mounts the administrator's password.
     admin_user, admin_secret, admin_key = (
         ("postgres", server, facts["admin_key"]) if mode == "bundled" else ("igrant_admin", "db-admin", "password"))
     roles_secret = f"{RELEASE}-wallet-database-roles"
@@ -501,19 +497,19 @@ def main() -> int:
     secret = find("Secret", roles_secret)
     check(secret is not None and set(secret.get("data", {})) == logins,
           f"the role Secret {roles_secret} is missing or has the keys {sorted((secret or {}).get('data', {}))}")
-    # The Secrets that the hooks read: hooks before every other hook (Helm
-    # makes the resources only after the pre-upgrade hooks), and kept.
-    # The TLS Secret of the bundled server is a hook too: an upgrade that
-    # turns database.tls.enabled on gives the CA to the hooks, and the
-    # server always serves TLS.
+    # The Secrets that the hooks read are hooks themselves, before every
+    # other hook (Helm creates the resources only after the pre-upgrade
+    # hooks), and kept. The bundled server's TLS Secret is a hook too: an
+    # upgrade that turns database.tls.enabled on gives the CA to the hooks,
+    # and the server always serves TLS.
     server_tls = [f"{server}-tls"] if mode == "bundled" else []
     for name in [server, f"{RELEASE}-read-access", roles_secret, *server_tls]:
         doc = find("Secret", name)
         check(doc is not None and annotations(doc).get("helm.sh/resource-policy") == "keep",
               f"the Secret {name} is missing or not kept (resource-policy keep)")
 
-    # The hook kinds and weights: the Secrets, the init of the databases,
-    # the roles, the migration, the read access.
+    # Hook kinds and weights, in order: the Secrets, the database init, the
+    # roles, the migration, the read access.
     install_upgrade = "post-install,pre-upgrade"
     hooks = (
         ("Secret", server, "pre-install,pre-upgrade", "-30"),
@@ -540,16 +536,16 @@ def main() -> int:
         check(found == (when, weight, "before-hook-creation"), f"the hook {kind} {name} has {found}, not ({when}, {weight}, before-hook-creation)")
     weights = [int(weight) for _, _, _, weight in hooks]
     check(weights == sorted(weights), "the hooks are not in the order Secrets, init, roles, migration, read access")
-    # The api and consent migration hooks stay pre-upgrade (and post-upgrade),
-    # after the init hook.
+    # The api and consent migration hooks stay upgrade hooks (pre-upgrade;
+    # the second consent hook post-upgrade) and run after the init hook.
     for name, when in ((f"{RELEASE}-api-migrate", "pre-upgrade"), (f"{RELEASE}-consent-migrate", "pre-upgrade"),
                        (f"{RELEASE}-consent-migrate-after", "post-upgrade"))[:3 if consent_on else 1]:
         doc = find("Job", name)
         check(doc is not None and annotations(doc).get("helm.sh/hook") == when, f"the hook {name} is not {when}")
         check(doc is not None and int(annotations(doc).get("helm.sh/hook-weight", "0")) > -27, f"the hook {name} does not run after the init hook")
-    # A new installation has no api or consent hook: their pods migrate at
-    # the start. The api pod runs "igrant-api migrate" in an init container;
-    # the consent process ("serve") applies its migrations before it serves.
+    # A new installation has no api or consent migration hook: their pods
+    # migrate at start. The api pod runs "igrant-api migrate" in an init
+    # container; the consent process ("serve") migrates before it serves.
     api_deploy = find("Deployment", f"{RELEASE}-api")
     if api_deploy:
         init = [c.get("command") for c in pod_of(api_deploy).get("initContainers", [])]
@@ -560,7 +556,7 @@ def main() -> int:
         args = pod_of(consent_deploy)["containers"][0].get("args") or []
         check(args[:1] == ["serve"], f"the consent pods do not run serve (args {args})")
 
-    # The user of each hook configuration.
+    # The database user of each hook config.
     for name, user in ((f"{RELEASE}-wallet-database-roles", admin_user), (f"{RELEASE}-wallet-migrate", "igrant_wallet_migrator"),
                        (f"{RELEASE}-wallet-read-access", admin_user)):
         database = (config_map_file(name, "config.yaml") or {}).get("database") or {}
@@ -568,8 +564,8 @@ def main() -> int:
         expected_file = f"{secret_dir}/{'database-password' if user.endswith('_migrator') else 'database-admin-password'}"
         check(database.get("password_file") == expected_file, f"the hook configuration {name} has the password file {database.get('password_file')!r}")
 
-    # The roles hook: database-roles apply with the administrator and the
-    # role Secret.
+    # The roles hook runs "database-roles apply" with the administrator and
+    # the role Secret.
     roles_job = find("Job", f"{RELEASE}-wallet-database-roles")
     if roles_job:
         pod = pod_of(roles_job)
@@ -579,28 +575,29 @@ def main() -> int:
               and "args" not in container, f"the roles hook has the command {container.get('command')}")
         # The init hook runs before it: no wait for the server or the database.
         check(roles_job["spec"].get("backoffLimit") == 3 and "activeDeadlineSeconds" not in roles_job["spec"],
-              "the roles hook has not backoffLimit 3 without activeDeadlineSeconds")
-        check(pod.get("restartPolicy") == "OnFailure", "the roles hook has not restartPolicy OnFailure")
+              "the roles hook does not have backoffLimit 3 without activeDeadlineSeconds")
+        check(pod.get("restartPolicy") == "OnFailure", "the roles hook does not have restartPolicy OnFailure")
         mounts = {m["name"]: m["mountPath"] for m in container.get("volumeMounts", [])}
         check(mounts.get("database-roles") == "/run/secrets/database-roles", "the roles hook does not mount the role Secret at /run/secrets/database-roles")
         refs = secret_refs(pod)
         check({(roles_secret, login) for login in logins} | {admin_password} <= refs,
-              "the roles hook does not mount every key of the role Secret and the password of the administrator")
-        check(projected_files(pod).get("database-admin-password") == admin_password, "the roles hook has not the password of the administrator as database-admin-password")
+              "the roles hook does not mount every key of the role Secret and the administrator's password")
+        check(projected_files(pod).get("database-admin-password") == admin_password, "the roles hook does not mount the administrator's password as database-admin-password")
 
-    # The migration hook: the migrator, only the key migrator of the role Secret.
+    # The migration hook connects as the migrator, with only the migrator key
+    # of the role Secret.
     migrate_job = find("Job", f"{RELEASE}-wallet-migrate")
     if migrate_job:
         pod = pod_of(migrate_job)
-        check(pod["containers"][0].get("command") == ["/app/.venv/bin/migrate-database"], "the wallet migration hook has not the command migrate-database")
+        check(pod["containers"][0].get("command") == ["/app/.venv/bin/migrate-database"], "the wallet migration hook does not have the command migrate-database")
         files = projected_files(pod)
         check(files.get("database-password") == (roles_secret, "migrator"), f"the wallet migration hook mounts {files.get('database-password')} as database-password")
         check({ref for ref in secret_refs(pod) if ref[0] == roles_secret} == {(roles_secret, "migrator")},
               "the wallet migration hook mounts other keys of the role Secret than migrator")
-        check(admin_password not in secret_refs(pod), "the wallet migration hook mounts the password of the administrator")
+        check(admin_password not in secret_refs(pod), "the wallet migration hook mounts the administrator's password")
 
-    # The read access hooks: the command (not the image entrypoint) and the
-    # administrator.
+    # The read access hooks: an explicit command (not the image entrypoint)
+    # and the administrator.
     for reader in ("api", "consent"):
         job = find("Job", f"{RELEASE}-wallet-read-access-{reader}")
         if not job:
@@ -608,14 +605,14 @@ def main() -> int:
         container = pod_of(job)["containers"][0]
         command = container.get("command") or []
         check(command[:3] == ["/app/.venv/bin/read-access", "apply", "--reader"] and "args" not in container,
-              f"the read access hook of {reader} has not the command read-access (or has args)")
+              f"the {reader} read access hook does not have the command read-access (or has args)")
         options = dict(zip(command, command[1:]))
         check(options.get("--admin-user") == admin_user and options.get("--admin-password-file") == f"{secret_dir}/database-admin-password",
-              f"the read access hook of {reader} has not the administrator {admin_user} and its password file")
+              f"the {reader} read access hook does not use the administrator {admin_user} and its password file")
         check(projected_files(pod_of(job)).get("database-admin-password") == admin_password,
-              f"the read access hook of {reader} has not the password of the administrator as database-admin-password")
+              f"the {reader} read access hook does not mount the administrator's password as database-admin-password")
 
-    # The Deployments: the user and the Secret key of each process.
+    # The Deployments: the database user and Secret key of each process.
     for file, (component, _, role) in WALLET_PROCESSES.items():
         deploy = find("Deployment", f"{RELEASE}-{component}")
         if deploy is None:
@@ -629,25 +626,25 @@ def main() -> int:
               f"the {component} pods mount other keys of the role Secret than {role}")
         user = ((config_map_file(f"{RELEASE}-wallet", file) or {}).get("database") or {}).get("user")
         check(user == f"igrant_wallet_{role}", f"the {component} pods connect as {user!r}, not igrant_wallet_{role}")
-        check(admin_password not in secret_refs(pod), f"the {component} pods mount the password of the administrator")
+        check(admin_password not in secret_refs(pod), f"the {component} pods mount the administrator's password")
         check(not [name for name in files if name.startswith("audit-bucket-")], f"the {component} pods mount the credentials of an audit bucket")
         if component in ("wallet-service", "wallet-config"):
             # The server waits up to 600 s for the schema head before it
             # answers /healthz: the startup probe covers the wait.
             probe = pod["containers"][0].get("startupProbe") or {}
             check(probe.get("periodSeconds", 10) * probe.get("failureThreshold", 3) >= 630,
-                  f"the startup probe of the {component} pods ends before the wait for the schema head (630 s)")
+                  f"the {component} startup probe gives up before the 630 s wait for the schema head")
 
-    # No wallet pod or Job mounts the password of the database owner user.
+    # No wallet pod or Job mounts the database owner's password.
     for doc in docs:
         if doc.get("kind") in ("Deployment", "Job", "StatefulSet") and doc["metadata"]["name"].startswith(f"{RELEASE}-wallet-"):
             check(owner_password not in secret_refs(pod_of(doc)) and (server, None) not in secret_refs(pod_of(doc)),
-                  f"{doc['kind']} {doc['metadata']['name']} mounts the password of the database owner user")
+                  f"{doc['kind']} {doc['metadata']['name']} mounts the database owner's password")
 
-    # --- Replicas (H2; the placement belongs to the scaled deployment) --------
-    # The processes of the wallet have a CPU request and a memory limit; no
-    # PodDisruptionBudget, no default anti-affinity or zone spread and no
-    # HorizontalPodAutoscaler (docs/scaled-deployments.md).
+    # --- Replicas (placement belongs to the scaled deployment) ---------------
+    # Each process has a CPU request and a memory limit. No
+    # PodDisruptionBudget, default anti-affinity, zone spread or
+    # HorizontalPodAutoscaler (see docs/scaled-deployments.md).
     for component, replicas in {"api": 1, "webhook": 1, "wallet-service": 1, "wallet-config": 1, "wallet-clock": 2,
                                 **{f"wallet-worker-{n}": g[1] for n, g in WORKER_GROUPS.items()}}.items():
         deploy = find("Deployment", f"{RELEASE}-{component}")
@@ -671,11 +668,11 @@ def main() -> int:
         for name, ingress in ingresses.items():
             rule = ingress["spec"]["rules"][0]
             check(rule["host"] == HOSTS[name], f"Ingress {name} has the host {rule['host']}")
-            # On premise only the wallet host is on the public class nginx;
+            # On premise, only the wallet host is on the public class nginx;
             # the api and dashboard hosts are on the internal class.
             public = exposure == "ingress" or name == f"{RELEASE}-wallet-service"
             want = "nginx" if public else "nginx-internal"
-            check(ingress["spec"].get("ingressClassName") == want, f"Ingress {name} has not the ingressClassName {want}")
+            check(ingress["spec"].get("ingressClassName") == want, f"Ingress {name} does not have the ingressClassName {want}")
     elif exposure == "gatewayAPI":
         check(set(routes) == set(HOSTS) and not ingresses, f"the routes are {sorted(routes)}, the Ingresses {sorted(ingresses)}")
         for name, route in routes.items():
@@ -686,11 +683,11 @@ def main() -> int:
             check(api_route["spec"]["rules"][0].get("timeouts", {}).get("request") == "3900s", "the api HTTPRoute has no request timeout of 3900s")
     else:
         check(not ingresses and not routes, "an Ingress or an HTTPRoute is rendered with exposure none")
-    # Only the gateway calls the config role of the wallet: no route to it.
+    # Only the gateway calls the wallet config role: no route goes to it.
     backends = [path["backend"]["service"]["name"] for ingress in ingresses.values()
                 for rule in ingress["spec"]["rules"] for path in rule["http"]["paths"]]
     backends += [ref["name"] for route in routes.values() for rule in route["spec"]["rules"] for ref in rule["backendRefs"]]
-    check(f"{RELEASE}-wallet-config" not in backends, "a route goes to the Service of the wallet config role")
+    check(f"{RELEASE}-wallet-config" not in backends, "a route goes to the wallet config role's Service")
     for name in ("gateway", "wallet-service", "dashboard"):
         check(find("Service", f"{RELEASE}-{name}") is not None, f"the Service {RELEASE}-{name} is missing")
 
@@ -710,7 +707,7 @@ def main() -> int:
         if mode == "bundled":
             ingress = find("NetworkPolicy", f"{RELEASE}-netpol-ingress-db")
             check(ingress is not None and all(p["port"] == port for r in ingress["spec"]["ingress"] for p in r["ports"]),
-                  f"the database ingress policy has not port {port}")
+                  f"the database ingress policy does not have port {port}")
     else:
         check(not policies, "a NetworkPolicy is rendered with networkPolicy.enabled false")
 
@@ -735,14 +732,14 @@ def main() -> int:
     nats = find("StatefulSet", f"{RELEASE}-nats")
     check(nats is not None and len(nats["spec"]["template"]["spec"]["containers"]) == 2, "NATS has no reloader sidecar")
     nats_conf = config_map_file(f"{RELEASE}-nats", "nats.conf", raw=True) or ""
-    # NATS (H5): TLS for the clients and mutual TLS for the routes with the
-    # TLS Secret of the chart; each process of the chart trusts its CA.
+    # NATS: TLS for the clients and mutual TLS for the routes, with the
+    # chart's TLS Secret; each process of the chart trusts its CA.
     if nats:
         pod = pod_of(nats)
         tls_volume = next((v for v in pod["volumes"] if v["name"] == "tls"), {})
-        check((tls_volume.get("secret") or {}).get("secretName") == f"{RELEASE}-nats-tls", "the NATS pods do not mount the TLS Secret of the chart")
-        # The reloader watches each file of nats.conf: it needs the same
-        # mounts as the server for them, else it stops at its start.
+        check((tls_volume.get("secret") or {}).get("secretName") == f"{RELEASE}-nats-tls", "the NATS pods do not mount the chart's TLS Secret")
+        # The reloader watches each file that nats.conf names, so it needs
+        # the same mounts as the server; otherwise it stops at start.
         for container in pod["containers"]:
             mounts = {m["mountPath"] for m in container.get("volumeMounts", [])}
             for path in sorted(set(re.findall(r'"(/etc/[^"]+)"', nats_conf))):
@@ -752,9 +749,9 @@ def main() -> int:
     blocks = re.findall(r"^(\s*)tls \{\n(.*?)^\1\}", nats_conf, re.M | re.S)
     settings = [dict(line.strip().split(": ", 1) for line in body.strip().splitlines()) for _, body in blocks]
     check(len(settings) == 2 and all(files.items() <= block.items() for block in settings),
-          "nats.conf has not the TLS of the clients and of the routes with the files of the TLS Secret")
+          "nats.conf does not have client and route TLS with the TLS Secret files")
     check(len(settings) == 2 and settings[1].get("verify") == "true" and "verify" not in settings[0],
-          "the routes of NATS have no mutual TLS (verify), or the clients must give a certificate")
+          "the NATS routes have no mutual TLS (verify), or the clients must present a certificate")
     tls_secret = find("Secret", f"{RELEASE}-nats-tls") or {}
     check(tls_secret.get("type") == "kubernetes.io/tls" and set(tls_secret.get("data", {})) == {"tls.crt", "tls.key", "ca.crt"}
           and annotations(tls_secret).get("helm.sh/resource-policy") == "keep" and "helm.sh/hook" not in annotations(tls_secret),
@@ -773,16 +770,16 @@ def main() -> int:
         section = (config_map_file(f"{RELEASE}-wallet", file) or {}).get("nats") or {}
         check(section.get("tls_ca_file") == "/run/secrets/eudi-wallet/nats-ca.crt", f"wallet {file} has no nats.tls_ca_file")
     users = re.findall(r"^\s*# (\S+)$", nats_conf, re.M)
-    # The clock connects to no NATS: it has no user.
+    # The clock does not use NATS, so it has no user.
     check(users == [u for u in ["api", "api-webhook", "consent", "wallet-config", "wallet-service", "wallet-worker"] if consent_on or u != "consent"],
           f"the NATS users are {users}")
-    # The WIA pool refill is an actor of the workers (P3-B): no NATS user
-    # publishes or subscribes to ows.wia_pool.refill_requested.
+    # The WIA pool refill is a worker actor: no NATS user publishes or
+    # subscribes to ows.wia_pool.refill_requested.
     check("ows.wia_pool.refill_requested" not in nats_conf, "a NATS user has the removed WIA pool refill event")
-    # The webhook events of the wallet (contract/v2 E9): each wallet role
-    # publishes them, the webhook handler has their durable api-webhook-event,
-    # and the API core and the webhook handler can only read and delete the
-    # retired durables of the api (they delete them at their start).
+    # The wallet's webhook events: each wallet role publishes them, the
+    # webhook handler owns their durable api-webhook-event, and the API core
+    # and the webhook handler can only read and delete the api's retired
+    # durables (they delete them at start).
     rights = nats_rights(nats_conf)
     for user in WALLET_NATS_USERS:
         check("ows.*.evt.webhook_event" in rights.get(user, {}).get("publish", set()),
@@ -790,15 +787,14 @@ def main() -> int:
     durable = "OWS_MICROSERVICE.api-webhook-event"
     webhook_publish = rights.get("api-webhook", {}).get("publish", set())
     check({f"$JS.API.CONSUMER.DURABLE.CREATE.{durable}", f"$JS.API.CONSUMER.INFO.{durable}", f"$JS.ACK.{durable}.>"} <= webhook_publish,
-          "the NATS user api-webhook has not the rights of the durable api-webhook-event")
-    # The webhook handler sends one command of the wallet: the revocation of
-    # an issuance (the earlier Authenticator credential of an admin).
+          "the NATS user api-webhook does not have the rights for the durable api-webhook-event")
+    # The webhook handler sends one wallet command: it revokes an issuance
+    # (an admin's earlier Authenticator credential).
     commands = sorted(subject for subject in webhook_publish if subject.startswith("ows.cmd."))
     check(commands == ["ows.cmd.*.issuance.revoke"], f"the NATS user api-webhook publishes the wallet commands {commands}")
-    # The events of the api (contract/v2, stream API_EVENTS): the API core
-    # publishes each subject by name, also the deletion of an organisation
-    # (E10). Its wallet commands are ows.cmd.> (also
-    # organisation.set_suspended).
+    # The api events (stream API_EVENTS): the API core publishes each subject
+    # by name, including organisation deletion. Its wallet commands are
+    # ows.cmd.> (which covers organisation.set_suspended).
     api_publish = rights.get("api", {}).get("publish", set())
     api_events = sorted(subject for subject in api_publish if subject.startswith("api.v1.evt."))
     check(api_events == sorted(f"api.v1.evt.{name}" for name in (
@@ -814,8 +810,8 @@ def main() -> int:
                   f"the NATS user {user} cannot delete the retired durable {retired}")
             check(not {f"$JS.API.CONSUMER.DURABLE.CREATE.{subject}", f"$JS.ACK.{subject}.>"} & publish,
                   f"the NATS user {user} can use the retired durable {retired}")
-    # The clears of the process caches (core NATS ows.cache.cleared): the
-    # service and config pods send and get them, the workers do not.
+    # Process cache clears (core NATS ows.cache.cleared): the service and
+    # config pods publish and subscribe to them, the workers do not.
     for user in WALLET_NATS_USERS:
         server = user != "wallet-worker"
         for kind in ("publish", "subscribe"):
@@ -823,14 +819,13 @@ def main() -> int:
                   f"the NATS user {user} {'cannot' if server else 'can'} {kind} ows.cache.cleared")
 
     # --- Valkey ---------------------------------------------------------------
-    # The bundled Valkey: normal resources, no hook (the processes need it only
-    # after the install): the StatefulSet (3 pods, each with a data container
-    # and a Sentinel container),
-    # the headless Service, the Service of the Sentinels, the ConfigMap and
-    # the two kept Secrets (no PodDisruptionBudget and no anti-affinity: the
-    # scaled deployment). Each wallet role has the redis section with its own
-    # ACL user; the gateway mounts the password of its user (no key in its
-    # configuration).
+    # The bundled Valkey uses normal resources, not hooks (the processes need
+    # it only after the install): the StatefulSet (3 pods, each with a data
+    # and a Sentinel container), the headless Service, the Sentinel Service,
+    # the ConfigMap and the two kept Secrets. No PodDisruptionBudget and no
+    # anti-affinity (they belong to the scaled deployment). Each wallet role
+    # has a redis section with its own ACL user; the gateway mounts its
+    # user's password (no key in its config).
     redis_objects = {(d["kind"], d["metadata"]["name"]) for d in docs if d["metadata"]["name"].startswith(f"{RELEASE}-redis")}
     users_secret, tls_secret = f"{RELEASE}-redis-users", f"{RELEASE}-redis-tls"
     if redis == "bundled":
@@ -849,14 +844,14 @@ def main() -> int:
         sts = find("StatefulSet", f"{RELEASE}-redis")
         if sts:
             pod = pod_of(sts)
-            check(sts["spec"]["replicas"] == 3 and sts["spec"].get("podManagementPolicy") == "Parallel", "the Valkey StatefulSet has not 3 replicas with Parallel")
-            check([c["name"] for c in pod["containers"]] == ["valkey", "sentinel"], "the Valkey pods have not the containers valkey and sentinel")
+            check(sts["spec"]["replicas"] == 3 and sts["spec"].get("podManagementPolicy") == "Parallel", "the Valkey StatefulSet does not have 3 replicas with Parallel")
+            check([c["name"] for c in pod["containers"]] == ["valkey", "sentinel"], "the Valkey pods do not have the containers valkey and sentinel")
             check(all(c["image"] == REDIS_IMAGE for c in pod["containers"]), f"the Valkey image is {pod['containers'][0]['image']}")
             check("affinity" not in pod, "the Valkey pods have an affinity without redis.affinity")
-            check(sts["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "redis", "the Valkey pods have not the network role redis")
+            check(sts["spec"]["template"]["metadata"]["labels"].get("netpol.igrant.io/role") == "redis", "the Valkey pods do not have the network role redis")
             check(pod.get("automountServiceAccountToken") is False, "the Valkey pods mount a service account token")
             check((pod.get("securityContext") or {}).get("runAsNonRoot") is True, "the Valkey pods are not non-root")
-            check(pod["containers"][0]["lifecycle"]["preStop"]["exec"]["command"] == ["/bin/sh", "/etc/valkey/prestop.sh"], "the data container has not the preStop failover")
+            check(pod["containers"][0]["lifecycle"]["preStop"]["exec"]["command"] == ["/bin/sh", "/etc/valkey/prestop.sh"], "the data container does not have the preStop failover")
             for container in pod["containers"]:
                 for probe in ("startupProbe", "readinessProbe", "livenessProbe"):
                     command = ((container.get(probe) or {}).get("exec") or {}).get("command") or []
@@ -867,29 +862,29 @@ def main() -> int:
             check(items == {(users_secret, key, key) for key in list(REDIS_USERS) + ["replication", "sentinel", "probe"]},
                   "the Valkey pods do not mount the password of each ACL user")
             run = next((v for v in pod["volumes"] if v["name"] == "run"), {})
-            check((run.get("emptyDir") or {}).get("medium") == "Memory", "the files with the passwords are not in memory")
+            check((run.get("emptyDir") or {}).get("medium") == "Memory", "the Valkey password files are not in memory")
             check([c["metadata"]["name"] for c in sts["spec"].get("volumeClaimTemplates", [])] == ["data"], "the Valkey pods have no data volume")
         headless = find("Service", f"{RELEASE}-redis-headless") or {"spec": {}}
         check(headless["spec"].get("clusterIP") == "None" and headless["spec"].get("publishNotReadyAddresses") is True
-              and {p["port"] for p in headless["spec"].get("ports", [])} == {6379, 26379}, "the headless Service of Valkey is not right")
+              and {p["port"] for p in headless["spec"].get("ports", [])} == {6379, 26379}, "the Valkey headless Service has the wrong clusterIP, publishNotReadyAddresses or ports")
         sentinel_svc = find("Service", f"{RELEASE}-redis-sentinel") or {"spec": {}}
-        check({p["port"] for p in sentinel_svc["spec"].get("ports", [])} == {26379}, "the Service of the Sentinels has not only the port 26379")
+        check({p["port"] for p in sentinel_svc["spec"].get("ports", [])} == {26379}, "the Sentinel Service does not have only port 26379")
         server = config_map_file(f"{RELEASE}-redis", "valkey.conf", raw=True) or ""
         lines = server.splitlines()
         for setting in REDIS_SETTINGS:
-            check(setting in lines, f"valkey.conf has not \"{setting}\"")
+            check(setting in lines, f"valkey.conf does not have \"{setting}\"")
         acl = (config_map_file(f"{RELEASE}-redis", "users.acl", raw=True) or "").splitlines()
         check("user default off" in acl, "the ACL file does not turn the default user off")
         for key, user in REDIS_USERS.items():
             rights = REDIS_WALLET_RIGHTS if key != "gateway" else "resetchannels ~gw:* -@all +@read +@write +@connection -@dangerous"
-            check(f"user {user} on {{hash:{key}}} {rights}" in acl, f"the ACL file has not the user {user} with its rights")
+            check(f"user {user} on {{hash:{key}}} {rights}" in acl, f"the ACL file does not have the user {user} with its rights")
         sentinel = (config_map_file(f"{RELEASE}-redis", "sentinel.conf", raw=True) or "").splitlines()
         for setting in ("sentinel monitor ows {primary} 6379 2", "sentinel resolve-hostnames yes", "sentinel announce-hostnames yes",
                         "sentinel auth-user ows sentinel", "user default off", "tls-replication yes"):
-            check(setting in sentinel, f"sentinel.conf has not \"{setting}\"")
+            check(setting in sentinel, f"sentinel.conf does not have \"{setting}\"")
         scripts = set((find("ConfigMap", f"{RELEASE}-redis") or {}).get("data", {}))
         check({"common.sh", "valkey.sh", "sentinel.sh", "probe.sh", "prestop.sh"} <= scripts, f"the Valkey ConfigMap has the keys {sorted(scripts)}")
-        # No password in the ConfigMap: only the fields of the templates.
+        # No password in the ConfigMap, only template fields.
         values = {base64.b64decode(v).decode() for v in secret.get("data", {}).values()}
         check(not any(value in json.dumps(find("ConfigMap", f"{RELEASE}-redis") or {}) for value in values), "the Valkey ConfigMap has a password")
         ca = (tls_secret, "ca.crt")
@@ -921,7 +916,7 @@ def main() -> int:
         check("redis" not in json.dumps(gateway).lower(), "the gateway configuration has a Valkey key (the gateway refuses an unknown key)")
     if netpol == "on":
         if redis == "bundled":
-            check(find("NetworkPolicy", f"{RELEASE}-netpol-ingress-redis") is not None, "no ingress policy of Valkey")
+            check(find("NetworkPolicy", f"{RELEASE}-netpol-ingress-redis") is not None, "no Valkey ingress policy")
         else:
             reach = {d["metadata"]["name"] for d in policies for rule in d["spec"].get("egress", [])
                      if {(t.get("ipBlock") or {}).get("cidr") for t in rule.get("to", [])} == REDIS_EXTERNAL_CIDRS
@@ -933,11 +928,11 @@ def main() -> int:
     lowered = text.lower()
     for pattern, what in FORBIDDEN:
         check(not re.search(pattern, lowered if pattern.isascii() else text), f"the render has {what}")
-    # "vault" only as the wallet config section of OpenBao (kms.vault), in
-    # its comment, and as the key store type "vault" (an external OpenBao) in
-    # kms.organisation_key_store_types.
-    # A base64 value (Secret data, generated keys) is not text: random
-    # characters can spell the word.
+    # "vault" appears only as the wallet's OpenBao config section (kms.vault)
+    # and its comment, and as the key store type "vault" (an external
+    # OpenBao) in kms.organisation_key_store_types. A base64 value (Secret
+    # data, generated keys) is not text: random characters can spell the
+    # word.
     for line in text.splitlines():
         if "vault" in line.lower() and not re.fullmatch(r"\s*[\w.-]+: [A-Za-z0-9+/]{40,}={0,2}", line):
             allowed = (
