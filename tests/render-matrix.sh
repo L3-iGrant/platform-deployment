@@ -481,10 +481,20 @@ notes "connection budget without consent" "can open 183 connections to it" --set
 # must contain.
 guard() {
   local name="$1" expect="$2"; shift 2
-  local err
+  local err pointer="$expect"
+  # Helm 3.18 and later (also Helm 4) name a schema error by its JSON pointer
+  # (at '/database/mode') and write "additional properties 'x' not allowed";
+  # earlier Helm writes database.mode and "Additional property x is not
+  # allowed". The check accepts both forms.
+  case "$expect" in
+    "Additional property") pointer="additional properties" ;;
+    "Additional property "*) pointer="additional properties '${expect#Additional property }'" ;;
+    *[!A-Za-z0-9.]*) ;;
+    *.*) pointer="/${expect//./\/}" ;;
+  esac
   if err="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 >/dev/null)"; then
     bad "guard $name: the render did not stop"
-  elif grep -q -F -- "$expect" <<< "$err"; then
+  elif grep -q -F -- "$expect" <<< "$err" || grep -q -F -- "$pointer" <<< "$err"; then
     # A here-string, as in renders: with pipefail, "printf | grep -q" fails
     # when grep exits before printf has written everything (SIGPIPE).
     ok "guard $name"
