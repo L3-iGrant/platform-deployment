@@ -17,9 +17,8 @@ pooler counts database.pooler.serverConnections. Output: JSON {processes:
 connections (ow.installation.has). */ -}}
 {{- $walletViews := include "ow.installation.has" (list . "wallet") -}}
 {{- $consentViews := include "ow.installation.has" (list . "consent") -}}
-{{- /* The api core, the webhook handler, the gateway and consent: plus one
-health connection per pod outside the pools (it checks the database every
-2 s). */ -}}
+{{- /* The api core, the webhook handler and the gateway: plus one health
+connection per pod outside the pools (it checks the database every 2 s). */ -}}
 {{- if $v.api.enabled -}}
 {{- $apiReader := ternary ($p.apiReadAccess.maxConns | int) 0 (eq $walletViews "true") -}}
 {{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader 1)) -}}
@@ -28,8 +27,9 @@ health connection per pod outside the pools (it checks the database every
 {{- end -}}
 {{- if $v.consent.enabled -}}
 {{- /* consent: its pool plus its readers of 5 each (the api views, and the
-wallet views when the wallet is installed). */ -}}
-{{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")) 1)) -}}
+wallet views when the wallet is installed). No health connection: its
+readiness check uses the pool. */ -}}
+{{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")))) -}}
 {{- end -}}
 {{- if $v.organisationWallet.enabled -}}
 {{- $w := $v.organisationWallet -}}

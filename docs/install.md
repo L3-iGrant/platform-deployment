@@ -105,7 +105,7 @@ When Helm has created the resources, the command waits for the database hooks (H
 - the init hook waits for the database server, then creates the databases and the users;
 - the roles hook creates the wallet's database roles;
 - the migration hook creates the schema of the wallet database;
-- the wallet's read access hooks create the read-only users that the api and consent (with consent) use to read the wallet database.
+- the wallet's read access hooks create the read-only users with which the api, and consent when it is installed, read the wallet database.
 
 See [Database](database.md#hooks-of-the-databases). This can take a few minutes; `--timeout 15m` gives each hook enough time.
 
@@ -223,7 +223,7 @@ The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`
 
    The output is one JSON line with `operatorOrganisationId` (the id of your organisation) and one entry in `platformAdmins`.
 
-4. Log in to `https://dashboard.example.org` with the e-mail address and the password. You must change the password at the first login: the dashboard opens the page for the new password (15 characters or more, with at least one special character). This step needs no e-mail service. After the login, you see the organisation's "Getting started" page. The platform admin functions are in the dashboard group "Wallet Provider (Orgs)".
+4. Log in to `https://dashboard.example.org` with the e-mail address and the password. You must change the password at the first login: the dashboard opens the page for the new password (15 characters or more, with at least one special character). This step needs no e-mail service. After the login, you see the organisation's "Getting Started" page. The platform admin functions are in the dashboard group "Wallet Provider (Organisations)" ("Platform" without the wallet).
 
 5. Run `helm upgrade` again without `platform-operator.yaml` to turn the Job off. Then delete the password file and the Secret: the admin exists now, and only the Job of item 2 reads the Secret.
 
@@ -240,15 +240,15 @@ Rules of the Job:
 
 ## After the installation: the other organisations and admins
 
-A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Orgs)". You need no Job and no chart command.
+A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Organisations)" ("Platform" without the wallet). You need no Job and no chart command.
 
 | Task | Where | What an operator of the installation must know |
 | --- | --- | --- |
-| Add an organisation with its first admin | Page "Wallet Units", the + button | The first admin gets an e-mail invitation or a one-time password. An invitation needs the e-mail service (`api.smtp.host`); without it, use the one-time password. The API deploys the new organisation's wallet. |
-| Set the features of an organisation | Row menu, "Manage Features" | Four switches: Issuer & Verifier, Wallet Unit (Holder), Consent Management and Data Marketplace. A new organisation has only Issuer & Verifier on: turn on each other area that the organisation needs. The platform operator organisation has all four on. Getting Started, Account, Webhooks and Activity Logs have no switch and are always available. The gateway refuses the routes of a feature that is off for the organisation (`gateway.features.enforce`, see [Values reference](values-reference.md#api-and-gateway)). A change applies within one minute. |
+| Add an organisation with its first admin | Page "Organisations", button "Add Organisation" | The first admin gets an e-mail invitation or a one-time password. An invitation needs the e-mail service (`api.smtp.host`); without it, use the one-time password. The API deploys the new organisation's wallet. |
+| Set the features of an organisation | Row menu, "Manage Features" | One switch for each feature of an installed service: Issuer & Verifier and Wallet Unit (Holder) with the wallet, Consent Management and Data Marketplace with consent (2 switches when consent is off). A feature of a service that is not installed has no switch. A new organisation has only Issuer & Verifier on: turn on each other area that the organisation needs. The platform operator organisation has each of them on. Getting Started, Account, Webhooks and Activity Logs have no switch and are always available. The gateway refuses the routes of a feature that is off for the organisation (`gateway.features.enforce`, see [Values reference](values-reference.md#api-and-gateway)). A change applies within one minute. |
 | Suspend and resume an organisation | Row menu | The gateway refuses every credential of a suspended organisation within 60 seconds. If the wallet did not get the new state, the page shows a warning: send the request again. |
-| Delete a suspended organisation | Row menu, "Delete Organisation" | You cannot undo a deletion. The API deletes its data of the organisation in steps, consent purges its data, and the wallet deactivates the organisation's wallets and purges them after its retention period. No background job retries a failed API step: if the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
-| Give and remove the platform admin right | Page "Platform Admins" | Only an admin of the platform operator organisation can get the right. A platform admin whose password has fewer than 15 characters must set a new password at the next login. |
+| Delete a suspended organisation | Row menu, "Delete Organisation" | You cannot undo a deletion. The API deletes its data of the organisation in steps, consent (when it is installed) purges its data, and the wallet deactivates the organisation's wallets and purges them after its retention period. No background job retries a failed API step: if the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
+| Give and remove the platform admin right | Page "Super Admins", row menu "Give Platform Admin Right" or "Remove Platform Admin Right" | Only an admin of the platform operator organisation can get the right. A platform admin whose password has fewer than 15 characters must set a new password at the next login. |
 
 Every other new password (an invitation, a one-time password change, a reset) needs 12 characters or more and at least one special character.
 

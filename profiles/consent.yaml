@@ -2,5 +2,19 @@
 # users and its NATS user. The keys file of scripts/make-keys.sh already has
 # the consent key and the NATS user. The privacy dashboards stay off
 # (privacyDashboard.enabled).
+#
+# An external database (database.mode external):
+# - with database.auth.existingSecret, add the key igrant_consent (the
+#   password of the consent database user) before the install or upgrade;
+# - without an admin user (only without the organisation wallet), make the
+#   database igrant_consent and its owner user yourself, and have a DBA make
+#   the read-only user of consent on the api database
+#   (readAccess.consent.api; docs/read-access.md).
+#
+# Network policies (networkPolicy.enabled): consent calls the Data Spaces and
+# access points of the organisations. When one of them is on the public
+# hosts of this platform, add the profile platform to the consent role. A
+# list in your values replaces the default list, so keep the default profile:
+#   networkPolicy: {egress: {roles: {consent: [internet-any-port, platform]}}}
 consent:
   enabled: true

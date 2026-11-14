@@ -496,16 +496,16 @@ if helm template ows "$notes_chart" --namespace ows -f "$keys" "${all[@]}" \
 else
   ok "notes: no SSRF warning with the guards on"
 fi
-notes "connection budget of the bundled server" "can open 227 connections to it, and the hooks 5 more (max_connections"
-notes "connection budget of an external server" "set max_connections of your server to at least 232" -f "$profiles/database-external.yaml"
+notes "connection budget of the bundled server" "can open 225 connections to it, and the hooks 5 more (max_connections"
+notes "connection budget of an external server" "set max_connections of your server to at least 230" -f "$profiles/database-external.yaml"
 notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" --set consent.enabled=false
 notes "without the wallet" "The organisation wallet is not installed" --set organisationWallet.enabled=false
 # Readers of a missing service's views open no connection: without the
 # wallet, the api core and the webhook handler have no reader pool and
-# consent has one reader (73 = 1 x 16 + 1 x 11 + 2 x 11 + 2 x 12, with the
-# health connection of each pod); without consent, the wallet config role
-# has one reader (227 less 2 x 17 for consent and 10).
-notes "connection budget without the wallet" "can open 73 connections to it" --set organisationWallet.enabled=false
+# consent has one reader (71 = 1 x 16 + 1 x 11 + 2 x 11 + 2 x 11, with the
+# health connection of each api and gateway pod); without consent, the
+# wallet config role has one reader (225 less 2 x 16 for consent and 10).
+notes "connection budget without the wallet" "can open 71 connections to it" --set organisationWallet.enabled=false
 notes "connection budget without consent" "can open 183 connections to it" --set consent.enabled=false
 
 # --- 4. The render guards --------------------------------------------------------
@@ -1412,12 +1412,12 @@ guard "worker threads above the largest wallet pool" "organisationWallet.workers
 # Connection budget (docs/database.md, "Connection budget"): the release's
 # pools, at the most pods of each Deployment, plus the hooks must fit in the
 # bundled server's max_connections less its reserved connections.
-renders "connection budget at the limit of the bundled server" "max_connections=235" --set database.postgresql.parameters.max_connections=235
-guard "connection budget one over the limit" "can open 227 connections to the bundled database server" --set database.postgresql.parameters.max_connections=234
+renders "connection budget at the limit of the bundled server" "max_connections=233" --set database.postgresql.parameters.max_connections=233
+guard "connection budget one over the limit" "can open 225 connections to the bundled database server" --set database.postgresql.parameters.max_connections=232
 guard "connection budget counts the reserved connections" "less the 13 reserved connections" \
-  --set database.postgresql.parameters.max_connections=235 --set-string database.postgresql.parameters.reserved_connections=10
+  --set database.postgresql.parameters.max_connections=233 --set-string database.postgresql.parameters.reserved_connections=10
 guard "connection budget counts the replicas" "wallet config 3 x 36" --set organisationWallet.config.replicas=3 \
-  --set database.postgresql.parameters.max_connections=235
+  --set database.postgresql.parameters.max_connections=233
 renders "no connection budget check with an external server" "kind: StatefulSet" -f "$profiles/database-external.yaml" --set api.replicas=20
 # Connection pooler (database.pooler): the wallet files of processes with
 # sessions name it, and the budget counts its server connections instead of

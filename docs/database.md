@@ -41,7 +41,7 @@ The pools of each process:
 | api core | `maxConns` of `DataBase`, of the OIDC database and of the wallet views reader, plus 1 health connection (outside the pools: a database check every 2 s) | `database.pools.api`, `.oidc`, `.apiReadAccess` |
 | webhook handler | the same (also the health connection) | `database.pools.webhook`, `.oidc`, `.apiReadAccess` |
 | gateway | `maxConns`, plus 1 health connection | `database.pools.gateway` |
-| consent | `maxConns`, plus 5 for each of its two readers (api and wallet views), plus 1 health connection | `database.pools.consent` |
+| consent | `maxConns`, plus 5 for each of its two readers (api and wallet views); no health connection (its readiness check uses the pool) | `database.pools.consent` |
 | wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
 | wallet config | the same, plus 10 for each of its two readers (api and consent views), plus 1 for a WIA pool mint (see below) | `database.pools.walletConfig` |
 | wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (an actor's lock has its own connection) + 1; plus 1 for the pod's health server | `database.pools.walletWorker`, the `processes` and `threads` of the group |
@@ -56,16 +56,16 @@ The default values give these maximums. They are starting values, not measuremen
 | api core | 1 | 10 + 5 (OIDC) + 5 (reader) + 1 (health) = 21 | 21 |
 | webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) + 1 (health) = 16 | 16 |
 | gateway | 2 | 10 + 1 (health) = 11 | 22 |
-| consent (with `profiles/consent.yaml`) | 2 | 6 + 5 + 5 (readers) + 1 (health) = 17 | 0 (34) |
+| consent (with `profiles/consent.yaml`) | 2 | 6 + 5 + 5 (readers) = 16 | 0 (32) |
 | wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
 | wallet config | 1 | 8 + 4 + 2 + 10 (readers; 20 with consent) + 1 + 1 (mint) = 26 (36) | 26 (36) |
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| **Total** | | | **183** (227 with consent) |
+| **Total** | | | **183** (225 with consent) |
 | the hooks | | | 5 |
 | the superuser (`superuser_reserved_connections`) | | | 3 |
-| **`max_connections` of the bundled server** | | | **250** (59 free; 15 with consent) |
+| **`max_connections` of the bundled server** | | | **250** (59 free; 17 with consent) |
 
 ## Connection pooler
 
@@ -147,8 +147,8 @@ The database hooks run in this order:
 | 1 | The Secrets `<release>-postgres` (the database user passwords), `<release>-read-access` (the read-only user passwords), `<release>-wallet-database-roles` (the passwords of the wallet's database roles) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks, with the passwords and the certificate of the earlier release |
 | 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the owner users' passwords |
 | 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the wallet database objects, creates the missing data scope schemas and gives the grants |
-| 4 | `<release>-wallet-migrate`; on an upgrade also `<release>-api-migrate` and `<release>-consent-migrate` | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
-| 5 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` | The admin user | `read-access apply`: the read-only users that the api and consent use to read the wallet database (see [Read access](read-access.md)) |
+| 4 | `<release>-wallet-migrate`; on an upgrade also `<release>-api-migrate` and `<release>-consent-migrate` (with consent) | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
+| 5 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` (with consent) | The admin user | `read-access apply`: the read-only users that the api and consent use to read the wallet database (see [Read access](read-access.md)) |
 
 On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api and consent migrate their databases when their pods start: the api in an init container, consent before it serves. On an upgrade, the hooks run before any pod changes (Helm `pre-upgrade`); see [Upgrade](upgrade.md).
 

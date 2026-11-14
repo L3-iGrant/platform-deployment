@@ -77,7 +77,6 @@ configs:
         maxConns: 10
         minConns: 2
       Iam:
-        realm: igrant-users
         IdPAlias: login-with-eudi-wallet
         APIBaseUrl: ${API_PUBLIC_URL}
         mode: builtin
@@ -188,7 +187,6 @@ configs:
         maxConns: 5
         minConns: 1
       Iam:
-        realm: igrant-users
         IdPAlias: login-with-eudi-wallet
         APIBaseUrl: ${API_PUBLIC_URL}
         mode: builtin

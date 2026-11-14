@@ -766,6 +766,7 @@ enterpriseDashboard:
     type: ""
     className: ""
     annotations: {}
+    # -- Keep / and Prefix: the dashboard works only at the root path of its host.
     path: /
     pathType: Prefix
     tls: {secretName: ""}

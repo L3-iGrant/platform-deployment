@@ -165,8 +165,9 @@ it cannot read the release's new ConfigMaps.
 Limits for the CSV import of individuals that the api reads from
 api.extraConfig.Uploads: individualImportMaxFileBytes (65536 to 20971520)
 and individualImportMaxRows (1 to 9000); absent or 0 means the api default
-(5 MiB, 5000). The dashboard gets the same values in its config.json, so it
-refuses exactly the files that the api refuses. The render fails on any
+(5 MiB, 5000). The dashboard gets the same values in its config.json, but
+the dashboard of this release does not check them yet: the api refuses a
+larger file. The render fails on any
 value that the api would refuse at start: a string (even a string of
 digits, because the api decodes its file without type conversion), a
 non-integer, or a value out of range. Call with the root context. Output:
@@ -184,17 +185,17 @@ JSON with the keys that are set (as integers).
 {{- $text := toString $value -}}
 {{- if or (kindIs "float64" $value) (kindIs "float32" $value) -}}
 {{- if ne (floor $value) ($value | float64) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number: the api and the dashboard read it in whole units" $key $value) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number: the api reads it in whole units" $key $value) -}}
 {{- end -}}
 {{- $text = printf "%.0f" ($value | float64) -}}
 {{- end -}}
 {{- if not (regexMatch "^[0-9]+$" $text) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number of 0 or more: the api and the dashboard read it in whole units" $key $value) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number of 0 or more: the api reads it in whole units" $key $value) -}}
 {{- end -}}
 {{- $number := $text | int64 -}}
 {{- if ne $number 0 -}}
 {{- if or (lt $number (index $range 0 | int64)) (gt $number (index $range 1 | int64)) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%s) is not between %v and %v (or 0, the default): the api refuses it at its start, and the dashboard would use its default" $key $text (index $range 0) (index $range 1)) -}}
+{{- fail (printf "api.extraConfig.Uploads.%s (%s) is not between %v and %v (or 0, the default): the api refuses it at its start" $key $text (index $range 0) (index $range 1)) -}}
 {{- end -}}
 {{- $_ := set $out $key $number -}}
 {{- end -}}
