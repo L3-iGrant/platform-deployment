@@ -37,9 +37,19 @@ configs: ## Write the component configuration files to generated/ from .env (mak
 check: configs ## Step 4: write the configuration files, then check .env, secrets/ and the Compose files (starts no container)
 	@./check.sh
 
+# The consent services (the profile consent; README.md, "Consent"). Compose
+# does not stop the services of a profile that is off, so when consent is
+# off, up, down and reset first remove the consent containers of an earlier
+# start with consent.
+CONSENT_SERVICES := consent consent-migrate consent-read-access api-read-access-consent wallet-read-access-consent
+REMOVE_CONSENT = if ! $(COMPOSE) config --services 2>/dev/null | grep -qx consent \
+	&& [ -n "$$($(COMPOSE) --profile consent ps -a -q $(CONSENT_SERVICES) 2>/dev/null)" ]; then \
+	$(COMPOSE) --profile consent rm --stop --force $(CONSENT_SERVICES); fi
+
 # --remove-orphans: removes the services that a new release dropped (for
 # example a service that is no longer in the Compose files).
 up: check ## Step 5: start the platform (after make check)
+	@$(REMOVE_CONSENT)
 	$(COMPOSE) up -d --remove-orphans
 	@echo "up: started. make status shows the state of the services."
 
@@ -50,6 +60,7 @@ logs: ## Follow the logs of all services (CTRL+C stops)
 	$(COMPOSE) logs -f
 
 down: ## Stop and remove the containers (the data in the volumes is kept)
+	@$(REMOVE_CONSENT)
 	$(COMPOSE) down
 
 # reset deletes all data: the volumes (databases, NATS, OpenBao, files) and
@@ -58,7 +69,7 @@ down: ## Stop and remove the containers (the data in the volumes is kept)
 reset: ## Remove the containers AND all data (asks first)
 	@read -r -p "This deletes all data of the platform. Type yes to continue: " answer; \
 	if [ "$$answer" = yes ]; then \
-	  $(COMPOSE) down -v && rm -f secrets/openbao/init.json && echo "reset: done"; \
+	  { $(REMOVE_CONSENT); } && $(COMPOSE) down -v && rm -f secrets/openbao/init.json && echo "reset: done"; \
 	else echo "reset: cancelled"; fi
 
 # --- Operation -------------------------------------------------------------------

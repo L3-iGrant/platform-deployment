@@ -16,6 +16,14 @@
 # the public wallet routes and the dashboard. Your TLS reverse proxy sends
 # the traffic of your public host names to these ports. All other services
 # are only on the Compose network.
+#
+# Consent is off by default, as in the Helm chart (README.md, "Consent"):
+# its five services (consent, consent-migrate, consent-read-access,
+# api-read-access-consent, wallet-read-access-consent) are in the profile
+# consent, which the derived COMPOSE_PROFILES of .env turns on with
+# CONSENT_ENABLED=true. The other services mount the consent files also
+# without consent (make secrets always writes them); their configuration
+# files then do not use them.
 
 x-server: &server
   restart: unless-stopped
@@ -99,10 +107,10 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # Creates the databases igrant_api, igrant_oidc, igrant_consent and
-  # igrant_wallet and their owner users (the user name is the database
-  # name), then exits. Idempotent: it sets the passwords on every run. The
-  # wallet's data scopes are schemas in igrant_wallet, which
+  # Creates the databases igrant_api, igrant_oidc, igrant_consent (only with
+  # consent) and igrant_wallet and their owner users (the user name is the
+  # database name), then exits. Idempotent: it sets the passwords on every
+  # run. The wallet's data scopes are schemas in igrant_wallet, which
   # wallet-database-roles creates; no wallet process logs in as the owner
   # user igrant_wallet.
   database-init:
@@ -116,6 +124,7 @@ services:
       DB_ENGINE: ${DB_ENGINE}
       DB_PORT: ${DB_PORT}
       DB_ADMIN_USER: ${DB_ADMIN_USER}
+      CONSENT_ENABLED: ${CONSENT_ENABLED:-}
     configs:
       - source: database-init-script
         target: /scripts/create-databases.sh
@@ -156,6 +165,10 @@ services:
     # chart's NATS.
     user: "65532:65532"
     command: ["--config", "/etc/nats/nats.conf"]
+    # The users come from generated/ (make configs): without consent, the
+    # file has no user consent.
+    labels:
+      io.igrant.config-sha256.nats-users: ${CONFIG_SHA256_NATS_USERS:?run make configs}
     configs:
       - {source: nats-conf, target: /etc/nats/nats.conf}
       - {source: nats-users, target: /etc/nats/users.conf}
@@ -318,9 +331,11 @@ services:
     depends_on:
       database-init: {condition: service_completed_successfully}
 
+  # Only with consent (the profile consent).
   consent-migrate:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/consent-management-backend:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
+    profiles: [consent]
     user: "65532:65532"
     command: ["migrate", "schema", "--config", "/etc/consent/migrate.yaml"]
     tmpfs:
@@ -403,7 +418,8 @@ services:
   # Each database owner creates the other services' read-only users on its
   # views (named <reader>_<owner>_reader) with its read-access command, as
   # the admin user (DB_ADMIN_USER). The api image has no shell, so there is
-  # one service per reader of the api database.
+  # one service per reader of the api database. The services of the readers
+  # and owners of consent are only in the profile consent.
   api-read-access-wallet:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
@@ -428,6 +444,7 @@ services:
   api-read-access-consent:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
+    profiles: [consent]
     user: "65532:65532"
     command: ["/app/bin/igrant-api", "read-access", "apply", "--config", "/etc/igrant-api/database-jobs.yaml",
               "--reader", "consent", "--user", "consent_api_reader", "--password-file", "/run/secrets/read-access/consent_api_reader",
@@ -449,6 +466,7 @@ services:
   consent-read-access:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
+    profiles: [consent]
     user: "65532:65532"
     tmpfs:
       - /tmp:size=16m
@@ -514,6 +532,7 @@ services:
   wallet-read-access-consent:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
+    profiles: [consent]
     user: "65532:65532"
     tmpfs:
       - /tmp:size=64m
@@ -647,11 +666,12 @@ services:
       wallet-read-access-api: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
-  # --- Consent --------------------------------------------------------------------
+  # --- Consent (only with CONSENT_ENABLED=true: the profile consent) -------------
 
   consent:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
+    profiles: [consent]
     # The image's nonroot user. It listens on port 80 (see api).
     user: "65532:65532"
     sysctls:
@@ -709,10 +729,14 @@ services:
       timeout: 5s
       retries: 30
       start_period: 30s
+    # consent-read-access is only in the profile consent, so the dependency
+    # is optional (required: false): with consent, Compose waits for it; if
+    # it fails, Compose only warns, and wallet-config stays unhealthy (its
+    # /readyz checks the consent views).
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
       api-read-access-wallet: {condition: service_completed_successfully}
-      consent-read-access: {condition: service_completed_successfully}
+      consent-read-access: {condition: service_completed_successfully, required: false}
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
       valkey-sentinel: {condition: service_started}
@@ -889,7 +913,6 @@ configs:
   # --- Files in this folder, and public keys from make secrets -----------------
   database-init-script: {file: ./config/database/create-databases.sh}
   nats-conf: {file: ./config/nats/nats.conf}
-  nats-users: {file: ./config/nats/users.conf}
   openbao-config: {file: ./config/openbao/openbao.hcl}
   openbao-bootstrap: {file: ./config/openbao/bootstrap.sh}
   valkey-start: {file: ./config/valkey/start.sh}
@@ -926,3 +949,6 @@ configs:
   wallet-migrate-config: {file: ./generated/wallet-migrate-config.yaml}
   wallet-database-admin-config: {file: ./generated/wallet-database-admin-config.yaml}
   dashboard-config: {file: ./generated/dashboard-config.json}
+  # The NATS users of config/nats/users.conf, without the user consent when
+  # consent is off (make configs).
+  nats-users: {file: ./generated/nats-users.conf}

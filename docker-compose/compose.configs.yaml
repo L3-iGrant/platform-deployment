@@ -12,6 +12,12 @@
 # no template holds a secret value. An unknown key stops the component. The
 # database "port" comes from config/engine/<DB_ENGINE>.env. "tls.sslMode" is
 # disable because the Compose network has no database TLS.
+#
+# Consent (CONSENT_ENABLED; README.md, "Consent"): render-configs.py keeps
+# the lines between "#if ${CONSENT_ENABLED:-}" and "#end" only with
+# consent, and the lines between "#unless ${CONSENT_ENABLED:-}" and "#end"
+# only without consent. With consent, the files have no Installation
+# section (all services), as in the Helm chart.
 
 services:
   # Lists the templates. "docker compose config" writes only the configs
@@ -23,6 +29,10 @@ services:
     profiles: [render]
     read_only: true
     network_mode: none
+    # The settings that render-configs.py reads itself: CONSENT_ENABLED
+    # selects the NATS users (generated/nats-users.conf).
+    environment:
+      CONSENT_ENABLED: ${CONSENT_ENABLED:-}
     configs:
       - api-config.yaml
       - webhook-config.yaml
@@ -44,6 +54,12 @@ configs:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
       ServiceName: igrant-api
+      #unless ${CONSENT_ENABLED:-}
+      # The services of the installation: without consent, only the wallet
+      # (the same section as in the gateway file).
+      Installation:
+        services: [wallet]
+      #end
       ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
       # The header in which your reverse proxy sends the client address
       # (CLIENT_ADDRESS_HEADER; empty means the TCP peer). The same value as
@@ -121,8 +137,10 @@ configs:
         trustedIssuers:
           - issuer: igrant-api
             jwksFile: /etc/igrant-service-keys/igrant-api.json
+          #if ${CONSENT_ENABLED:-}
           - issuer: igrant-consent-management
             jwksFile: /etc/igrant-service-keys/igrant-consent-management.json
+          #end
           - issuer: eudi-wallet
             jwksFile: /etc/igrant-service-keys/eudi-wallet.json
       # The api's read-only user on the wallet views.
@@ -152,6 +170,10 @@ configs:
     content: |
       ApiBaseUrl: ${API_PUBLIC_URL}
       ServiceName: igrant-api
+      #unless ${CONSENT_ENABLED:-}
+      Installation:
+        services: [wallet]
+      #end
       ApiSecretKeyFile: /run/secrets/igrant-api/api-secret-key
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
@@ -222,8 +244,10 @@ configs:
         trustedIssuers:
           - issuer: igrant-api
             jwksFile: /etc/igrant-service-keys/igrant-api.json
+          #if ${CONSENT_ENABLED:-}
           - issuer: igrant-consent-management
             jwksFile: /etc/igrant-service-keys/igrant-consent-management.json
+          #end
           - issuer: eudi-wallet
             jwksFile: /etc/igrant-service-keys/eudi-wallet.json
       ReadAccess:
@@ -300,9 +324,11 @@ configs:
         upstreams:
           core:
             url: http://api:80
+          #if ${CONSENT_ENABLED:-}
           consent:
             url: http://consent:80
             requestTimeoutSeconds: 30
+          #end
           walletConfig:
             url: http://wallet-config:8080
             requestTimeoutSeconds: 60
@@ -315,6 +341,13 @@ configs:
       # file has this section.
       Features:
         enforce: ${FEATURES_ENFORCE:-true}
+      #unless ${CONSENT_ENABLED:-}
+      # The services of the installation: without consent, only the wallet.
+      # The file has no consent upstream, and the gateway answers 404
+      # service_not_installed on the consent routes.
+      Installation:
+        services: [wallet]
+      #end
       Log:
         level: info
 
@@ -473,6 +506,7 @@ configs:
           name: igrant_api
           user: wallet_api_reader
           password_file: /run/secrets/eudi-wallet/read-access-api-password
+        #if ${CONSENT_ENABLED:-}
         consent:
           type: ${DB_ENGINE}
           host: database
@@ -480,6 +514,7 @@ configs:
           name: igrant_consent
           user: wallet_consent_reader
           password_file: /run/secrets/eudi-wallet/read-access-consent-password
+        #end
       gateway_api:
         public_api_base_url: ${API_PUBLIC_URL}
 
@@ -681,7 +716,9 @@ configs:
 
   # The dashboard's runtime configuration: the API (the gateway) and the
   # wallet (for the vct metadata of credential types; the image's
-  # Content-Security-Policy allows both origins).
+  # Content-Security-Policy allows both origins). The same file with and
+  # without consent, as in the Helm chart: the dashboard gets the services
+  # of the installation from the api.
   dashboard-config.json:
     content: |
       {

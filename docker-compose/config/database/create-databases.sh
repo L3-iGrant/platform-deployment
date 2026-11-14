@@ -7,14 +7,16 @@
 # service creates together with the wallet's database roles. No wallet
 # process logs in as the owner user igrant_wallet.
 #
-# Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
+# Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env), and
+# CONSENT_ENABLED (.env): the database igrant_consent only when it is not
+# empty. Without consent, an existing igrant_consent stays as it is.
 # Secret files in /run/secrets/database/: admin-password (the admin user)
 # and <database>-password for each database. No password goes on a command
 # line or into a statement: psql \password sends the SCRAM-SHA-256
 # verifier, so the server's DDL log never shows the password.
 set -euo pipefail
 
-DATABASES="igrant_api igrant_oidc igrant_consent igrant_wallet"
+DATABASES="igrant_api igrant_oidc ${CONSENT_ENABLED:+igrant_consent }igrant_wallet"
 SECRETS=/run/secrets/database
 HOST=database
 

@@ -80,7 +80,7 @@ check_installation() {
   local name expected
   for name in COMPOSE_PROFILES; do
     case "$name" in
-      COMPOSE_PROFILES) expected='${DB_ENGINE}' ;;
+      COMPOSE_PROFILES) expected='${DB_ENGINE}${CONSENT_ENABLED:+,consent}' ;;
     esac
     if [ -n "${!name+x}" ]; then
       ok "$name (from your shell)"
@@ -90,6 +90,17 @@ check_installation() {
       bad "$name must be $expected (the line of .env.example; do not change it)"
     fi
   done
+
+  # Consent (README.md, "Consent"). The derived COMPOSE_PROFILES turns the
+  # profile consent on for any value that is not empty, so only empty or
+  # true.
+  local consent
+  consent="$(setting CONSENT_ENABLED)"
+  case "$consent" in
+    "") ok "consent: off (CONSENT_ENABLED is empty)" ;;
+    true) ok "consent: on (CONSENT_ENABLED=true)" ;;
+    *) bad "CONSENT_ENABLED ($consent) must be empty (no consent) or true" ;;
+  esac
 
   check_url API_PUBLIC_URL
   check_url WALLET_PUBLIC_URL
@@ -234,6 +245,13 @@ check_installation() {
   else
     bad "the services must have postgres (COMPOSE_PROFILES)"
   fi
+  # The consent services run exactly when CONSENT_ENABLED is true (a
+  # COMPOSE_PROFILES from your shell can differ from the configuration files).
+  if grep -qx consent <<< "$services"; then
+    [ "$consent" = true ] || bad "the consent services run, but CONSENT_ENABLED is not true (COMPOSE_PROFILES from your shell?)"
+  else
+    [ "$consent" != true ] || bad "CONSENT_ENABLED is true, but the consent services do not run (COMPOSE_PROFILES must have consent)"
+  fi
   # The DDL and connection logs of the database server (the postgres
   # command). A Compose override file can remove them, so this only warns.
   local setting missing_logs=""
@@ -260,6 +278,17 @@ check_installation() {
     fi
   done < <(grep -oE '"file": *"[^"]+"' <<< "$json" | sed -E 's/"file": *"([^"]+)"/\1/' | sort -u)
   if [ "$missing" -eq 0 ]; then ok "secrets and files"; else bad "run make secrets"; fi
+
+  # The public nkey of consent (make secrets) is in nkeys.conf only with
+  # consent: NATS does not start with an nkey that no user uses.
+  local nkeys=secrets/public/nats-nkeys.conf
+  if [ -f "$nkeys" ] && { [ -z "$consent" ] || [ "$consent" = true ]; }; then
+    if grep -q '^NATS_NKEY_CONSENT:' "$nkeys"; then
+      [ "$consent" = true ] || bad "$nkeys has the consent nkey, but CONSENT_ENABLED is empty (NATS would not start): run make secrets"
+    else
+      [ "$consent" != true ] || bad "$nkeys has no consent nkey, but CONSENT_ENABLED is true: run make secrets"
+    fi
+  fi
 
   finish "the configuration is valid (DB_ENGINE=${engine}, ${warnings} warning(s))"
 }

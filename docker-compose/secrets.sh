@@ -22,6 +22,13 @@
 # - secrets/public/: the public keys (not secret) that the services use to
 #   verify each other, and the public nkeys of the NATS users.
 #
+# It also makes the consent files (the passwords of igrant_consent and of
+# the consent readers, secrets/consent/) without consent (CONSENT_ENABLED
+# empty): some services mount them, and no process uses them. Only the
+# public nkey of consent follows CONSENT_ENABLED: NATS refuses an nkey in
+# nkeys.conf that no user uses, so run make secrets again when you change
+# CONSENT_ENABLED.
+#
 # The keys come from the api's operator commands ("igrant-api keys"), run in
 # a container of the api image (<IMAGE_REGISTRY>/api:<PLATFORM_TAG>) with no
 # network. To use a local igrant-api binary instead, set
@@ -44,6 +51,8 @@ command -v openssl > /dev/null || fail "openssl is required"
 registry_shell="${IMAGE_REGISTRY-}"
 tag_shell="${PLATFORM_TAG-}"
 smtp_username_shell="${SMTP_USERNAME-}"
+consent_set="${CONSENT_ENABLED+set}"
+consent_shell="${CONSENT_ENABLED-}"
 set -a
 # shellcheck disable=SC1091
 . ./.env
@@ -55,6 +64,13 @@ if [ -z "${IGRANT_API_BIN:-}" ] && [ "$PLATFORM_TAG" = 2026.11.x ]; then
   fail "PLATFORM_TAG is the placeholder 2026.11.x: set the release tag in .env"
 fi
 SMTP_USERNAME="${smtp_username_shell:-${SMTP_USERNAME:-}}"
+# CONSENT_ENABLED: your shell's value (also when empty), else .env, as in
+# docker compose.
+[ -z "$consent_set" ] || CONSENT_ENABLED="$consent_shell"
+case "${CONSENT_ENABLED:-}" in
+  "" | true) ;;
+  *) fail "CONSENT_ENABLED must be empty (no consent) or true, not ${CONSENT_ENABLED}" ;;
+esac
 
 # The folders are private (0700), so on this computer only your user can
 # open them. The files are 0644 because the services run as a non-root user
@@ -218,7 +234,8 @@ public_jwks wallet/service-envelope-jwks.json public/service-jwks/eudi-wallet.js
 {
   printf '# The public nkeys of the NATS users (make secrets writes this file from\n'
   printf '# the seeds in secrets/; config/nats/users.conf uses the names).\n'
-  for pair in API:api/nats-api API_WEBHOOK:api/nats-api-webhook CONSENT:consent/nats-consent \
+  # The consent nkey only with consent (NATS refuses an unused nkey).
+  for pair in API:api/nats-api API_WEBHOOK:api/nats-api-webhook ${CONSENT_ENABLED:+CONSENT:consent/nats-consent} \
     WALLET_CONFIG:wallet/nats-wallet-config WALLET_SERVICE:wallet/nats-wallet-service \
     WALLET_WORKER:wallet/nats-wallet-worker; do
     printf 'NATS_NKEY_%s: "%s"\n' "${pair%%:*}" "$(< "${SECRETS}/${pair#*:}.nk.pub")"

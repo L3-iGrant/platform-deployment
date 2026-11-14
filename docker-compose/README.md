@@ -15,6 +15,7 @@ a check: go to the next step only when the check passes.
 - [Installation](#installation)
 - [Operation](#operation)
 - [Settings](#settings)
+- [Consent](#consent)
 - [Configuration files](#configuration-files)
 - [Database roles of the wallet](#database-roles-of-the-wallet)
 - [Database server logs](#database-server-logs)
@@ -35,7 +36,7 @@ a check: go to the next step only when the check passes.
 |---|---|---|
 | Gateway (`gateway`) | Entry point for all API calls from your systems and from the dashboard. It checks every request (API keys, logins, rate limits). | `API_PORT` (8080) |
 | API (`api`) and webhook handler (`webhook`) | Organisations, admins, API keys, and the webhooks to your systems. | none |
-| Consent management (`consent`) | Data agreements and consent records. | none |
+| Consent management (`consent`) | Data agreements and consent records. Off by default: see [Consent](#consent). | none |
 | Organisation wallet (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. The worker runs the background work and the clock sends the scheduled work (see [Worker and clock](#worker-and-clock)). | `WALLET_PORT` (8090) |
 | Enterprise dashboard (`dashboard`) | The web app for the admins of your organisations. | `DASHBOARD_PORT` (3000) |
 | Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
@@ -44,13 +45,13 @@ a check: go to the next step only when the check passes.
 | Valkey (`valkey`, `valkey-replica`, `valkey-sentinel`) | The wallet's work queue, single-use values and caches: a primary, a replica and a Sentinel. See [Valkey](#valkey). | none |
 
 Some services run once at each start and then exit:
-`database-init`, `wallet-database-roles`, `api-migrate`,
-`consent-migrate`, `wallet-migrate`, `api-read-access-wallet`,
-`api-read-access-consent`, `consent-read-access`,
-`wallet-read-access-api`, `wallet-read-access-consent`, `openbao-init` and
-`nats-data-owner`. They create the databases, the wallet's database roles,
-the tables, the read-only database users and the OpenBao configuration,
-and hand the NATS volume to the NATS user.
+`database-init`, `wallet-database-roles`, `api-migrate`, `wallet-migrate`,
+`api-read-access-wallet`, `wallet-read-access-api`, `openbao-init` and
+`nats-data-owner`, and with consent also `consent-migrate`,
+`api-read-access-consent`, `consent-read-access` and
+`wallet-read-access-consent`. They create the databases, the wallet's
+database roles, the tables, the read-only database users and the OpenBao
+configuration, and hand the NATS volume to the NATS user.
 
 For HSM support and larger installations, see the chart pages [Connect your on-premise HSM](../docs/on-premise-hsm.md), [DPoD key stores](../docs/dpod-key-stores.md) and [Scaled deployments](../docs/scaled-deployments.md).
 
@@ -124,6 +125,9 @@ localhost), also set:
   client address (for example `X-Real-IP`).
 - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM`: your SMTP server.
 
+Consent management is off by default. To install it, set
+`CONSENT_ENABLED=true` before step 3 (see [Consent](#consent)).
+
 ### Step 3: Make the secrets
 
 ```bash
@@ -174,13 +178,16 @@ make status
 
 Check: you see one line per service.
 
-- `gateway`, `api`, `webhook`, `consent`, `wallet-config`,
-  `wallet-service`, `wallet-worker`, `wallet-clock`, `dashboard`, `nats`,
-  `openbao`, `valkey`, `valkey-replica`, `valkey-sentinel` and `postgres`:
-  `running`. Services with a health check also show `(healthy)`.
-- `database-init`, `wallet-database-roles`, the three `*-migrate`
-  services, the five read access services, `openbao-init` and
-  `nats-data-owner`: `exited`, with the status `Exited (0)`.
+- `gateway`, `api`, `webhook`, `wallet-config`, `wallet-service`,
+  `wallet-worker`, `wallet-clock`, `dashboard`, `nats`, `openbao`,
+  `valkey`, `valkey-replica`, `valkey-sentinel` and `postgres`, and with
+  consent also `consent`: `running`. Services with a health check also
+  show `(healthy)`.
+- `database-init`, `wallet-database-roles`, `api-migrate`,
+  `wallet-migrate`, `api-read-access-wallet`, `wallet-read-access-api`,
+  `openbao-init` and `nats-data-owner`, and with consent also
+  `consent-migrate`, `api-read-access-consent`, `consent-read-access` and
+  `wallet-read-access-consent`: `exited`, with the status `Exited (0)`.
 
 If a service is in another state, see [Troubleshooting](#troubleshooting).
 
@@ -321,7 +328,8 @@ your shell overrides the value in `.env`.
 | Setting | Default | Use |
 |---|---|---|
 | `DB_ENGINE` | `postgresql` | The database engine of all components: `postgresql` (PostgreSQL 18), the only supported engine. |
-| `COMPOSE_PROFILES` | the derived line at the end of `.env.example` | Starts the database server of `DB_ENGINE`. Do not change it. |
+| `COMPOSE_PROFILES` | the derived line at the end of `.env.example` | Starts the database server of `DB_ENGINE`, and the consent services with `CONSENT_ENABLED`. Do not change it. |
+| `CONSENT_ENABLED` | empty | `true` installs consent management; empty: no consent, the Helm chart's default. Only empty or `true`. See [Consent](#consent). |
 | `TEST_CA_ENABLED`, `TEST_CA_LEAF_VALIDITY_DAYS` | `true`, `365` | The wallet's built-in test CA issues test certificates for development and testing. They are on no trusted list. Set `TEST_CA_ENABLED=false` if the installation must not offer it. `TEST_CA_LEAF_VALIDITY_DAYS` (1 to 3650) is the validity of a test certificate when the request gives none; the preset's maximum validity caps it. |
 | `AUDIT_RETENTION_YEARS` | `7` | How many years the wallet's audit log keeps the events of each data scope (1 to 999). See [Audit log](#audit-log). |
 | `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL` | `http://localhost:8080`, `:8090`, `:3000` | The public URLs (your reverse proxy). |
@@ -335,16 +343,53 @@ your shell overrides the value in `.env`.
 | `PLATFORM_TAG` | `2026.11.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
 | `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
 
-The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
-`igrant_wallet`, each with its own owner user. The wallet keeps its tables
-in data scopes: schemas in `igrant_wallet` (for example `issuer`) that
-`wallet-database-roles` creates. Each wallet process connects with its own
-database role (see
+The databases are `igrant_api`, `igrant_oidc`, `igrant_wallet`, and with
+consent `igrant_consent`, each with its own owner user. The wallet keeps
+its tables in data scopes: schemas in `igrant_wallet` (for example
+`issuer`) that `wallet-database-roles` creates. Each wallet process
+connects with its own database role (see
 [Database roles of the wallet](#database-roles-of-the-wallet)).
 
 The components' configuration files come from the templates in
 `compose.configs.yaml`, filled in with the values of `.env` (see
 [Configuration files](#configuration-files)).
+
+## Consent
+
+Consent management (data agreements and consent records) is off by
+default, as in the Helm chart. The installation then has only the
+organisation wallet:
+
+- The consent services do not run: `consent`, `consent-migrate`,
+  `consent-read-access`, `api-read-access-consent` and
+  `wallet-read-access-consent` (the Compose profile `consent`).
+  `database-init` makes no database `igrant_consent`.
+- `make configs` writes the files as the chart does without consent: the
+  api and gateway files get `Installation.services: [wallet]`, the gateway
+  file has no consent upstream, the api trusts no NATS messages of consent,
+  the wallet reads only the api's views, and NATS has no user `consent`.
+  The dashboard file does not change.
+- The gateway answers `404` (`service_not_installed`) on every consent
+  route, and the dashboard shows no consent area (see
+  [The services of the installation](../docs/components.md#the-services-of-the-installation)).
+- `make secrets` still writes the consent passwords and keys. Only the
+  public nkey of consent in `secrets/public/nats-nkeys.conf` follows
+  `CONSENT_ENABLED`: NATS does not start with an nkey that no user uses.
+
+To install consent, set `CONSENT_ENABLED=true` in `.env` (only empty or
+`true`), then run `make secrets`, `make check` and `make up`. The derived
+`COMPOSE_PROFILES` then has the profile `consent`. `make up` starts the
+consent services and restarts the services whose files change (`api`,
+`webhook`, `gateway`, `wallet-config` and `nats`). `wallet-config` waits
+for `consent-read-access`.
+
+To turn consent off later, empty `CONSENT_ENABLED`, then run
+`make secrets`, `make check` and `make up`. `make up` first removes the
+consent containers, because Compose does not stop the services of a
+profile that is off. The database `igrant_consent` and its data stay. The
+organisations keep their consent features, webhook event types and API
+key scopes: they have no effect without consent, and apply again when you
+turn consent on.
 
 ## Configuration files
 
@@ -358,9 +403,13 @@ in the Compose file (a `content` config). So:
 2. `make configs` (`render-configs.py`) reads the templates with
    `docker compose -f compose.render.yaml config`, so Compose fills in the
    values of `.env` and `config/engine/<DB_ENGINE>.env` with the same rules
-   and files as for the services. The script writes each file to
-   `generated/` (mode `0644`), and `generated/configs.env` with the
-   SHA-256 of each file.
+   and files as for the services. The script keeps the lines between
+   `#if ${VAR}` and `#end` only when the value is not empty, and the lines
+   between `#unless ${VAR}` and `#end` only when it is empty (the consent
+   parts, see [Consent](#consent)). It writes each file to `generated/`
+   (mode `0644`), also `generated/nats-users.conf` (the NATS users of
+   `config/nats/users.conf`, without the user `consent` when consent is
+   off), and `generated/configs.env` with the SHA-256 of each file.
 3. The services in `compose.platform.yaml` read the files in `generated/`.
    Each one has the SHA-256 of its file in a label, so when a file changes,
    `docker compose up` restarts the service.
@@ -397,16 +446,16 @@ starts only after the one before it exits with code 0:
    applies the wallet migrations as the owner role, then gives the database
    roles their grants on the new tables. It is the only service that
    changes the wallet schema.
-4. `wallet-read-access-api` and `wallet-read-access-consent` (as the admin
-   user) create the read-only users of the api and of consent on the wallet
-   views (one service per reader, because the wallet image has no shell).
-   The wallet processes start after `wallet-migrate`.
+4. `wallet-read-access-api` and, with consent, `wallet-read-access-consent`
+   (as the admin user) create the read-only users of the api and of consent
+   on the wallet views (one service per reader, because the wallet image
+   has no shell). The wallet processes start after `wallet-migrate`.
 
 | Process | Service | Database role |
 |---|---|---|
 | Database roles | `wallet-database-roles` | The admin user (`DB_ADMIN_USER`) |
 | Migrations | `wallet-migrate` | `igrant_wallet_migrator` |
-| Read access | `wallet-read-access-api`, `wallet-read-access-consent` | The admin user (`DB_ADMIN_USER`) |
+| Read access | `wallet-read-access-api`, `wallet-read-access-consent` (with consent) | The admin user (`DB_ADMIN_USER`) |
 | Config routes and public routes | `wallet-config`, `wallet-service` | `igrant_wallet_launcher_app` |
 | Background work | `wallet-worker` | `igrant_wallet_jobs` |
 | Clock | `wallet-clock` | `igrant_wallet_clock` (it can only connect) |
@@ -634,7 +683,7 @@ To create a new password, delete its file, run `make secrets`, then
 | `secrets/database/` | The passwords of the database server's admin user, of each database's owner user, of the read-only users and of the wallet's login database roles (`igrant_wallet_<name>-password`). |
 | `secrets/api/` | The api keys (API secret key, token keys, database wrapping key, service key), its NATS seeds and the SMTP password. |
 | `secrets/gateway/` | The key that the gateway signs its requests to the other components with. |
-| `secrets/consent/`, `secrets/wallet/` | The keys that sign the NATS messages of consent and of the wallet, and their NATS seeds. |
+| `secrets/consent/`, `secrets/wallet/` | The keys that sign the NATS messages of consent and of the wallet, and their NATS seeds. The consent files are also made without consent. |
 | `secrets/openbao/` | The OpenBao seal key, the password of the wallet's OpenBao user, and `init.json` (created at the first start). |
 | `secrets/valkey/` | The passwords of the Valkey ACL users (see [Valkey](#valkey)). |
 | `secrets/public/` | The public keys that the components use to verify each other (not secret). |
@@ -732,7 +781,17 @@ the feature is off, and the api answers that it is not configured.
   `DB_ENGINE` (in `.env` or in your shell) is not `postgresql`.
 - A one-shot service exits with a code other than 0, or a service does not
   start: read `docker compose logs <service>`. When a one-shot service
-  fails, the services that wait for it do not start.
+  fails, the services that wait for it do not start. One exception:
+  `wallet-config` waits for `consent-read-access` only as an optional
+  dependency (it runs only with consent). When it fails, `make up` shows
+  the warning `optional dependency "consent-read-access" didn't complete
+  successfully`, and `wallet-config` stays unhealthy.
+- `make check` shows `CONSENT_ENABLED ... must be empty (no consent) or
+  true`: `false` is not allowed, because any value turns the consent
+  profile on. Empty the value.
+- `make check` shows `secrets/public/nats-nkeys.conf has the consent nkey`
+  or `has no consent nkey`: `CONSENT_ENABLED` changed after
+  `make secrets`. Run `make secrets`, then `make check`.
 - `wallet-migrate` shows `Exited (1)`: a migration failed; `Exited (2)`: a
   configuration or connection error; `Exited (3)`: the schema is at the
   head, but the grants are not complete. Read `docker compose logs

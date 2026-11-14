@@ -22,16 +22,24 @@
 #     seed, no OpenBao password);
 #   - the installation limits (MAX_ORGANISATIONS,
 #     MAX_ORGANISATION_WALLET_UNITS): the keys appear only with a value;
-#   - the webhooks in the api files (no Webhooks.events) and no
-#     Installation key (Compose installs all services);
+#   - the webhooks in the api files (no Webhooks.events);
+#   - consent (CONSENT_ENABLED), off (the default) and on: the services of
+#     the profile consent, the optional dependency of wallet-config, the
+#     database igrant_consent, and the files: without consent, each file is
+#     the file with consent less the consent parts, as in the Helm chart
+#     (Installation.services, the gateway upstream, the trust of consent,
+#     the consent reader of the wallet, the NATS user consent), and the
+#     consent nkey of make secrets (with a stand-in for igrant-api). The
+#     checks of the engine, the database roles and the webhooks run with
+#     consent;
 #   - the config files (make configs, render-configs.py): the templates of
 #     compose.configs.yaml and the file configs in generated/ (one per
 #     template, no content config), the same values files for the render
 #     and the services, each service's hash label and its file, only
 #     .env.example variables in the templates (no secrets), no secret value
 #     in a file, and the renderer in a copy of this folder ($$,
-#     ${VAR:+...}, a missing value, file modes, a stale file, --check, a
-#     second run);
+#     ${VAR:+...}, #if and #unless, a missing value, file modes, a stale
+#     file, --check, a second run);
 #   - the security settings of EVERY service in all profiles (an unknown
 #     service fails): read-only root file system, non-root user, no
 #     capabilities, no new privileges, tmpfs and volumes for the writable
@@ -40,7 +48,8 @@
 #     services (nats-data-owner) with only their capabilities and no
 #     network;
 #   - bash -n / sh -n of the scripts;
-#   - nats-server -t of the NATS config (if nats-server is installed);
+#   - nats-server -t of the NATS config, with and without consent (if
+#     nats-server is installed);
 #   - the text rules (no em or en dash, British English, no name of a
 #     removed product or setting);
 #   - the relative links of README.md (tests/check_links.py).
@@ -93,6 +102,12 @@ PY
   rm -f "$project" "$files"
 }
 
+# consent_json <"" | true>: project_json with CONSENT_ENABLED, and the
+# COMPOSE_PROFILES of .env (its derived line turns the profile consent on).
+consent_json() {
+  (unset COMPOSE_PROFILES; CONSENT_ENABLED="$1" project_json)
+}
+
 check_files() {
   local created_env="" created_generated="" render
   if [ ! -f .env ]; then
@@ -109,20 +124,23 @@ check_files() {
     finish ""
   fi
   local engine json services server images
+  # With consent (CONSENT_ENABLED=true), so every configuration file is in
+  # the project. Without consent, the files have less (the consent checks
+  # below).
   for engine in postgresql; do
-    if ! json="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" project_json 2>&1)"; then
+    if ! json="$(DB_ENGINE="$engine" CONSENT_ENABLED=true COMPOSE_PROFILES="$engine,consent" project_json 2>&1)"; then
       bad "$engine: docker compose config: $json"
       continue
     fi
     ok "$engine: docker compose config"
-    services="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --services)"
+    services="$(DB_ENGINE="$engine" CONSENT_ENABLED=true COMPOSE_PROFILES="$engine,consent" docker compose config --services)"
     case "$engine" in postgresql) server=postgres ;; esac
     if grep -qx "$server" <<< "$services"; then
       ok "$engine: database server $server"
     else
       bad "$engine: no service $server"
     fi
-    images="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --images)"
+    images="$(DB_ENGINE="$engine" CONSENT_ENABLED=true COMPOSE_PROFILES="$engine,consent" docker compose config --images)"
     if grep -Eiq 'hashicorp|(^|/)vault(:|@|$)|keycloak|facade|mongo' <<< "$images"; then
       bad "$engine: a forbidden image"
     else
@@ -160,7 +178,7 @@ def databases(node, path=""):
 
 for name, config in sorted(project.get("configs", {}).items()):
     content = config.get("content")
-    if content is None:
+    if content is None or name == "nats-users":
         continue
     count += 1
     try:
@@ -235,11 +253,12 @@ PY
   # (admin user) and the wallet processes (launcher and jobs roles). The
   # database user of each config has its password file from make secrets,
   # and no service of the wallet image mounts the password of the owner
-  # user igrant_wallet.
+  # user igrant_wallet. With consent, so wallet-read-access-consent is in
+  # the project (the consent checks below: without it).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file admin
     admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/engine/postgresql.env)"
-    if ! json="$(project_json 2>&1)"; then
+    if ! json="$(consent_json true 2>&1)"; then
       bad "database roles: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -517,10 +536,10 @@ PY
 
   # Webhooks and installation services: the Webhooks section of the api and
   # webhook files has only DeliveryRetentionDays (each organisation's
-  # effective features select the event types), and no file has
-  # Installation (Compose installs all services).
+  # effective features select the event types), and with consent no file
+  # has Installation (all services; without consent: the consent checks).
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
-    if ! json="$(project_json 2>&1)"; then
+    if ! json="$(consent_json true 2>&1)"; then
       bad "webhooks and services: docker compose config: $json"
     else
       project_file="$(mktemp)"
@@ -549,6 +568,205 @@ PY
       fi
       rm -f "$project_file"
     fi
+  fi
+
+  # Consent (CONSENT_ENABLED; README.md, "Consent"), off (the default) and
+  # on, with the derived COMPOSE_PROFILES of .env:
+  #   - the five consent services run only with consent (the profile
+  #     consent); of the other services, only wallet-config waits for one
+  #     (consent-read-access), as an optional dependency;
+  #   - database-init gets CONSENT_ENABLED and makes igrant_consent only
+  #     with it;
+  #   - the files: no #if, #unless or #end line is left. With consent, no
+  #     file has Installation, and the NATS users are config/nats/users.conf.
+  #     Without consent, each file is the file with consent less the consent
+  #     parts, as in the Helm chart: Installation.services [wallet] in the
+  #     api, webhook and gateway files, no trust of igrant-consent-management
+  #     in the api files, no gateway upstream consent, no
+  #     read_access.consent in wallet-config, no NATS user consent;
+  #   - make secrets writes the public nkey of consent only with consent
+  #     (NATS refuses an nkey that no user uses), and the other consent
+  #     files also without consent;
+  #   - CONSENT_ENABLED=false stops make configs and make secrets (any
+  #     value turns the profile on).
+  if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
+    local off_file on_file output databases
+    off_file="$(mktemp)"
+    on_file="$(mktemp)"
+    if ! consent_json "" > "$off_file" 2>&1; then
+      bad "consent: docker compose config without consent: $(cat "$off_file")"
+    elif ! consent_json true > "$on_file" 2>&1; then
+      bad "consent: docker compose config with consent: $(cat "$on_file")"
+    elif output="$(python3 - "$off_file" "$on_file" 2>&1 <<'PY'
+import copy
+import json
+import re
+import sys
+
+import yaml
+
+off = json.load(open(sys.argv[1], encoding="utf-8"))
+on = json.load(open(sys.argv[2], encoding="utf-8"))
+problems = []
+CONSENT = {"consent", "consent-migrate", "consent-read-access", "api-read-access-consent", "wallet-read-access-consent"}
+for case, project in (("without consent", off), ("with consent", on)):
+    services = project["services"]
+    want = CONSENT if project is on else set()
+    if CONSENT & set(services) != want:
+        problems.append(f"{case}: the consent services {sorted(CONSENT & set(services))}, not {sorted(want)}")
+    for name in CONSENT & set(services):
+        if services[name].get("profiles") != ["consent"]:
+            problems.append(f"{name}: profiles {services[name].get('profiles')}, not [consent]")
+    dependency = (services["wallet-config"].get("depends_on") or {}).get("consent-read-access")
+    if dependency != {"condition": "service_completed_successfully", "required": False}:
+        problems.append(f"{case}: wallet-config waits for consent-read-access with {dependency}")
+    value = (services["database-init"].get("environment") or {}).get("CONSENT_ENABLED")
+    if value != ("true" if project is on else ""):
+        problems.append(f"{case}: database-init has CONSENT_ENABLED {value!r}")
+for name, service in on["services"].items():
+    for dependency in service.get("depends_on") or {}:
+        if dependency in CONSENT and name not in CONSENT and name != "wallet-config":
+            problems.append(f"{name} waits for the consent service {dependency}")
+
+
+def files(project):
+    return {name: config["content"] for name, config in project["configs"].items() if "content" in config}
+
+
+off_files, on_files = files(off), files(on)
+for case, contents in (("without consent", off_files), ("with consent", on_files)):
+    for name, text in contents.items():
+        if re.search(r"^[ \t]*#(if|unless|end)\b", text, re.M):
+            problems.append(f"{case}: {name} has an #if, #unless or #end line")
+# The NATS users.
+users = open("config/nats/users.conf", encoding="utf-8").read()
+if on_files.get("nats-users") != users:
+    problems.append("with consent: the NATS users are not config/nats/users.conf")
+lines = users.splitlines(keepends=True)
+start = [i for i, line in enumerate(lines) if line.strip() == "# consent"]
+if len(start) != 1:
+    problems.append("config/nats/users.conf has no user consent")
+elif off_files.get("nats-users") != "".join(lines[:start[0]] + lines[start[0] + 2:]):
+    problems.append("without consent: the NATS users are not config/nats/users.conf less the user consent")
+
+
+def issuers(document):
+    return [entry["issuer"] for entry in document["ServiceEnvelope"]["trustedIssuers"]]
+
+
+# Each file without consent: the file with consent less the consent parts.
+installation = {"services": ["wallet"]}
+for name in sorted(set(on_files) - {"nats-users"}):
+    loads = json.loads if name == "dashboard-config" else yaml.safe_load
+    with_consent = loads(on_files[name])
+    if isinstance(with_consent, dict) and "Installation" in with_consent:
+        problems.append(f"with consent: {name} has Installation")
+    if name not in off_files:
+        if name not in ("consent-config", "consent-migrate-config"):
+            problems.append(f"without consent: no file {name}")
+        continue
+    expected = copy.deepcopy(with_consent)
+    if name in ("api-config", "webhook-config"):
+        if "igrant-consent-management" not in issuers(with_consent):
+            problems.append(f"with consent: {name} does not trust igrant-consent-management")
+        expected["ServiceEnvelope"]["trustedIssuers"] = [
+            entry for entry in expected["ServiceEnvelope"]["trustedIssuers"] if entry["issuer"] != "igrant-consent-management"]
+        expected["Installation"] = installation
+    elif name == "gateway-config":
+        if with_consent["Gateway"]["upstreams"].get("consent") != {"url": "http://consent:80", "requestTimeoutSeconds": 30}:
+            problems.append("with consent: the gateway has no upstream consent")
+        expected["Gateway"]["upstreams"].pop("consent", None)
+        expected["Installation"] = installation
+    elif name == "wallet-config-config":
+        if "consent" not in with_consent.get("read_access", {}):
+            problems.append("with consent: wallet-config has no read_access.consent")
+        expected["read_access"].pop("consent", None)
+    if loads(off_files[name]) != expected:
+        problems.append(f"without consent: {name} is not the file with consent less the consent parts")
+if problems:
+    print("; ".join(problems))
+    sys.exit(1)
+print(f"the consent services, the files ({len(off_files)} without, {len(on_files)} with consent) and the NATS users")
+PY
+)"; then
+      ok "consent: $output"
+    else
+      bad "consent: $output"
+    fi
+    rm -f "$off_file" "$on_file"
+    # The derived line of .env.example, and the databases of database-init.
+    if grep -qx 'COMPOSE_PROFILES=${DB_ENGINE}${CONSENT_ENABLED:+,consent}' .env.example; then
+      ok "consent: the derived COMPOSE_PROFILES of .env.example"
+    else
+      bad "consent: .env.example does not derive COMPOSE_PROFILES from CONSENT_ENABLED"
+    fi
+    databases="$(sed -n 's/^DATABASES=//p' config/database/create-databases.sh)"
+    if [ "$(CONSENT_ENABLED='' bash -c "DATABASES=${databases}; echo \$DATABASES")" = "igrant_api igrant_oidc igrant_wallet" ] \
+      && [ "$(CONSENT_ENABLED=true bash -c "DATABASES=${databases}; echo \$DATABASES")" = "igrant_api igrant_oidc igrant_consent igrant_wallet" ]; then
+      ok "consent: database-init makes igrant_consent only with consent"
+    else
+      bad "consent: the databases of database-init do not follow CONSENT_ENABLED"
+    fi
+    if output="$(CONSENT_ENABLED=false python3 -I ./render-configs.py --print 2>&1)" || ! grep -q 'CONSENT_ENABLED must be empty or true' <<< "$output"; then
+      bad "consent: CONSENT_ENABLED=false does not stop make configs: ${output:0:200}"
+    else
+      ok "consent: CONSENT_ENABLED=false stops make configs"
+    fi
+    # make secrets (secrets.sh) in a copy of this folder, with a stand-in
+    # for igrant-api (no real key): the public nkey of consent only with
+    # consent (NATS refuses an nkey that no user uses), and the consent
+    # files also without consent.
+    local copy fake nkeys_off nkeys_on
+    copy="$(mktemp -d)"
+    tar -c --exclude ./secrets --exclude ./generated . | tar -x -C "$copy"
+    fake="$copy/igrant-api-stand-in"
+    cat > "$fake" <<'FAKE'
+#!/bin/sh
+# Stand-in for "igrant-api keys": writes placeholder files, no key.
+[ "$1" = keys ] || exit 1
+command="$2"
+shift 2
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) [ "$command" = export-token-jwks ] || out="$2"; shift 2 ;;
+    --out) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "$command" = generate-nats-seed ]; then
+  printf 'SUTEST\n' > "$out"
+  printf 'U%s\n' AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+else
+  printf '{"keys": []}\n' > "$out"
+fi
+FAKE
+    chmod 755 "$fake"
+    if ! output="$(cd "$copy" && CONSENT_ENABLED='' SMTP_USERNAME='' IGRANT_API_BIN="$fake" ./secrets.sh 2>&1)"; then
+      bad "consent: make secrets without consent: ${output:0:300}"
+    else
+      nkeys_off="$(grep -c '^NATS_NKEY_' "$copy/secrets/public/nats-nkeys.conf" || true)"
+      if grep -q '^NATS_NKEY_CONSENT:' "$copy/secrets/public/nats-nkeys.conf" || [ ! -s "$copy/secrets/consent/nats-consent.nk" ] \
+        || [ ! -s "$copy/secrets/database/igrant_consent-password" ]; then
+        bad "consent: make secrets without consent: the consent nkey is in nats-nkeys.conf, or a consent file is missing"
+      elif ! output="$(cd "$copy" && CONSENT_ENABLED=true SMTP_USERNAME='' IGRANT_API_BIN="$fake" ./secrets.sh 2>&1)"; then
+        bad "consent: make secrets with consent: ${output:0:300}"
+      else
+        nkeys_on="$(grep -c '^NATS_NKEY_' "$copy/secrets/public/nats-nkeys.conf" || true)"
+        if grep -q '^NATS_NKEY_CONSENT:' "$copy/secrets/public/nats-nkeys.conf" && [ "$nkeys_on" -eq $((nkeys_off + 1)) ]; then
+          ok "consent: make secrets writes the consent nkey only with consent ($nkeys_off and $nkeys_on nkeys)"
+        else
+          bad "consent: make secrets with consent: no consent nkey in nats-nkeys.conf"
+        fi
+      fi
+    fi
+    if output="$(cd "$copy" && CONSENT_ENABLED=false SMTP_USERNAME='' IGRANT_API_BIN="$fake" ./secrets.sh 2>&1)" \
+      || ! grep -q 'CONSENT_ENABLED must be empty' <<< "$output"; then
+      bad "consent: CONSENT_ENABLED=false does not stop make secrets"
+    else
+      ok "consent: CONSENT_ENABLED=false stops make secrets"
+    fi
+    rm -rf "$copy"
   fi
 
   # The Makefile's platform operator targets (make -n: no container): the
@@ -831,7 +1049,8 @@ def env_files(path):
 services_files, render_files = env_files("docker-compose.yaml"), env_files("compose.render.yaml")
 if services_files != render_files + ["generated/configs.env"]:
     problems.append(f"the values files of the services {services_files} are not those of the render {render_files} and generated/configs.env")
-# One generated/ file config per template, no content config.
+# One generated/ file config per template, and nats-users.conf (the NATS
+# users, not a template); no content config.
 generated = {}
 for name, config in project.get("configs", {}).items():
     if "content" in config:
@@ -842,8 +1061,8 @@ for name, config in project.get("configs", {}).items():
         if base.rsplit(".", 1)[0] != name:
             problems.append(f"the config {name} is the file {base}")
         generated[name] = base
-if sorted(generated.values()) != sorted(templates):
-    problems.append(f"the generated/ file configs {sorted(generated.values())} are not the templates {sorted(templates)}")
+if sorted(generated.values()) != sorted(list(templates) + ["nats-users.conf"]):
+    problems.append(f"the generated/ file configs {sorted(generated.values())} are not the templates {sorted(templates)} and nats-users.conf")
 # The hash label of each service, and the hash in generated/configs.env.
 hashes = dict(line.split("=", 1) for line in open("generated/configs.env", encoding="utf-8").read().splitlines() if line and not line.startswith("#"))
 labelled = 0
@@ -899,21 +1118,24 @@ PY
 
   # The renderer (render-configs.py) in a copy of this folder, with one
   # extra template: $$ gives $, and ${VAR:+...} and a value with a shell $
-  # follow the Compose rules; modes 0644 (files) and 0755 (folder); a file
-  # that is not a template (a stale file, a temporary file of a stopped run)
-  # is removed; --check passes, and fails after a value changes; a second
-  # run writes the same bytes; a missing required value stops the run
-  # before it writes a file.
+  # follow the Compose rules; #if and #unless keep their lines for a value
+  # and for no value; modes 0644 (files) and 0755 (folder); a file that is
+  # not a template (a stale file, a temporary file of a stopped run) is
+  # removed; --check passes, and fails after a value changes; a second run
+  # writes the same bytes; a missing required value and an #if without
+  # #end stop the run before it writes a file.
   if command -v python3 > /dev/null; then
     local copy output
     copy="$(mktemp -d)"
     tar -c --exclude ./secrets --exclude ./generated . | tar -x -C "$copy"
     if output="$(cd "$copy" && python3 - 2>&1 <<'PY'
-import hashlib, os, stat, subprocess, sys
+import hashlib, json, os, stat, subprocess, sys
 problems = []
 text = open("compose.configs.yaml", encoding="utf-8").read()
 text = text.replace("    configs:\n      - ", "    configs:\n      - zz-test.yaml\n      - ", 1)
-text += "  zz-test.yaml:\n    content: |\n      dollar: $$HOME\n      ${RENDER_TEST:+test: ${RENDER_TEST}}\n      tag: ${PLATFORM_TAG}\n"
+text += ("  zz-test.yaml:\n    content: |\n      dollar: $$HOME\n      ${RENDER_TEST:+test: ${RENDER_TEST}}\n"
+         "      #if ${RENDER_TEST:-}\n      if: kept\n      #end\n      #unless ${RENDER_TEST:-}\n      unless: kept\n      #end\n"
+         "      tag: ${PLATFORM_TAG}\n")
 open("compose.configs.yaml", "w", encoding="utf-8").write(text)
 os.makedirs("generated", exist_ok=True)
 for stale in ("stale.yaml", ".render-left"):
@@ -926,7 +1148,7 @@ first = run()
 if first.returncode != 0:
     sys.exit(f"the render failed: {first.stdout}")
 tag = [l.split("=", 1)[1] for l in open(".env", encoding="utf-8").read().splitlines() if l.startswith("PLATFORM_TAG=")][-1]
-want = f"dollar: $HOME\ntest: a$b\ntag: {tag}\n".encode()
+want = f"dollar: $HOME\ntest: a$b\nif: kept\ntag: {tag}\n".encode()
 got = open("generated/zz-test.yaml", "rb").read()
 if got != want:
     problems.append(f"zz-test.yaml is {got!r}, not {want!r}")
@@ -944,6 +1166,9 @@ if changed.returncode == 0 or "zz-test.yaml" not in changed.stdout or "configs.e
     problems.append(f"--check passes after a value changes: {changed.stdout.strip()}")
 if run().returncode != 0 or {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
     problems.append("a second run writes other bytes")
+empty = run("--print", extra={"RENDER_TEST": ""})
+if empty.returncode != 0 or json.loads(empty.stdout).get("zz-test.yaml") != f"dollar: $HOME\n\nunless: kept\ntag: {tag}\n":
+    problems.append(f"#if and #unless without a value: {empty.stdout.strip()[:200]}")
 text = open("compose.configs.yaml", encoding="utf-8").read()
 open("compose.configs.yaml", "w", encoding="utf-8").write(text + "      required: ${RENDER_MISSING:?RENDER_MISSING is required}\n")
 missing = run(extra={"RENDER_TEST": "new"})
@@ -951,10 +1176,16 @@ if missing.returncode == 0 or "RENDER_MISSING is required" not in missing.stdout
     problems.append(f"a missing required value does not stop the render: {missing.stdout.strip()}")
 if {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
     problems.append("a stopped render changed a file")
+open("compose.configs.yaml", "w", encoding="utf-8").write(text + "      #if ${RENDER_TEST:-}\n")
+unclosed = run(extra={"RENDER_TEST": "new"})
+if unclosed.returncode == 0 or "without #end" not in unclosed.stdout:
+    problems.append(f"an #if without #end does not stop the render: {unclosed.stdout.strip()}")
+if {name: open(os.path.join("generated", name), "rb").read() for name in os.listdir("generated")} != snapshot:
+    problems.append("a stopped render changed a file")
 if problems:
     print("; ".join(problems))
     sys.exit(1)
-print("$$, ${VAR:+...} and a value with $, the modes, the removal of a stale file, --check, a second run and a missing value")
+print("$$, ${VAR:+...} and a value with $, #if and #unless, the modes, the removal of a stale file, --check, a second run, a missing value and an #if without #end")
 PY
 )"; then
       ok "make configs: $output"
@@ -1132,7 +1363,7 @@ PY
   if command -v nats-server > /dev/null; then
     local dir
     dir="$(mktemp -d)"
-    cp config/nats/nats.conf config/nats/users.conf "$dir/"
+    cp config/nats/nats.conf "$dir/"
     sed -i.orig "s#store_dir: \"/data\"#store_dir: \"${dir}/data\"#" "$dir/nats.conf"
     # Stand-in public nkeys (no secrets) with the make secrets names.
     cat > "$dir/nkeys.conf" <<'NKEYS'
@@ -1143,12 +1374,25 @@ NATS_NKEY_WALLET_CONFIG: "UCUBGBWEFKGAAPHRHLNTDDL53F7QVKXLIXWDMA5EYCEFGEZ7TERRRJ
 NATS_NKEY_WALLET_SERVICE: "UC3VBAJ2Y63SP755G2QEVR6HVKGIPTLNSJT74N53PLM6UQN466BGAB2K"
 NATS_NKEY_WALLET_WORKER: "UAGXS2RAA3KKGT722PQLZPXUOGC2GM7UEOFHE4RVSFPEHPDKA3IDT7VY"
 NKEYS
-    local output
-    if output="$(nats-server -t -c "$dir/nats.conf" 2>&1)"; then
-      ok "nats-server -t config/nats/nats.conf"
-    else
-      bad "nats-server -t: $output"
-    fi
+    # The users of make configs (generated/nats-users.conf), without and
+    # with consent. make secrets writes the consent nkey only with consent.
+    local output consent
+    cp "$dir/nkeys.conf" "$dir/nkeys-with-consent.conf"
+    for consent in "" true; do
+      if [ -n "$consent" ]; then
+        cp "$dir/nkeys-with-consent.conf" "$dir/nkeys.conf"
+      else
+        grep -v '^NATS_NKEY_CONSENT:' "$dir/nkeys-with-consent.conf" > "$dir/nkeys.conf"
+      fi
+      if ! CONSENT_ENABLED="$consent" python3 -I ./render-configs.py --print \
+          | python3 -c 'import json, sys; sys.stdout.write(json.load(sys.stdin)["nats-users.conf"])' > "$dir/users.conf"; then
+        bad "nats-server -t${consent:+ with consent}: no NATS users from make configs"
+      elif output="$(nats-server -t -c "$dir/nats.conf" 2>&1)"; then
+        ok "nats-server -t config/nats/nats.conf${consent:+ with consent}"
+      else
+        bad "nats-server -t${consent:+ with consent}: $output"
+      fi
+    done
     rm -rf "$dir"
   else
     warn "NATS configuration not checked (nats-server is not installed)"
