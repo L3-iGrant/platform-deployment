@@ -1,6 +1,9 @@
 # The certificate of the three public hosts. cert-manager writes it to the
 # Secret platform-tls, the certificate of the listener https
-# (02-gateway.yaml), and renews it before it expires.
+# (02-gateway.yaml), and renews it before it expires. Keep it in
+# envoy-gateway-system: cert-manager makes the challenge route in the
+# namespace of the Certificate, and the listener http takes routes only from
+# its own namespace.
 #   kubectl apply -f 06-certificate.yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate

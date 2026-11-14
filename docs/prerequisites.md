@@ -62,7 +62,13 @@ helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version v
   --set config.gatewayAPI.enabled=true
 ```
 
-If cert-manager already runs in your cluster, set the same value on it, then restart it: `kubectl -n cert-manager rollout restart deployment cert-manager`.
+If cert-manager already runs in your cluster, set the value on it and restart it. Keep your own CRD setting: do not add `crds.enabled=true` when you manage the CRDs outside Helm.
+
+```bash
+helm upgrade cert-manager oci://quay.io/jetstack/charts/cert-manager --version v1.21.3 \
+  -n cert-manager --reuse-values --set config.gatewayAPI.enabled=true
+kubectl -n cert-manager rollout restart deployment cert-manager
+```
 
 Check: `kubectl wait --timeout=5m -n cert-manager deployment --all --for=condition=Available` shows `condition met` for the 3 Deployments.
 
@@ -84,7 +90,7 @@ The Gateway `platform` has the listener `http` (port 80) for the redirect and th
 kubectl apply -f ./platform-deployment/manifests/envoy-gateway/02-gateway.yaml
 ```
 
-Check: `kubectl -n envoy-gateway-system get pods -l gateway.envoyproxy.io/owning-gateway-name=platform` shows 2 pods `Running`, and after a minute `kubectl -n envoy-gateway-system get gateway platform` shows the address of the load balancer under `ADDRESS`. Point the three host names to this address in your DNS. The listener `https` has no certificate until step 8.
+Check: `kubectl -n envoy-gateway-system get pods -l gateway.envoyproxy.io/owning-gateway-name=platform` shows 2 pods `Running`, and after a minute `kubectl -n envoy-gateway-system get gateway platform` shows the address of the load balancer under `ADDRESS`. Point the three host names to this address in your DNS. If the load balancer has only a host name (see [A load balancer with the PROXY protocol](#a-load-balancer-with-the-proxy-protocol)), `ADDRESS` shows that host name: create its DNS record first (an A record to the load balancer address from your cloud console), then point the three host names to it (CNAME or A). The listener `https` has no certificate until step 8.
 
 ### Step 5: the client address
 
@@ -104,7 +110,7 @@ kubectl apply -f ./platform-deployment/manifests/envoy-gateway/04-http-redirect.
 
 The route redirects every HTTP request to HTTPS with 301. The routes of the certificate challenges (step 8) still work: each names its host and an exact path, so it takes precedence.
 
-Check: `curl -sI http://api.example.org/` shows `301` and `location: https://api.example.org/`.
+Check: when the DNS change of step 4 is visible to your resolver, `curl -sI http://api.example.org/` shows `301` and `location: https://api.example.org/`.
 
 ### Step 7: the ACME issuer
 

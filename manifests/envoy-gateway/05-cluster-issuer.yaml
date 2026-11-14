@@ -11,6 +11,8 @@ spec:
   acme:
     # To test first, use the test server https://acme-staging-v02.api.letsencrypt.org/directory
     server: https://acme-v02.api.letsencrypt.org/directory
+    # Let's Encrypt refuses a contact address in example.org or example.com:
+    # change it, or remove the line (no contact address).
     email: admin@example.org               # change: the e-mail address of your ACME account
     privateKeySecretRef:
       name: letsencrypt-account-key        # cert-manager creates it in its namespace

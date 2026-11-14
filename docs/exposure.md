@@ -82,6 +82,13 @@ ingress-nginx was retired on 24 March 2026 and gets no security fixes; its colum
 
 `exposure-kgateway.yaml` has these settings except the client address header: add the header together with the policy of your Gateway.
 
+## Switch from ingress-nginx to Envoy Gateway
+
+1. Install Envoy Gateway, the Gateway `platform` and its certificate (see [Envoy Gateway](prerequisites.md#envoy-gateway)). The new load balancer has a new address, and both load balancers run for a while (check the quota of your cloud).
+2. Run `helm upgrade` with `profiles/exposure-envoy-gateway.yaml` in place of the ingress-nginx profile. The chart replaces the Ingresses with HTTPRoutes. With network policies, the upgrade also moves `networkPolicy.ingressController` to the Envoy pods, so ingress-nginx stops reaching the platform at that moment: do steps 2 and 3 together.
+3. Point the three host names to the address of the Gateway, and wait until the DNS change is visible.
+4. Remove ingress-nginx.
+
 ## Proxies in front of the cluster
 
 These routes on the wallet host answer with `Cache-Control: max-age=60` and a strong `ETag`:
