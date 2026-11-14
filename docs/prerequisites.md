@@ -94,7 +94,7 @@ Check: `kubectl -n envoy-gateway-system get pods -l gateway.envoyproxy.io/owning
 
 ### Step 5: the client address
 
-`03-client-traffic-policy.yaml` makes Envoy set `X-Real-IP` to the client address and overwrite any value that the client sends. `profiles/exposure-envoy-gateway.yaml` sets `clientAddress.header: X-Real-IP` and needs this policy (see [Exposure](exposure.md#what-your-proxy-must-do)).
+`03-client-traffic-policy.yaml` makes Envoy set `X-Real-IP` to the client address and overwrite any value that the client sends. It also raises the buffer of each client connection and of each HTTP/2 stream to 1 MiB (the Envoy Gateway defaults are 32 KiB and 64 KiB): with the defaults, a client far away cannot download the dashboard's main script (about 8 MB) within the 60 s route timeout. `profiles/exposure-envoy-gateway.yaml` sets `clientAddress.header: X-Real-IP` and needs this policy (see [Exposure](exposure.md#what-your-proxy-must-do)).
 
 ```bash
 kubectl apply -f ./platform-deployment/manifests/envoy-gateway/03-client-traffic-policy.yaml

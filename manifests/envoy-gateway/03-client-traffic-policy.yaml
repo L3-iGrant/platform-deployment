@@ -1,7 +1,13 @@
-# The client address for the rate limits and the IP allow-lists of the API
-# keys: Envoy sets X-Real-IP to the address of the client and overwrites any
-# value that the client sends. profiles/exposure-envoy-gateway.yaml sets
-# clientAddress.header: X-Real-IP; it needs this policy.
+# The client side of the Gateway platform:
+# - the client address for the rate limits and the IP allow-lists of the API
+#   keys: Envoy sets X-Real-IP to the address of the client and overwrites
+#   any value that the client sends. profiles/exposure-envoy-gateway.yaml
+#   sets clientAddress.header: X-Real-IP; it needs this policy;
+# - larger buffers than the Envoy Gateway defaults (32 KiB for each
+#   connection, 64 KiB for each HTTP/2 stream). With the defaults, a client
+#   far away (a long round trip) downloads the dashboard's main script
+#   (about 8 MB) so slowly that the 60 s route timeout stops it.
+# Keep it ONE policy: a second ClientTrafficPolicy on the Gateway conflicts.
 #   kubectl apply -f 03-client-traffic-policy.yaml
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: ClientTrafficPolicy
@@ -18,6 +24,14 @@ spec:
       set:
         - name: X-Real-IP
           value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+  # Envoy buffers up to this much of each client connection (Envoy's own
+  # default; it holds a few round trips of a fast download).
+  connection:
+    bufferLimit: 1Mi
+  # HTTP/2: the buffer of each stream and of each connection.
+  http2:
+    initialStreamWindowSize: 1Mi
+    initialConnectionWindowSize: 2Mi
   # Only when your load balancer sends the PROXY protocol (Envoy Gateway
   # v1.5 and later; earlier versions: enableProxyProtocol: true). Then Envoy
   # takes the client address from the PROXY header. optional: true also
