@@ -78,7 +78,7 @@ Check: `kubectl get gatewayclass envoy-gateway` shows `ACCEPTED` `True`.
 
 ### Step 4: the Gateway
 
-The Gateway `platform` has the listener `http` (port 80) for the redirect and the certificate challenges, and the listener `https` (port 443) for the routes of the chart. Envoy listens on the container ports 10080 and 10443: Envoy Gateway adds 10000 to a listener port below 1024.
+The Gateway `platform` has the listener `http` (port 80) for the redirect and the certificate challenges, and the listener `https` (port 443) for the routes of the chart. `profiles/exposure-envoy-gateway.yaml` expects exactly these names: the Gateway `platform` in `envoy-gateway-system` with the listener `https`. With other names, change `parentRefs` in your copy of the profile, and `networkPolicy.ingressController`. Envoy listens on the container ports 10080 and 10443: Envoy Gateway adds 10000 to a listener port below 1024.
 
 ```bash
 kubectl apply -f ./platform-deployment/manifests/envoy-gateway/02-gateway.yaml
@@ -131,12 +131,12 @@ Check: after a few minutes, `kubectl -n envoy-gateway-system get certificate pla
 The services need the client address. A load balancer that passes the client address on as the source address (the Envoy Service has `externalTrafficPolicy: Local`, the Envoy Gateway default) needs nothing more. A load balancer that replaces the source address must send the PROXY protocol, and Envoy must read it:
 
 - Turn the PROXY protocol on at the load balancer: an annotation of your cloud in `envoyService.annotations` of `01-gatewayclass.yaml`.
-- Turn it on in Envoy: `proxyProtocol` in `03-client-traffic-policy.yaml` (the field `ClientTrafficPolicy.spec.proxyProtocol` of Envoy Gateway v1.5 and later; `enableProxyProtocol: true` before v1.5, deprecated and planned for removal in v1.11).
+- Turn it on in Envoy: uncomment `proxyProtocol` in `03-client-traffic-policy.yaml`, in the same ClientTrafficPolicy that sets `X-Real-IP` (two ClientTrafficPolicies on one Gateway conflict) (the field `ClientTrafficPolicy.spec.proxyProtocol` of Envoy Gateway v1.5 and later; `enableProxyProtocol: true` before v1.5, deprecated and planned for removal in v1.11).
 
-With the PROXY protocol, Envoy refuses a connection without the PROXY header. In most clusters, kube-proxy sends a connection from a pod to the address of the load balancer straight to the Envoy pods, without the header: the wallet then cannot call its own hosts, and the HTTP-01 self check of cert-manager fails. Use one of these:
+With the PROXY protocol, Envoy refuses a connection without the PROXY header. In most clusters, kube-proxy sends a connection from a pod to the address of the load balancer straight to the Envoy pods, without the header: the wallet then cannot call its own hosts, and the HTTP-01 self check of cert-manager fails. So, with the PROXY protocol:
 
-- `proxyProtocol: {optional: true}` (in the file): Envoy also accepts a connection without the header and uses its source address;
-- a load balancer that kube-proxy does not short-cut: a load balancer with `ipMode: Proxy` in the status of the Service, or with only a host name (see the documentation of your cloud). The calls from the pods then go through the load balancer and get the header.
+1. Avoid this short cut: use a load balancer that has only a host name in the status of the Envoy Service (many clouds have an annotation for it), or `ipMode: Proxy`. The calls from the pods then go out through the load balancer, get the header, and the `internet` egress rules of the network policies allow them.
+2. If your cloud has neither, set `proxyProtocol: {optional: true}` (in the file): Envoy also accepts a connection without the header and uses its source address.
 
 Only the load balancer may reach the node ports of the Envoy Service (for example with a firewall rule): a client that reaches Envoy directly can send its own PROXY header.
 
@@ -145,7 +145,8 @@ Only the load balancer may reach the node ports of the Envoy Service (for exampl
 With `networkPolicy.enabled: true`, the chart defaults fit this Gateway (see [Network policies](network-policies.md#envoy-gateway)):
 
 - `networkPolicy.ingressController` selects the Envoy pods of the Gateway `platform` in the namespace `envoy-gateway-system` (labels `app.kubernetes.io/name: envoy`, `app.kubernetes.io/component: proxy`, `gateway.envoyproxy.io/owning-gateway-name: platform`, `gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system`). Only these pods reach the gateway, the wallet service and the dashboard.
-- The egress profile `platform` lets the wallet roles reach these pods on the ports 10080 and 10443, and the load balancer on 80 and 443.
+- With the PROXY protocol and no short cut (above), the calls of the wallet roles to their own hosts go out through the load balancer: the `internet` profiles allow a public load balancer address, and `networkPolicy.egress.profiles.platform.cidrs` takes a private one (ports 80 and 443).
+- Without the PROXY protocol, kube-proxy sends these calls straight to the Envoy pods: the egress profile `platform` allows the Envoy pods on the container ports 10080 and 10443 (the default).
 
 If you give the Gateway another name or namespace, change these values too.
 

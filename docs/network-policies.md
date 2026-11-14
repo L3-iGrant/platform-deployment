@@ -59,8 +59,8 @@ The Envoy pods of the Gateway `platform` (`manifests/envoy-gateway/`, see [Prere
 
 A wallet role reaches the public hosts of this platform in one of two ways, and the defaults allow both:
 
-- kube-proxy or Cilium sends the connection to the address of the load balancer straight to an Envoy pod, on 10443 or 10080. The profile `platform` allows the pods of `networkPolicy.ingressController` on these ports.
-- The connection goes out to the load balancer and comes back (a load balancer with `ipMode: Proxy`, or with only a host name). A public address of the load balancer is in the `internet` profiles; give a private one to `networkPolicy.egress.profiles.platform.cidrs` (ports 80 and 443).
+- With the PROXY protocol, the load balancer must not be short-cut (see [A load balancer with the PROXY protocol](prerequisites.md#a-load-balancer-with-the-proxy-protocol)): the connection goes out to the load balancer and comes back. A public address of the load balancer is in the `internet` profiles; give a private one to `networkPolicy.egress.profiles.platform.cidrs` (ports 80 and 443).
+- Without the PROXY protocol, kube-proxy or Cilium sends the connection to the address of the load balancer straight to an Envoy pod, on 10443 or 10080. The profile `platform` allows the pods of `networkPolicy.ingressController` on these ports.
 
 With `useListenerPortAsContainerPort: true` in the EnvoyProxy, Envoy listens on 80 and 443, which are also in the default list. If you give the Gateway another name or namespace, change `networkPolicy.ingressController` too.
 

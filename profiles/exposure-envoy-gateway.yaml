@@ -15,7 +15,10 @@
 #
 # Network policies: the chart defaults (networkPolicy.ingressController and
 # networkPolicy.egress.profiles.platform) select the Envoy pods of this
-# Gateway and their ports 10080 and 10443 (docs/network-policies.md).
+# Gateway. With the PROXY protocol, the pods call their own hosts through the
+# load balancer; without it, kube-proxy sends these calls to the Envoy pods
+# on 10080 and 10443, which the platform profile allows by default
+# (docs/network-policies.md).
 exposure:
   type: gatewayAPI
   gatewayAPI:
