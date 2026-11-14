@@ -27,17 +27,6 @@ spec:
   groups:
     - name: ows-wallet-audit
       rules:
-        # A stopped month stays in PostgreSQL, and its partitions cannot be
-        # dropped until an operator fixes the cause and runs audit
-        # export-retry (docs/audit-log.md).
-        - alert: AuditExportStopped
-          expr: max by (namespace, scope) (ows_audit_export_stopped_months{{ $selector }}) > 0
-          for: 10m
-          labels:
-            severity: critical
-          annotations:
-            summary: "The audit export of {{ "{{" }} $labels.scope {{ "}}" }} is stopped"
-            description: "{{ "{{" }} $value {{ "}}" }} closed month(s) of the audited scope {{ "{{" }} $labels.scope {{ "}}" }} in {{ "{{" }} $labels.namespace {{ "}}" }}: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
         - alert: PartitionMonthsAheadLow
           expr: max by (namespace, table) (ows_partition_months_ahead{{ $selector }}) < 2
           for: 1h

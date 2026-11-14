@@ -22,9 +22,9 @@ The wallet has five queues:
 
 | Queue | Actors |
 | --- | --- |
-| `realtime` | the outbox relay (also the durable jobs), the audit anchors, the credential offers, the QES PDF signatures, the Android attestation status list, the writes of the issuer status lists, the issuance counters |
-| `attestation` | the WIA pools of the organisation wallet units |
-| `status` | the status refresh of the held credentials |
+| `realtime` | the outbox relay (also the durable jobs), the audit anchors, the credential offers, the QES PDF signatures, the Android attestation status list, the writes of the issuer status lists, the issuance counters, the credential offers that the organisation wallet receives as a holder (`held_credential.receive_offer`) |
+| `attestation` | the WIA pools of the organisation wallet units, the revocation of the superseded WIAs of a wallet unit (`wallet_unit.revoke_superseded`) |
+| `status` | the status refresh of the held credentials, the refresh of the trust lists of the organisations (`trust.refresh_dispatch` and `trust.refresh_list`; `organisationWallet.trustSources`) |
 | `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer, they end at once) |
 | `maintenance` | the retention purge, the monthly audit log exports, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters |
 
@@ -114,7 +114,6 @@ Each worker pod also reads gauges from the database at each scrape, so every pod
 
 | Alert | Severity | Rule | Meaning |
 | --- | --- | --- | --- |
-| `AuditExportStopped` | critical | `max by (namespace, scope) (ows_audit_export_stopped_months{job="wallet-worker"}) > 0` for 10m | The export of a closed month of an audited scope stopped after 8 attempts. The month stays in PostgreSQL, and the partition step cannot drop its partitions (see [Audit log](audit-log.md#partitions)). Fix the cause, then run `audit export-retry` in a worker pod. |
 | `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition for the current month: inserts fail. Run the upgrade again (the partition step of the migration hook). |
 | `PartitionMonthsAheadLow` | warning | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 2` for 1h | A table has partitions for fewer than 2 months after the current month. |
 | `IssuerStatusListWritesLate` | warning | `max by (namespace) (ows_status_list_change_age_seconds{job="wallet-worker"}) > 60` for 2m | A revocation is not in the published status list after 60 seconds. Check the worker group of the queue `realtime`, and the clock. |

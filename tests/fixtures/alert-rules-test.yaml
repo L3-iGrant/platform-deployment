@@ -5,42 +5,24 @@ rule_files:
   - rules.yaml
 evaluation_interval: 1m
 tests:
-  # A stopped month for the scope issuer: critical after 10 minutes. The
-  # scope kms with 0 gives no alert, and two worker pods give one alert (max).
-  - interval: 1m
-    input_series:
-      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="issuer"}'
-        values: '0 1x30'
-      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-2",scope="issuer"}'
-        values: '0 1x30'
-      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="ow",pod="w-1",scope="kms"}'
-        values: '0x30'
-      # Another release (another namespace) must not raise this alert.
-      - series: 'ows_audit_export_stopped_months{job="wallet-worker",namespace="other",pod="o-1",scope="kms"}'
-        values: '1x30'
-    alert_rule_test:
-      - eval_time: 5m
-        alertname: AuditExportStopped
-        exp_alerts: []
-      - eval_time: 15m
-        alertname: AuditExportStopped
-        exp_alerts:
-          - exp_labels:
-              severity: critical
-              namespace: ow
-              scope: issuer
-            exp_annotations:
-              summary: "The audit export of issuer is stopped"
-              description: "1 closed month(s) of the audited scope issuer in ow: the export stopped after 8 attempts. The month stays in PostgreSQL and its partitions stay. Repair the cause, then run audit export-retry."
   # No partition for the current month: critical after 5 minutes, and the
-  # warning for fewer than 2 future months after 1 hour.
+  # warning for fewer than 2 future months after 1 hour. Two worker pods
+  # give one alert (max).
   - interval: 1m
     input_series:
-      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",table="platform.audit_event"}'
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",pod="w-1",table="platform.audit_event"}'
         values: '-1x90'
-      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",table="issuer.issuance"}'
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",pod="w-2",table="platform.audit_event"}'
+        values: '-1x90'
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="ow",pod="w-1",table="issuer.issuance"}'
         values: '3x90'
+      # Another release (another namespace) must not raise these alerts.
+      - series: 'ows_partition_months_ahead{job="wallet-worker",namespace="other",pod="o-1",table="issuer.issuance"}'
+        values: '-1x90'
     alert_rule_test:
+      - eval_time: 3m
+        alertname: PartitionOfTheMonthMissing
+        exp_alerts: []
       - eval_time: 10m
         alertname: PartitionOfTheMonthMissing
         exp_alerts:

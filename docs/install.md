@@ -105,7 +105,7 @@ When Helm has created the resources, the command waits for the database hooks (H
 - the init hook waits for the database server, then creates the databases and the users;
 - the roles hook creates the wallet's database roles;
 - the migration hook creates the schema of the wallet database;
-- the wallet's read access hooks create the read-only users that the api and consent use to read the wallet database.
+- the wallet's read access hooks create the read-only users that the api and consent (with consent) use to read the wallet database.
 
 See [Database](database.md#hooks-of-the-databases). This can take a few minutes; `--timeout 15m` gives each hook enough time.
 

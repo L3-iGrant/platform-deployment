@@ -129,18 +129,22 @@ because the wallet reads a boolean. */ -}}
 {{- if and $p.existingSecret (not $digests) -}}
 {{- fail "organisationWallet.walletUnit.androidSigningCertificateDigests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
 {{- end -}}
-{{- /* The service pods answer the WIA and key attestation requests of
-wallet units, so only their file gets the Android app digests. */ -}}
-{{- if and $digests (eq $role "service") -}}
+{{- /* The app values (the Android app digests, the App IDs of the iOS
+wallet apps and the Play Integrity keys) go into the service and config
+files, with the same values. The service pods check the protocol 1 requests
+of wallet units with them. The first request that needs the wallet app
+records (a protocol 2 request in a service pod, or the Wallet Apps, Device
+Policy or Health route in a config pod) makes these records from them, one
+time. */ -}}
+{{- $appRole := has $role (list "service" "config") -}}
+{{- if and $digests $appRole -}}
 {{- $_ := set $walletUnit "android_signing_certificate_digests" $digests -}}
 {{- end -}}
-{{- /* App IDs of the iOS wallet apps: the service pods check the App Attest
-objects in the same requests. */ -}}
 {{- $appIds := $w.walletUnit.appAttest.appIds -}}
 {{- if and $w.walletUnit.productionChecksEnabled (not $appIds) -}}
 {{- fail "organisationWallet.walletUnit.appAttest.appIds needs at least one App ID (<Team ID>.<bundle id>) of the iOS wallet app when productionChecksEnabled is true" -}}
 {{- end -}}
-{{- if eq $role "service" -}}
+{{- if $appRole -}}
 {{- $_ := set $walletUnit "app_attest" (dict "app_ids" $appIds) -}}
 {{- end -}}
 {{- if hasKey $files "play-integrity-decryption-key" -}}
@@ -306,8 +310,12 @@ streams. */ -}}
 {{- $_ := set $config "presentation_status_sse" (dict
     "recheck_seconds" ($w.presentationStatusSse.recheckSeconds | int)
     "max_stream_seconds" ($w.presentationStatusSse.maxStreamSeconds | int)) -}}
-{{- /* Public base URL of the api host (api ApiBaseUrl): the wallet builds
-public image URIs for the routes that the gateway sends to it. */ -}}
+{{- end -}}
+{{- /* Public base URL of the api host (api ApiBaseUrl). The config role
+builds the public image URIs of the routes that the gateway sends to it.
+The credential issuer metadata (service role) puts these URIs in place of
+the organisation image routes of the definition displays. */ -}}
+{{- if has $role (list "service" "config") -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
 {{- /* Private hosts that the wallet's SSRF guard allows

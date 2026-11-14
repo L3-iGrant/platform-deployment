@@ -10,7 +10,7 @@ The organisation wallet uses Valkey (a Redis-compatible server) for three things
 - short-lived single-use values (the nonces and the proof ids that a replay check refuses the second time);
 - the caches that its replicas share.
 
-The gateway will use Valkey for the failure counters of unknown API keys. Valkey is never a record: the evidence, the audit log, the locks and the status list counters stay in the database. When Valkey is not available, the routes that need it answer 503, and the jobs run later from the database. The pods stay ready (their readiness does not depend on Valkey).
+The gateway will use Valkey for the failure counters of unknown API keys. Valkey is never a record: the evidence, the audit log, the locks and the status list counters stay in the database. When Valkey is not available, the routes that need it answer 503, and the jobs run later from the database. The service and config pods stay ready (their readiness does not depend on Valkey); the readiness of the workers and the clock checks Valkey (see [Workers and clock](workers.md#probes-and-metrics)).
 
 By default (`redis.mode: bundled`), the chart runs Valkey with Sentinel. With `redis.mode: external`, the processes use your Valkey or Redis (`profiles/redis-external.yaml`, see [External Valkey or Redis](#external-valkey-or-redis)).
 

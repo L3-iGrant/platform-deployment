@@ -22,7 +22,7 @@ How to move an installation to a new release of the platform.
    3. The migration hooks (`ows-api-migrate`, `ows-consent-migrate`, `ows-wallet-migrate`) update the database schemas. The wallet hook connects as the wallet's migrator role. After the grants, it creates the audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)).
    4. The wallet's read access hooks (`ows-wallet-read-access-api`, `ows-wallet-read-access-consent`) update the read-only users that the api and consent use to read the wallet database.
 
-   Valkey is not a hook: it changes with the other resources. Its pods restart one at a time, and a Sentinel moves the primary to a replica before the primary stops (see [Redis](redis.md#bundled-valkey)). The first upgrade to a release with Valkey creates the Valkey pods and their volumes; the wallet pods then get their `redis` section.
+   Valkey is not a hook: it changes with the other resources. Its pods restart one at a time, and a Sentinel moves the primary to a replica before the primary stops (see [Redis](redis.md#bundled-valkey)).
 
    If a hook fails, the upgrade stops and the old pods keep running. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`. After the upgrade, the hook `ows-consent-migrate-after` completes the consent data: it needs `--wait`. The new wallet pods start work only when the database schema is at the head of their release. They wait up to 600 seconds, then exit, and Kubernetes starts them again. See [Database](database.md#hooks-of-the-databases).
 

@@ -785,8 +785,11 @@ PY
     bad "audit $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
-# The wallet's Play Integrity keys (wallet_unit.play_integrity): only the
-# service file names them and only the service pods mount them.
+# The wallet's Play Integrity keys (wallet_unit.play_integrity) and the
+# Android app digests: the service and config files name them and only the
+# service and config pods mount the keys. The two files have equal app
+# settings (app_attest, the digests and play_integrity): the config pods
+# make the first wallet app records from them.
 play_integrity() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -800,12 +803,13 @@ expected = json.loads(sys.argv[2])
 def find(kind, name):
     return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
 files = find("ConfigMap", "t-wallet")["data"]
+app_roles = ("service", "config")
 for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
     unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
-    want = expected["play_integrity"] if role == "service" else None
+    want = expected["play_integrity"] if role in app_roles else None
     if unit.get("play_integrity") != want:
         print(f"{role}.yaml wallet_unit.play_integrity is {unit.get('play_integrity')!r}")
-    want = expected["digests"] if role == "service" else None
+    want = expected["digests"] if role in app_roles else None
     if unit.get("android_signing_certificate_digests") != want:
         print(f"{role}.yaml wallet_unit.android_signing_certificate_digests is {unit.get('android_signing_certificate_digests')!r}")
     if "play_integrity_credentials_file" in unit:
@@ -814,8 +818,12 @@ for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
     mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
                for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
     secrets = {path: secret for path, secret in mounted.items() if path.startswith("play-integrity")}
-    if secrets != (expected["secrets"] if role == "service" else {}):
+    if secrets != (expected["secrets"] if role in app_roles else {}):
         print(f"the {role} pods mount {secrets!r} as the Play Integrity keys")
+units = [yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {} for role in app_roles]
+for key in ("app_attest", "android_signing_certificate_digests", "play_integrity"):
+    if units[0].get(key) != units[1].get(key):
+        print(f"service.yaml and config.yaml have a different wallet_unit.{key}")
 PY
 )" && [ -z "$problems" ]; then
     ok "play integrity $name"
@@ -827,13 +835,14 @@ digest=ed5ed923ed30fab5ef5721931f43d1270b13340045bbbef31e0a9927a57e4142
 play_integrity "no keys by default" '{"play_integrity": null, "digests": null, "secrets": {}}'
 play_integrity "digests without keys" "{\"play_integrity\": null, \"digests\": [\"$digest\"], \"secrets\": {}}" \
   --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}"
-play_integrity "keys in the service pods only" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"min_version_code\": 42}, \"digests\": [\"$digest\"], \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" \
+play_integrity "keys in the service and config pods" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"min_version_code\": 42}, \"digests\": [\"$digest\"], \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" \
   --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}" \
   --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
 guard "Play Integrity keys without the certificate digest" "androidSigningCertificateDigests needs the SHA-256" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
 guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
 # The App IDs of the iOS wallet apps (wallet_unit.app_attest.app_ids): only
-# the service file names them (for WIA and key attestation requests).
+# the service file (the protocol 1 checks) and the config file (the first
+# wallet app records) name them.
 app_attest() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -847,7 +856,7 @@ expected = json.loads(sys.argv[2])
 files = next(d for d in docs if d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "t-wallet")["data"]
 for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
     unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
-    want = {"app_ids": expected} if role == "service" else None
+    want = {"app_ids": expected} if role in ("service", "config") else None
     if unit.get("app_attest") != want:
         print(f"{role}.yaml wallet_unit.app_attest is {unit.get('app_attest')!r}")
 PY
@@ -1173,7 +1182,7 @@ guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.
 # Alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh runs
 # them with promtool): none by default, and only with the ServiceMonitor.
 lacks "no PrometheusRule by default" "kind: PrometheusRule" --set organisationWallet.serviceMonitor.enabled=true
-renders "wallet PrometheusRule: a stopped audit export is critical" "alert: AuditExportStopped" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
+renders "wallet PrometheusRule: a missing partition of the month is critical" "alert: PartitionOfTheMonthMissing" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
 renders "wallet PrometheusRule: labels for the rule selector" "release: kube-prometheus" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
 guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" --set organisationWallet.prometheusRule.enabled=true
 # Servers (service and config): a headless Service for the metrics port

@@ -526,10 +526,11 @@ configs:
       server:
         route_group: service
         port: 8080
-        # The reverse proxies that may set X-Forwarded-For and
-        # X-Forwarded-Proto (the scheme is part of the DPoP htu check):
-        # loopback and the private address ranges, which cover the Docker
-        # networks and a proxy on the Docker host.
+        # The reverse proxies that may set X-Forwarded-For (the client
+        # address of the nonce rate limit and of the logs) and
+        # X-Forwarded-Proto: loopback and the private address ranges, which
+        # cover the Docker networks and a proxy on the Docker host. The DPoP
+        # htu check uses the published URL, not the request scheme.
         forwarded_allow_ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"]
       database:
         type: ${DB_ENGINE}
@@ -586,6 +587,10 @@ configs:
       service_envelope:
         signing_jwks_file: /run/secrets/eudi-wallet/service-envelope-jwks.json
         active_kid: eudi-wallet-1
+      # The public base URL of the api: the credential issuer metadata puts
+      # the public image URIs in place of the organisation image routes.
+      gateway_api:
+        public_api_base_url: ${API_PUBLIC_URL}
 
   # Wallet worker (the queue actors; health port 9191).
   wallet-worker-config.yaml:

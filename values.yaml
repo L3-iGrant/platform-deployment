@@ -488,8 +488,9 @@ organisationWallet:
     timeouts: {}
   # -- DEBUG, INFO, WARNING, ERROR or CRITICAL.
   logLevel: INFO
+  # -- Wallet units: the protocol 1 checks, and the first wallet app records (made one time).
   walletUnit:
-    # -- true: the production checks of the store apps. false: development builds.
+    # -- Protocol 1. true: the production checks of the store apps. false: development builds.
     productionChecksEnabled: false
     # -- SHA-256 of the signing certificates of the Android app (required with Play Integrity).
     androidSigningCertificateDigests: []

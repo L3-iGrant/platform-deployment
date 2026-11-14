@@ -79,8 +79,11 @@ services:
     # The server logs every DDL statement (log_statement=ddl: CREATE, ALTER,
     # DROP, GRANT, REVOKE and the role statements), every connection and
     # every disconnection to the container log (docker compose logs
-    # postgres).
-    command: ["postgres", "-c", "max_connections=200", "-c", "password_encryption=scram-sha-256",
+    # postgres). max_connections: at peak, the default pools of the
+    # services open about 290 connections (the wallet about 190, the api,
+    # webhook, gateway and consent about 100), and the server keeps 3 for
+    # the superuser.
+    command: ["postgres", "-c", "max_connections=400", "-c", "password_encryption=scram-sha-256",
               "-c", "log_statement=ddl", "-c", "log_connections=on", "-c", "log_disconnections=on"]
     environment:
       POSTGRES_USER: postgres
@@ -787,9 +790,8 @@ services:
     # (worker.state_directory).
     tmpfs:
       - /run/ows-worker:size=64m
-    # /tmp on the host's disk, not in memory: the monthly audit export (only
-    # with AUDIT_BUCKET_NAME) writes one month of one data scope's audit log
-    # twice to /tmp/ows-audit-export-* (README.md, "Security settings").
+    # /tmp on the host's disk. Compose has no audit bucket, so the monthly
+    # audit export does not run (README.md, "Audit log").
     volumes:
       - wallet-worker-tmp:/tmp
     # /readyz on the health port checks Valkey and the database.

@@ -650,11 +650,6 @@ all profiles: a service without these settings fails the test.
   and writes nothing (measured on a store of 1,000,000 files: about
   3 seconds, no writes). It is safe to stop at any point: the next start
   changes the rest.
-- The monthly audit export (only with `AUDIT_BUCKET_NAME`) writes one
-  month of the audit log of one data scope twice to `/tmp` of
-  `wallet-worker`: the volume `wallet-worker-tmp` is on the disk of this
-  computer. Keep enough free disk space for it (twice the largest month of
-  one data scope). The files exist only while the export runs.
 - The api image has no shell: every service of the api image runs
   `/app/bin/igrant-api` directly.
 - `openbao`, `openbao-init` and the Valkey services: `openbao` runs as the
@@ -713,7 +708,9 @@ The API host and the wallet host need these proxy settings:
   seconds.
 - No response buffering, so each event reaches the client at once.
 - The headers `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`. The wallet
-  uses `X-Forwarded-Proto` for the DPoP checks. It accepts these headers
+  uses the client address of `X-Forwarded-For` for the rate limit of the
+  nonce routes and in its logs (the DPoP checks use the published URL, not
+  the request scheme). It accepts these headers
   only from the loopback address and the ranges 10.0.0.0/8, 172.16.0.0/12,
   192.168.0.0/16, 100.64.0.0/10 and fc00::/7, so a reverse proxy on another
   computer must connect from one of these addresses.
@@ -796,6 +793,16 @@ the feature is off, and the api answers that it is not configured.
   configuration or connection error; `Exited (3)`: the schema is at the
   head, but the grants are not complete. Read `docker compose logs
   wallet-migrate`, fix the cause, then run `make up` again.
+- `wallet-migrate` shows `Exited (4)`: a partition step failed (for example
+  the rows of a month in the default partition). The schema is at the head
+  and the grants are complete. Take the scope and the month from `docker
+  compose logs wallet-migrate`, run `docker compose run --rm --no-deps
+  --entrypoint /app/.venv/bin/audit wallet-migrate partitions repair
+  --scope <scope> --month <YYYY-MM>`, then run `make up` again.
+- `wallet-migrate` shows `Exited (5)`: a newer release migrated the
+  database, and this release is not compatible with it. Nothing changed,
+  and `make up` cannot help. Set `PLATFORM_TAG` back to the newer release,
+  or contact iGrant.io to downgrade the wallet database first.
 - `make check` shows `no password file for the database roles ...`: run
   `make secrets` (a new release can add database roles).
 - `openbao-init` shows "init.json is missing": OpenBao has data, but

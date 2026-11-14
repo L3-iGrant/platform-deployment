@@ -136,7 +136,7 @@ Each process of the organisation wallet connects with its own database role. So 
 
 The roles hook also creates the audit reader `<prefix>_audit_reader`, which can only read the audit tables (see [Audit log](audit-log.md#check-the-audit-log)), and one role for each role application of the wallet (for example `<prefix>_issuer_app`). No chart pod uses them yet.
 
-The role passwords are in the Secret `<release>-wallet-database-roles`: one key for each role, named without the prefix (for example `launcher_app`), with random values that are kept across upgrades. An upgrade adds a key for a new role (for example `clock`) with a random value. Each wallet pod and the migration hook mount only the key of their own role; the roles hook mounts all keys. No wallet pod or Job mounts the password of the owner user `igrant_wallet`, which stays the owner of the database. Only the roles hook and the wallet's read access hooks mount the password of the admin user.
+The role passwords are in the Secret `<release>-wallet-database-roles`: one key for each role, named without the prefix (for example `launcher_app`), with random values that are kept across upgrades. Each wallet pod and the migration hook mount only the key of their own role; the roles hook mounts all keys. No wallet pod or Job mounts the password of the owner user `igrant_wallet`, which stays the owner of the database. Only the roles hook and the wallet's read access hooks mount the password of the admin user.
 
 ## Hooks of the databases
 

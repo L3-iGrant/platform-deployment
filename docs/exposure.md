@@ -91,6 +91,6 @@ A request with a matching `If-None-Match` gets 304 without a body. The chart and
 
 Behind a CDN or another proxy, set `clientAddress.trustedProxies` and `clientAddress.trustedProxyHeader` together.
 
-The wallet must see the `https` scheme of the public request (`X-Forwarded-Proto`): `organisationWallet.forwardedAllowIps` must contain the addresses of your proxy pods (the default is the private address ranges).
+The wallet must see the client address of the public request (`X-Forwarded-For`), for the rate limit of the nonce routes and for its logs: `organisationWallet.forwardedAllowIps` must contain the addresses of your proxy pods (the default is the private address ranges).
 
 The wallet rate-limits the anonymous nonce routes (the wallet provider's nonce and the credential issuer's `c_nonce`) per client address. One address, or one IPv6 /64 network, gets at most `organisationWallet.server.nonceRequestsPerMinute` requests (default 300) in 60 seconds; more get 429 with `Retry-After`. The wallet takes the client address from `X-Forwarded-For` of a proxy in `forwardedAllowIps`, so the proxy must see the client address (row "The client address at the proxy" above). Otherwise all clients have the address of the load balancer and share one limit. Behind a carrier NAT, many phones share one IPv4 address: keep the limit above their peak requests. You can also rate-limit at the ingress, with the same client address.
