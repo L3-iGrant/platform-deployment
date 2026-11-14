@@ -6,6 +6,38 @@ Install the platform in seven steps. Each step ends with a check: go on only whe
 
 The examples use the release name `ows`, the namespace `ows`, a clone of this repository in `./platform-deployment`, and Envoy Gateway with the Gateway `platform` of [Prerequisites](prerequisites.md#envoy-gateway).
 
+## Get the charts
+
+The platform has two Helm charts, each in its own repository:
+
+- this chart, public: `https://github.com/L3-iGrant/platform-deployment.git`;
+- the enterprise chart, with access by a personal access token from iGrant.io: `https://github.com/L3-iGrant/platform-deployment-enterprise.git`. Use it for an on-premise installation with an HSM: this chart has no HSM signer.
+
+Clone this repository (no token needed):
+
+```bash
+git clone https://github.com/L3-iGrant/platform-deployment.git
+```
+
+For the enterprise chart, clone its repository with the personal access token that iGrant.io gives you. Git asks for a user name and a password: enter the user name that comes with the token, and the token as the password.
+
+```bash
+git clone https://github.com/L3-iGrant/platform-deployment-enterprise.git
+```
+
+Do not put the token in the clone URL: it would stay in `.git/config` and in your shell history. To type it only once, use a Git credential helper (for example `git config --global credential.helper cache`). The token needs only read access to this one repository.
+
+Then check out the release that iGrant.io gives you (a release tag or a commit), for example:
+
+```bash
+cd platform-deployment
+git checkout 2026.11.6
+```
+
+The image tag of the installation (`global.imageTag`) is the chart's `appVersion` in `Chart.yaml` of this checkout.
+
+The examples of this page use this repository; with the enterprise chart, use `./platform-deployment-enterprise` and its install page.
+
 ## Step 1: the namespace and the registry access
 
 The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.6`). You get a service account key file, `service-account-key.json`.
