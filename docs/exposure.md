@@ -14,6 +14,8 @@ The chart exposes three services, each on its own host name (`api.host`, `organi
 
 The chart does not decide which host is public: the IngressClass, the Gateway or your own route of each host does. The Service of the wallet's config role (`<release>-wallet-config`) never gets a route: only the gateway calls it, inside the cluster. Do not create a route to it.
 
+The install docs use `profiles/exposure-envoy-gateway.yaml` with Envoy Gateway and the Gateway `platform` of `manifests/envoy-gateway/` (see [Prerequisites](prerequisites.md#envoy-gateway)).
+
 ## On-premise installation
 
 An on-premise installation exposes only the service routes. Only the wallet host is public; the API host and the dashboard host stay on your internal network:
@@ -25,11 +27,11 @@ An on-premise installation exposes only the service routes. Only the wallet host
 | Dashboard host (`<release>-dashboard`) | Internal | `enterpriseDashboard.exposure`: the same as the API host |
 | `<release>-wallet-config` | In the cluster only | No route |
 
-`profiles/exposure-on-premise.yaml` does this with two ingress-nginx controllers: the public IngressClass `nginx` for the wallet host, and the internal IngressClass `nginx-internal` for the other hosts. `nginx-internal` is the default `exposure.ingress.className`, so a host stays internal unless you name the public class. The admins open the dashboard from the internal network, and their browser calls the API host there.
+`profiles/exposure-on-premise.yaml` does this with two ingress-nginx controllers: the public IngressClass `nginx` for the wallet host, and the internal IngressClass `nginx-internal` for the other hosts. `nginx-internal` is the default `exposure.ingress.className`, so a host stays internal unless you name the public class. The admins open the dashboard from the internal network, and their browser calls the API host there. ingress-nginx was retired on 24 March 2026 and gets no security fixes; the profile stays for clusters that still run it. With the Gateway API, attach the wallet host to a public Gateway and the other hosts to an internal Gateway (`parentRefs`, see the table above).
 
 The wallet host serves only the wallet's public routes: the wallet's service role has only the route group `service`. The configuration routes are in the config role, which has no route.
 
-With network policies, `networkPolicy.ingressController` is the only source of traffic to the gateway, wallet service and dashboard pods. Give a selector that matches the pods of both controllers (the example selects the namespaces `ingress-nginx` and `ingress-nginx-internal`).
+With network policies, `networkPolicy.ingressController` is the only source of traffic to the gateway, wallet service and dashboard pods. Give a selector that matches the pods of both controllers (the example selects the namespaces `ingress-nginx` and `ingress-nginx-internal`, and sets `matchLabels: null` to remove the default labels of the Envoy pods, see [Network policies](network-policies.md#the-values-that-you-must-set)).
 
 ### The routes of the phone app
 
@@ -60,9 +62,11 @@ Your proxy only routes the traffic: the platform does the CORS checks, the authe
 - request headers of up to 16 KiB each (wallet host): other vendors' wallets and verifiers send JWTs with certificate chains in headers (`OAuth-Client-Attestation`, `OAuth-Client-Attestation-PoP`, `DPoP`);
 - other vendors' requests unchanged: the headers, the bodies (`application/x-www-form-urlencoded`, `application/json`, `application/jwt`) and the paths below `/.well-known/`. A web application firewall or CDN rule that changes or refuses them breaks conformance with the specifications.
 
-With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (`profiles/exposure-envoy-gateway.yaml` has one for Envoy Gateway). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty. Then every request has the address of a Gateway pod: the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
+With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (for Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`, see [Prerequisites](prerequisites.md#step-5-the-client-address)). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty. Then every request has the address of a Gateway pod: the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
 
 ## The settings for each controller
+
+ingress-nginx was retired on 24 March 2026 and gets no security fixes; its column is for clusters that still run it.
 
 | Need | ingress-nginx | Envoy Gateway, kgateway |
 | --- | --- | --- |
@@ -71,8 +75,8 @@ With the Gateway API, the client address needs a Gateway policy that sets the he
 | Request headers of up to 16 KiB each (wallet host) | `large-client-header-buffers: "4 16k"` in the controller ConfigMap (the default `4 8k` refuses a longer header line with 400) | No setting (the Envoy default is 60 KiB for all headers) |
 | Server-sent event streams of up to 3900 s (API host) | `proxy-read-timeout: "3900"`, `proxy-send-timeout: "3900"` | `api.exposure.timeouts.request: 3900s` |
 | No buffering of the event streams (API host) | `proxy-buffering: "off"` | No setting (Envoy streams the response) |
-| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP`, and a Gateway policy that sets `X-Real-IP` to the client address and replaces any value that the client sends (Envoy Gateway: the ClientTrafficPolicy in `profiles/exposure-envoy-gateway.yaml`; kgateway: a header policy of your Gateway that does the same) |
-| The client address at the proxy | A load balancer in front of the controller passes on the client address (for example with the PROXY protocol: `use-proxy-protocol: "true"` in the controller configuration) | The same (Envoy Gateway: `proxyProtocol: {}` in a ClientTrafficPolicy of the Gateway) |
+| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP`, and a Gateway policy that sets `X-Real-IP` to the client address and replaces any value that the client sends (Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`; kgateway: a header policy of your Gateway that does the same) |
+| The client address at the proxy | A load balancer in front of the controller passes on the client address (for example with the PROXY protocol: `use-proxy-protocol: "true"` in the controller configuration) | The same (Envoy Gateway: `proxyProtocol` in `manifests/envoy-gateway/03-client-traffic-policy.yaml`, see [A load balancer with the PROXY protocol](prerequisites.md#a-load-balancer-with-the-proxy-protocol)) |
 
 `exposure-kgateway.yaml` has these settings except the client address header: add the header together with the policy of your Gateway.
 

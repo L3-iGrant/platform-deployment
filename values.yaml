@@ -1121,10 +1121,15 @@ redis:
 # NetworkPolicies: turn them on only when the cluster enforces them (docs/network-policies.md).
 networkPolicy:
   enabled: false
-  # -- Pods of your ingress controller or of the data plane of your Gateway.
+  # -- Pods of your ingress controller or Gateway (default: the Envoy pods of the Gateway platform).
   ingressController:
-    namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}
-    podSelector: {}
+    namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: envoy-gateway-system}}
+    podSelector:
+      matchLabels:
+        app.kubernetes.io/name: envoy
+        app.kubernetes.io/component: proxy
+        gateway.envoyproxy.io/owning-gateway-name: platform
+        gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
   # -- DNS pods and ports. cidrs: DNS servers outside the pod network (NodeLocal DNSCache).
   dns:
     cidrs: []
@@ -1168,8 +1173,8 @@ networkPolicy:
       cloudKms: {cidrs: [], ports: [443]}
       # -- The S3 store of the audit bucket on a private address.
       auditBucket: {cidrs: [], ports: [443]}
-      # -- The public hosts of this platform, through networkPolicy.ingressController.
-      platform: {cidrs: [], ports: [80, 443]}
+      # -- The public hosts of this platform: the ingressController pods (Envoy: 10080, 10443) or the load balancer.
+      platform: {cidrs: [], ports: [80, 443, 10080, 10443]}
       smtp: {cidrs: [], ports: [587]}
       # -- The Kubernetes API server (the privacy dashboards).
       kubeApi: {cidrs: [], ports: [443, 6443]}

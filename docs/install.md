@@ -4,7 +4,7 @@ Install the platform in seven steps. Each step ends with a check: go on only whe
 
 [Back to the contents](../README.md#contents)
 
-The examples use the release name `ows`, the namespace `ows` and a clone of this repository in `./platform-deployment`.
+The examples use the release name `ows`, the namespace `ows`, a clone of this repository in `./platform-deployment`, and Envoy Gateway with the Gateway `platform` of [Prerequisites](prerequisites.md#envoy-gateway).
 
 ## Step 1: the namespace and the registry access
 
@@ -65,7 +65,7 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 
 | Profile | Use it for | Read first |
 | --- | --- | --- |
-| `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-envoy-gateway.yaml`, `exposure-kgateway.yaml`, `exposure-on-premise.yaml`, `exposure-none.yaml` | How traffic reaches the hosts (one is required) | [Exposure](exposure.md) |
+| `exposure-envoy-gateway.yaml` (the default of these docs), `exposure-kgateway.yaml`, `exposure-none.yaml`, `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-on-premise.yaml` | How traffic reaches the hosts (one is required). Envoy Gateway needs the Gateway `platform` of [Prerequisites](prerequisites.md#envoy-gateway). ingress-nginx (also in `exposure-on-premise.yaml`) was retired on 24 March 2026 and gets no security fixes. | [Exposure](exposure.md) |
 | `database-external.yaml` | Your own PostgreSQL server. Without it, the chart runs one PostgreSQL 18 server. | [Database](database.md) |
 | `openbao-external.yaml` | Your own OpenBao. Without it, the chart runs OpenBao with the Shamir seal (manual unseal). | [OpenBao](openbao.md) |
 | `redis-external.yaml` | Your own Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
@@ -82,7 +82,7 @@ Check: the render has no error:
 ```bash
 helm template ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-  -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml > /tmp/ows.yaml
+  -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml > /tmp/ows.yaml
 ```
 
 The command writes the manifests to `/tmp/ows.yaml`. A wrong or missing value stops it with a message that names the value (for example `global.imageTag is required: the release tag of your version`).
@@ -94,7 +94,7 @@ Add every other profile that you use to this command, and to every `helm install
 ```bash
 helm install ows ./platform-deployment -n ows \
   -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-  -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml \
+  -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml \
   --timeout 15m
 ```
 
@@ -204,7 +204,7 @@ The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml -f platform-operator.yaml
+     -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml -f platform-operator.yaml
    ```
 
 3. Check: `kubectl -n ows get jobs` shows `ows-api-bootstrap-platform-<revision>` as `Complete`, and its log has one JSON line with `organisationId`, `adminId` and `"created":true`:

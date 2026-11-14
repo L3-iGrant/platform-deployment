@@ -1,0 +1,40 @@
+# The Gateway platform: the entry of the three public hosts.
+# - http (port 80): only the redirect to HTTPS (04-http-redirect.yaml) and
+#   the HTTP-01 routes of cert-manager, both in this namespace.
+# - https (port 443): TLS ends here with the certificate of the three hosts
+#   (the Secret platform-tls from 06-certificate.yaml). The HTTPRoutes of the
+#   chart (profiles/exposure-envoy-gateway.yaml) attach to it from the
+#   release namespace.
+# Envoy listens on the container ports 10080 (http) and 10443 (https); the
+# load balancer Service maps 80 and 443 to them.
+#   kubectl apply -f 02-gateway.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: platform
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: envoy-gateway
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: platform-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: ows   # change: the namespace of your release
+        kinds:
+          - kind: HTTPRoute

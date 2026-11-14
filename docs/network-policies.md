@@ -24,19 +24,19 @@ The NetworkPolicy objects of the chart and their values.
 
 ## The values that you must set
 
-The defaults suit a cluster with ingress-nginx in the namespace `ingress-nginx`, CoreDNS in `kube-system`, and the chart's own database, NATS, OpenBao and Valkey. Before you set `networkPolicy.enabled: true`, go through each row of this table for your cluster. A missing value does not stop the render: the connection is refused when the pods start. `profiles/network-policies.yaml` shows the values.
+The defaults suit a cluster with the Gateway `platform` of Envoy Gateway in the namespace `envoy-gateway-system` (see [Envoy Gateway](#envoy-gateway)), CoreDNS in `kube-system`, and the chart's own database, NATS, OpenBao and Valkey. Before you set `networkPolicy.enabled: true`, go through each row of this table for your cluster. A missing value does not stop the render: the connection is refused when the pods start. `profiles/network-policies.yaml` shows the values.
 
-Helm merges your values with the defaults key by key: a selector in your file keeps the keys of the default selector that it does not set. For example, a `namespaceSelector` with only `matchExpressions` also keeps the default `matchLabels` (`kubernetes.io/metadata.name: ingress-nginx`), and a pod must match both. To remove a default key, set it to `null` (`matchLabels: null`), and check the policies with `helm template`.
+Helm merges your values with the defaults key by key: a selector in your file keeps the keys of the default selector that it does not set. For example, `podSelector: {}` in your file keeps the default `matchLabels` (the labels of the Envoy pods), and a `namespaceSelector` with only `matchExpressions` also keeps the default `matchLabels` (`kubernetes.io/metadata.name: envoy-gateway-system`): a pod must match both. To remove a default key, set it to `null` (`matchLabels: null`, as the ingress-nginx, kgateway and on-premise profiles do), and check the policies with `helm template`.
 
 | Item | Value | When | What to set |
 | --- | --- | --- | --- |
 | DNS | `networkPolicy.dns` | Always | The namespace, labels and ports of your DNS pods (`kubectl -n kube-system get pods --show-labels`). OpenShift: namespace `openshift-dns`, pods `dns.operator.openshift.io/daemonset-dns: default`, port 5353. NodeLocal DNSCache: add its address to `cidrs` (usually `169.254.20.10/32`) and also select its pods (`podSelector: {matchExpressions: [{key: k8s-app, operator: In, values: [kube-dns, node-local-dns]}]}`). A resolver on the node or in your network: its address in `cidrs`. |
-| The ingress controller | `networkPolicy.ingressController` | Always | The namespace and labels of the pods of your ingress controller, or of your Gateway's data plane. These pods are the only source of public traffic, and the target of the profile `platform`. |
+| The ingress controller | `networkPolicy.ingressController` | Always | The namespace and labels of the pods of your ingress controller, or of your Gateway's data plane. Default: the Envoy pods of the Gateway `platform` in `envoy-gateway-system` (see [Envoy Gateway](#envoy-gateway)); the other exposure profiles set their controller. These pods are the only source of public traffic, and the target of the profile `platform`. |
 | The pod and Service ranges | `networkPolicy.clusterCidrs` | Always when a range is not private | The pod CIDR and the Service CIDR of your cluster, including the IPv6 ranges of a dual-stack cluster. The `internet` profiles exclude them (each all-addresses block, `0.0.0.0/0` and `::/0`, excludes the entries of its family). The default `except` list already excludes the private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, fc00::/7, fe80::/10). |
 | A database outside the cluster | `networkPolicy.externalDatabases` | `database.mode: external`, or a `readAccess.<reader>.<owner>.host` | The CIDR and port of each server. A managed database can get a new address in its subnet after a failover (Cloud SQL, Amazon RDS, Azure Database): give the CIDR of the subnet. |
 | The audit bucket | `networkPolicy.egress.profiles.auditBucket` | The store of the audit bucket has a private address (a store in your network, a private endpoint, an S3 store in the cluster) | The CIDR, or the namespace and pod selectors, of the store, and its port. A store with a public address (Google Cloud Storage, Amazon S3) needs no value: the workers have the profile `internet-any-port`. See [Audit log](audit-log.md). |
 | The metadata server of your cloud | Add `metadata` to `networkPolicy.egress.roles.<role>`; `networkPolicy.egress.profiles.metadata.cidrs` | The pods get their cloud credentials from the metadata server (GKE Workload Identity for the audit bucket or a key store `gcp-kms`; the instance role on AWS or Azure) | The roles that use the cloud service (`wallet-worker` for the audit bucket; `wallet-service`, `wallet-config`, `wallet-worker` for a cloud key store). Default address `169.254.169.254/32`, port 80. EKS Pod Identity: `169.254.170.23/32`. |
-| The public hosts of this platform | `networkPolicy.egress.profiles.platform` | Always with the wallet (on by default for `wallet-service`, `wallet-config`, `wallet-worker`) | `ports`: the container ports of your ingress controller pods (ingress-nginx 80 and 443, the default; Traefik 8000 and 8443; Envoy Gateway 10080 and 10443). `cidrs`: the address of your load balancer, if it is in a private range and pod traffic goes to it (for example a load balancer with `ipMode: Proxy`). See [The public hosts of this platform](#the-public-hosts-of-this-platform). |
+| The public hosts of this platform | `networkPolicy.egress.profiles.platform` | Always with the wallet (on by default for `wallet-service`, `wallet-config`, `wallet-worker`) | `ports`: the container ports of your ingress controller pods, and the ports of the load balancer in `cidrs` (default 80, 443, 10080 and 10443: Envoy Gateway listens on 10080 and 10443; the ingress-nginx profiles set 80 and 443; Traefik 8000 and 8443). `cidrs`: the address of your load balancer, if it is in a private range and pod traffic goes to it (for example a load balancer with `ipMode: Proxy`). See [The public hosts of this platform](#the-public-hosts-of-this-platform). |
 | SMTP | `networkPolicy.egress.profiles.smtp` | The api sends e-mail | The CIDR and port of your mail relay (default port 587). |
 | An external OpenBao | `networkPolicy.egress.profiles.kms` | `openbao.mode: external` | The CIDR, or the namespace and pod selectors, of OpenBao (default port 8200). |
 | A cloud KMS on a private address | `networkPolicy.egress.profiles.cloudKms` | A key store `gcp-kms`, `aws-kms` or `azure-key-vault` through a private endpoint | The CIDR of the private endpoint (port 443). The public endpoints go through the profile `internet`. |
@@ -52,6 +52,17 @@ A wallet role reads URLs on the public hosts of this platform: the status list o
 In most clusters, traffic from a pod to the address of a cluster load balancer does not leave the cluster: kube-proxy and Cilium send it directly to the ingress controller pods. The `internet` profiles exclude pod addresses, so the profile `platform` allows these pods (the selectors of `networkPolicy.ingressController`) on its `ports`. If your load balancer has a public address and the traffic goes to it, the `internet` profiles also allow it.
 
 If the public hosts have private addresses (on premise, an internal load balancer), the wallet's SSRF guard refuses them too. List the host names or networks in `organisationWallet.ssrf.allowedPrivate`, and give the address of the load balancer to `networkPolicy.egress.profiles.platform.cidrs`.
+
+### Envoy Gateway
+
+The Envoy pods of the Gateway `platform` (`manifests/envoy-gateway/`, see [Prerequisites](prerequisites.md#envoy-gateway)) listen on the container ports 10080 (listener `http`, port 80) and 10443 (listener `https`, port 443): Envoy Gateway adds 10000 to a listener port below 1024. The defaults select these pods: the namespace `envoy-gateway-system` and the labels `app.kubernetes.io/name: envoy`, `app.kubernetes.io/component: proxy`, `gateway.envoyproxy.io/owning-gateway-name: platform` and `gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system`. The Envoy Gateway controller and the Envoy pods of other Gateways are not selected.
+
+A wallet role reaches the public hosts of this platform in one of two ways, and the defaults allow both:
+
+- kube-proxy or Cilium sends the connection to the address of the load balancer straight to an Envoy pod, on 10443 or 10080. The profile `platform` allows the pods of `networkPolicy.ingressController` on these ports.
+- The connection goes out to the load balancer and comes back (a load balancer with `ipMode: Proxy`, or with only a host name). A public address of the load balancer is in the `internet` profiles; give a private one to `networkPolicy.egress.profiles.platform.cidrs` (ports 80 and 443).
+
+With `useListenerPortAsContainerPort: true` in the EnvoyProxy, Envoy listens on 80 and 443, which are also in the default list. If you give the Gateway another name or namespace, change `networkPolicy.ingressController` too.
 
 ## Other vendors and the specifications
 
@@ -86,7 +97,7 @@ networkPolicy:
       webhook: [internet-any-port, platform]
 ```
 
-The profile `platform` opens only the pods of `networkPolicy.ingressController` on its `ports` (default 80 and 443), not the other pods of the cluster. If the host of the receiver has a private address (on premise, an internal load balancer), also give that address to `networkPolicy.egress.profiles.platform.cidrs`. The SSRF guard of the api and the webhook handler refuses a private address too (see [The SSRF guards](security-context.md#the-ssrf-guards)). Do not turn the guard off (`OutboundHttp.ssrfProtectionDisabled`): that opens all private addresses.
+The profile `platform` opens only the pods of `networkPolicy.ingressController` on its `ports` (default 80, 443, 10080 and 10443), not the other pods of the cluster. If the host of the receiver has a private address (on premise, an internal load balancer), also give that address to `networkPolicy.egress.profiles.platform.cidrs`. The SSRF guard of the api and the webhook handler refuses a private address too (see [The SSRF guards](security-context.md#the-ssrf-guards)). Do not turn the guard off (`OutboundHttp.ssrfProtectionDisabled`): that opens all private addresses.
 
 ### IPv6 and NAT64
 
@@ -116,6 +127,6 @@ The policies select only the pods of this release (the label `app.kubernetes.io/
 
 ## Checks
 
-`tests/check_network_matrix.py` proves the policies of a render against `policies/network-matrix.yaml`: each connection in the matrix is allowed, and every other connection between the pods of the release is denied (see [Tests](tests.md)).
+`tests/check_network_matrix.py` proves the policies of a render against `policies/network-matrix.yaml`: each connection in the matrix is allowed, and every other connection between the pods of the release is denied. With a model of the ingress controller pods of the exposure profile (`tests/fixtures/ingress-controller-pods.yaml`), it also proves the connections with these pods: they reach only the gateway, the wallet service and the dashboard, and only the wallet roles reach them, on the ports of their listeners (Envoy Gateway: 10080 and 10443, not the metrics and readiness ports; not the Envoy Gateway controller, and not the Envoy pods of another Gateway). See [Tests](tests.md).
 
 Check with `helm template` and your values first. To turn the policies off, set `networkPolicy.enabled: false` and run `helm upgrade`.

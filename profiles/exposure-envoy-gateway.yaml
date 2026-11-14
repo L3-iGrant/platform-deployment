@@ -1,27 +1,21 @@
-# Exposure with Envoy Gateway (Gateway API): one HTTPRoute per public host,
-# attached to your Gateway. TLS ends at the Gateway (its listener holds the
-# certificate). Envoy streams server-sent events and does not limit the
-# body size of a route; the api route gets a request timeout above the
-# longest stream (3900 s).
+# Exposure with Envoy Gateway (Gateway API), the default exposure: one
+# HTTPRoute per public host, attached to the HTTPS listener of the Gateway
+# platform. TLS ends at the Gateway (its listener holds the certificate).
+# Envoy streams server-sent events and does not limit the body size of a
+# route; the api route gets a request timeout above the longest stream
+# (3900 s).
 #
-# Client address (for rate limits and the API key IP allow-list): with the
-# policy below, your Gateway sets X-Real-IP to the client address and
-# overwrites any value that a client sends. Without this policy, do NOT set
-# clientAddress.header (a client could then pick its own address); the
-# services then see an Envoy pod address for every client. If a load
-# balancer sits in front of Envoy, it must pass on the client address too
-# (for example with the load balancer's PROXY protocol and
-# `proxyProtocol: {}` in the same policy).
-#   apiVersion: gateway.envoyproxy.io/v1alpha1
-#   kind: ClientTrafficPolicy
-#   metadata: {name: platform-client-address, namespace: envoy-gateway-system}
-#   spec:
-#     targetRefs: [{group: gateway.networking.k8s.io, kind: Gateway, name: platform}]
-#     headers:
-#       earlyRequestHeaders:
-#         set:
-#           - name: X-Real-IP
-#             value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+# manifests/envoy-gateway/ has the Gateway and its objects, ready to apply
+# (docs/prerequisites.md, "Envoy Gateway"): the GatewayClass, the Gateway
+# platform in envoy-gateway-system, the redirect to HTTPS, the certificate
+# from cert-manager, and the ClientTrafficPolicy that sets X-Real-IP to the
+# client address and overwrites any value that a client sends. Without that
+# policy, do NOT set clientAddress.header (a client could then pick its own
+# address); the services then see an Envoy pod address for every client.
+#
+# Network policies: the chart defaults (networkPolicy.ingressController and
+# networkPolicy.egress.profiles.platform) select the Envoy pods of this
+# Gateway and their ports 10080 and 10443 (docs/network-policies.md).
 exposure:
   type: gatewayAPI
   gatewayAPI:
@@ -39,10 +33,4 @@ api:
     timeouts:
       request: 3900s
 clientAddress:
-  header: X-Real-IP                        # set by the policy above
-networkPolicy:
-  ingressController:
-    namespaceSelector:
-      matchLabels:
-        kubernetes.io/metadata.name: envoy-gateway-system
-    podSelector: {}
+  header: X-Real-IP                        # set by manifests/envoy-gateway/03-client-traffic-policy.yaml

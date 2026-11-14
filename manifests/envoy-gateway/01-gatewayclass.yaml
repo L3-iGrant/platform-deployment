@@ -1,0 +1,34 @@
+# Envoy Gateway v1.10.0: the GatewayClass of the Gateway platform, and the
+# settings of its Envoy pods and their load balancer Service (EnvoyProxy).
+# Apply after the Envoy Gateway install (docs/prerequisites.md, "Envoy
+# Gateway"):
+#   kubectl apply -f 01-gatewayclass.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: platform
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 2                        # two Envoy pods: a node can go down
+      envoyService:
+        # The annotations of your cloud's load balancer, from its
+        # documentation: for example an internal load balancer, a fixed
+        # address, or the PROXY protocol (then also proxyProtocol in
+        # 03-client-traffic-policy.yaml).
+        annotations: {}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy-gateway
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: platform
+    namespace: envoy-gateway-system

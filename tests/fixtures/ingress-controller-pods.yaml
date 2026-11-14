@@ -1,0 +1,60 @@
+# Pods outside the release for tests/check_network_matrix.py: the pods of
+# the ingress controller or Gateway of each exposure profile, and other pods
+# in their namespace. Each pod has its namespace, its labels and the ports
+# that it listens on. "source" names the external source of
+# policies/network-matrix.yaml that the pod is (it gets the connections of
+# that source); a pod without "source" gets no connection at all.
+
+# Envoy Gateway v1.10.0 with manifests/envoy-gateway/ (the chart defaults
+# and profiles/exposure-envoy-gateway.yaml).
+envoy-gateway:
+  - name: the Envoy pods of the Gateway platform
+    source: ingressController
+    namespace: envoy-gateway-system
+    labels:
+      app.kubernetes.io/name: envoy
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+      gateway.envoyproxy.io/owning-gateway-name: platform
+      gateway.envoyproxy.io/owning-gateway-namespace: envoy-gateway-system
+      gateway.networking.k8s.io/gateway-name: platform
+    # The listeners http (80) and https (443) on their container ports, and
+    # the declared ports of the envoy container.
+    ports: {http: 10080, https: 10443, metrics: 19001, readiness: 19003}
+  - name: the Envoy pods of another Gateway
+    namespace: envoy-gateway-system
+    labels:
+      app.kubernetes.io/name: envoy
+      app.kubernetes.io/component: proxy
+      app.kubernetes.io/managed-by: envoy-gateway
+      gateway.envoyproxy.io/owning-gateway-name: other
+      gateway.envoyproxy.io/owning-gateway-namespace: other
+      gateway.networking.k8s.io/gateway-name: other
+    ports: {http: 10080, https: 10443, metrics: 19001, readiness: 19003}
+  - name: the Envoy Gateway controller
+    namespace: envoy-gateway-system
+    labels: {control-plane: envoy-gateway, app.kubernetes.io/name: gateway-helm, app.kubernetes.io/instance: eg}
+    ports: {grpc: 18000, ratelimit: 18001, wasm: 18002, metrics: 19001, webhook: 9443}
+
+# ingress-nginx (profiles/exposure-ingress-nginx.yaml and
+# exposure-ingress-nginx-cert-manager.yaml).
+ingress-nginx:
+  - name: the ingress-nginx controller
+    source: ingressController
+    namespace: ingress-nginx
+    labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx, app.kubernetes.io/component: controller}
+    ports: {http: 80, https: 443, webhook: 8443, metrics: 10254}
+
+# Two ingress-nginx controllers, public and internal
+# (profiles/exposure-on-premise.yaml).
+on-premise:
+  - name: the public ingress-nginx controller
+    source: ingressController
+    namespace: ingress-nginx
+    labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx, app.kubernetes.io/component: controller}
+    ports: {http: 80, https: 443, webhook: 8443, metrics: 10254}
+  - name: the internal ingress-nginx controller
+    source: ingressController
+    namespace: ingress-nginx-internal
+    labels: {app.kubernetes.io/name: ingress-nginx, app.kubernetes.io/instance: ingress-nginx-internal, app.kubernetes.io/component: controller}
+    ports: {http: 80, https: 443, webhook: 8443, metrics: 10254}

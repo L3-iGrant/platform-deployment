@@ -63,6 +63,18 @@ connections:
   - {to: wallet-worker, port: health, from: [monitoring]}
   - {to: wallet-clock, port: health, from: [monitoring]}
 
+# Connections from the release to the pods of an external source: <from>
+# may open <to>:<port>, where the port is a listener of the ingress
+# controller or Gateway (Envoy Gateway: http 10080, https 10443). The chart
+# renders them from the egress profile "platform" (the public hosts of this
+# platform: kube-proxy sends a connection to the load balancer address
+# straight to these pods), not from this list. The check proves them with a
+# model of the pods (tests/fixtures/ingress-controller-pods.yaml): every
+# other role and port of these pods stays denied.
+externalConnections:
+  - {to: ingressController, port: http, from: [wallet-service, wallet-config, wallet-worker]}
+  - {to: ingressController, port: https, from: [wallet-service, wallet-config, wallet-worker]}
+
 # Connections that must be denied (the check proves it).
 forbidden:
   - {from: ingressController, to: [api, webhook, consent, wallet-config, wallet-worker, wallet-clock, db, nats, openbao, redis]}

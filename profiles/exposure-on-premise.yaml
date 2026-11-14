@@ -1,3 +1,7 @@
+# ingress-nginx was retired on 24 March 2026 and gets no security fixes. Use
+# it only on a cluster that still runs it; the default exposure is Envoy
+# Gateway (exposure-envoy-gateway.yaml).
+#
 # On-premise exposure with ingress-nginx: only the wallet host is public
 # (docs/exposure.md, "On-premise installation"). It uses two ingress-nginx
 # controllers: the public one (IngressClass nginx, namespace ingress-nginx)
@@ -42,8 +46,14 @@ networkPolicy:
   # service and dashboard pods.
   ingressController:
     namespaceSelector:
+      matchLabels: null                    # removes the default namespace label
       matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
           values: [ingress-nginx, ingress-nginx-internal]
-    podSelector: {}
+    podSelector:
+      matchLabels: null                    # removes the default labels (the Envoy pods)
+  egress:
+    profiles:
+      platform:
+        ports: [80, 443]                   # the container ports of ingress-nginx

@@ -1,0 +1,29 @@
+# The client address for the rate limits and the IP allow-lists of the API
+# keys: Envoy sets X-Real-IP to the address of the client and overwrites any
+# value that the client sends. profiles/exposure-envoy-gateway.yaml sets
+# clientAddress.header: X-Real-IP; it needs this policy.
+#   kubectl apply -f 03-client-traffic-policy.yaml
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: ClientTrafficPolicy
+metadata:
+  name: platform-client-address
+  namespace: envoy-gateway-system
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: platform
+  headers:
+    earlyRequestHeaders:
+      set:
+        - name: X-Real-IP
+          value: "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+  # Only when your load balancer sends the PROXY protocol (Envoy Gateway
+  # v1.5 and later; earlier versions: enableProxyProtocol: true). Then Envoy
+  # takes the client address from the PROXY header. optional: true also
+  # accepts a connection without the header: the calls from pods of the
+  # cluster that kube-proxy sends straight to the Envoy pods (the wallet to
+  # its own hosts, the HTTP-01 self check of cert-manager). See
+  # docs/prerequisites.md, "A load balancer with the PROXY protocol".
+  # proxyProtocol:
+  #   optional: true

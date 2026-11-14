@@ -1,0 +1,19 @@
+# The certificate of the three public hosts. cert-manager writes it to the
+# Secret platform-tls, the certificate of the listener https
+# (02-gateway.yaml), and renews it before it expires.
+#   kubectl apply -f 06-certificate.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: platform-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: platform-tls
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt
+  dnsNames:
+    - api.example.org                      # change: api.host
+    - wallet.example.org                   # change: organisationWallet.host
+    - dashboard.example.org                # change: enterpriseDashboard.host

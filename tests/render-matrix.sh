@@ -29,15 +29,18 @@
 #    catalog), tests/check_render.py, tests/check_hook_order.py and
 #    tests/check_installation.py no-consent; with network policies also
 #    tests/check_network_matrix.py (the policies against
-#    policies/network-matrix.yaml). helm lint runs once per database and
-#    OpenBao pair. More renders: the bundled server with the DDL and
-#    connection logs off; your own Valkey or Redis (redis-external) with both
-#    database choices, with and without network policies; the minimal
-#    profile, with and without network policies; consent
-#    (profiles/consent.yaml) with each exposure, with and without network
-#    policies (also tests/check_installation.py all). Then the bundled Valkey
-#    and NATS certificates and the NATS configuration. The tests after the
-#    matrix use profiles/consent.yaml.
+#    policies/network-matrix.yaml, with a model of the ingress controller
+#    pods of the exposure: tests/fixtures/ingress-controller-pods.yaml).
+#    helm lint runs once per database and OpenBao pair. More renders: the
+#    bundled server with the DDL and connection logs off; your own Valkey or
+#    Redis (redis-external) with both database choices, with and without
+#    network policies; the minimal profile, with and without network
+#    policies; consent (profiles/consent.yaml) with each exposure, with and
+#    without network policies (also tests/check_installation.py all). Then
+#    the bundled Valkey and NATS certificates and the NATS configuration.
+#    The tests after the matrix use profiles/consent.yaml, and
+#    profiles/exposure-envoy-gateway.yaml where they pick an exposure. The
+#    files of manifests/envoy-gateway/ go through kubeconform -strict.
 # 3. The next steps (NOTES.txt).
 # 4. Render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
@@ -90,7 +93,7 @@ bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 # --- 1. The text of the chart files ------------------------------------------
 files=("$chart/README.md" "$chart/values.yaml" "$chart/values.schema.json" "$chart/Chart.yaml"
   "$chart/policies/network-matrix.yaml" "$chart/scripts/make-keys.sh" "$chart/THIRD-PARTY-NOTICES.md")
-while IFS= read -r -d '' file; do files+=("$file"); done < <(find "$chart/templates" "$chart/files" "$chart/profiles" "$chart/docs" "$here" -type f -print0)
+while IFS= read -r -d '' file; do files+=("$file"); done < <(find "$chart/templates" "$chart/files" "$chart/profiles" "$chart/manifests" "$chart/docs" "$here" -type f -print0)
 text_check() {
   local what="$1" pattern="$2"; shift 2
   local hits
@@ -185,6 +188,21 @@ kubeconform_cache="$out/kubeconform-cache"
 mkdir -p "$kubeconform_cache"
 mode_of() { case "$1" in *-external) echo external ;; *) echo bundled ;; esac; }
 exposure_of() { case "$1" in exposure-ingress-*) echo ingress ;; exposure-none) echo none ;; exposure-on-premise) echo on-premise ;; *) echo gatewayAPI ;; esac; }
+# The network matrix check (tests/check_network_matrix.py) of a render,
+# with the model of the ingress controller pods of its exposure profile
+# (tests/fixtures/ingress-controller-pods.yaml; no model for kgateway).
+# "defaults": the chart defaults, which select the Envoy pods of the
+# Gateway platform.
+controller_of() { case "$1" in exposure-ingress-nginx*) echo ingress-nginx ;; exposure-on-premise) echo on-premise ;; exposure-kgateway) echo "" ;; *) echo envoy-gateway ;; esac; }
+network_matrix() {
+  local file="$1" controller
+  controller="$(controller_of "$2")"
+  if [ -n "$controller" ]; then
+    python3 "$here/check_network_matrix.py" "$file" "$chart/policies/network-matrix.yaml" "$here/fixtures/ingress-controller-pods.yaml" "$controller"
+  else
+    python3 "$here/check_network_matrix.py" "$file" "$chart/policies/network-matrix.yaml"
+  fi
+}
 for database in database-bundled database-external; do
   for openbao in openbao-shamir openbao-external; do
     base=(-f "$keys" "${site[@]}")
@@ -225,7 +243,7 @@ for database in database-bundled database-external; do
           printf '%s\n' "$result" | sed 's/^/  /' | head -10
           good=0
         fi
-        if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+        if [ "$policies" = network-policies ] && ! network_matrix "$out/$name.yaml" "$exposure"; then
           good=0
         fi
         if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
@@ -263,12 +281,26 @@ for exposure in exposure-ingress-nginx exposure-ingress-nginx-cert-manager expos
       printf '%s\n' "$result" | sed 's/^/  /' | head -10
       good=0
     fi
-    if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+    if [ "$policies" = network-policies ] && ! network_matrix "$out/$name.yaml" "$exposure"; then
       good=0
     fi
     if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
   done
 done
+# The files of manifests/envoy-gateway/ (the Gateway of the default
+# exposure, docs/prerequisites.md): kubeconform -strict with the Gateway
+# API, Envoy Gateway and cert-manager schemas of the CRDs catalog.
+if [ -n "$kubeconform_bin" ]; then
+  if result="$("$kubeconform_bin" -strict -summary -cache "$kubeconform_cache" \
+      -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+      "$chart"/manifests/envoy-gateway/*.yaml 2>&1)" && grep -q -F 'Valid: 7, Invalid: 0, Errors: 0, Skipped: 0' <<< "$result"; then
+    ok "manifests/envoy-gateway: kubeconform -strict (7 objects)"
+  else
+    bad "manifests/envoy-gateway: kubeconform"
+    printf '%s\n' "$result" | sed 's/^/  /' | head -10
+  fi
+fi
+
 # The bundled server with the DDL and connection logs off
 # (database.postgresql.logDdlAndConnections false): no log parameter.
 name="database-bundled-openbao-shamir-exposure-none-none-database-logs-off"
@@ -297,7 +329,7 @@ for database in database-bundled database-external; do
   for policies in none network-policies; do
     name="redis-external-$database-$policies"
     args=(-f "$keys" "${site[@]}"
-      -f "$profiles/exposure-ingress-nginx.yaml" -f "$profiles/redis-external.yaml")
+      -f "$profiles/exposure-envoy-gateway.yaml" -f "$profiles/redis-external.yaml")
     [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
     [ "$policies" = network-policies ] && args+=(-f "$profiles/network-policies.yaml")
     if ! helm template t "$chart" --namespace ow "${args[@]}" > "$out/$name.yaml" 2> "$out/$name.err"; then
@@ -314,13 +346,13 @@ for database in database-bundled database-external; do
       good=0
     fi
     netpol="$([ "$policies" = network-policies ] && echo on || echo off)"
-    if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql "$(mode_of "$database")" shamir ingress "$netpol" on external; then
+    if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql "$(mode_of "$database")" shamir gatewayAPI "$netpol" on external; then
       good=0
     fi
     if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
       good=0
     fi
-    if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+    if [ "$policies" = network-policies ] && ! network_matrix "$out/$name.yaml" exposure-envoy-gateway; then
       good=0
     fi
     if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
@@ -337,7 +369,7 @@ else
 fi
 for policies in none network-policies; do
   name="minimal-$policies"
-  args=(-f "$keys" "${site[@]}" -f "$profiles/exposure-ingress-nginx.yaml" -f "$profiles/minimal.yaml")
+  args=(-f "$keys" "${site[@]}" -f "$profiles/exposure-envoy-gateway.yaml" -f "$profiles/minimal.yaml")
   [ "$policies" = network-policies ] && args+=(-f "$profiles/network-policies.yaml")
   if ! helm template t "$chart" --namespace ow "${args[@]}" > "$out/$name.yaml" 2> "$out/$name.err"; then
     bad "$name: helm template"
@@ -355,7 +387,7 @@ for policies in none network-policies; do
   if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
     good=0
   fi
-  if [ "$policies" = network-policies ] && ! python3 "$here/check_network_matrix.py" "$out/$name.yaml" "$chart/policies/network-matrix.yaml"; then
+  if [ "$policies" = network-policies ] && ! network_matrix "$out/$name.yaml" exposure-envoy-gateway; then
     good=0
   fi
   if ! python3 - "$out/$name.yaml" <<'PY'
@@ -1008,7 +1040,7 @@ installation() {
   if ! python3 "$here/check_hook_order.py" install "$file"; then
     good=0
   fi
-  if grep -q -x 'kind: NetworkPolicy' "$file" && ! python3 "$here/check_network_matrix.py" "$file" "$chart/policies/network-matrix.yaml"; then
+  if grep -q -x 'kind: NetworkPolicy' "$file" && ! network_matrix "$file" defaults; then
     good=0
   fi
   if [ "$good" = 1 ]; then ok "installation $name"; else bad "installation $name"; fi
@@ -1293,14 +1325,44 @@ if sorted(labelled) != expect["roles"]:
     bad "platform profile: $name: $(printf '%s' "$problems" | head -c 400)"
   fi
 }
+envoy='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "envoy-gateway-system"}}, "podSelector": {"matchLabels": {"app.kubernetes.io/component": "proxy", "app.kubernetes.io/name": "envoy", "gateway.envoyproxy.io/owning-gateway-name": "platform", "gateway.envoyproxy.io/owning-gateway-namespace": "envoy-gateway-system"}}}'
 ingress_nginx='{"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "ingress-nginx"}}, "podSelector": {}}'
-platform_profile "the ingress controller on 80 and 443, the wallet roles" \
-  "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
+platform_profile "the Envoy pods of the Gateway platform on 10080 and 10443, the load balancer ports 80 and 443, the wallet roles" \
+  "{\"to\": [$envoy], \"ports\": [80, 443, 10080, 10443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}"
+platform_profile "ingress-nginx (its profile) on 80 and 443" \
+  "{\"to\": [$ingress_nginx], \"ports\": [80, 443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\"]}" \
+  -f "$profiles/exposure-ingress-nginx.yaml"
 platform_profile "a load balancer address, other ports, also the webhook handler" \
-  "{\"to\": [{\"ipBlock\": {\"cidr\": \"192.0.2.80/32\"}}, $ingress_nginx], \"ports\": [8000, 8443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\", \"webhook\"]}" \
+  "{\"to\": [{\"ipBlock\": {\"cidr\": \"192.0.2.80/32\"}}, $envoy], \"ports\": [8000, 8443], \"roles\": [\"wallet-config\", \"wallet-service\", \"wallet-worker\", \"webhook\"]}" \
   --set-json 'networkPolicy.egress.profiles.platform={"cidrs":["192.0.2.80/32"],"ports":[8000,8443]}' \
   --set-json 'networkPolicy.egress.roles.webhook=["internet-any-port","platform"]'
 guard "no platform profile for the clock" 'the egress profile "platform" is not allowed for the network role "wallet-clock"' --set-json 'networkPolicy.egress.roles.wallet-clock=["platform"]'
+# The network matrix check with the Envoy pods refuses: the platform ports
+# without 10080 and 10443, a selector of the whole namespace (the Envoy
+# Gateway controller and the Envoy pods of other Gateways), and the profile
+# platform for the api.
+matrix_refuses() {
+  local name="$1" expect="$2"; shift 2
+  local result
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" "$@" > "$out/matrix-mutant.yaml" 2>&1; then
+    bad "network matrix refuses $name: helm template: $(head -c 200 "$out/matrix-mutant.yaml")"
+  elif result="$(network_matrix "$out/matrix-mutant.yaml" defaults)"; then
+    bad "network matrix refuses $name: the check passed"
+  elif grep -q -F -- "$expect" <<< "$result"; then
+    ok "network matrix refuses $name"
+  else
+    bad "network matrix refuses $name: no \"$expect\""
+  fi
+}
+matrix_refuses "the platform ports without 10080 and 10443" \
+  "the matrix connection wallet-service -> the Envoy pods of the Gateway platform:https (10443) is denied" \
+  --set-json 'networkPolicy.egress.profiles.platform.ports=[80,443]'
+matrix_refuses "a selector of the namespace only" \
+  "the connection the Envoy Gateway controller -> gateway:http is allowed but not in the matrix" \
+  --set-json 'networkPolicy.ingressController.podSelector.matchLabels=null'
+matrix_refuses "the profile platform for the api" \
+  "the connection api -> the Envoy pods of the Gateway platform:https (10443) is allowed but not in the matrix" \
+  --set-json 'networkPolicy.egress.roles.api=["internet-any-port","smtp","platform"]'
 
 # NATS 2.14, pinned by digest. The render stops for 2.15 and later (they
 # send format v2 acks, the permissions use format v1). The routes of a NATS
@@ -1720,7 +1782,7 @@ fi
 # Image pull Secrets (global.imagePullSecrets) in every pod spec: the
 # Deployments, StatefulSets, Jobs and hooks, also the optional ones (the api
 # operator Job, the Valkey metrics exporter).
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/exposure-envoy-gateway.yaml" -f "$here/values/operator-jobs-bootstrap.yaml" \
     --set redis.metrics.enabled=true --set-json 'global.imagePullSecrets=["igrant-registry-creds","mirror-creds"]' \
     > "$out/pull-secrets.yaml" 2> "$out/pull-secrets.err"; then
   bad "image pull Secrets: helm template: $(head -c 200 "$out/pull-secrets.err")"
@@ -1767,7 +1829,7 @@ fi
 install_order() {
   local name="$1" database="$2"; shift 2
   local case="$out/install-$database-${name// /-}"
-  local args=(-f "$keys" "${all[@]}" -f "$profiles/exposure-ingress-nginx.yaml")
+  local args=(-f "$keys" "${all[@]}" -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   if ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case.yaml" 2> "$case.err"; then
     bad "install $name ($database): helm template"
@@ -1783,7 +1845,7 @@ install_order() {
 upgrade_order() {
   local name="$1" database="$2"; shift 2
   local args=(-f "$keys" "${all[@]}"
-    -f "$profiles/exposure-ingress-nginx.yaml")
+    -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
   if ! helm template t "$chart" --namespace ow "${args[@]}" > "$case-after.yaml" 2> "$case.err" \
@@ -1801,7 +1863,7 @@ upgrade_order() {
 upgrade_removes() {
   local name="$1" database="$2"; shift 2
   local args=(-f "$keys" "${all[@]}"
-    -f "$profiles/exposure-ingress-nginx.yaml")
+    -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
   if ! helm template t "$chart" --namespace ow "${args[@]}" > "$case-before.yaml" 2> "$case.err" \

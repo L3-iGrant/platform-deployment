@@ -1,3 +1,7 @@
+# ingress-nginx was retired on 24 March 2026 and gets no security fixes. Use
+# it only on a cluster that still runs it; the default exposure is Envoy
+# Gateway (exposure-envoy-gateway.yaml).
+#
 # Exposure with ingress-nginx, with TLS certificates from your cert-manager
 # (optional: the chart creates no cert-manager objects). cert-manager reads
 # the annotation and creates the TLS Secret of each host.
@@ -26,3 +30,14 @@ enterpriseDashboard:
       secretName: dashboard-tls
 clientAddress:
   header: X-Real-IP
+networkPolicy:
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    podSelector:
+      matchLabels: null                    # removes the default labels (the Envoy pods)
+  egress:
+    profiles:
+      platform:
+        ports: [80, 443]                   # the container ports of ingress-nginx

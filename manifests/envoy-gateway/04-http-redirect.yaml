@@ -1,0 +1,20 @@
+# Redirects every HTTP request on the listener http to HTTPS (301), for any
+# host. The HTTP-01 routes of cert-manager still win: each names its host
+# and the exact path /.well-known/acme-challenge/<token>, and a route with a
+# host name takes precedence over a route without one.
+#   kubectl apply -f 04-http-redirect.yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: platform-https-redirect
+  namespace: envoy-gateway-system
+spec:
+  parentRefs:
+    - name: platform
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

@@ -1,0 +1,25 @@
+# cert-manager v1.21.3 (with config.gatewayAPI.enabled): the ACME issuer
+# Let's Encrypt with the HTTP-01 challenge on the listener http of the
+# Gateway platform. cert-manager makes a temporary HTTPRoute in the
+# namespace of the Certificate (envoy-gateway-system).
+#   kubectl apply -f 05-cluster-issuer.yaml
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    # To test first, use the test server https://acme-staging-v02.api.letsencrypt.org/directory
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: admin@example.org               # change: the e-mail address of your ACME account
+    privateKeySecretRef:
+      name: letsencrypt-account-key        # cert-manager creates it in its namespace
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - group: gateway.networking.k8s.io
+                kind: Gateway
+                name: platform
+                namespace: envoy-gateway-system
+                sectionName: http

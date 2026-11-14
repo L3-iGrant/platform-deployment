@@ -11,7 +11,7 @@ How to move an installation to a new release of the platform.
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
      -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml \
+     -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml \
      --wait --timeout 15m
    ```
 

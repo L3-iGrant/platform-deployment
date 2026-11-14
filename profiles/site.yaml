@@ -4,7 +4,7 @@
 #
 #   helm install ows ./platform-deployment -n ows \
 #     -f ./ows-keys/values-keys.yaml -f my-site.yaml \
-#     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml
+#     -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml
 global:
   # Required: the release tag of your version, for example "2026.11.4".
   imageTag: ""

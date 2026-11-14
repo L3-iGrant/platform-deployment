@@ -15,7 +15,7 @@ These docs are for the developers and operations teams who install and run the p
 ### Get started
 
 - [Components](docs/components.md): what the chart installs, how your values files describe an installation, and how to add consent or leave out the organisation wallet.
-- [Prerequisites](docs/prerequisites.md): what your cluster, network and workstation need.
+- [Prerequisites](docs/prerequisites.md): what your cluster, network and workstation need, and the Envoy Gateway setup of the default exposure (`manifests/envoy-gateway/`).
 - [Install](docs/install.md): seven steps, each with a check.
 
 ### Operate
