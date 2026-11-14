@@ -59,7 +59,7 @@ fi
 # and the release tag.
 if [ -z "$local_program" ] && [ -z "$image" ]; then
   if [ -z "$tag" ]; then
-    echo "make-keys: give the release tag of your installation (--tag), for example --tag 2026.11.4" >&2
+    echo "make-keys: give the release tag of your installation (--tag), for example --tag 2026.11.5" >&2
     exit 2
   fi
   registry="$(sed -n 's/^  imageRegistry: *//p' "$here/../values.yaml" | head -n 1)"

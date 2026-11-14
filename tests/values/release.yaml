@@ -1,4 +1,4 @@
 # Release tag for the tests. profiles/site.yaml leaves global.imageTag empty,
 # and the render stops without it.
 global:
-  imageTag: "2026.11.4"
+  imageTag: "2026.11.5"

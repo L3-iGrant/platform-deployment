@@ -8,7 +8,7 @@ The examples use the release name `ows`, the namespace `ows`, a clone of this re
 
 ## Step 1: the namespace and the registry access
 
-The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.4`). You get a service account key file, `service-account-key.json`.
+The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.5`). You get a service account key file, `service-account-key.json`.
 
 On your workstation, check the access and let Docker pull the api image for step 2. Use one of the two ways.
 
