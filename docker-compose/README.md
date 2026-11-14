@@ -112,7 +112,7 @@ Open `.env` and set the values. The file describes each value (the same
 text is in [Settings](#settings)). Every installation must set
 `PLATFORM_TAG`:
 
-- `PLATFORM_TAG`: the release tag. `2026.10.x` is a placeholder:
+- `PLATFORM_TAG`: the release tag, for example `2026.11.4`. `2026.11.x` is a placeholder:
   `make secrets` and `make check` stop until you replace it.
 
 If the installation runs behind your reverse proxy (not only on
@@ -329,10 +329,10 @@ your shell overrides the value in `.env`.
 | `API_PORT`, `WALLET_PORT`, `DASHBOARD_PORT` | `8080`, `8090`, `3000` | The host ports. |
 | `CLIENT_ADDRESS_HEADER` | empty | The header in which your reverse proxy sends the client address. |
 | `FEATURES_ENFORCE` | `true` | The gateway's feature gate (`Features.enforce`). With `true`, the gateway refuses a route of a product feature that is off for the credential's organisation (`403`, `feature_disabled`). With `false`, it refuses no route for a feature: use this only in an emergency. |
-| `MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS` | empty (100) | The installation limits: the maximum number of organisations (`Limits.maxOrganisations` of the api, 1 to 100) and of organisation wallet units of the wallet provider (`wallet_unit.organisation_wallet_units_max` of the wallet, 1 to 100). Creating one more gets `409` (`organisation_limit_reached` from the api, `organisation_wallet_unit.limit_reached` from the wallet); existing organisations and organisation wallets stay. When empty, the configuration files get no key, and the api and the wallet use their default, 100. Set a value only with the images of the release that has these limits: an api or a wallet of an earlier release does not know the key and does not start. The maximum is 100. An installation with more than 100 organisations or organisation wallets keeps them, but cannot create a new organisation. |
+| `MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS` | empty (100) | The installation limits: the maximum number of organisations (`Limits.maxOrganisations` of the api, 1 to 100) and of organisation wallet units of the wallet provider (`wallet_unit.organisation_wallet_units_max` of the wallet, 1 to 100). Creating one more gets `409` (`organisation_limit_reached` from the api, `organisation_wallet_unit.limit_reached` from the wallet); existing organisations and organisation wallets stay. When empty, the configuration files get no key, and the api and the wallet use their default, 100. The maximum is 100. An installation with more than 100 organisations or organisation wallets keeps them, but cannot create a new organisation. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_FROM` | empty, `587`, empty, empty | Your SMTP server. With an empty `SMTP_HOST`, no e-mail is sent. |
 | `IMAGE_REGISTRY` | `europe-docker.pkg.dev/jenkins-189019/igrant-customers` | The registry of the iGrant.io images (the Helm chart's default). The repositories are `api`, `gateway`, `consent-management-backend`, `eudi-wallet` and `dashboard`. |
-| `PLATFORM_TAG` | `2026.10.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
+| `PLATFORM_TAG` | `2026.11.x` (placeholder) | The release tag of all iGrant.io images. Set the tag of your release. The dashboard shows it as its version. |
 | `POSTGRES_IMAGE`, `NATS_IMAGE`, `OPENBAO_IMAGE`, `VALKEY_IMAGE` | see `.env.example` | The images of the dependencies. |
 
 The databases are `igrant_api`, `igrant_oidc`, `igrant_consent` and
@@ -517,20 +517,6 @@ docker compose exec wallet-clock /app/.venv/bin/python -c \
 
 You see `ows_clock_leader 1.0`. The Helm chart runs the workers in queue
 groups, with two clocks: see [Workers and clock](../docs/workers.md).
-
-When you move to a new release with data from a release that kept each
-issuance in one table (`issuer.credential_issuance`), the worker copies
-the issuances into the issuance tables (see
-[The copy of the issuances](../docs/workers.md#the-copy-of-the-issuances)).
-Check the progress:
-
-```bash
-docker compose exec wallet-worker /app/.venv/bin/issuance-backfill status
-```
-
-The copy is complete when `progress.applied` is `true` and both
-`counts.missing` and `counts.changed` are `0`. A later release drops the
-old table: move to that release only after the copy is complete.
 
 ## Valkey
 

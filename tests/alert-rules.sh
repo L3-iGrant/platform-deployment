@@ -11,7 +11,7 @@
 #
 # Usage: tests/alert-rules.sh <prometheus image>
 #   The image must be local (the script never pulls), for example
-#   prom/prometheus:v3.5.0.
+#   prom/prometheus:v3.13.5.
 set -euo pipefail
 image="${1:?usage: tests/alert-rules.sh <prometheus image>}"
 here="$(cd "$(dirname "$0")" && pwd)"

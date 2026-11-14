@@ -161,8 +161,8 @@ check_installation() {
   done
   local tag
   tag="$(setting PLATFORM_TAG)"
-  if [ "$tag" = 2026.10.x ]; then
-    bad "PLATFORM_TAG is the placeholder 2026.10.x: set the release tag in .env"
+  if [ "$tag" = 2026.11.x ]; then
+    bad "PLATFORM_TAG is the placeholder 2026.11.x: set the release tag in .env"
   elif [[ ! $tag =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
     bad "PLATFORM_TAG ($tag) is not an image tag"
   else

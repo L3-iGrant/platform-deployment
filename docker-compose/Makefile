@@ -38,7 +38,7 @@ check: configs ## Step 4: write the configuration files, then check .env, secret
 	@./check.sh
 
 # --remove-orphans: removes the services that a new release dropped (for
-# example api-read-access of an earlier release).
+# example a service that is no longer in the Compose files).
 up: check ## Step 5: start the platform (after make check)
 	$(COMPOSE) up -d --remove-orphans
 	@echo "up: started. make status shows the state of the services."

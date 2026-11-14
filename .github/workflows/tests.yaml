@@ -27,9 +27,14 @@ concurrency:
 
 jobs:
   chart:
-    name: Chart
+    name: Chart (Helm ${{ matrix.helm }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The chart tests pass with both versions (docs/prerequisites.md).
+        helm: ["3.22.1", "4.3.2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -38,6 +43,8 @@ jobs:
           cache-dependency-path: tests/psscheck/go.sum
       - name: Install the tools
         run: tests/ci-tools.sh "$RUNNER_TEMP/tools"
+        env:
+          HELM_VERSION: ${{ matrix.helm }}
       - name: tests/render-matrix.sh
         run: tests/render-matrix.sh --keep "$RUNNER_TEMP/renders"
 
@@ -58,12 +65,12 @@ jobs:
     timeout-minutes: 30
     env:
       # The images from values.yaml (redis.image, nats.image).
-      VALKEY_IMAGE: valkey/valkey:8.1.10-alpine
+      VALKEY_IMAGE: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
       NATS_IMAGE: nats:2.14.10-alpine@sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e
       # Python 3.13, for the wallet's strict TLS checks.
       PYTHON_IMAGE: python:3.13-slim-trixie
       # promtool, for the wallet's alert rules.
-      PROMETHEUS_IMAGE: prom/prometheus:v3.5.0
+      PROMETHEUS_IMAGE: prom/prometheus:v3.13.5@sha256:aafa9d694e6a883c02db516d9f6e5b84e14195f49a2a6456a4cca815edda72b9
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the tools

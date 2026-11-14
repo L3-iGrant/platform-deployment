@@ -54,7 +54,7 @@ The tests of the chart. They run without a cluster.
 tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/renders
 ```
 
-`tests/render-matrix.sh` needs `helm`, `python3` with PyYAML, `openssl` and Go (the version in `tests/psscheck/go.mod`, for the upstream security check). It uses `kubeconform` and `nats-server` if they are installed.
+`tests/render-matrix.sh` needs `helm` (it passes with Helm 3.22.1 and 4.3.2), `python3` with PyYAML, `openssl` and Go (the version in `tests/psscheck/go.mod`, for the upstream security check). It uses `kubeconform` and `nats-server` if they are installed.
 
 `tests/compose-files.sh` checks the files of `docker-compose/` without a container:
 
@@ -73,10 +73,10 @@ tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/rende
 These tests run containers of local images. They never pull, the containers have unique names, and the scripts remove them at the end. They take the images as arguments, for example the images of `redis.image` and `nats.image`:
 
 ```bash
-tests/valkey-pods.sh valkey/valkey:8.1.10-alpine     # the pods of the bundled Valkey
-tests/compose-valkey.sh valkey/valkey:8.1.10-alpine  # the Valkey services of docker-compose/
+tests/valkey-pods.sh valkey/valkey:8.1.11-alpine     # the pods of the bundled Valkey
+tests/compose-valkey.sh valkey/valkey:8.1.11-alpine  # the Valkey services of docker-compose/
 tests/nats-routes.sh nats:2.14.10-alpine            # only the NATS servers of the chart open a route
-tests/alert-rules.sh prom/prometheus:v3.5.0          # the alert rules of the wallet (promtool)
+tests/alert-rules.sh prom/prometheus:v3.13.5         # the alert rules of the wallet (promtool)
 tests/tls-strict.sh python:3.13-slim-trixie          # the TLS certificates against the strict checks of Python 3.13
 tests/wallet-commands.sh <registry>/eudi-wallet:<tag> # each wallet command of the chart and of Compose in the wallet image
 ```
@@ -92,4 +92,4 @@ tests/wallet-commands.sh <registry>/eudi-wallet:<tag> # each wallet command of t
 
 `tests/render-matrix.sh` also runs `tests/check_lifecycle.py` on each render: no exec probe or hook in an image without a shell, no exec of `/bin/sleep`, no `initialDelaySeconds` with a startup probe, and for each HTTP Deployment the rollout (`maxUnavailable: 0`, `maxSurge: 25%`, `minReadySeconds`), the preStop sleep, and a grace period that covers the sleep and the stop of the server. The check must refuse each bad pod of `tests/fixtures/lifecycle-pods.yaml`.
 
-The workflow `.github/workflows/tests.yaml` runs `tests/render-matrix.sh`, `tests/compose-files.sh`, `tests/tls-strict.sh` and the three Valkey and NATS tests on each pull request and each push to `main` (`tests/ci-tools.sh` installs `helm`, `kubeconform` and `nats-server` with checked SHA-256 sums, and PyYAML).
+The workflow `.github/workflows/tests.yaml` runs `tests/render-matrix.sh` (once with Helm 3.22.1 and once with Helm 4.3.2), `tests/compose-files.sh`, `tests/tls-strict.sh` and the three Valkey and NATS tests on each pull request and each push to `main` (`tests/ci-tools.sh` installs `helm` (`HELM_VERSION`, default 4.3.2), `kubeconform` and `nats-server` with checked SHA-256 sums, and PyYAML).

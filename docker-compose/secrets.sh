@@ -51,8 +51,8 @@ set +a
 IMAGE_REGISTRY="${registry_shell:-${IMAGE_REGISTRY:-}}"
 PLATFORM_TAG="${tag_shell:-${PLATFORM_TAG:-}}"
 API_IMAGE="${IMAGE_REGISTRY}/api:${PLATFORM_TAG}"
-if [ -z "${IGRANT_API_BIN:-}" ] && [ "$PLATFORM_TAG" = 2026.10.x ]; then
-  fail "PLATFORM_TAG is the placeholder 2026.10.x: set the release tag in .env"
+if [ -z "${IGRANT_API_BIN:-}" ] && [ "$PLATFORM_TAG" = 2026.11.x ]; then
+  fail "PLATFORM_TAG is the placeholder 2026.11.x: set the release tag in .env"
 fi
 SMTP_USERNAME="${smtp_username_shell:-${SMTP_USERNAME:-}}"
 

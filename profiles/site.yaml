@@ -6,7 +6,7 @@
 #     -f ./ows-keys/values-keys.yaml -f my-site.yaml \
 #     -f ./platform-deployment/profiles/exposure-ingress-nginx.yaml
 global:
-  # Required: the release tag of your version, for example "2026.10.1".
+  # Required: the release tag of your version, for example "2026.11.4".
   imageTag: ""
 api:
   # The api host. On premise it is internal (profiles/exposure-on-premise.yaml).

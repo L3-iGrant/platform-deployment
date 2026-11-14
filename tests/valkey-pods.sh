@@ -27,7 +27,7 @@
 #
 # Usage: tests/valkey-pods.sh <image>
 #   <image>: a local image of Valkey (or Redis) 7.2 or later, for example
-#   valkey/valkey:8.1.10-alpine (the chart's redis.image). The script never
+#   valkey/valkey:8.1.11-alpine (the chart's redis.image). The script never
 #   pulls (--pull never). For an image without valkey-server and valkey-cli
 #   (Redis), the script links them to redis-server and redis-cli. The
 #   containers have unique names, and the script removes them at the end.

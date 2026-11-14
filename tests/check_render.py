@@ -72,7 +72,7 @@ REDIS_SETTINGS = ["port 0", "tls-port 6379", "tls-auth-clients no", "tls-replica
                   "maxmemory-policy noeviction", "min-replicas-to-write 1", "min-replicas-max-lag 10", "masteruser replication",
                   "masterauth {password:replication}", "replica-announce-ip {self}", "aclfile /run/valkey/users.acl"]
 REDIS_WALLET_RIGHTS = "resetchannels ~ows:* ~ows-wallet ~ows-wallet:* -@all +@read +@write +@scripting +@connection -@dangerous +info +keys"
-REDIS_IMAGE = "docker.io/valkey/valkey@sha256:081c2f5cb575efc901aa80ff9cdbd1ec6a301682fd35e1ebb4b0990a4a4a8507"
+REDIS_IMAGE = "docker.io/valkey/valkey@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a"
 # Values from profiles/redis-external.yaml.
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
 REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
@@ -189,8 +189,7 @@ def main() -> int:
         for file in ("api.yaml", "webhook.yaml"):
             check("Features" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Features section (only the gateway file has it)")
         # No installation limits by default: no Limits section in the api
-        # files (an api from an earlier release refuses it), and never in the
-        # gateway file (the gateway refuses it).
+        # files, and never in the gateway file (the gateway refuses it).
         check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
         for file in ("api.yaml", "webhook.yaml"):
             check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
@@ -244,8 +243,7 @@ def main() -> int:
             check(consent_on or "consent" not in wallet["read_access"], "wallet config.yaml has read_access.consent without consent")
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
-        # No organisation wallet unit limit by default: a wallet from an
-        # earlier release refuses the key.
+        # No organisation wallet unit limit by default.
         check("organisation_wallet_units_max" not in (wallet.get("wallet_unit") or {}),
               f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max (the default values set no limit)")
 

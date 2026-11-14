@@ -10,7 +10,7 @@ keys.
 
 A release without the api (api.enabled false) has no gateway and no
 upstream URLs, so it cannot tell which services are installed. It keeps
-all services, as earlier releases did.
+all services.
 */}}
 
 {{/*
@@ -46,8 +46,7 @@ The installed services, in the order wallet, consent. Output: JSON list.
 
 {{/*
 The Installation section of the api and gateway files: {} when all services
-are installed (the files stay the same, so an image from an earlier release
-still starts), else {"services": [...]}. There is no value for the list.
+are installed, else {"services": [...]}. There is no value for the list.
 The render fails when:
 - no service is installed (an installation needs consent or the wallet);
 - privacyDashboard.enabled is true and consent is not installed;

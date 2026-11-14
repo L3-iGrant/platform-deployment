@@ -7,7 +7,7 @@ The chart runs these images of other projects without a change. Each project giv
 | PostgreSQL | `docker.io/library/postgres` (`database.postgresql.image`) | PostgreSQL Licence | https://www.postgresql.org/about/licence/ |
 | NATS Server | `docker.io/library/nats` (`nats.image`) | Apache License 2.0 | https://github.com/nats-io/nats-server |
 | NATS config reloader | `docker.io/natsio/nats-server-config-reloader` (`nats.reloader.image`) | Apache License 2.0 | https://github.com/nats-io/nack |
-| Valkey | `docker.io/valkey/valkey` (`redis.image`) | BSD 3-Clause License; the text is in [licenses/valkey/COPYING](licenses/valkey/COPYING) (the file `COPYING` of Valkey 8.1.10) | https://github.com/valkey-io/valkey |
+| Valkey | `docker.io/valkey/valkey` (`redis.image`) | BSD 3-Clause License; the text is in [licenses/valkey/COPYING](licenses/valkey/COPYING) (the file `COPYING` of Valkey 8.1.11) | https://github.com/valkey-io/valkey |
 | redis_exporter | `docker.io/oliver006/redis_exporter` (`redis.metrics.image`) | MIT License; the text is in [licenses/redis_exporter/LICENSE](licenses/redis_exporter/LICENSE) (the file `LICENSE` of redis_exporter v1.94.0) | https://github.com/oliver006/redis_exporter |
 
 When you copy an image to your own registry, also keep its licence text with it: for Valkey, `licenses/valkey/COPYING`; for redis_exporter, `licenses/redis_exporter/LICENSE`.

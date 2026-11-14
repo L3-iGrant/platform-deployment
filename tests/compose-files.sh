@@ -460,10 +460,9 @@ PY
   # Installation limits (MAX_ORGANISATIONS, MAX_ORGANISATION_WALLET_UNITS):
   # Limits.maxOrganisations in the api and webhook files and
   # wallet_unit.organisation_wallet_units_max in the config, service and
-  # worker files, as integers, only when the setting has a value (an api or
-  # wallet from an earlier release refuses the keys). No other file has
-  # them: not the gateway file (the gateway refuses the section) and not
-  # the clock file.
+  # worker files, as integers, only when the setting has a value. No other
+  # file has them: not the gateway file (the gateway refuses the section)
+  # and not the clock file.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local organisations units
     for case_name in default set; do

@@ -6,6 +6,8 @@
 # x86-64 only.
 #
 # Usage: tests/ci-tools.sh <folder>
+#   HELM_VERSION: 4.3.2 (the default) or 3.22.1. The chart tests pass with
+#   both.
 set -euo pipefail
 
 tools="${1:?usage: tests/ci-tools.sh <folder>}"
@@ -22,13 +24,19 @@ fetch() {
   printf '%s' "$file"
 }
 
-# helm 3.16.2, the version that the chart tests use.
-archive="$(fetch https://get.helm.sh/helm-v3.16.2-linux-amd64.tar.gz 9318379b847e333460d33d291d4c088156299a26cd93d570a7f5d0c36e50b5bb)"
+# helm, a version that the chart tests use.
+helm_version="${HELM_VERSION:-4.3.2}"
+case "$helm_version" in
+  3.22.1) helm_sha256=896cf63684a42a723d61c980369d6e588330927deb13676ca0d85006dd6da0ea ;;
+  4.3.2) helm_sha256=d1c0278d46beab79582d7e50f5b3dc206944ba8e577cde618513fd07daa53983 ;;
+  *) echo "ci-tools: HELM_VERSION must be 3.22.1 or 4.3.2, not $helm_version" >&2; exit 2 ;;
+esac
+archive="$(fetch "https://get.helm.sh/helm-v${helm_version}-linux-amd64.tar.gz" "$helm_sha256")"
 tar -xzf "$archive" -C "$work" linux-amd64/helm
 install -m 0755 "$work/linux-amd64/helm" "$tools/bin/helm"
 
-# kubeconform 0.6.7, for the schema check in tests/render-matrix.sh.
-archive="$(fetch https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73)"
+# kubeconform 0.8.0, for the schema check in tests/render-matrix.sh.
+archive="$(fetch https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883)"
 tar -xzf "$archive" -C "$work" kubeconform
 install -m 0755 "$work/kubeconform" "$tools/bin/kubeconform"
 

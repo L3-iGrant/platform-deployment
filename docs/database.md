@@ -10,7 +10,7 @@ Each component has its own database and owner user: `igrant_api`, `igrant_oidc`,
 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |
-| `bundled` (default) | Runs one PostgreSQL 18.6 server (`<release>-postgres`). Creates the databases and the users (init hook), the wallet's database roles (roles hook) and a TLS certificate. | The size of the volume and the resources |
+| `bundled` (default) | Runs one PostgreSQL 18.7 server (`<release>-postgres`). Creates the databases and the users (init hook), the wallet's database roles (roles hook) and a TLS certificate. | The size of the volume and the resources |
 | `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. Without the organisation wallet, it can also use your own databases and users. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`, required with the organisation wallet) or the passwords of your users (`database.auth.existingSecret`, one key for each database name) |
 
 ## TLS

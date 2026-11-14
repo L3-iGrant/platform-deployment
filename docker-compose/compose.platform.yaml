@@ -134,10 +134,9 @@ services:
   # root. This one-shot service hands the JetStream store to the NATS user
   # (65532:65532), then exits. It runs as root with only the capabilities to
   # change file owners (CHOWN) and to read every folder (DAC_READ_SEARCH),
-  # and no network. It changes only files and folders with another owner or
-  # group: files of an earlier release (root, or the user 1000) and files
-  # that the NATS of an earlier release wrote after a rollback to it. On a
-  # store that is already correct, it reads the owners and writes nothing.
+  # and no network. It changes only the files and folders with another
+  # owner or group, such as the root folder of a new volume. On a store
+  # that is already correct, it reads the owners and writes nothing.
   # It is safe to stop at any point: the next start changes the rest.
   nats-data-owner:
     <<: [*job, *hardened]
@@ -180,9 +179,9 @@ services:
     <<: *hardened
     image: ${OPENBAO_IMAGE:?set OPENBAO_IMAGE in .env}
     # The image's openbao user (100:1000). When Docker creates the volume
-    # openbao-data, it gets the owner of the image folder /openbao/file, and
-    # the data of an earlier release belongs to this user too. The image's
-    # entrypoint starts the server directly as this user (no su-exec).
+    # openbao-data, it gets the owner of the image folder /openbao/file. The
+    # image's entrypoint starts the server directly as this user (no
+    # su-exec).
     user: "100:1000"
     command: ["server"]
     environment:
