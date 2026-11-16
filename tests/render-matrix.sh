@@ -99,8 +99,7 @@ text_check() {
   local hits
   # Skip code literals of other programs, which are not prose: the
   # "bao status" output (Initialized), OpenBao's JSON key .initialized, the
-  # "serialization" module of the Python package cryptography, and the
-  # "organizations" table of the API database in an SQL query, and the API
+  # "serialization" module of the Python package cryptography, and the API
   # field "organization" in a request body of install.md. For the
   # vault check, these do not name the earlier key store product: the key
   # store type ids `vault`, external-vault and azure-key-vault, a list of
@@ -109,7 +108,6 @@ text_check() {
   # wallet and the dashboard show, in quotes ("Local vault").
   hits="$(grep -n -i -E "$pattern" "$@" 2>/dev/null | grep -v -F 'tests/render-matrix.sh:' | grep -v -F 'tests/check_render.py:' \
     | grep -v -F 'tests/compose-files.sh:' \
-    | grep -v -E '^[^:]*docs/upgrade\.md:[0-9]+: +FROM "organizations",$' \
     | grep -v -E '^[^:]*docs/install\.md:[0-9]+:.*"organization": "' \
     | grep -v -E '\.initialized|Initialized +true|"Initialized' \
     | grep -v -E '^[^:]*\.py:[0-9]+:.*(\bserialization\.|import .*\bserialization\b)' \

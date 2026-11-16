@@ -18,7 +18,7 @@ spec:
   # nodes).
   podManagementPolicy: Parallel
   # OnDelete: a new pod template only applies when the operator deletes and
-  # unseals each pod (docs/upgrade.md).
+  # unseals each pod (docs/openbao.md).
   {{- $updateStrategy := include "ow.openbao.updateStrategy" . }}
   updateStrategy:
     type: {{ $updateStrategy }}

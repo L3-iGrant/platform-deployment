@@ -15,7 +15,26 @@ For automatic unseal through an HSM or a Google Cloud KMS key, see [Connect your
 
 ## The Shamir seal
 
-The seal protects the root key of OpenBao. With the Shamir seal, each pod is sealed and not ready after every start, until an operator unseals it with 3 of the 5 unseal keys ([install step 5](install.md#step-5-initialise-openbao-bundled-openbao-only)). Plan for this at every node restart and every upgrade.
+The seal protects the root key of OpenBao. With the Shamir seal, each pod is sealed and not ready after every start, until an operator unseals it with 3 of the 5 unseal keys ([install step 5](install.md#step-5-initialise-openbao-bundled-openbao-only)). Plan for this at every node restart and every change of the OpenBao pods.
+
+### Restart the pods
+
+The OpenBao pods do not restart on their own (update strategy `OnDelete`), because a restarted pod stays sealed. After a `helm upgrade`, check whether it changed the OpenBao pods (for example a new image tag or a new OpenBao configuration):
+
+```bash
+kubectl -n ows get statefulset ows-openbao -o go-template='{{or .status.updatedReplicas 0}}/{{.status.replicas}}{{"\n"}}'
+```
+
+`3/3` means no change. Otherwise, restart and unseal the pods one at a time: first the two standby pods, then the active pod (`bao status` shows `HA Mode`: `standby` or `active`). For each pod:
+
+```bash
+kubectl -n ows exec ows-openbao-2 -- bao status | grep 'HA Mode'   # standby: restart this pod first
+kubectl -n ows delete pod ows-openbao-2
+kubectl -n ows wait --for=jsonpath='{.status.phase}'=Running pod/ows-openbao-2 --timeout=5m
+kubectl -n ows exec -it ows-openbao-2 -- bao operator unseal   # 3 times, 3 different unseal keys
+```
+
+Check: `kubectl -n ows exec ows-openbao-2 -- bao status` shows `Sealed false`. Go to the next pod only when this check passes. After the third pod, the `updatedReplicas` command shows `3/3`.
 
 Keep the unseal keys and the root token outside the cluster, for example in a password safe, and give the keys to different people. Without the unseal keys, OpenBao stays sealed and its data is lost.
 
@@ -42,5 +61,3 @@ bao write auth/userpass/users/wallet password=- token_policies=wallet-kms   # th
 ```
 
 Then create the Secret with the same password (`openbao.wallet.existingSecret`, key `password`).
-
-After each platform upgrade, compare your policy with this one: a new version can need new paths.

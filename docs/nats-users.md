@@ -58,13 +58,6 @@ The durable consumers: the replicas of a process share each consumer (the delive
 
 The API core publishes each event of `API_EVENTS` by its name: its NATS user has the publish right for each of the 6 subjects, and no wildcard. `api.v1.evt.organisation.deleted` is the deletion of an organisation by a platform admin: consent purges its data of the organisation, and the wallet deactivates the organisation's wallets. The API core adds the subject to the stream when it starts, and consent and the wallet's config role add it to the filters of their consumers when they start. A consumer has no subject rights of its own (it gets its messages on the inbox of its process), so only the user `api` changes. An external NATS needs the users of the ConfigMap `<release>-nats-authorization` of each release.
 
-When they start, and before they update the stream, the services delete the durable consumers of their earlier releases:
-
-- the API core and the webhook handler delete `api-wua-revocation`, `api-webhook-issue-credential`, `api-webhook-issuer-event`, `api-webhook-credential`, `api-webhook-present-proof` and `api-webhook-presentation`;
-- the wallet's service and config roles delete `credential-definition-worker` and `presentation-definition-worker`.
-
-The NATS users of these processes can only read and delete these consumers. Without this right, the API core and the webhook handler do not start.
-
 Subscriptions without a JetStream consumer:
 
 - the NATS commands of the api to the config role (`ows.cmd.*.>`, request and reply). The API core sends all commands, for example `ows.cmd.<wallet organisation id>.organisation.set_suspended` to suspend an organisation. The webhook handler sends only `ows.cmd.*.issuance.revoke`, the revocation of an admin's earlier Authenticator credential;

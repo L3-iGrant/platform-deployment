@@ -68,7 +68,7 @@ Without a worker group that runs the queue `realtime`, or without the clock, a r
 
 ## Stops and rollouts
 
-An upgrade changes the Deployments of the servers and of the workers together. The service and config pods of a new release can depend on actors that only the workers of the same release have (for example, they queue the revocations of the issuer status lists, and only the new workers write them). Do not scale the worker groups or the clock to 0 during an upgrade, and do not hold back the workers of a new release.
+The service and config pods depend on the actors of the workers (for example, they queue the revocations of the issuer status lists, and only the workers write them). Do not scale the worker groups or the clock to 0.
 
 At SIGTERM, a worker stops consuming its queues, then waits at most `shutdownTimeoutSeconds` for its running actors. Each actor has a time limit. Set `shutdownTimeoutSeconds` to at least the longest time limit of the actors on the group's queues: 600 seconds for the queues of `main`, and 4 hours for `maintenance` (the export of one month of one audit log scope). An actor that does not end in that time stops, and runs again from its message: every actor is idempotent.
 
@@ -114,7 +114,7 @@ Each worker pod also reads gauges from the database at each scrape, so every pod
 
 | Alert | Severity | Rule | Meaning |
 | --- | --- | --- | --- |
-| `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition for the current month: inserts fail. Run the upgrade again (the partition step of the migration hook). |
+| `PartitionOfTheMonthMissing` | critical | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 0` for 5m | A table has no partition for the current month: inserts fail. Run `helm upgrade` again with the same values (the partition step of the migration hook). |
 | `PartitionMonthsAheadLow` | warning | `max by (namespace, table) (ows_partition_months_ahead{job="wallet-worker"}) < 2` for 1h | A table has partitions for fewer than 2 months after the current month. |
 | `IssuerStatusListWritesLate` | warning | `max by (namespace) (ows_status_list_change_age_seconds{job="wallet-worker"}) > 60` for 2m | A revocation is not in the published status list after 60 seconds. Check the worker group of the queue `realtime`, and the clock. |
 | `IssuanceCountersLate` | warning | `max by (namespace) (ows_issuance_counter_change_age_seconds{job="wallet-worker"}) > 60` for 10m | The issuer statistics are late. |

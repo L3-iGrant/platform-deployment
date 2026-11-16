@@ -100,7 +100,7 @@ The wallet's migration hook adds the PostgreSQL extension `pg_trgm` (to search i
 CREATE EXTENSION IF NOT EXISTS pg_trgm SCHEMA public;
 ```
 
-Without the extension, the wallet's migration hook exits with code 1, and the pods of the earlier release keep running.
+Without the extension, the wallet's migration hook exits with code 1, and the wallet pods do not start work.
 
 ## Logs of the database server
 
@@ -144,15 +144,25 @@ The database hooks run in this order:
 
 | Order | Hook | Connects as | What it does |
 | --- | --- | --- | --- |
-| 1 | The Secrets `<release>-postgres` (the database user passwords), `<release>-read-access` (the read-only user passwords), `<release>-wallet-database-roles` (the passwords of the wallet's database roles) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks, with the passwords and the certificate of the earlier release |
+| 1 | The Secrets `<release>-postgres` (the database user passwords), `<release>-read-access` (the read-only user passwords), `<release>-wallet-database-roles` (the passwords of the wallet's database roles) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks; at a `helm upgrade` they keep their passwords and their certificate |
 | 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the owner users' passwords |
 | 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the wallet database objects, creates the missing data scope schemas and gives the grants |
-| 4 | `<release>-wallet-migrate`; on an upgrade also `<release>-api-migrate` and `<release>-consent-migrate` (with consent) | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
+| 4 | `<release>-wallet-migrate`; at a `helm upgrade` also `<release>-api-migrate` and `<release>-consent-migrate` (with consent) | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
 | 5 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` (with consent) | The admin user | `read-access apply`: the read-only users that the api and consent use to read the wallet database (see [Read access](read-access.md)) |
 
-On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api and consent migrate their databases when their pods start: the api in an init container, consent before it serves. On an upgrade, the hooks run before any pod changes (Helm `pre-upgrade`); see [Upgrade](upgrade.md).
+On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api and consent migrate their databases when their pods start: the api in an init container, consent before it serves. At a `helm upgrade`, the hooks run before any pod changes (Helm `pre-upgrade`). If a hook fails, the `helm upgrade` stops and the pods keep running. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`.
 
-An upgrade can turn a component on (the organisation wallet, the api or consent): the hooks create its passwords and its database before its migration hook connects. With `database.auth.existingSecret`, add the password of the new database to your Secret before that upgrade. The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
+A `helm upgrade` can turn a component on (the organisation wallet, the api or consent): the hooks create its passwords and its database before its migration hook connects. With `database.auth.existingSecret`, add the password of the new database to your Secret before that `helm upgrade`. The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
+
+The exit codes of the wallet migration hook (`migrate-database`). After you fix the cause, run the hook again: do install step 4 again after a failed install, else run the same `helm upgrade` again.
+
+| Exit code | Meaning | Action |
+| --- | --- | --- |
+| 0 | The schema is at the head of the release, with all grants | None |
+| 1 | A revision failed | The log names the revision and the error. Fix the cause, or send the log to iGrant.io |
+| 2 | A configuration or connection error | Check the database values and the wallet's database roles (the roles hook ran before) |
+| 3 | The grant step failed: the schema is at the head, but some grants are missing | None: the next run gives the missing grants |
+| 4 | The audit log partition step failed: the schema is at the head with all grants, but a partition is missing or a drop failed | None: the next run completes the partitions (see [Audit log](audit-log.md#partitions)) |
 
 ## Data scopes of the wallet
 

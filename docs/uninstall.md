@@ -14,7 +14,7 @@ Helm keeps the platform data and the objects that belong to it:
 | --- | --- |
 | The volumes (PersistentVolumeClaims) of the database server, NATS, OpenBao and Valkey, and the Secrets that the chart created for them (the database user passwords, the wallet's OpenBao login, the Valkey user passwords, and the TLS certificates of the database server, OpenBao and Valkey) | They hold the platform data (`helm.sh/resource-policy: keep`). |
 | The Jobs and ConfigMaps of the hooks, and the Secret `<release>-wallet-database-roles` (the passwords of the wallet's database roles) | Helm does not delete hooks. |
-| Your Secrets: registry access ([install step 1](install.md#step-1-the-namespace-and-the-registry-access)), keys ([install step 2](install.md#step-2-the-keys)) and the Secrets of [install step 3](install.md#step-3-the-values-of-your-installation) | You created them. Before you do [install step 7](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin) again, delete a remaining `ows-platform-admin` Secret (or `ows-first-admin` of an earlier release): `kubectl create secret` refuses an existing Secret. |
+| Your Secrets: registry access ([install step 1](install.md#step-1-the-namespace-and-the-registry-access)), keys ([install step 2](install.md#step-2-the-keys)) and the Secrets of [install step 3](install.md#step-3-the-values-of-your-installation) | You created them. Before you do [install step 7](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin) again, delete a remaining `ows-platform-admin` Secret: `kubectl create secret` refuses an existing Secret. |
 
 Check: `helm -n ows list` does not show `ows`, and `kubectl -n ows get pods` shows no platform pods (finished Jobs stay for one day).
 

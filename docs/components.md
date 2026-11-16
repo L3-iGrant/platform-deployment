@@ -32,7 +32,7 @@ An installation has consent management, the organisation wallet, or both. Each s
 | `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` | Installed: the organisation wallet of another release |
 | `organisationWallet.enabled: false` and no `gateway.upstreams.walletConfig.url` | Not installed |
 
-The chart writes the list of services into the api file and the gateway file (`Installation.services`). You cannot set this list: the chart takes it from the values in the table. With all services, the files have no `Installation` key, as in earlier releases. At least one service must be installed, or the render stops.
+The chart writes the list of services into the api file and the gateway file (`Installation.services`). You cannot set this list: the chart takes it from the values in the table. With all services, the files have no `Installation` key. At least one service must be installed, or the render stops.
 
 When a service is not installed:
 
@@ -58,4 +58,36 @@ consent:
   enabled: true
 ```
 
-Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart. A release without the api (`api.enabled: false`) has no gateway, so it cannot see which services the installation has: it keeps the reads and trusts of all services. To add or remove a service later, see [Upgrade](upgrade.md#the-services-of-the-installation).
+Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart. A release without the api (`api.enabled: false`) has no gateway, so it cannot see which services the installation has: it keeps the reads and trusts of all services. To add or remove a service later, see [Add or remove a service](#add-or-remove-a-service).
+
+## Add or remove a service
+
+An installation can run without consent or without the organisation wallet (see [The services of the installation](#the-services-of-the-installation)). To remove or add a service later, change your values files and run `helm upgrade` with all your values files (the files of [install step 4](install.md#step-4-install)):
+
+### Remove a service
+
+1. In your values files, set `consent.enabled: false` (or `organisationWallet.enabled: false`), and remove `gateway.upstreams.consent.url` (or `gateway.upstreams.walletConfig.url`). Without consent, also set `privacyDashboard.enabled: false`.
+2. Run `helm upgrade` with all your values files.
+
+Helm removes the pods, Jobs, Services and ConfigMaps of the service. The service's data stays: the chart deletes no database, no database user and no Secret with `helm.sh/resource-policy: keep` (for example the passwords in `<release>-postgres`). Without the wallet, the volumes of the bundled OpenBao also stay, with the wallet keys in them. The organisations' data stays too:
+
+- The stored features of the service stay on the organisation record, but have no effect: the dashboard shows no area for the service.
+- A webhook keeps its event types of the service, but gets no events of the service.
+- An API key keeps its scopes of the service, but every route of the service answers `404` (`service_not_installed`).
+
+### Add a service later
+
+1. In your values files, set `consent.enabled: true` (or `organisationWallet.enabled: true`), or set the URL of the service in another release.
+2. Run `helm upgrade` with all your values files.
+
+The stored features, webhook subscriptions and API keys of the service apply again. A service that was installed before finds its data in its database. With the bundled OpenBao, the OpenBao pods start with their earlier volumes: unseal each pod (install step 5, item 2), and do not initialise OpenBao again.
+
+Consent and the organisation wallet get the api's events from the stream `API_EVENTS` (consent: organisation changes and deletions; the wallet: organisation and sandbox changes and deletions). The stream keeps an event for 8 days, and no tool sends an older event again.
+
+- A service that you add for the first time has a new database: it misses nothing, and you do nothing.
+- A service that you removed and add again misses the events older than 8 days:
+  - Consent, organisation suspensions and resumptions: no action. Consent reads each organisation from the api again when its local copy expires (after at most 15 minutes), and gets the current state.
+  - Consent, organisation deletions: consent keeps the consent data of each organisation that a platform admin deleted while consent was not installed.
+  - The wallet: the wallet keeps the wallets of each organisation and sandbox that a platform admin deleted while the wallet was not installed, and the api sent no wallet commands in that time (for example the suspension of an organisation).
+
+  The platform operator's organisations list shows each deleted organisation with the status `deleting`, without a date. The action log of the platform operator organisation has the entry `organisation_deletion_started` with the date, but only for `api.actionLogRetentionDays` (default 30 days). So keep your own record of each organisation that you delete while a service is not installed. After the `helm upgrade`, send this record to iGrant.io support to purge the data of these organisations in the service.

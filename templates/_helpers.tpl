@@ -704,29 +704,21 @@ that its process uses:
 - the streams it ensures: STREAM.INFO, CREATE and UPDATE;
 - its own durables: CONSUMER.INFO, CREATE (all three forms) and DELETE,
   MSG.NEXT for a pull consumer, and the acks $JS.ACK.<stream>.<durable>.>;
-- the retired durables it deletes: INFO and DELETE;
 - its KV buckets: the KV stream, direct get and puts.
 No STREAM.DELETE, STREAM.PURGE or other API subject, so a service cannot
 delete or purge the stream or the consumers of another service. Call with
 the user's values key. Output: JSON list.
 */}}
 {{- define "ow.nats.jetStreamRights" -}}
-{{- /* api durables that the contract removed (contract/v2 streams.json
-removedConsumers). The api core and the webhook handler both delete them at
-start, before they ensure OWS_MICROSERVICE. Wallet webhook events have one
-consumer, api-webhook-event. */ -}}
-{{- $apiRetired := list "OWS_MICROSERVICE/api-wua-revocation" "OWS_MICROSERVICE/api-webhook-issue-credential" "OWS_MICROSERVICE/api-webhook-issuer-event" "OWS_MICROSERVICE/api-webhook-credential" "OWS_MICROSERVICE/api-webhook-present-proof" "OWS_MICROSERVICE/api-webhook-presentation" -}}
 {{- $spec := dig . dict (dict
   "api" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
     "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted")
-    "retired" $apiRetired
     "kv" (list "OWS_ENVELOPE_JTI")
     "extra" (list "$JS.API.INFO"))
   "apiWebhook" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
-    "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested" "CONSENT_EVENTS/api-consent-webhooks" "CONSENT_EVENTS/api-consent-policy")
-    "retired" $apiRetired)
+    "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested" "CONSENT_EVENTS/api-consent-webhooks" "CONSENT_EVENTS/api-consent-policy"))
   "consent" (dict
     "streams" (list "CONSENT_EVENTS")
     "pull" (list "API_EVENTS/consent-api-organisation" "OWS_MICROSERVICE/consent-dda-present-proof" "OWS_MICROSERVICE/consent-dda-presentation"))
@@ -736,11 +728,9 @@ consumer, api-webhook-event. */ -}}
   "walletConfig" (dict
     "streams" (list "OWS_MICROSERVICE")
     "pull" (list "API_EVENTS/eudi-wallet-api-triggers")
-    "retired" (list "OWS_MICROSERVICE/credential-definition-worker" "OWS_MICROSERVICE/presentation-definition-worker")
     "kv" (list "wallet-command-replay" "wallet-command-replies"))
   "walletService" (dict
-    "streams" (list "OWS_MICROSERVICE")
-    "retired" (list "OWS_MICROSERVICE/credential-definition-worker" "OWS_MICROSERVICE/presentation-definition-worker"))
+    "streams" (list "OWS_MICROSERVICE"))
   "walletWorker" (dict
     "streams" (list "OWS_MICROSERVICE"))) -}}
 {{- $out := list -}}
@@ -759,10 +749,6 @@ consumer, api-webhook-event. */ -}}
     (printf "$JS.ACK.%s.%s.>" $stream $name)) -}}
 {{- if eq $kind "pull" -}}{{- $out = append $out (printf "$JS.API.CONSUMER.MSG.NEXT.%s.%s" $stream $name) -}}{{- end -}}
 {{- end -}}
-{{- end -}}
-{{- range $item := ($spec.retired | default list) -}}
-{{- $stream := index (splitList "/" $item) 0 -}}{{- $name := index (splitList "/" $item) 1 -}}
-{{- $out = concat $out (list (printf "$JS.API.CONSUMER.INFO.%s.%s" $stream $name) (printf "$JS.API.CONSUMER.DELETE.%s.%s" $stream $name)) -}}
 {{- end -}}
 {{- range $bucket := ($spec.kv | default list) -}}
 {{- $out = concat $out (list

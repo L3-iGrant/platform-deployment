@@ -306,7 +306,6 @@ provider and its OIDC extension is on.
 | Stop the platform (the data stays) | `make down` |
 | Start the platform again | `make up` |
 | Change a setting | Edit `.env`, then run `make check` and `make up` (`make configs` writes the configuration files again, and Compose restarts the services whose file or setting changed) |
-| Move to a new release | Set its tag in `PLATFORM_TAG` in `.env`, then run `make secrets`, `make check` and `make up` (see [Database roles of the wallet](#database-roles-of-the-wallet)) |
 | Show the platform operator organisation and the platform admins | `make platform-status` |
 | Delete all data and start again | `make reset`, then `make up`, then step 8 |
 | OpenBao seal status | `make openbao-status` |
@@ -442,8 +441,7 @@ starts only after the one before it exits with code 0:
 2. `wallet-database-roles` (`database-roles apply`, as the admin user of
    the database server) creates the owner role `igrant_wallet_owner` and
    the login database roles with their passwords from `secrets/database/`,
-   creates the data scope schemas, hands the tables, views and sequences of
-   an older release to the owner role, and sets the grants.
+   creates the data scope schemas, and sets the grants.
 3. `wallet-migrate` (`migrate-database`, as `igrant_wallet_migrator`)
    applies the wallet migrations as the owner role, then gives the database
    roles their grants on the new tables. It is the only service that
@@ -469,15 +467,9 @@ time, the process exits and Compose starts it again.
 
 The other login database roles (`igrant_wallet_audit_reader` and one
 database role per role application, for example
-`igrant_wallet_issuer_app`) also get passwords, but no process of this
-release logs in with them. The audit reader can only read the audit log
+`igrant_wallet_issuer_app`) also get passwords, but no process logs in
+with them. The audit reader can only read the audit log
 (see [Audit log](#audit-log)).
-
-A new release can add database roles and migrations. Set its tag in
-`PLATFORM_TAG` in `.env`, then run `make secrets`, `make check` and
-`make up`. `make secrets` creates the password files that the release adds
-and keeps the others. The one-shot services then do the database work in
-the order above, with no manual step.
 
 ## Database server logs
 
@@ -743,8 +735,8 @@ its port rules before the rules of ufw, so put your firewall rules in the
 
 ## Privacy dashboard
 
-The privacy dashboard of an organisation is not available in this release:
-the feature is off, and the api answers that it is not configured.
+The privacy dashboard of an organisation is not available: the feature is
+off, and the api answers that it is not configured.
 
 ## Commands
 
@@ -801,12 +793,8 @@ the feature is off, and the api answers that it is not configured.
   compose logs wallet-migrate`, run `docker compose run --rm --no-deps
   --entrypoint /app/.venv/bin/audit wallet-migrate partitions repair
   --scope <scope> --month <YYYY-MM>`, then run `make up` again.
-- `wallet-migrate` shows `Exited (5)`: a newer release migrated the
-  database, and this release is not compatible with it. Nothing changed,
-  and `make up` cannot help. Set `PLATFORM_TAG` back to the newer release,
-  or contact iGrant.io to downgrade the wallet database first.
 - `make check` shows `no password file for the database roles ...`: run
-  `make secrets` (a new release can add database roles).
+  `make secrets`.
 - `openbao-init` shows "init.json is missing": OpenBao has data, but
   `secrets/openbao/init.json` is not there. Put your copy of the file back.
 - A host port is already in use: change `API_PORT`, `WALLET_PORT` or

@@ -18,8 +18,8 @@ The keys of the platform and the Secrets that hold them: the Secrets of `scripts
 The script runs the `igrant-api keys` commands of the api image (`generate-hash-secret`, `generate-token-key`, `generate-wrapping-key`, `export-token-jwks`, `generate-nats-seed`). To change a key:
 
 1. Add a new key to the file with the same command (`--rotate` for the hash secret and the wrapping key).
-2. Update the Secret and the public keys, then upgrade.
-3. Set the new active key id, and upgrade again.
+2. Update the Secret and the public keys, then run `helm upgrade`.
+3. Set the new active key id, and run `helm upgrade` again.
 
 The chart creates these Secrets itself (random values, kept across upgrades):
 

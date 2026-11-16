@@ -166,7 +166,7 @@ These are the pod requests, not what an installation needs under load. To plan t
 
 This chart is the community installation, for development and tests. Production uses the enterprise installation (on request: support@igrant.io). The sizing below applies to both.
 
-> **Estimates.** These figures come from load tests on one computer, before optimisation. They are not a commitment. Your peak load (presentations, issuances and WIA requests), your retention rules and your HSM change them. For a production installation, iGrant.io confirms the sizing with a load test.
+> **Estimates.** These figures come from load tests on one computer. They are not a commitment. Your peak load (presentations, issuances and WIA requests), your retention rules and your HSM change them. For a production installation, iGrant.io confirms the sizing with a load test.
 
 | Item | Development and tests | Small production |
 | --- | --- | --- |

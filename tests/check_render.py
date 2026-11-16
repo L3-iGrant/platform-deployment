@@ -77,11 +77,6 @@ REDIS_IMAGE = "docker.io/valkey/valkey@sha256:2602ace2be6569bc2bbb06f873776516ab
 REDIS_EXTERNAL_SENTINELS = ["redis-1.example.org:26379", "redis-2.example.org:26379", "redis-3.example.org:26379"]
 REDIS_EXTERNAL_CIDRS = {"192.0.2.50/32", "192.0.2.51/32", "192.0.2.52/32"}
 
-# The api's retired NATS durables (the removed consumers of the NATS
-# contract): the API core and the webhook handler can only read and delete
-# them.
-API_RETIRED_DURABLES = ["api-wua-revocation", "api-webhook-issue-credential", "api-webhook-issuer-event", "api-webhook-credential",
-                        "api-webhook-present-proof", "api-webhook-presentation"]
 WALLET_NATS_USERS = ["wallet-config", "wallet-service", "wallet-worker"]
 
 # Words that must not appear in a render (case-insensitive).
@@ -774,10 +769,8 @@ def main() -> int:
     # The WIA pool refill is a worker actor: no NATS user publishes or
     # subscribes to ows.wia_pool.refill_requested.
     check("ows.wia_pool.refill_requested" not in nats_conf, "a NATS user has the removed WIA pool refill event")
-    # The wallet's webhook events: each wallet role publishes them, the
-    # webhook handler owns their durable api-webhook-event, and the API core
-    # and the webhook handler can only read and delete the api's retired
-    # durables (they delete them at start).
+    # The wallet's webhook events: each wallet role publishes them, and the
+    # webhook handler owns their durable api-webhook-event.
     rights = nats_rights(nats_conf)
     for user in WALLET_NATS_USERS:
         check("ows.*.evt.webhook_event" in rights.get(user, {}).get("publish", set()),
@@ -800,14 +793,6 @@ def main() -> int:
         "sandbox.updated", "sandbox.deleted", "extension.updated")),
           f"the NATS user api publishes the api events {api_events}")
     check("ows.cmd.>" in api_publish, "the NATS user api cannot publish the wallet commands ows.cmd.>")
-    for user in ("api", "api-webhook"):
-        publish = rights.get(user, {}).get("publish", set())
-        for retired in API_RETIRED_DURABLES:
-            subject = f"OWS_MICROSERVICE.{retired}"
-            check({f"$JS.API.CONSUMER.INFO.{subject}", f"$JS.API.CONSUMER.DELETE.{subject}"} <= publish,
-                  f"the NATS user {user} cannot delete the retired durable {retired}")
-            check(not {f"$JS.API.CONSUMER.DURABLE.CREATE.{subject}", f"$JS.ACK.{subject}.>"} & publish,
-                  f"the NATS user {user} can use the retired durable {retired}")
     # Process cache clears (core NATS ows.cache.cleared): the service and
     # config pods publish and subscribe to them, the workers do not.
     for user in WALLET_NATS_USERS:

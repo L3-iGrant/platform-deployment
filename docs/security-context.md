@@ -66,7 +66,7 @@ The api core, the webhook handler, consent and the wallet call URLs that an orga
 A guard that is off lets an organisation's URL reach every private, loopback and metadata address that the pod reaches: the services of your network, the services of the cluster, and the credentials on the metadata server of your cloud. The notes of `helm install` and `helm upgrade` then show a warning that names the role. Do not turn a guard off in production. If a host that the platform must call has a private address (on premise), allow only that host:
 
 - the wallet: `organisationWallet.ssrf.allowedPrivate` (host names, addresses or CIDRs; never loopback, link-local or the metadata addresses);
-- the api core, the webhook handler and consent: an allow list of private hosts comes with a later release of these services. Until then, an OIDC provider of the admins in your network can use `allowPrivateNetwork` of its entry in `Iam.providers`.
+- the api core, the webhook handler and consent: they have no allow list of private hosts. An OIDC provider of the admins in your network can use `allowPrivateNetwork` of its entry in `Iam.providers`.
 
 With network policies, also give the address to the egress profile `platform` (the public hosts of this platform) or to a profile of your own (see [Network policies](network-policies.md)).
 
@@ -130,7 +130,7 @@ global:
     supplementalGroups: [4321]
 ```
 
-A global key that a component also sets (for example `runAsUser`) does not apply to that component: the release notes name these components. To use the global key there, set the key of the component to `null`.
+A global key that a component also sets (for example `runAsUser`) does not apply to that component: the notes of `helm install` and `helm upgrade` name these components. To use the global key there, set the key of the component to `null`.
 
 Helm merges your keys into the default of a component. To remove a default key, set it to `null`. For example, on OpenShift the security context constraints (SCC) give the UID and the groups:
 

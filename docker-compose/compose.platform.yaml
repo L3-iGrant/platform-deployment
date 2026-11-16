@@ -355,8 +355,7 @@ services:
   # The wallet's database roles (database-roles apply, as the admin user):
   # the owner role igrant_wallet_owner, the login database roles
   # igrant_wallet_<name> with their passwords (one file each in
-  # --password-dir, named without the prefix), the data scope schemas, the
-  # hand-over of an older release's objects to the owner role, and the
+  # --password-dir, named without the prefix), the data scope schemas and the
   # grants. The prefix igrant_wallet is the wallet database name.
   wallet-database-roles:
     <<: [*job, *hardened]

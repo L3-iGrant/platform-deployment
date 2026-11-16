@@ -46,8 +46,8 @@ REMOVE_CONSENT = if ! $(COMPOSE) config --services 2>/dev/null | grep -qx consen
 	&& [ -n "$$($(COMPOSE) --profile consent ps -a -q $(CONSENT_SERVICES) 2>/dev/null)" ]; then \
 	$(COMPOSE) --profile consent rm --stop --force $(CONSENT_SERVICES); fi
 
-# --remove-orphans: removes the services that a new release dropped (for
-# example a service that is no longer in the Compose files).
+# --remove-orphans: removes the containers of the services that are not in
+# the Compose files.
 up: check ## Step 5: start the platform (after make check)
 	@$(REMOVE_CONSENT)
 	$(COMPOSE) up -d --remove-orphans

@@ -971,7 +971,7 @@ openbao:
   image: {registry: "", repository: openbao, tag: "", digest: ""}
   # -- Raft nodes: 1, 3 or 5. 3 keeps the service when one node stops.
   replicas: 3
-  # -- StatefulSet update strategy. Empty: OnDelete (docs/upgrade.md).
+  # -- StatefulSet update strategy. Empty: OnDelete (docs/openbao.md).
   updateStrategy: ""
   tls:
     # -- Your TLS Secret of the listener. Empty: the chart makes a CA and a certificate.
