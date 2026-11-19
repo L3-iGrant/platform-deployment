@@ -1,25 +1,21 @@
 # Test key values. No secrets: key ids, empty public JWKS, test public nkeys
 # and Secret names. In a real installation, scripts/make-keys.sh writes this
 # file.
-api:
-  keyStorage:
-    tokenSigning:
-      activeKid: test-token-kid
-  serviceEnvelope:
-    activeKid: test-api-envelope-kid
-organisationWallet:
-  serviceEnvelope:
-    activeKid: test-wallet-envelope-kid
-gateway:
-  internalToken:
+keys:
+  apiTokenSigning:
+    activeKid: test-token-kid
+  gatewayInternalToken:
     activeKid: test-gateway-kid
-  publicKeys:
-    gatewayJwks: '{"keys":[]}'
-    tokenVerificationJwks: '{"keys":[]}'
-serviceKeys:
+  serviceEnvelope:
+    api:
+      activeKid: test-api-envelope-kid
+      publicJwks: '{"keys":[]}'
+    organisationWallet:
+      activeKid: test-wallet-envelope-kid
+      publicJwks: '{"keys":[]}'
   publicJwks:
-    igrant-api: '{"keys":[]}'
-    eudi-wallet: '{"keys":[]}'
+    gatewayInternalToken: '{"keys":[]}'
+    apiTokenVerification: '{"keys":[]}'
 nats:
   auth:
     users:

@@ -17,7 +17,8 @@ $ "role" "worker" "group" <group>).
 {{- $dir := include "ow.wallet.secretDir" $root -}}
 {{- $files := include "ow.wallet.secretFiles" (list $root $role) | fromJson -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.wallet.natsUser" $role)) | fromJson -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "organisationWallet") | fromJson -}}
+{{- $envelope := include "ow.serviceKeys.timing" $root | fromJson -}}
 {{- /* The key management service is always the OpenBao Transit engine:
 the chart's bundled OpenBao or an external one. The wallet's config section
 for OpenBao is called "vault" (a key in the wallet code). */ -}}
@@ -174,8 +175,8 @@ trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
     "api_service_name" "igrant-api"
     "signing_jwks_file" (printf "%s/service-envelope-jwks.json" $dir)
     "active_kid" $signing.activeKid
-    "lifetime_seconds" ($w.serviceEnvelope.lifetimeSeconds | int)
-    "clock_skew_seconds" ($w.serviceEnvelope.clockSkewSeconds | int))
+    "lifetime_seconds" ($envelope.lifetimeSeconds | int)
+    "clock_skew_seconds" ($envelope.clockSkewSeconds | int))
   "kms" $kms
   "trust_list" $trustList
   "trust_sources" $trustSources
@@ -262,11 +263,12 @@ api's signed NATS commands (service_envelope.trusted_issuers). The service
 role keeps the protocol routes public and direct. */ -}}
 {{- if eq $role "config" -}}
 {{- include "ow.gateway.checkGatewayJwks" $root -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $_ := set $config "internal_auth" (dict
-    "audience" $v.gateway.internalToken.audiences.walletConfig
-    "clock_skew_seconds" ($w.internalAuth.clockSkewSeconds | int)
+    "audience" $internalToken.audiences.walletConfig
+    "clock_skew_seconds" ($envelope.clockSkewSeconds | int)
     "trusted_issuers" (list (dict
-      "issuer" $v.gateway.internalToken.issuer
+      "issuer" $internalToken.issuer
       "jwks_file" (printf "%s/gateway-jwks.json" (include "ow.gateway.keysDir" $root))))) -}}
 {{- $trusted := list -}}
 {{- range $item := include "ow.serviceKeys.trusted" (list $root "igrant-api") | fromJsonArray -}}

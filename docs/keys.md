@@ -15,6 +15,8 @@ The keys of the platform and the Secrets that hold them: the Secrets of `scripts
 | `<release>-api-service-key`, `<release>-wallet-service-key` | `service-jwks.json` | The keys that sign each service's NATS messages |
 | `<release>-nats-<user>` | `seed` | The nkey seed of each NATS user |
 
+The script also writes `values-keys.yaml`: the block `keys` of the values (the key ids, the public JWKS and no secret) and the NATS users. Each key Secret has a value `keys.<name>.existingSecret` for a Secret with another name (see [Values reference](values-reference.md#keys)).
+
 The script runs the `igrant-api keys` commands of the api image (`generate-hash-secret`, `generate-token-key`, `generate-wrapping-key`, `export-token-jwks`, `generate-nats-seed`). To change a key:
 
 1. Add a new key to the file with the same command (`--rotate` for the hash secret and the wrapping key).

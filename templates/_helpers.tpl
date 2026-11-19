@@ -86,12 +86,13 @@ nats://{{ include "ow.name" (list . "nats") }}.{{ .Release.Namespace }}.svc:4222
 {{- end }}
 
 {{/*
-Name of one api key Secret: api.keyStorage.<item>.existingSecret, else
-"<fullname>-<default>". Call with (list $ "<item>" "<default>").
+Name of one key Secret: keys.<item>.existingSecret, else
+"<fullname>-<default>" (the Secret of scripts/make-keys.sh). Call with
+(list $ "<item>" "<default>").
 */}}
-{{- define "ow.api.keySecretName" -}}
+{{- define "ow.keys.secretName" -}}
 {{- $root := index . 0 -}}
-{{- (index $root.Values.api.keyStorage (index . 1)).existingSecret | default (include "ow.name" (list $root (index . 2))) -}}
+{{- (index $root.Values.keys (index . 1)).existingSecret | default (include "ow.name" (list $root (index . 2))) -}}
 {{- end }}
 
 {{/* Folder of the api secret files (one projected volume). */}}
@@ -112,7 +113,7 @@ Output: JSON list.
 {{- define "ow.api.chartSecretKeys" -}}
 {{- $api := .Values.api -}}
 {{- $keys := list -}}
-{{- if not $api.existingSecret -}}{{- $keys = append $keys "api-secret-key" -}}{{- end -}}
+{{- if not .Values.keys.apiHmacKey.existingSecret -}}{{- $keys = append $keys "api-secret-key" -}}{{- end -}}
 {{- if and $api.smtp.host (not $api.smtp.existingSecret) $api.smtp.password -}}{{- $keys = append $keys "smtp-password" -}}{{- end -}}
 {{- if and (not $api.twilio.existingSecret) $api.twilio.accountSid -}}{{- $keys = concat $keys (list "twilio-account-sid" "twilio-auth-token") -}}{{- end -}}
 {{- toJson $keys -}}
@@ -127,20 +128,20 @@ Output: JSON object "<file name>" -> {secret, key}.
 {{- define "ow.api.secretFiles" -}}
 {{- $root := . -}}
 {{- $api := .Values.api -}}
-{{- $ks := $api.keyStorage -}}
+{{- $k := .Values.keys -}}
 {{- $chartSecret := include "ow.name" (list $root "api") -}}
 {{- $chartKeys := include "ow.api.chartSecretKeys" $root | fromJsonArray -}}
 {{- $files := merge
   (include "ow.db.secretFiles" (list $root "api" "db-password") | fromJson)
   (include "ow.db.secretFiles" (list $root "oidc" "oidc-db-password") | fromJson) -}}
 {{- $files = merge $files (dict
-  "api-secret-key" (dict "secret" ($api.existingSecret | default $chartSecret) "key" "api-secret-key")
-  "token-hash-secret.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenHash" "api-token-hash")) "key" $ks.tokenHash.key)
-  "token-signing-jwks.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenSigning" "api-token-signing")) "key" $ks.tokenSigning.key)
-  "db-wrapping-keys.json" (dict "secret" (include "ow.api.keySecretName" (list $root "dbWrapping" "api-db-wrapping")) "key" $ks.dbWrapping.key)) -}}
+  "api-secret-key" (dict "secret" ($k.apiHmacKey.existingSecret | default $chartSecret) "key" $k.apiHmacKey.key)
+  "token-hash-secret.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiTokenHash" "api-token-hash")) "key" $k.apiTokenHash.key)
+  "token-signing-jwks.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiTokenSigning" "api-token-signing")) "key" $k.apiTokenSigning.key)
+  "db-wrapping-keys.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiDatabaseWrapping" "api-db-wrapping")) "key" $k.apiDatabaseWrapping.key)) -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $_ := set $files "read-access-wallet-password" (dict "secret" $reader.secret "key" $reader.key) -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "api") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- with include "ow.nats.ca" $root | fromJson -}}
 {{- $_ := set $files "nats-ca.crt" . -}}
@@ -209,7 +210,7 @@ operator Jobs use "api") and the secret files (mode 0440). Call with
       - configMap:
           name: {{ include "ow.gateway.publicKeysConfigMap" $root }}
           items:
-            - key: {{ $root.Values.gateway.publicKeys.gatewayJwksKey }}
+            - key: gateway-jwks.json
               path: gateway-jwks.json
 - name: secrets
   projected:
@@ -398,7 +399,7 @@ read-only user (read_access). */ -}}
 {{- end -}}
 {{- /* Every wallet process signs its NATS events with the wallet's private
 JWKS. */ -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "organisationWallet") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- end -}}
 {{- toJson $files -}}
@@ -503,22 +504,31 @@ Output: a list at column 0, or nothing.
 {{/*
 Name of the shared ConfigMap with the gateway public keys
 (gateway-jwks.json). The api core and the wallet config role check the
-internal token with them. gateway.publicKeys.existingConfigMap, else the
+internal token with them. keys.publicJwks.existingConfigMap, else the
 chart's ConfigMap <fullname>-igrant-gateway-jwks (same name for all
 services).
 */}}
 {{- define "ow.gateway.publicKeysConfigMap" -}}
-{{- .Values.gateway.publicKeys.existingConfigMap | default (include "ow.name" (list . "igrant-gateway-jwks")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "igrant-gateway-jwks")) -}}
 {{- end }}
 
 {{/*
 Name of the ConfigMap with the public keys for api tokens
 (token-verification-jwks.json; only the gateway reads it):
-gateway.publicKeys.existingTokenVerificationConfigMap, else the chart's
-gateway ConfigMap (next to config.yaml).
+keys.publicJwks.existingConfigMap, else the chart's gateway ConfigMap (next
+to config.yaml).
 */}}
 {{- define "ow.gateway.tokenVerificationConfigMap" -}}
-{{- .Values.gateway.publicKeys.existingTokenVerificationConfigMap | default (include "ow.name" (list . "gateway")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "gateway")) -}}
+{{- end }}
+
+{{/*
+The internal token of the gateway: constants of the protocol, the same in
+the gateway, the api core and the wallet config role. issuer: its iss.
+audiences: its aud for each upstream. Output: JSON.
+*/}}
+{{- define "ow.gateway.internalToken" -}}
+{{- toJson (dict "issuer" "igrant-gateway" "audiences" (dict "core" "igrant-api-core" "walletConfig" "wallet-config")) -}}
 {{- end }}
 
 {{/*
@@ -532,7 +542,7 @@ Output: JSON object "<file name>" -> {secret, key}.
 */}}
 {{- define "ow.gateway.secretFiles" -}}
 {{- $api := include "ow.api.secretFiles" . | fromJson -}}
-{{- $signing := .Values.gateway.internalToken.signingKey -}}
+{{- $signing := .Values.keys.gatewayInternalToken -}}
 {{- $files := include "ow.db.secretFiles" (list . "api" "db-password") | fromJson -}}
 {{- $files = merge $files (dict
   "api-secret-key" (get $api "api-secret-key")
@@ -556,7 +566,7 @@ ow.gateway.keysDir). Output: a list at column 0.
   configMap:
     name: {{ include "ow.gateway.publicKeysConfigMap" . }}
     items:
-      - key: {{ .Values.gateway.publicKeys.gatewayJwksKey }}
+      - key: gateway-jwks.json
         path: gateway-jwks.json
 {{- end }}
 
@@ -566,9 +576,9 @@ core and the wallet config role verify the internal token of every request
 with them. Output: nothing.
 */}}
 {{- define "ow.gateway.checkGatewayJwks" -}}
-{{- $keys := .Values.gateway.publicKeys -}}
-{{- if and (not $keys.existingConfigMap) (not $keys.gatewayJwks) -}}
-{{- fail "gateway.publicKeys.gatewayJwks (or gateway.publicKeys.existingConfigMap) is required: the public keys of the gateway, which the api core and the wallet use to verify the internal token (igrant-api keys export-token-jwks; see docs/keys.md)" -}}
+{{- $keys := .Values.keys.publicJwks -}}
+{{- if and (not $keys.existingConfigMap) (not $keys.gatewayInternalToken) -}}
+{{- fail "keys.publicJwks.gatewayInternalToken (or keys.publicJwks.existingConfigMap) is required: the public keys of the gateway, which the api core and the wallet use to verify the internal token (scripts/make-keys.sh; see docs/keys.md)" -}}
 {{- end -}}
 {{- end }}
 
@@ -762,25 +772,39 @@ cluster size. A production cluster uses 3.
 
 {{/*
 Name of the shared ConfigMap with the public JWKS of the services
-(<issuer>.json): serviceKeys.existingConfigMap, else the chart's ConfigMap
-<fullname>-igrant-service-jwks (same name for all services).
+(<issuer>.json): keys.publicJwks.existingConfigMap, else the chart's
+ConfigMap <fullname>-igrant-service-jwks (same name for all services).
 */}}
 {{- define "ow.serviceKeys.configMap" -}}
-{{- .Values.serviceKeys.existingConfigMap | default (include "ow.name" (list . "igrant-service-jwks")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "igrant-service-jwks")) -}}
+{{- end }}
+
+{{/*
+The issuer name of the signed NATS envelopes of each component
+(keys.serviceEnvelope.<component>): a constant of the services. Output:
+JSON component -> issuer.
+*/}}
+{{- define "ow.serviceKeys.issuers" -}}
+{{- toJson (dict "api" "igrant-api" "organisationWallet" "eudi-wallet") -}}
 {{- end }}
 
 {{/*
 The issuers of signed NATS envelopes that one service trusts. Fails when the
-public JWKS of an issuer is missing (serviceKeys.publicJwks, or an existing
-ConfigMap). Call with (list $ "<issuer>" ...). Output: JSON list of
-{issuer, jwksFile}.
+public JWKS of an issuer is missing (keys.serviceEnvelope.<component>.publicJwks,
+or keys.publicJwks.existingConfigMap). Call with (list $ "<issuer>" ...).
+Output: JSON list of {issuer, jwksFile}.
 */}}
 {{- define "ow.serviceKeys.trusted" -}}
 {{- $root := index . 0 -}}
 {{- $out := list -}}
+{{- $components := dict -}}
+{{- range $component, $issuer := include "ow.serviceKeys.issuers" $root | fromJson -}}
+{{- $_ := set $components $issuer $component -}}
+{{- end -}}
 {{- range $issuer := rest . -}}
-{{- if and (not $root.Values.serviceKeys.existingConfigMap) (not (index $root.Values.serviceKeys.publicJwks $issuer)) -}}
-{{- fail (printf "serviceKeys.publicJwks.%s (or serviceKeys.existingConfigMap) is required: the public keys of the signed NATS envelopes of %s (igrant-api keys export-token-jwks; see docs/keys.md)" $issuer $issuer) -}}
+{{- $component := get $components $issuer -}}
+{{- if and (not $root.Values.keys.publicJwks.existingConfigMap) (not (index $root.Values.keys.serviceEnvelope $component).publicJwks) -}}
+{{- fail (printf "keys.serviceEnvelope.%s.publicJwks (or keys.publicJwks.existingConfigMap) is required: the public keys of the signed NATS messages of %s (scripts/make-keys.sh; see docs/keys.md)" $component $issuer) -}}
 {{- end -}}
 {{- $out = append $out (dict "issuer" $issuer "jwksFile" (printf "%s/%s.json" (include "ow.serviceKeys.dir" $root) $issuer)) -}}
 {{- end -}}
@@ -804,20 +828,28 @@ Call with (list $ "<issuer>" ...). Output: a list at column 0.
 {{- end }}
 
 {{/*
-The private JWKS Secret that one service signs its NATS envelopes with.
-Fails when the active kid is not set. Call with (list $ <service values>
-"<values key>" "<default secret suffix>"). Output: JSON {secret, key,
+The private JWKS Secret that one service signs its NATS envelopes with
+(keys.serviceEnvelope.<component>). Fails when the active kid is not set.
+Call with (list $ "api"|"organisationWallet"). Output: JSON {secret, key,
 activeKid}.
 */}}
 {{- define "ow.serviceKeys.signing" -}}
 {{- $root := index . 0 -}}
-{{- $envelope := (index . 1).serviceEnvelope -}}
-{{- $key := index . 2 -}}
-{{- $kid := required (printf "%s.serviceEnvelope.activeKid is required: the kid of the active key in the private JWKS of the signed NATS envelopes (igrant-api keys generate-token-key; see docs/keys.md)" $key) $envelope.activeKid -}}
+{{- $component := index . 1 -}}
+{{- $envelope := index $root.Values.keys.serviceEnvelope $component -}}
+{{- $kid := required (printf "keys.serviceEnvelope.%s.activeKid is required: the kid of the active key in the private JWKS of the signed NATS messages (scripts/make-keys.sh; see docs/keys.md)" $component) $envelope.activeKid -}}
 {{- toJson (dict
-  "secret" ($envelope.signingKey.existingSecret | default (include "ow.name" (list $root (index . 3))))
-  "key" $envelope.signingKey.key
+  "secret" ($envelope.existingSecret | default (include "ow.name" (list $root (get (dict "api" "api-service-key" "organisationWallet" "wallet-service-key") $component))))
+  "key" $envelope.key
   "activeKid" ($kid | toString)) -}}
+{{- end }}
+
+{{/*
+Lifetime and clock skew of the signed NATS envelopes, in seconds: constants
+of the protocol, the same in every service. Output: JSON.
+*/}}
+{{- define "ow.serviceKeys.timing" -}}
+{{- toJson (dict "lifetimeSeconds" 60 "clockSkewSeconds" 60) -}}
 {{- end }}
 
 {{/*

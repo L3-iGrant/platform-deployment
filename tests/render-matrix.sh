@@ -1099,7 +1099,7 @@ guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Insta
   --set-json 'gateway.extraConfig.Installation={"services":["wallet","api"]}'
 guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" \
   --set-json 'api.extraConfig.Installation={}'
-guard "the public keys of the wallet" "serviceKeys.publicJwks.eudi-wallet" --set serviceKeys.publicJwks.eudi-wallet=null
+guard "the public keys of the wallet" "keys.serviceEnvelope.organisationWallet.publicJwks" --set keys.serviceEnvelope.organisationWallet.publicJwks=
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}'
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)

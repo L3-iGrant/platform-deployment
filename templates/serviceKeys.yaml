@@ -1,15 +1,16 @@
 {{- /*
 Public JWKS for each service's signed NATS envelopes (no secrets):
 receivers verify senders with them. The chart builds the ConfigMap from
-serviceKeys.publicJwks when serviceKeys.existingConfigMap is empty. Each
-service's private JWKS is its own Secret, created by the operator.
+keys.serviceEnvelope.<component>.publicJwks (key <issuer>.json) when
+keys.publicJwks.existingConfigMap is empty. Each service's private JWKS is
+its own Secret (scripts/make-keys.sh).
 */}}
-{{- $keys := .Values.serviceKeys }}
-{{- if not $keys.existingConfigMap }}
+{{- $keys := .Values.keys }}
+{{- if not $keys.publicJwks.existingConfigMap }}
 {{- $data := dict }}
-{{- range $issuer, $jwks := $keys.publicJwks }}
-{{- if $jwks }}
-{{- $_ := set $data (printf "%s.json" $issuer) $jwks }}
+{{- range $component, $issuer := include "ow.serviceKeys.issuers" . | fromJson }}
+{{- with (index $keys.serviceEnvelope $component).publicJwks }}
+{{- $_ := set $data (printf "%s.json" $issuer) . }}
 {{- end }}
 {{- end }}
 {{- if $data }}

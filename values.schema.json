@@ -1274,6 +1274,142 @@
         }
       }
     },
+    "keys": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "apiTokenSigning": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "activeKid": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "apiTokenHash": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "apiDatabaseWrapping": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "apiHmacKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "gatewayInternalToken": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "activeKid": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "serviceEnvelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "activeKid": {
+                  "type": "string"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "publicJwks": {
+                  "type": "string"
+                }
+              }
+            },
+            "organisationWallet": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "activeKid": {
+                  "type": "string"
+                },
+                "existingSecret": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "publicJwks": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "publicJwks": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "gatewayInternalToken": {
+              "type": "string"
+            },
+            "apiTokenVerification": {
+              "type": "string"
+            },
+            "existingConfigMap": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
     "api": {
       "type": "object",
       "additionalProperties": false,
@@ -1447,39 +1583,6 @@
             }
           }
         },
-        "serviceEnvelope": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "activeKid": {
-              "type": "string"
-            },
-            "signingKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
-            "lifetimeSeconds": {
-              "type": "integer"
-            },
-            "clockSkewSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "existingSecret": {
-          "type": "string"
-        },
-        "apiSecretKey": {
-          "type": "string"
-        },
         "logLevel": {
           "type": "string",
           "enum": [
@@ -1515,51 +1618,6 @@
         },
         "dashboardUrl": {
           "type": "string"
-        },
-        "keyStorage": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "tokenHash": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
-            "tokenSigning": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                },
-                "activeKid": {
-                  "type": "string"
-                }
-              }
-            },
-            "dbWrapping": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            }
-          }
         },
         "smtp": {
           "type": "object",
@@ -1821,6 +1879,90 @@
         },
         "imagePullSecrets": {
           "type": "array"
+        },
+        "keyStorage": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "tokenSigning": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "activeKid": {
+                  "deprecated": true
+                },
+                "existingSecret": {
+                  "deprecated": true
+                },
+                "key": {
+                  "deprecated": true
+                }
+              }
+            },
+            "tokenHash": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "existingSecret": {
+                  "deprecated": true
+                },
+                "key": {
+                  "deprecated": true
+                }
+              }
+            },
+            "dbWrapping": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "existingSecret": {
+                  "deprecated": true
+                },
+                "key": {
+                  "deprecated": true
+                }
+              }
+            }
+          }
+        },
+        "existingSecret": {
+          "deprecated": true
+        },
+        "apiSecretKey": {
+          "deprecated": true
+        },
+        "serviceEnvelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "activeKid": {
+              "deprecated": true
+            },
+            "signingKey": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "existingSecret": {
+                  "deprecated": true
+                },
+                "key": {
+                  "deprecated": true
+                }
+              }
+            },
+            "lifetimeSeconds": {
+              "deprecated": true
+            },
+            "clockSkewSeconds": {
+              "deprecated": true
+            }
+          }
         }
       }
     },
@@ -1960,62 +2102,30 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "issuer": {
-              "type": "string"
-            },
-            "activeKid": {
-              "type": "string"
-            },
             "lifetimeSeconds": {
               "type": "integer"
             },
-            "audiences": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "core": {
-                  "type": "string"
-                },
-                "walletConfig": {
-                  "type": "string"
-                }
-              }
+            "activeKid": {
+              "deprecated": true
             },
             "signingKey": {
               "type": "object",
               "additionalProperties": false,
+              "deprecated": true,
               "properties": {
                 "existingSecret": {
-                  "type": "string"
+                  "deprecated": true
                 },
                 "key": {
-                  "type": "string"
+                  "deprecated": true
                 }
               }
-            }
-          }
-        },
-        "publicKeys": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "existingConfigMap": {
-              "type": "string"
             },
-            "gatewayJwks": {
-              "type": "string"
+            "issuer": {
+              "deprecated": true
             },
-            "gatewayJwksKey": {
-              "type": "string"
-            },
-            "existingTokenVerificationConfigMap": {
-              "type": "string"
-            },
-            "tokenVerificationJwks": {
-              "type": "string"
-            },
-            "tokenVerificationJwksKey": {
-              "type": "string"
+            "audiences": {
+              "deprecated": true
             }
           }
         },
@@ -2102,27 +2212,29 @@
         },
         "imagePullSecrets": {
           "type": "array"
-        }
-      }
-    },
-    "serviceKeys": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "existingConfigMap": {
-          "type": "string"
         },
-        "publicJwks": {
+        "publicKeys": {
           "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
+          "additionalProperties": false,
+          "deprecated": true,
           "properties": {
-            "igrant-api": {
-              "type": "string"
+            "gatewayJwks": {
+              "deprecated": true
             },
-            "eudi-wallet": {
-              "type": "string"
+            "tokenVerificationJwks": {
+              "deprecated": true
+            },
+            "gatewayJwksKey": {
+              "deprecated": true
+            },
+            "tokenVerificationJwksKey": {
+              "deprecated": true
+            },
+            "existingConfigMap": {
+              "deprecated": true
+            },
+            "existingTokenVerificationConfigMap": {
+              "deprecated": true
             }
           }
         }
@@ -3223,42 +3335,6 @@
             ]
           }
         },
-        "internalAuth": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "clockSkewSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "serviceEnvelope": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "activeKid": {
-              "type": "string"
-            },
-            "signingKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
-            "lifetimeSeconds": {
-              "type": "integer"
-            },
-            "clockSkewSeconds": {
-              "type": "integer"
-            }
-          }
-        },
         "nats": {
           "type": "object",
           "additionalProperties": false,
@@ -3564,6 +3640,45 @@
         },
         "imagePullSecrets": {
           "type": "array"
+        },
+        "serviceEnvelope": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "activeKid": {
+              "deprecated": true
+            },
+            "signingKey": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "existingSecret": {
+                  "deprecated": true
+                },
+                "key": {
+                  "deprecated": true
+                }
+              }
+            },
+            "lifetimeSeconds": {
+              "deprecated": true
+            },
+            "clockSkewSeconds": {
+              "deprecated": true
+            }
+          }
+        },
+        "internalAuth": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "clockSkewSeconds": {
+              "deprecated": true
+            }
+          }
         }
       }
     },
@@ -3810,6 +3925,29 @@
         "properties": {
           "host": {
             "minLength": 1
+          }
+        }
+      }
+    },
+    "serviceKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "deprecated": true,
+      "properties": {
+        "existingConfigMap": {
+          "deprecated": true
+        },
+        "publicJwks": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "igrant-api": {
+              "deprecated": true
+            },
+            "eudi-wallet": {
+              "deprecated": true
+            }
           }
         }
       }

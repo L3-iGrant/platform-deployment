@@ -2,27 +2,25 @@
 # (tests/check_renamed.py).
 api:
   host: api.example.org
-  keyStorage:
-    tokenSigning:
-      activeKid: test-token-kid
-  serviceEnvelope:
-    activeKid: test-api-envelope-kid
 organisationWallet:
   host: wallet.example.org
-  serviceEnvelope:
-    activeKid: test-wallet-envelope-kid
 enterpriseDashboard:
   host: dashboard.example.org
-gateway:
-  internalToken:
+keys:
+  apiTokenSigning:
+    activeKid: test-token-kid
+  gatewayInternalToken:
     activeKid: test-gateway-kid
-  publicKeys:
-    gatewayJwks: '{"keys":[]}'
-    tokenVerificationJwks: '{"keys":[]}'
-serviceKeys:
+  serviceEnvelope:
+    api:
+      activeKid: test-api-envelope-kid
+      publicJwks: '{"keys":[]}'
+    organisationWallet:
+      activeKid: test-wallet-envelope-kid
+      publicJwks: '{"keys":[]}'
   publicJwks:
-    igrant-api: '{"keys":[]}'
-    eudi-wallet: '{"keys":[]}'
+    gatewayInternalToken: '{"keys":[]}'
+    apiTokenVerification: '{"keys":[]}'
 nats:
   auth:
     users:

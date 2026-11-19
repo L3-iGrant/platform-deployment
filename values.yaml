@@ -75,6 +75,35 @@ installation:
   # same list (docs/components.md, "Optional features").
   optionalFeatures: []
 
+# The keys of the platform (docs/keys.md). scripts/make-keys.sh makes the key
+# Secrets and writes this block in its values-keys.yaml: key ids, public JWKS
+# and no secret. An empty existingSecret: the Secret <fullname>-<name> of
+# make-keys.sh. The api pods wait until the Secrets exist.
+keys:
+  # -- ES256 JWKS that signs the api tokens. Required: activeKid, a kid of the JWKS. Empty Secret: <fullname>-api-token-signing.
+  apiTokenSigning: {activeKid: "", existingSecret: "", key: jwks.json}
+  # -- HMAC secret of the API keys and the opaque tokens. Empty Secret: <fullname>-api-token-hash.
+  apiTokenHash: {existingSecret: "", key: token-hash-secret.json}
+  # -- Wrapping keys of the OIDC provider keys. Empty Secret: <fullname>-api-db-wrapping.
+  apiDatabaseWrapping: {existingSecret: "", key: db-wrapping-keys.json}
+  # -- HMAC key of the login rate limits and the SSE tickets. Empty Secret: <fullname>-api (the chart makes a random key and keeps it).
+  apiHmacKey: {existingSecret: "", key: api-secret-key}
+  # -- ES256 JWKS that signs the internal tokens of the gateway. Required: activeKid. Empty Secret: <fullname>-gateway-internal-token.
+  gatewayInternalToken: {activeKid: "", existingSecret: "", key: internal-token-jwks.json}
+  # -- The signed NATS messages of each service. Required: activeKid (a kid of the private JWKS)
+  # and publicJwks. Empty Secret: <fullname>-api-service-key, <fullname>-wallet-service-key.
+  serviceEnvelope:
+    api: {activeKid: "", existingSecret: "", key: service-jwks.json, publicJwks: ""}
+    organisationWallet: {activeKid: "", existingSecret: "", key: service-jwks.json, publicJwks: ""}
+  # -- Public JWKS (no secrets). Required: gatewayInternalToken (the api and the wallet verify the
+  # internal token with it) and apiTokenVerification (the gateway verifies the api tokens with it).
+  publicJwks:
+    gatewayInternalToken: ""
+    apiTokenVerification: ""
+    # -- Your ConfigMap with all public JWKS: gateway-jwks.json, token-verification-jwks.json,
+    # igrant-api.json and eudi-wallet.json. Empty: the chart makes its ConfigMaps from the values.
+    existingConfigMap: ""
+
 # The api core and the webhook handler (one image). The OIDC provider runs in the api.
 api:
   # -- Empty registry and tag: global.imageRegistry and global.imageTag.
@@ -104,16 +133,6 @@ api:
     parentRefs: []
     # -- gatewayAPI: the timeouts of this route.
     timeouts: {}
-  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
-  serviceEnvelope:
-    activeKid: ""
-    signingKey: {existingSecret: "", key: service-jwks.json}
-    lifetimeSeconds: 60
-    clockSkewSeconds: 60
-  # -- Secret with api-secret-key, the HMAC key of the login rate limits. Empty: <fullname>-api.
-  existingSecret: ""
-  # -- api-secret-key when the chart makes the Secret. Empty: random, kept across upgrades.
-  apiSecretKey: ""
   # -- debug, info, warn or error.
   logLevel: info
   iam:
@@ -125,18 +144,6 @@ api:
       organisationId: ""
   # -- Public URL of the dashboard. Empty: the URL of enterpriseDashboard.host.
   dashboardUrl: ""
-  # -- Key Secrets of scripts/make-keys.sh (docs/keys.md). The api pods wait until they exist.
-  keyStorage:
-    # -- HMAC secret of the API keys and opaque tokens. Empty Secret: <fullname>-api-token-hash.
-    tokenHash: {existingSecret: "", key: token-hash-secret.json}
-    # -- ES256 JWKS that signs the api tokens. Empty Secret: <fullname>-api-token-signing.
-    tokenSigning:
-      existingSecret: ""
-      key: jwks.json
-      # -- Required: the kid of the signing key. It must be in the JWKS.
-      activeKid: ""
-    # -- Wrapping keys of the OIDC provider keys. Empty Secret: <fullname>-api-db-wrapping.
-    dbWrapping: {existingSecret: "", key: db-wrapping-keys.json}
   # -- SMTP server of the api e-mails. Empty host: no e-mail.
   smtp:
     host: ""
@@ -312,26 +319,8 @@ gateway:
       # -- Time limit of a wallet config request; then the client gets 504. 0: 60 s.
       requestTimeoutSeconds: 60
   internalToken:
-    # -- iss of the internal tokens.
-    issuer: igrant-gateway
-    # -- Required: the kid of the signing key. It must be in the JWKS of signingKey.
-    activeKid: ""
-    # -- Lifetime of a token, 1 to 300 seconds.
+    # -- Lifetime of an internal token, 1 to 300 seconds. Its key: keys.gatewayInternalToken.
     lifetimeSeconds: 60
-    # -- aud of the internal tokens for each upstream.
-    audiences:
-      core: igrant-api-core
-      walletConfig: wallet-config
-    # -- Existing Secret with the ES256 private JWKS. Empty: <fullname>-gateway-internal-token.
-    signingKey: {existingSecret: "", key: internal-token-jwks.json}
-  # -- Required public JWKS (no secrets): of the gateway and of the api tokens.
-  publicKeys:
-    existingConfigMap: ""
-    gatewayJwks: ""
-    gatewayJwksKey: gateway-jwks.json
-    existingTokenVerificationConfigMap: ""
-    tokenVerificationJwks: ""
-    tokenVerificationJwksKey: token-verification-jwks.json
   # -- Connections to the upstreams.
   proxy:
     dialTimeoutSeconds: 5
@@ -513,15 +502,6 @@ organisationWallet:
     - 192.168.0.0/16
     - 100.64.0.0/10
     - fc00::/7
-  internalAuth:
-    # -- Clock skew that exp and nbf of the gateway token accept: 0 to 300 seconds.
-    clockSkewSeconds: 60
-  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
-  serviceEnvelope:
-    activeKid: ""
-    signingKey: {existingSecret: "", key: service-jwks.json}
-    lifetimeSeconds: 60
-    clockSkewSeconds: 60
   nats:
     # -- Wait after a failed first connect; it doubles up to 60 s.
     connectRetrySeconds: 5
@@ -1130,10 +1110,3 @@ readAccess:
     api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
     wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
     ttlSecondsAfterFinished: 86400
-
-# Public keys of the signed NATS messages of each service (required; scripts/make-keys.sh).
-serviceKeys:
-  existingConfigMap: ""
-  publicJwks:
-    igrant-api: ""
-    eudi-wallet: ""

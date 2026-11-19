@@ -18,7 +18,9 @@ Call with (dict "root" $ "role" "api"|"webhook").
 {{- $pool := ternary $pools.webhook $pools.api (eq .role "webhook") -}}
 {{- $dir := include "ow.api.secretDir" $root -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.api.natsUser" .role)) | fromJson -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "api") | fromJson -}}
+{{- $envelope := include "ow.serviceKeys.timing" $root | fromJson -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $config := dict
   "ApiBaseUrl" $apiUrl
   "ServiceName" "igrant-api"
@@ -49,7 +51,7 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "KeyStorage" (dict
     "tokenHashSecretFile" (include "ow.api.secretFile" (list $root "token-hash-secret.json"))
     "tokenSigningJwksFile" (include "ow.api.secretFile" (list $root "token-signing-jwks.json"))
-    "tokenSigningActiveKid" (required "api.keyStorage.tokenSigning.activeKid is required (the kid of the active key in the token signing JWKS)" $api.keyStorage.tokenSigning.activeKid | toString)
+    "tokenSigningActiveKid" (required "keys.apiTokenSigning.activeKid is required: the kid of the active key in the token signing JWKS (scripts/make-keys.sh; see docs/keys.md)" $v.keys.apiTokenSigning.activeKid | toString)
     "dbWrappingKeysFile" (include "ow.api.secretFile" (list $root "db-wrapping-keys.json"))
     "allowPlaintextProviderKeys" false)
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
@@ -86,8 +88,8 @@ processes sign with the api key. */ -}}
 {{- $_ := set $config "ServiceEnvelope" (dict
     "signingJwksFile" (printf "%s/service-envelope-jwks.json" (include "ow.api.secretDir" $root))
     "activeKid" $signing.activeKid
-    "lifetimeSeconds" ($api.serviceEnvelope.lifetimeSeconds | int)
-    "clockSkewSeconds" ($api.serviceEnvelope.clockSkewSeconds | int)
+    "lifetimeSeconds" ($envelope.lifetimeSeconds | int)
+    "clockSkewSeconds" ($envelope.clockSkewSeconds | int)
     "trustedIssuers" (include "ow.serviceKeys.trusted" (prepend (include "ow.api.trustedIssuers" $root | fromJsonArray) $root) | fromJsonArray)) -}}
 {{- if (include "ow.nats.ca" $root | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
@@ -109,8 +111,8 @@ read-only user (ReadAccess.wallet, same shape as DataBase). */ -}}
 (start-api needs GatewayToken.jwksFile; start-webhook-api does not read the
 section). */ -}}
 {{- $_ := set $config "GatewayToken" (dict
-    "issuer" $v.gateway.internalToken.issuer
-    "audiences" $v.gateway.internalToken.audiences
+    "issuer" $internalToken.issuer
+    "audiences" $internalToken.audiences
     "jwksFile" (printf "%s/gateway-jwks.json" (include "ow.api.configPath" $root | dir))) -}}
 {{- /* How the two server processes stop: drain, then wait for the requests
 in progress. The operator Jobs do not read this section. */ -}}

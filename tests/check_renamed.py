@@ -106,6 +106,11 @@ def main(base):
         fail("renamed values: values.schema.json\n" + check.stdout)
     else:
         ok("renamed values: values.schema.json keeps each old path")
+    page = subprocess.run([sys.executable, os.path.join(HERE, "upgrade_page.py"), "--check"], capture_output=True, text=True)
+    if page.returncode:
+        fail("renamed values: docs/upgrade.md\n" + page.stdout)
+    else:
+        ok("renamed values: the tables of docs/upgrade.md are the table of files/renamed-values.yaml")
     with open(os.path.join(CHART, "docs", "upgrade.md")) as handle:
         upgrade_page = handle.read()
     missing = [e["old"] for e in table if f"`{e['old']}`" not in upgrade_page]

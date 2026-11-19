@@ -26,6 +26,7 @@ config.yaml of the auth gateway: its own file, not the api config.
 {{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
 {{- /* Upstream for the wallet config role: its Service in this release. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $walletConfigUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- /* The gateway's file body limit must not refuse an image that the api
 accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), or the client
@@ -62,11 +63,11 @@ file without the key keeps the gateway default). */ -}}
         "url" $walletConfigUrl
         "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)))
     "internalToken" (dict
-      "issuer" $g.internalToken.issuer
+      "issuer" $internalToken.issuer
       "signingJwksFile" (printf "%s/internal-token-jwks.json" $dir)
-      "activeKid" (required "gateway.internalToken.activeKid is required (the kid of the active key in the internal token JWKS)" $g.internalToken.activeKid | toString)
+      "activeKid" (required "keys.gatewayInternalToken.activeKid is required: the kid of the active key in the internal token JWKS (scripts/make-keys.sh; see docs/keys.md)" $v.keys.gatewayInternalToken.activeKid | toString)
       "lifetimeSeconds" ($g.internalToken.lifetimeSeconds | int)
-      "audiences" $g.internalToken.audiences)
+      "audiences" $internalToken.audiences)
     "proxy" (dict
       "dialTimeoutSeconds" ($g.proxy.dialTimeoutSeconds | int)
       "responseHeaderTimeoutSeconds" ($g.proxy.responseHeaderTimeoutSeconds | int)

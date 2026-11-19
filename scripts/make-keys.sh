@@ -145,29 +145,25 @@ block() {
 {
   echo "# Values of the keys of the release ${release} (scripts/make-keys.sh, ${stamp})."
   echo "# No secret: key ids, public keys and Secret names. Use it with helm -f."
-  echo "api:"
-  echo "  keyStorage:"
-  echo "    tokenSigning:"
-  echo "      activeKid: ${token_kid}"
-  echo "  serviceEnvelope:"
-  echo "    activeKid: api-service-${stamp}"
-  echo "organisationWallet:"
-  echo "  serviceEnvelope:"
-  echo "    activeKid: wallet-service-${stamp}"
-  echo "gateway:"
-  echo "  internalToken:"
+  echo "keys:"
+  echo "  apiTokenSigning:"
+  echo "    activeKid: ${token_kid}"
+  echo "  gatewayInternalToken:"
   echo "    activeKid: ${gateway_kid}"
-  echo "  publicKeys:"
-  echo "    gatewayJwks: |"
-  block "      " gateway-jwks.json
-  echo "    tokenVerificationJwks: |"
-  block "      " token-verification-jwks.json
-  echo "serviceKeys:"
+  echo "  serviceEnvelope:"
+  echo "    api:"
+  echo "      activeKid: api-service-${stamp}"
+  echo "      publicJwks: |"
+  block "        " api-service-public.json
+  echo "    organisationWallet:"
+  echo "      activeKid: wallet-service-${stamp}"
+  echo "      publicJwks: |"
+  block "        " wallet-service-public.json
   echo "  publicJwks:"
-  echo "    igrant-api: |"
-  block "      " api-service-public.json
-  echo "    eudi-wallet: |"
-  block "      " wallet-service-public.json
+  echo "    gatewayInternalToken: |"
+  block "      " gateway-jwks.json
+  echo "    apiTokenVerification: |"
+  block "      " token-verification-jwks.json
   echo "nats:"
   echo "  auth:"
   echo "    users:"

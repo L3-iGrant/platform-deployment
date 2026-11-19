@@ -14,9 +14,9 @@ the value from api.image (one release train). */}}
 {{- if $value }}{{- $_ := set $image $key $value }}{{- end }}
 {{- end }}
 {{- $_ := set $image "digest" ($g.image.digest | default "") }}
-{{- $keys := $g.publicKeys }}
-{{- if and (not $keys.existingTokenVerificationConfigMap) (not $keys.tokenVerificationJwks) }}
-{{- fail "gateway.publicKeys.tokenVerificationJwks (or gateway.publicKeys.existingTokenVerificationConfigMap) is required: the public keys of the api tokens (igrant-api keys export-token-jwks)" }}
+{{- $keys := .Values.keys.publicJwks }}
+{{- if and (not $keys.existingConfigMap) (not $keys.apiTokenVerification) }}
+{{- fail "keys.publicJwks.apiTokenVerification (or keys.publicJwks.existingConfigMap) is required: the public keys of the api tokens (scripts/make-keys.sh; see docs/keys.md)" }}
 {{- end }}
 {{- if lt ($g.listenPort | int) 1024 }}
 {{- fail "gateway.listenPort must be 1024 or more (a non-root container)" }}
@@ -103,7 +103,7 @@ spec:
               - configMap:
                   name: {{ include "ow.gateway.tokenVerificationConfigMap" . }}
                   items:
-                    - key: {{ $keys.tokenVerificationJwksKey }}
+                    - key: token-verification-jwks.json
                       path: token-verification-jwks.json
         - name: secrets
           projected:
