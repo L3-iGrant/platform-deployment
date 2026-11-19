@@ -23,6 +23,10 @@ api:
 organisationWallet:
   host: wallet.example.org
   logLevel: warn
+  workers:
+    groups:
+      main:
+        replicas: 3
   audit:
     bucket:
       name: example-audit

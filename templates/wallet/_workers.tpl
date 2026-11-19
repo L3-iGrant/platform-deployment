@@ -41,6 +41,31 @@ Folder for the heartbeat and metric files of a pod's worker processes
 /run/ows-worker
 {{- end }}
 
+{{/*
+The worker groups (organisationWallet.workers.groups, a map with the group
+name as key; a group with the value null is not in the release), in the
+order of their names. Each group gets its name, and its
+terminationGracePeriodSeconds: shutdownTimeoutSeconds + 30, so Kubernetes
+does not kill a worker while it waits for its running actors. Output: JSON
+list of the groups.
+*/}}
+{{- define "ow.wallet.workerGroups" -}}
+{{- $groups := .Values.organisationWallet.workers.groups | default dict -}}
+{{- if not (kindIs "map" $groups) -}}
+{{- fail "organisationWallet.workers.groups is a map with the group name as key (docs/workers.md)" -}}
+{{- end -}}
+{{- $out := list -}}
+{{- range $name := keys $groups | sortAlpha -}}
+{{- with index $groups $name -}}
+{{- $group := deepCopy . -}}
+{{- $_ := set $group "name" $name -}}
+{{- $_ := set $group "terminationGracePeriodSeconds" (add ($group.shutdownTimeoutSeconds | int) 30) -}}
+{{- $out = append $out $group -}}
+{{- end -}}
+{{- end -}}
+{{- toJson $out -}}
+{{- end }}
+
 {{/* Component (and name suffix) of one worker group's Deployment. Call with the group. */}}
 {{- define "ow.wallet.workerComponent" -}}
 wallet-worker-{{ .name }}
@@ -49,35 +74,27 @@ wallet-worker-{{ .name }}
 {{/*
 Render guards for the worker groups (organisationWallet.workers.groups);
 they apply even without the schema:
-- name: lower-case letters, digits and -; each name only once (not in the
-  schema); a Deployment name of at most 63 characters (not in the schema:
-  ow.name truncates a longer name, so two groups could get the same name);
+- name (the key of the map): lower-case letters, digits and -; a
+  Deployment name of at most 63 characters (not in the schema: ow.name
+  truncates a longer name, so two groups could get the same name);
 - queues of a group: queues of the kit, each only once;
-- replicas, processes and threads: 1 or more;
-- stop: terminationGracePeriodSeconds at least shutdownTimeoutSeconds + 30
-  (not in the schema), else Kubernetes kills the worker while it waits for
-  its actors;
+- replicas, processes, threads and shutdownTimeoutSeconds: 1 or more;
 - together the groups run every queue of the kit (not in the schema):
   messages in a queue that no group runs stay in Valkey and pile up.
 Call with the root context. Output: nothing.
 */}}
 {{- define "ow.wallet.checkWorkers" -}}
-{{- $groups := .Values.organisationWallet.workers.groups | default list -}}
+{{- $groups := include "ow.wallet.workerGroups" . | fromJsonArray -}}
 {{- $kit := include "ow.wallet.workerQueues" . | splitList "," -}}
-{{- $names := list -}}
 {{- $served := list -}}
-{{- range $i, $g := $groups -}}
-{{- $key := printf "organisationWallet.workers.groups[%d]" $i -}}
-{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" ($g.name | default "")) -}}
-{{- fail (printf "%s.name %q is not a name: lower-case letters, digits and -, not - at the start or at the end" $key ($g.name | default "")) -}}
+{{- range $g := $groups -}}
+{{- $key := printf "organisationWallet.workers.groups.%s" $g.name -}}
+{{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $g.name) -}}
+{{- fail (printf "organisationWallet.workers.groups: %q is not a group name: lower-case letters, digits and -, not - at the start or at the end" $g.name) -}}
 {{- end -}}
-{{- if has $g.name $names -}}
-{{- fail (printf "%s.name %q is the name of another group: each group has its own Deployment" $key $g.name) -}}
-{{- end -}}
-{{- $names = append $names $g.name -}}
 {{- $deployment := printf "%s-%s" (include "ow.fullname" $) (include "ow.wallet.workerComponent" $g) -}}
 {{- if gt (len $deployment) 63 -}}
-{{- fail (printf "%s.name %q gives the Deployment name %s (%d characters): a name has at most 63 characters; use a shorter group name or fullnameOverride" $key $g.name $deployment (len $deployment)) -}}
+{{- fail (printf "%s: the group name %q gives the Deployment name %s (%d characters): a name has at most 63 characters; use a shorter group name or fullnameOverride" $key $g.name $deployment (len $deployment)) -}}
 {{- end -}}
 {{- if not $g.queues -}}
 {{- fail (printf "%s.queues is empty: give the queues of the group (%s)" $key (join ", " $kit)) -}}
@@ -99,9 +116,6 @@ Call with the root context. Output: nothing.
 {{- $shutdown := $g.shutdownTimeoutSeconds | int -}}
 {{- if lt $shutdown 1 -}}
 {{- fail (printf "%s.shutdownTimeoutSeconds (%v) must be 1 or more" $key $g.shutdownTimeoutSeconds) -}}
-{{- end -}}
-{{- if lt ($g.terminationGracePeriodSeconds | int) (add $shutdown 30) -}}
-{{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least shutdownTimeoutSeconds (%v) + 30: Kubernetes would kill the worker while it waits for its running actors" $key $g.terminationGracePeriodSeconds $g.shutdownTimeoutSeconds) -}}
 {{- end -}}
 {{- end -}}
 {{- $missing := list -}}

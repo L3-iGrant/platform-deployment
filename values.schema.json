@@ -225,26 +225,22 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "existingSecret": {
-                          "type": "string",
-                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                        },
-                        "key": {
-                          "type": "string",
-                          "pattern": "^[-._a-zA-Z0-9]+$"
-                        }
-                      }
-                    },
-                    {
+                  "type": [
+                    "object",
+                    "string"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
                       "type": "string",
-                      "deprecated": true
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
-                  ]
+                  },
+                  "x-old-type": "string"
                 }
               }
             },
@@ -257,26 +253,22 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "existingSecret": {
-                          "type": "string",
-                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                        },
-                        "key": {
-                          "type": "string",
-                          "pattern": "^[-._a-zA-Z0-9]+$"
-                        }
-                      }
-                    },
-                    {
+                  "type": [
+                    "object",
+                    "string"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
                       "type": "string",
-                      "deprecated": true
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
-                  ]
+                  },
+                  "x-old-type": "string"
                 }
               }
             },
@@ -289,26 +281,22 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "properties": {
-                        "existingSecret": {
-                          "type": "string",
-                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                        },
-                        "key": {
-                          "type": "string",
-                          "pattern": "^[-._a-zA-Z0-9]+$"
-                        }
-                      }
-                    },
-                    {
+                  "type": [
+                    "object",
+                    "string"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
                       "type": "string",
-                      "deprecated": true
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
-                  ]
+                  },
+                  "x-old-type": "string"
                 }
               }
             }
@@ -2105,26 +2093,22 @@
               "type": "string"
             },
             "password": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "existingSecret": {
-                      "type": "string",
-                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                    },
-                    "key": {
-                      "type": "string",
-                      "pattern": "^[-._a-zA-Z0-9]+$"
-                    }
-                  }
-                },
-                {
+              "type": [
+                "object",
+                "string"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
                   "type": "string",
-                  "deprecated": true
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
                 }
-              ]
+              },
+              "x-old-type": "string"
             },
             "from": {
               "type": "string"
@@ -2148,48 +2132,40 @@
           "additionalProperties": false,
           "properties": {
             "accountSid": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "existingSecret": {
-                      "type": "string",
-                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                    },
-                    "key": {
-                      "type": "string",
-                      "pattern": "^[-._a-zA-Z0-9]+$"
-                    }
-                  }
-                },
-                {
+              "type": [
+                "object",
+                "string"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
                   "type": "string",
-                  "deprecated": true
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
                 }
-              ]
+              },
+              "x-old-type": "string"
             },
             "authToken": {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "existingSecret": {
-                      "type": "string",
-                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
-                    },
-                    "key": {
-                      "type": "string",
-                      "pattern": "^[-._a-zA-Z0-9]+$"
-                    }
-                  }
-                },
-                {
+              "type": [
+                "object",
+                "string"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
                   "type": "string",
-                  "deprecated": true
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
                 }
-              ]
+              },
+              "x-old-type": "string"
             },
             "existingSecret": {
               "deprecated": true
@@ -3362,30 +3338,30 @@
           }
         },
         "logLevel": {
-          "anyOf": [
-            {
-              "type": "string",
-              "enum": [
-                "",
-                "debug",
-                "info",
-                "warn",
-                "error"
-              ]
-            },
-            {
-              "type": "string",
-              "enum": [
-                "DEBUG",
-                "INFO",
-                "WARNING",
-                "ERROR",
-                "CRITICAL",
-                "warning",
-                "critical"
-              ],
-              "deprecated": true
-            }
+          "type": "string",
+          "enum": [
+            "",
+            "debug",
+            "info",
+            "warn",
+            "error",
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL",
+            "warning",
+            "critical"
+          ],
+          "x-old-type": "string",
+          "x-old-values": [
+            "CRITICAL",
+            "DEBUG",
+            "ERROR",
+            "INFO",
+            "WARNING",
+            "critical",
+            "warning"
           ]
         },
         "walletUnit": {
@@ -4084,25 +4060,28 @@
           "additionalProperties": false,
           "properties": {
             "groups": {
-              "type": "array",
-              "minItems": 1,
-              "items": {
-                "type": "object",
+              "type": [
+                "object",
+                "array"
+              ],
+              "minProperties": 1,
+              "propertyNames": {
+                "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+              },
+              "additionalProperties": {
+                "type": [
+                  "object",
+                  "null"
+                ],
                 "additionalProperties": false,
                 "required": [
-                  "name",
                   "queues",
                   "replicas",
                   "processes",
                   "threads",
-                  "shutdownTimeoutSeconds",
-                  "terminationGracePeriodSeconds"
+                  "shutdownTimeoutSeconds"
                 ],
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
-                  },
                   "queues": {
                     "type": "array",
                     "minItems": 1,
@@ -4136,15 +4115,12 @@
                     "type": "integer",
                     "minimum": 1
                   },
-                  "terminationGracePeriodSeconds": {
-                    "type": "integer",
-                    "minimum": 31
-                  },
                   "resources": {
                     "type": "object"
                   }
                 }
-              }
+              },
+              "x-old-type": "array"
             }
           }
         },

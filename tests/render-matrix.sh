@@ -1192,27 +1192,32 @@ renders "server parameter wins over a database log parameter" '"log_statement=al
 lacks "database log parameter overridden by a server parameter" '"log_statement=ddl"' --set database.postgresql.parameters.log_statement=all
 
 # Workers and clock (organisationWallet.workers, .clock, .serviceMonitor;
-# docs/workers.md). Each case gives the full list of groups (a list value
-# replaces the default list).
-main_group='{"name":"main","queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600,"terminationGracePeriodSeconds":630}'
-maintenance_group='{"name":"maintenance","queues":["maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}'
-workers() { printf 'organisationWallet.workers.groups=[%s]' "$(IFS=,; printf '%s' "$*")"; }
-guard "worker group name" "organisationWallet.workers.groups.0.name" --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
-guard "worker group name without the schema" 'organisationWallet.workers.groups[0].name "Main" is not a name' --skip-schema-validation --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
-guard "worker group name used twice" 'organisationWallet.workers.groups[1].name "main" is the name of another group' --set-json "$(workers "$main_group" "${maintenance_group/\"name\":\"maintenance\"/\"name\":\"main\"}")"
+# docs/workers.md). The groups are a map with the group name as key: a case
+# gives the groups that it changes, and null removes a default group.
+main_group='{"queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600}'
+maintenance_group='{"queues":["maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400}'
+workers() {
+  local out="" sep="" pair
+  for pair in "$@"; do out="$out$sep\"${pair%%=*}\":${pair#*=}"; sep=","; done
+  printf 'organisationWallet.workers.groups={%s}' "$out"
+}
+guard_property_name "worker group name" "organisationWallet.workers.groups" "Main" --set-json "$(workers "Main=$main_group")"
+guard "worker group name without the schema" 'organisationWallet.workers.groups: "Main" is not a group name' --skip-schema-validation --set-json "$(workers "Main=$main_group")"
 guard "worker Deployment name too long" "gives the Deployment name" --set fullnameOverride=ows-installation-of-the-production-site
-guard "worker queue" "organisationWallet.workers.groups.1.queues.0" --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
-guard "worker queue without the schema" '"default" is not a queue of the wallet' --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
-guard "worker queues empty without the schema" "organisationWallet.workers.groups[1].queues is empty" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[]}")"
-guard "worker queue listed twice without the schema" "organisationWallet.workers.groups[1].queues names a queue two times" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"maintenance\",\"maintenance\"]}")"
-guard "worker queue that no group runs" "no group runs the queue maintenance" --set-json "$(workers "$main_group")"
-guard "worker grace period below the shutdown timeout" "terminationGracePeriodSeconds (14400) must be at least shutdownTimeoutSeconds (14400) + 30" --set-json "$(workers "$main_group" "${maintenance_group/14430/14400}")"
-guard "worker replicas" "organisationWallet.workers.groups.0.replicas" --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
-guard "worker replicas without the schema" "organisationWallet.workers.groups[0].replicas (0) must be 1 or more" --skip-schema-validation --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
-guard "worker group without threads" "threads" --set-json "$(workers "${main_group/\"threads\":8,/}" "$maintenance_group")"
+guard "worker queue" "organisationWallet.workers.groups.maintenance.queues.0" --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queue without the schema" '"default" is not a queue of the wallet' --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queues empty without the schema" "organisationWallet.workers.groups.maintenance.queues is empty" --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[]}")"
+guard "worker queue listed twice without the schema" "organisationWallet.workers.groups.maintenance.queues names a queue two times" --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"maintenance\",\"maintenance\"]}")"
+guard "worker queue that no group runs" "no group runs the queue maintenance" --set-json "$(workers "maintenance=null")"
+guard "worker replicas" "organisationWallet.workers.groups.main.replicas" --set-json "$(workers "main=${main_group/\"replicas\":2/\"replicas\":0}")"
+guard "worker replicas without the schema" "organisationWallet.workers.groups.main.replicas (0) must be 1 or more" --skip-schema-validation --set-json "$(workers "main=${main_group/\"replicas\":2/\"replicas\":0}")"
+guard "worker group without threads" "threads" --set-json "$(workers "extra=${main_group/\"threads\":8,/}")"
+guard "worker grace period is not a value" "terminationGracePeriodSeconds" --set organisationWallet.workers.groups.main.terminationGracePeriodSeconds=630
 guard "clock replicas" "organisationWallet.clock.replicas" --set organisationWallet.clock.replicas=0
-one_group='organisationWallet.workers.groups=[{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":2,"threads":4,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}]'
+one_group="$(workers 'all={"queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":2,"threads":4,"shutdownTimeoutSeconds":14400}' main=null maintenance=null)"
 renders "one worker group for every queue" "name: t-wallet-worker-all" --set-json "$one_group"
+renders "one worker group: the grace period from its shutdown timeout" "terminationGracePeriodSeconds: 14430" --set-json "$one_group" --show-only templates/wallet/worker.yaml
+renders "a change of one worker group keeps the other group" "name: t-wallet-worker-maintenance" --set organisationWallet.workers.groups.main.replicas=3 --show-only templates/wallet/worker.yaml
 renders "one worker group: its configuration key" "worker-all.yaml: |" --set-json "$one_group"
 lacks "one worker group: no default group Deployments" "name: t-wallet-worker-main" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
@@ -1455,7 +1460,7 @@ guard "nonce limit" "organisationWallet.server.nonceRequestsPerMinute" --set org
 # Wallet pools and api reader pools (database.pools).
 guard "wallet pool size" "database.pools.walletService.poolSize" --set database.pools.walletService.poolSize=0
 guard "worker pool overflow" "database.pools.walletWorker.maxOverflow" --set database.pools.walletWorker.maxOverflow=-1
-guard "worker threads above the largest wallet pool" "organisationWallet.workers.groups.0.threads" --set-json "$(workers "${main_group/\"threads\":8/\"threads\":101}" "$maintenance_group")"
+guard "worker threads above the largest wallet pool" "organisationWallet.workers.groups.main.threads" --set-json "$(workers "main=${main_group/\"threads\":8/\"threads\":101}")"
 # Connection budget (docs/database.md, "Connection budget"): the release's
 # pools, at the most pods of each Deployment, plus the hooks must fit in the
 # bundled server's max_connections less its reserved connections.
@@ -1489,7 +1494,7 @@ fi
 guard "pooler without its server connections" "database.pooler.serverConnections is required" --set database.pooler.host=pgbouncer.ow.svc
 guard "pooler port" "database.pooler.port" "${pooler[@]}" --set database.pooler.port=0
 guard "connection budget with a pooler counts its server connections" "connection pooler 1 x 40" "${pooler[@]}" --set database.postgresql.parameters.max_connections=100
-renders "the session pool of a worker process follows its threads" "pool_size: 16" --set database.postgresql.parameters.max_connections=600 --set-json "$(workers "${main_group/\"threads\":8/\"threads\":16}" "$maintenance_group")" \
+renders "the session pool of a worker process follows its threads" "pool_size: 16" --set database.postgresql.parameters.max_connections=600 --set-json "$(workers "main=${main_group/\"threads\":8/\"threads\":16}")" \
   --show-only templates/wallet/configmap.yaml
 renders "api reader pool" "maxConns: 9" --set database.pools.apiReadAccess.maxConns=9 --show-only templates/api/configmap.yaml
 

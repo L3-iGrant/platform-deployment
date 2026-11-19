@@ -28,22 +28,31 @@ The wallet has five queues:
 | `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer, they end at once) |
 | `maintenance` | the retention purge, the monthly audit log exports, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters |
 
-A worker group (`organisationWallet.workers.groups`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
+A worker group (`organisationWallet.workers.groups.<name>`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
 
-| Group | Queues | Replicas | Processes x threads | `shutdownTimeoutSeconds` | `terminationGracePeriodSeconds` |
+| Group | Queues | Replicas | Processes x threads | `shutdownTimeoutSeconds` | Grace period of the pods |
 | --- | --- | --- | --- | --- | --- |
 | `main` | `realtime`, `attestation`, `status`, `kms` | 2 | 1 x 8 | 600 | 630 |
 | `maintenance` | `maintenance` | 1 | 1 x 2 | 14400 | 14430 |
 
-One thread runs one actor at a time. A worker pod runs `processes` worker processes with `threads` threads each.
+One thread runs one actor at a time. A worker pod runs `processes` worker processes with `threads` threads each. The chart calculates the grace period of the pods (`terminationGracePeriodSeconds`): `shutdownTimeoutSeconds` + 30, so Kubernetes does not stop a worker while it waits for its running actors.
 
-The value is a list: your list replaces the whole default list. The render stops when:
+The value is a map with the group name as key. Helm merges your map into the default map: a value of yours changes the fields that it names, and the other groups and fields stay. `null` removes a group. For example, three replicas of the group `main`:
 
-- a group has no name, a name with characters other than lower-case letters, digits and `-`, or the name of another group;
+```yaml
+organisationWallet:
+  workers:
+    groups:
+      main:
+        replicas: 3
+```
+
+The render stops when:
+
+- a group name has characters other than lower-case letters, digits and `-`;
 - the Deployment name `<release>-wallet-worker-<name>` has more than 63 characters;
 - a queue is not a wallet queue, or a group names a queue twice;
-- `replicas`, `processes` or `threads` is below 1;
-- `terminationGracePeriodSeconds` is below `shutdownTimeoutSeconds` + 30;
+- `replicas`, `processes`, `threads` or `shutdownTimeoutSeconds` is below 1;
 - no group runs a queue: its messages would stay in Valkey and grow.
 
 Two groups can run the same queue. For example, to give the queue `attestation` its own group with more replicas:
@@ -52,12 +61,14 @@ Two groups can run the same queue. For example, to give the queue `attestation` 
 organisationWallet:
   workers:
     groups:
-      - {name: main, queues: [realtime, status, kms], replicas: 2, processes: 1, threads: 8,
-         shutdownTimeoutSeconds: 600, terminationGracePeriodSeconds: 630}
-      - {name: attestation, queues: [attestation], replicas: 3, processes: 1, threads: 8,
-         shutdownTimeoutSeconds: 600, terminationGracePeriodSeconds: 630}
-      - {name: maintenance, queues: [maintenance], replicas: 1, processes: 1, threads: 2,
-         shutdownTimeoutSeconds: 14400, terminationGracePeriodSeconds: 14430}
+      main:
+        queues: [realtime, status, kms]
+      attestation:
+        queues: [attestation]
+        replicas: 3
+        processes: 1
+        threads: 8
+        shutdownTimeoutSeconds: 600
 ```
 
 ## Status list writes

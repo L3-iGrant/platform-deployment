@@ -16,7 +16,7 @@ alert rules of the wallet use).
   (dict "name" "wallet-service-metrics" "pods" "wallet-service" "port" $metrics "portName" "metrics" "job" "wallet-server")
   (dict "name" "wallet-config-metrics" "pods" "wallet-config" "port" $metrics "portName" "metrics" "job" "wallet-server")
   (dict "name" "wallet-clock" "pods" "wallet-clock" "port" (include "ow.wallet.clockHealthPort" . | int) "portName" "health" "job" "wallet-clock") }}
-{{- range $g := $w.workers.groups }}
+{{- range $g := include "ow.wallet.workerGroups" . | fromJsonArray }}
 {{- $component := include "ow.wallet.workerComponent" $g }}
 {{- $targets = append $targets (dict "name" $component "pods" $component "port" (include "ow.wallet.workerHealthPort" $ | int) "portName" "health" "job" "wallet-worker") }}
 {{- end }}

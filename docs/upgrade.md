@@ -241,3 +241,11 @@ The limits of the installation are in `installation.limits`, next to the optiona
 | --- | --- |
 | `api.limits.maxOrganisations` | `installation.limits.maxOrganisations` (a number from 1 to 100; empty is now the default 100) |
 | `organisationWallet.walletUnit.organisationWalletUnitsMax` | `installation.limits.maxOrganisationWalletUnits` (a number from 1 to 100; empty is now the default 100) |
+
+### Worker groups
+
+`organisationWallet.workers.groups` is a map with the group name as key (was a list). A value of yours changes one group and keeps the others (Helm merges maps but replaces lists); `null` removes a default group. The grace period of a group is `shutdownTimeoutSeconds` + 30 (the chart calculates it; see [Workers and clock](workers.md)).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `organisationWallet.workers.groups` (a list) | A map with the group name as key now, for example {main: {queues: [...], replicas: 2, ...}}; without terminationGracePeriodSeconds (the chart calculates it) |

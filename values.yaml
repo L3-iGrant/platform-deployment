@@ -558,25 +558,25 @@ organisationWallet:
       requests: {cpu: 20m, memory: 128Mi}
       limits: {memory: 384Mi}
   workers:
-    # -- Worker groups. Your list replaces the whole default list (docs/workers.md).
+    # -- Worker groups: a map with the group name as key (docs/workers.md). A value of yours changes
+    # one group and keeps the others; null removes a default group. The grace period of the pods
+    # is shutdownTimeoutSeconds + 30.
     groups:
-      - name: main
+      main:
         queues: [realtime, attestation, status, kms]
         replicas: 2
         processes: 1
         threads: 8
         shutdownTimeoutSeconds: 600
-        terminationGracePeriodSeconds: 630
         resources:
           requests: {cpu: 100m, memory: 384Mi}
           limits: {memory: 1536Mi}
-      - name: maintenance
+      maintenance:
         queues: [maintenance]
         replicas: 1
         processes: 1
         threads: 2
         shutdownTimeoutSeconds: 14400
-        terminationGracePeriodSeconds: 14430
         resources:
           requests: {cpu: 50m, memory: 384Mi}
           limits: {memory: 1536Mi}

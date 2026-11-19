@@ -39,7 +39,7 @@ helm install ows ./platform-deployment -n ows \
 ```
 
 - A production size needs your own OpenBao with an HSM seal (`openbao-external.yaml`, see [OpenBao](openbao.md)).
-- `organisationWallet.workers.groups` is a list, and Helm replaces a list as a whole. A size profile sets the whole list: when you change a group in your own values file, copy all its fields.
+- `organisationWallet.workers.groups` is a map with the group name as key: a value of your own values file changes only the fields that it names (see [Workers and clock](workers.md#queues-and-worker-groups)).
 - `minimal.yaml` is the smallest installation for tests on a small computer. `size-development.yaml` uses a whole node of 8 vCPU and 32 GB RAM.
 
 When the requests of a node pass about 80 %, or the CPU is often throttled, move to the next size or add nodes.
