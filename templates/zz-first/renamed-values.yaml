@@ -1,0 +1,8 @@
+{{- /*
+The stop for changed values (templates/_renamed.tpl). Helm renders the
+templates of the deepest folders first, and in each folder the names in
+reverse order, so this file renders before every other template: an old
+value stops the render with its own message, before a template stops
+because the new value is missing.
+*/ -}}
+{{- include "ow.renamedValues.check" . -}}

@@ -658,6 +658,17 @@ guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gra
   --set organisationWallet.server.preStopSeconds=20
 guard "preStop of 0 seconds" "preStopSeconds" --set api.server.preStopSeconds=0
 guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreate
+# The values that changed (files/renamed-values.yaml): one message names
+# every old value with its new value, the schema keeps each old path, and
+# scripts/upgrade-values.py writes a file that renders as the new values
+# (tests/check_renamed.py).
+while IFS= read -r line; do
+  case "$line" in
+    "ok   "*) ok "${line#ok   }" ;;
+    "FAIL "*) bad "${line#FAIL }" ;;
+    *) echo "$line" ;;
+  esac
+done < <(python3 "$here/check_renamed.py" -f "$keys" "${site[@]}" 2>&1 || true)
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must contain.

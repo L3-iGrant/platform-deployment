@@ -22,6 +22,7 @@ These docs are for the developers and operations teams who install and run the p
 
 ### Operate
 
+- [Upgrade](docs/upgrade.md): upgrade to a new release, and the values that changed in each release.
 - [Uninstall](docs/uninstall.md): remove the platform, see what stays, and install again with or without the data.
 - [Scaled deployments](docs/scaled-deployments.md): disruption budgets, pod spread, Google Cloud KMS auto-unseal and HSM signer groups for large installations.
 

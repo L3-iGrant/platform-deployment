@@ -1,0 +1,15 @@
+# The values that changed (docs/upgrade.md). An old value in a values file
+# stops the render with a message that names the new value
+# (templates/_renamed.tpl), and scripts/upgrade-values.py writes the new
+# values file from this table. values.schema.json keeps each old path
+# (deprecated, any type) for two releases after the change; then remove
+# the entry here and in the schema, and the schema refuses the old key.
+#
+# Each entry: old (the old path), after (the release after which it
+# changed), and one of new (the new path, or a list of paths), removed (why
+# it is not a value any more) or shape (what to do, for a new shape).
+# Optional: kind (the type of the old value when the path stays), values
+# (old value: new value), note (more words for the message), convert (a
+# conversion of scripts/upgrade-values.py) and secret (true: a plain
+# secret; the operator makes a Secret).
+[]

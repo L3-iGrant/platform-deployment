@@ -1,0 +1,35 @@
+# Values of an installation of release 2026.11.7, in the shape of that
+# release (tests/check_renamed.py): scripts/upgrade-values.py must write a
+# file that renders the same objects as tests/values/new-values.yaml. Do
+# not change this file to the new shape.
+api:
+  host: api.example.org
+  keyStorage:
+    tokenSigning:
+      activeKid: test-token-kid
+  serviceEnvelope:
+    activeKid: test-api-envelope-kid
+organisationWallet:
+  host: wallet.example.org
+  serviceEnvelope:
+    activeKid: test-wallet-envelope-kid
+enterpriseDashboard:
+  host: dashboard.example.org
+gateway:
+  internalToken:
+    activeKid: test-gateway-kid
+  publicKeys:
+    gatewayJwks: '{"keys":[]}'
+    tokenVerificationJwks: '{"keys":[]}'
+serviceKeys:
+  publicJwks:
+    igrant-api: '{"keys":[]}'
+    eudi-wallet: '{"keys":[]}'
+nats:
+  auth:
+    users:
+      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
+      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
+      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
+      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
+      walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}

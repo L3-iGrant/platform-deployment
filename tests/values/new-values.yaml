@@ -1,0 +1,33 @@
+# The values of tests/values/old-values.yaml in the shape of this release
+# (tests/check_renamed.py).
+api:
+  host: api.example.org
+  keyStorage:
+    tokenSigning:
+      activeKid: test-token-kid
+  serviceEnvelope:
+    activeKid: test-api-envelope-kid
+organisationWallet:
+  host: wallet.example.org
+  serviceEnvelope:
+    activeKid: test-wallet-envelope-kid
+enterpriseDashboard:
+  host: dashboard.example.org
+gateway:
+  internalToken:
+    activeKid: test-gateway-kid
+  publicKeys:
+    gatewayJwks: '{"keys":[]}'
+    tokenVerificationJwks: '{"keys":[]}'
+serviceKeys:
+  publicJwks:
+    igrant-api: '{"keys":[]}'
+    eudi-wallet: '{"keys":[]}'
+nats:
+  auth:
+    users:
+      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
+      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
+      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
+      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
+      walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}
