@@ -109,12 +109,9 @@ its purge date, and the workers purge. */ -}}
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- /* Maximum number of organisation wallet units in the installation
-(organisationWallet.walletUnit.organisationWalletUnitsMax). The key is set
-only when the installer gives a value; otherwise the wallet uses its
-default. The clock has no wallet_unit section. */ -}}
-{{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
-{{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
-{{- end -}}
+(installation.limits.maxOrganisationWalletUnits). The clock has no
+wallet_unit section. */ -}}
+{{- $_ := set $walletUnit "organisation_wallet_units_max" ($v.installation.limits.maxOrganisationWalletUnits | int) -}}
 {{- /* wallet_unit.development_apps_allowed (read by the config and service
 processes) is set only when the installer sets true or false; empty sets no
 key (the wallet default, false). A string, even "true", fails the render

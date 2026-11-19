@@ -119,12 +119,9 @@ in progress. The operator Jobs do not read this section. */ -}}
 {{- $_ := set $config "Server" (dict
     "drainSeconds" ($api.server.drainSeconds | int)
     "gracefulShutdownSeconds" ($api.server.gracefulShutdownSeconds | int)) -}}
-{{- /* The installation limits (api.limits): the key is set only when the
-installer gives a value; otherwise the api uses its default. The gateway
-file never has it, because the gateway refuses the section. */ -}}
-{{- with dig "limits" "maxOrganisations" "" $api -}}
-{{- $_ := set $config "Limits" (dict "maxOrganisations" (. | int)) -}}
-{{- end -}}
+{{- /* The installation limits (installation.limits). The gateway file
+never has them, because the gateway refuses the section. */ -}}
+{{- $_ := set $config "Limits" (dict "maxOrganisations" ($v.installation.limits.maxOrganisations | int)) -}}
 {{- if $api.verifierApp.androidPackageName -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}

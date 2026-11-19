@@ -232,3 +232,12 @@ One value `global.logLevel` with one vocabulary for all components: `debug`, `in
 | Old value | New value, or what to do |
 | --- | --- |
 | `organisationWallet.logLevel` (a text) | The same value, with the new words (`DEBUG`: `debug`, `INFO`: `info`, `WARNING`: `warn`, `ERROR`: `error`, `CRITICAL`: `error`, `warning`: `warn`, `critical`: `error`) (the words of all components: debug, info, warn, error) |
+
+### Installation limits
+
+The limits of the installation are in `installation.limits`, next to the optional features, as numbers with the real default 100 (was an empty text for the default of the service).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `api.limits.maxOrganisations` | `installation.limits.maxOrganisations` (a number from 1 to 100; empty is now the default 100) |
+| `organisationWallet.walletUnit.organisationWalletUnitsMax` | `installation.limits.maxOrganisationWalletUnits` (a number from 1 to 100; empty is now the default 100) |

@@ -6,6 +6,8 @@ api:
   host: api.example.org
   extraConfig:
     Uploads: {maxInProgress: 4}
+  limits:
+    maxOrganisations: 20
   smtp:
     host: smtp.example.org
     existingSecret: mail
@@ -32,6 +34,8 @@ api:
 organisationWallet:
   host: wallet.example.org
   logLevel: WARNING
+  walletUnit:
+    organisationWalletUnitsMax: ""
   audit:
     bucket:
       name: example-audit

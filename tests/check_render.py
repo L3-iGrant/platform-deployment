@@ -180,11 +180,12 @@ def main() -> int:
         check(gateway.get("Features") == {"enforce": True}, f"the gateway Features section is {gateway.get('Features')}")
         for file in ("api.yaml", "webhook.yaml"):
             check("Features" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Features section (only the gateway file has it)")
-        # No installation limits by default: no Limits section in the api
-        # files, and never in the gateway file (the gateway refuses it).
+        # The installation limits: the default 100 in the api files, and
+        # never in the gateway file (the gateway refuses it).
         check("Limits" not in gateway, "the gateway file has a Limits section (the gateway refuses it)")
         for file in ("api.yaml", "webhook.yaml"):
-            check("Limits" not in (config_map_file(f"{RELEASE}-api", file) or {}), f"{file} has a Limits section (the default values set no limit)")
+            limits = (config_map_file(f"{RELEASE}-api", file) or {}).get("Limits")
+            check(limits == {"maxOrganisations": 100}, f"{file} has the Limits section {limits!r}, not the default maxOrganisations 100")
     # The api's operator Job is off by default: no Job creates the
     # platform operator.
     operator_jobs = sorted(d["metadata"]["name"] for d in docs if d.get("kind") == "Job" and re.search(
@@ -226,9 +227,9 @@ def main() -> int:
             check(sorted(wallet["read_access"]) == ["api"], f"wallet config.yaml has read_access {sorted(wallet['read_access'])}")
         check(wallet.get("audit") == AUDIT, f"wallet {role}.yaml audit is {wallet.get('audit')!r}, not {AUDIT}")
         check(wallet.get("retention") == RETENTION, f"wallet {role}.yaml retention is {wallet.get('retention')!r}, not {RETENTION}")
-        # No organisation wallet unit limit by default.
-        check("organisation_wallet_units_max" not in (wallet.get("wallet_unit") or {}),
-              f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max (the default values set no limit)")
+        # The organisation wallet unit limit: the default 100.
+        units = (wallet.get("wallet_unit") or {}).get("organisation_wallet_units_max")
+        check(units == 100, f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max {units!r}, not the default 100")
 
     # Workers and clock (docs/workers.md): one Deployment per worker group
     # (dramatiq with the group's queues) and one for the clock (start-clock);

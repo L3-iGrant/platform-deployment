@@ -1,5 +1,8 @@
 # The values of tests/values/old-values.yaml in the shape of this release
 # (tests/check_renamed.py).
+installation:
+  limits:
+    maxOrganisations: 20
 api:
   host: api.example.org
   advanced:

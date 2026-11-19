@@ -76,6 +76,12 @@ installation:
   # installation does not need it. The api, the gateway and the wallet get the
   # same list (docs/components.md, "Optional features").
   optionalFeatures: []
+  # -- The limits of the installation.
+  limits:
+    # -- The most organisations, 1 to 100 (Limits.maxOrganisations of the api).
+    maxOrganisations: 100
+    # -- The most organisation wallet units of the wallet provider, 1 to 100.
+    maxOrganisationWalletUnits: 100
 
 # The keys of the platform (docs/keys.md). scripts/make-keys.sh makes the key
 # Secrets and writes this block in its values-keys.yaml: key ids, public JWKS
@@ -173,9 +179,6 @@ api:
     preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-  limits:
-    # -- The most organisations, 1 to 100. Empty: the api default (100).
-    maxOrganisations: ""
   # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes of the api core (docs/security-context.md, "The stop of a pod").
@@ -397,8 +400,6 @@ organisationWallet:
     trustAnchors:
       # -- ConfigMap with the device roots of the wallet units. Empty: the roots of the image.
       existingConfigMap: ""
-    # -- The most organisation wallet units, 1 to 100. Empty: the wallet default (100).
-    organisationWalletUnitsMax: ""
     # -- true: admins may mark an app build development or simulator. Test installations only.
     developmentAppsAllowed: ""
   # -- Audit log of the wallet (docs/audit-log.md).

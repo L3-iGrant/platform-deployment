@@ -171,7 +171,23 @@ def convert_public_jwks_config_map(data, entry, value, report, defaults):
     report.change(f"{entry['old']} is now {target} (one ConfigMap with the keys gateway-jwks.json, token-verification-jwks.json, igrant-api.json and eudi-wallet.json)")
 
 
+def convert_limit(data, entry, value, report, defaults):
+    """An installation limit: an empty text was the default of the service
+    (100), now the default of the chart; a number moves as it is."""
+    if value in ("", None):
+        report.change(f"{entry['old']} removed (it was empty: the default {get(defaults, entry['new'])})")
+        return
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        report.action(f"{entry['old']} {value!r} is not a number: set {entry['new']} (1 to 100) by hand")
+        return
+    put(data, entry["new"], number, report, entry["old"])
+    report.change(f"{entry['old']} is now {entry['new']}")
+
+
 CONVERSIONS = {
+    "limit": convert_limit,
     "workerGroups": convert_worker_groups,
     "databaseSecret": convert_database_secret,
     "publicJwksConfigMap": convert_public_jwks_config_map,

@@ -978,13 +978,11 @@ PY
 trust_anchors "image roots by default" '{"configmap": null}'
 trust_anchors "roots from a ConfigMap" '{"configmap": "test-roots"}' \
   --set organisationWallet.walletUnit.trustAnchors.existingConfigMap=test-roots
-# Installation limits: Limits.maxOrganisations in the api and webhook files
-# (api.limits.maxOrganisations) and wallet_unit.organisation_wallet_units_max
-# in the service, config and worker files
-# (organisationWallet.walletUnit.organisationWalletUnitsMax), as integers,
-# only when a value is set: an api or wallet from a release before the input
-# limits refuses the keys. No other object has them: not the gateway file
-# (the gateway refuses the section), the clock, the hooks or the Jobs.
+# Installation limits (installation.limits): Limits.maxOrganisations in the
+# api and webhook files and wallet_unit.organisation_wallet_units_max in the
+# service, config and worker files, as integers, with the default 100. No
+# other object has them: not the gateway file (the gateway refuses the
+# section), the clock, the hooks or the Jobs.
 installation_limits() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -1027,27 +1025,26 @@ PY
     bad "installation limits $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
-installation_limits "no key by default" '{"organisations": null, "units": null}'
-installation_limits "no key with empty values" '{"organisations": null, "units": null}' \
-  --set api.limits.maxOrganisations= --set organisationWallet.walletUnit.organisationWalletUnitsMax=
+installation_limits "the defaults" '{"organisations": 100, "units": 100}'
 installation_limits "the two limits" '{"organisations": 50, "units": 60}' \
-  --set api.limits.maxOrganisations=50 --set organisationWallet.walletUnit.organisationWalletUnitsMax=60
-installation_limits "only the organisation limit" '{"organisations": 40, "units": null}' --set api.limits.maxOrganisations=40
-installation_limits "only the organisation wallet unit limit" '{"organisations": null, "units": 40}' \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=40
+  --set installation.limits.maxOrganisations=50 --set installation.limits.maxOrganisationWalletUnits=60
+installation_limits "only the organisation limit" '{"organisations": 40, "units": 100}' --set installation.limits.maxOrganisations=40
+installation_limits "only the organisation wallet unit limit" '{"organisations": 100, "units": 40}' \
+  --set installation.limits.maxOrganisationWalletUnits=40
 # A values file gives numbers as floats: the files must have the integer,
 # not 1e+06.
-installation_limits "the largest limits as JSON numbers" '{"organisations": 100, "units": 100}' \
-  --set-json 'api.limits={"maxOrganisations": 100}' --set-json 'organisationWallet.walletUnit.organisationWalletUnitsMax=100'
-guard "organisation limit 0" "api.limits.maxOrganisations" --set api.limits.maxOrganisations=0
-guard "organisation limit over 100" "api.limits.maxOrganisations" --set api.limits.maxOrganisations=101
-guard "organisation limit as a string" "api.limits.maxOrganisations" --set-string api.limits.maxOrganisations=50
-guard "organisation wallet unit limit 0" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=0
-guard "organisation wallet unit limit over 100" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=101
-guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=50
+installation_limits "the smallest limits as JSON numbers" '{"organisations": 1, "units": 1}' \
+  --set-json 'installation.limits={"maxOrganisations": 1, "maxOrganisationWalletUnits": 1}'
+guard "organisation limit 0" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=0
+guard "organisation limit over 100" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=101
+guard "organisation limit as a string" "installation.limits.maxOrganisations" --set-string installation.limits.maxOrganisations=50
+guard "organisation limit empty" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=
+guard "organisation wallet unit limit 0" "installation.limits.maxOrganisationWalletUnits" \
+  --set installation.limits.maxOrganisationWalletUnits=0
+guard "organisation wallet unit limit over 100" "installation.limits.maxOrganisationWalletUnits" \
+  --set installation.limits.maxOrganisationWalletUnits=101
+guard "organisation wallet unit limit as a string" "installation.limits.maxOrganisationWalletUnits" \
+  --set-string installation.limits.maxOrganisationWalletUnits=50
 # Development builds of the wallet apps (developmentAppsAllowed): no key by
 # default (the wallet default is false); when set, the boolean is in the
 # files with a wallet_unit section (service, config, workers), never in the
