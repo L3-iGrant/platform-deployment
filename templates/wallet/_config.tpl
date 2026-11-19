@@ -329,13 +329,13 @@ metadata addresses; the render fails on the plain cases. */ -}}
 {{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
 {{- end -}}
 {{- /* The optional features of the installation: the same list as the api
-and the gateway (ow.installation.optionalFeatures). organisationWallet.extraConfig
+and the gateway (ow.installation.optionalFeatures). organisationWallet.advanced.extraConfig
 cannot set it. */ -}}
-{{- if hasKey ($w.extraConfig | default dict) "installation" -}}
-{{- fail "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead (the api, the gateway and the wallet need the same list)" -}}
+{{- if hasKey ($w.advanced.extraConfig | default dict) "installation" -}}
+{{- fail "organisationWallet.advanced.extraConfig.installation: set installation.optionalFeatures instead (the api, the gateway and the wallet need the same list)" -}}
 {{- end -}}
 {{- $_ := set $config "installation" (dict "optional_features" (include "ow.installation.optionalFeatures" $root | fromJsonArray)) -}}
-{{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
+{{- $config = mustMergeOverwrite $config (deepCopy ($w.advanced.extraConfig | default dict)) -}}
 {{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
 {{- $config | toYaml -}}
 {{- end }}
@@ -344,7 +344,7 @@ cannot set it. */ -}}
 Render guard for the writable paths in one wallet file. The wallet pods
 have a read-only root file system, so every folder a process writes to
 (server.metrics_directory, worker.state_directory, also when set in
-organisationWallet.extraConfig) must be on one of the pod's emptyDirs: /tmp
+organisationWallet.advanced.extraConfig) must be on one of the pod's emptyDirs: /tmp
 in every pod, /run/ows-server in service and config pods, /run/ows-worker in
 worker pods. No role has a log file (log_file.path, ow.noLogFile): the
 processes log to stdout. Call with (list <config> "<role>"). Output:
@@ -356,7 +356,7 @@ nothing.
 {{- $mounts := list "/tmp" -}}
 {{- if has $role (list "service" "config") -}}{{- $mounts = append $mounts (include "ow.wallet.serverMetricsDir" .) -}}{{- end -}}
 {{- if eq $role "worker" -}}{{- $mounts = append $mounts (include "ow.wallet.workerStateDir" .) -}}{{- end -}}
-{{- include "ow.noLogFile" (list "organisationWallet.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
+{{- include "ow.noLogFile" (list "organisationWallet.advanced.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
 {{- $paths := dict
     "server.metrics_directory" (((get $config "server") | default dict).metrics_directory | default "" | toString)
     "worker.state_directory" (((get $config "worker") | default dict).state_directory | default "" | toString) -}}

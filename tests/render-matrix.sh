@@ -524,12 +524,12 @@ notes "external OpenBao" "Make the platform operator organisation and its first 
 notes "URLs" "https://api.example.org"
 # An SSRF guard turned off in an extraConfig gives a warning in the notes
 # that names the role; no warning by default.
-notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
-  --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
-notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" \
-  --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
+notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
+  --set-json 'api.advanced.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.advanced.extraConfig.ssrf_protection.enabled is false). These pods call" \
+  --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":false}}'
 if helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" \
-    --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+    --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
   bad "notes: an SSRF warning with the guards on"
 else
   ok "notes: no SSRF warning with the guards on"
@@ -622,14 +622,14 @@ guard "platform operator password as a value" "api.jobs.provisionPlatformOperato
 guard "feature gate not a boolean" "enforce" --set-string gateway.features.enforce=off
 # A folder that a process writes to must be on an emptyDir of its pod (the
 # root file system is read-only).
-guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
+guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" --set organisationWallet.advanced.extraConfig.worker.state_directory=/var/ows
 # No log file (ow.noLogFile): each process logs to stdout, even with a path
 # on an emptyDir (a rotating file of 6 x 100 MB fills a 64Mi /tmp).
 no_log_file="the chart writes no log file in Kubernetes"
-guard "no wallet log file" "organisationWallet.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
-guard "no wallet log file outside /tmp" "organisationWallet.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
-guard "no api log file" "api.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" --set api.extraConfig.Log.file.path=/tmp/api.log
-guard "no gateway log file" "gateway.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" --set gateway.extraConfig.Log.file.path=/tmp/gateway.log
+guard "no wallet log file" "organisationWallet.advanced.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" --set organisationWallet.advanced.extraConfig.log_file.path=/tmp/ows.log
+guard "no wallet log file outside /tmp" "organisationWallet.advanced.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" --set organisationWallet.advanced.extraConfig.log_file.path=/var/log/ows.log
+guard "no api log file" "api.advanced.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" --set api.advanced.extraConfig.Log.file.path=/tmp/api.log
+guard "no gateway log file" "gateway.advanced.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" --set gateway.advanced.extraConfig.Log.file.path=/tmp/gateway.log
 # The api /tmp (api.tmp, an emptyDir in memory) must hold one upload of the
 # largest gateway body above 32 MiB (Go's multipart parser writes such a
 # file part whole to /tmp), and the memory request plus /tmp must fit below
@@ -747,11 +747,11 @@ operator_jobs() {
 operator_jobs none
 operator_jobs bootstrap -f "$here/values/operator-jobs-bootstrap.yaml"
 # The gateway feature gate (Features.enforce): on by default, off with
-# gateway.features.enforce false; gateway.extraConfig still wins.
+# gateway.features.enforce false; gateway.advanced.extraConfig still wins.
 renders "feature gate on by default" "enforce: true"
 renders "feature gate off" "enforce: false" --set gateway.features.enforce=false
 lacks "feature gate off has no enforce true" "enforce: true" --set gateway.features.enforce=false
-renders "feature gate off with extraConfig" "enforce: false" --set gateway.extraConfig.Features.enforce=false
+renders "feature gate off with extraConfig" "enforce: false" --set gateway.advanced.extraConfig.Features.enforce=false
 # Each organisation's effective features select its webhook event types, so
 # the api files have no Webhooks.events and the schema refuses the value.
 renders "webhook delivery retention in the api files" "DeliveryRetentionDays: 10" --show-only templates/api/configmap.yaml
@@ -1110,17 +1110,17 @@ installation "external database" -f "$profiles/database-external.yaml"
 # The optional features (installation.optionalFeatures): the same list in the
 # api, webhook, gateway and wallet files.
 optional=protocol1 installation "protocol1" --set 'installation.optionalFeatures={protocol1}'
-guard "organisationWallet.extraConfig.installation" "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.extraConfig.installation={"optional_features":["protocol1"]}'
-# api.extraConfig and gateway.extraConfig cannot set a different list: the
+guard "organisationWallet.advanced.extraConfig.installation" "organisationWallet.advanced.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.advanced.extraConfig.installation={"optional_features":["protocol1"]}'
+# api.advanced.extraConfig and gateway.advanced.extraConfig cannot set a different list: the
 # same services are accepted, and the files keep the chart's form.
-installation "the same list in api.extraConfig and gateway.extraConfig" \
-  --set-json 'api.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.extraConfig.Installation={"services":["wallet"]}'
-guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet)" \
-  --set-json 'api.extraConfig.Installation={"services":[]}'
-guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" \
-  --set-json 'gateway.extraConfig.Installation={"services":["wallet","api"]}'
-guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" \
-  --set-json 'api.extraConfig.Installation={}'
+installation "the same list in api.advanced.extraConfig and gateway.advanced.extraConfig" \
+  --set-json 'api.advanced.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.advanced.extraConfig.Installation={"services":["wallet"]}'
+guard "api.advanced.extraConfig.Installation that differs" "api.advanced.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'api.advanced.extraConfig.Installation={"services":[]}'
+guard "gateway.advanced.extraConfig.Installation that differs" "gateway.advanced.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'gateway.advanced.extraConfig.Installation={"services":["wallet","api"]}'
+guard "api.advanced.extraConfig.Installation without services" "api.advanced.extraConfig.Installation names other services" \
+  --set-json 'api.advanced.extraConfig.Installation={}'
 guard "the public keys of the wallet" "keys.serviceEnvelope.organisationWallet.publicJwks" --set keys.serviceEnvelope.organisationWallet.publicJwks=
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}'
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
@@ -1662,13 +1662,13 @@ renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" --set gateway.proxy
   --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
 renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" --set gateway.proxy.maxBodyBytes.file=33554432 \
   --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
-# api uploads (api.extraConfig Uploads and ImageUpload): the gateway file
+# api uploads (api.advanced.extraConfig Uploads and ImageUpload): the gateway file
 # class must take the largest image + 64 KiB, and the memory request +
 # Uploads.maxInProgress x the largest image must fit below the api memory
 # limit.
-guard "gateway file class below the api image upload limit" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest image (104791040 bytes" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest image (5242880 bytes" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+guard "gateway file class below the api image upload limit" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest image (104791040 bytes" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest image (5242880 bytes" --set-json 'api.advanced.extraConfig={"Uploads":{"maxInProgress":60}}'
 # The dashboard config.json: a change restarts the dashboard pods (the
 # config.json checksum).
 if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
@@ -1677,7 +1677,7 @@ if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-o
 else
   bad "a new config.json restarts the dashboard pods (config.json checksum)"
 fi
-renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
+renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 # Writable paths of the pods that run as non-root with a read-only root
 # file system: /tmp of each api, webhook, dashboard and wallet pod (64Mi, in
 # memory except for the dashboard), /tmp and the socket folder of the

@@ -48,8 +48,8 @@ Notes:
 - The bundled PostgreSQL and NATS have `fsGroupChangePolicy: OnRootMismatch`: the kubelet sets the group of the files on the data volume only when the top folder does not have the group (the first start), so a later start does not walk the volume.
 - The reloader sends `SIGHUP` to `nats-server` through the shared process namespace. So `nats` and `reloader` must have the same user.
 - The size of an `emptyDir` is a limit, not a reservation. When a pod writes more than the limit, the kubelet evicts the pod. An `emptyDir` in memory counts against the memory limit of the container.
-- The chart's wallet files set `server.metrics_directory: /run/ows-server` (service and config) and `worker.state_directory: /run/ows-worker` (workers): each is an `emptyDir` of the pod. The render stops when `organisationWallet.extraConfig` puts such a folder outside the pod's `emptyDir` volumes.
-- No log files: each process logs to stdout and stderr (the container log), which the kubelet rotates (`containerLogMaxSize`, `containerLogMaxFiles`) and your log agent collects. A log file in a pod has no reader and is lost with the pod, and its rotation (by default 100 MB x 6 files) fills a `/tmp` of 64Mi: the pod is evicted or the process stops. So the render stops when `Log.file.path` of `api.extraConfig` or `gateway.extraConfig`, or `log_file.path` of `organisationWallet.extraConfig`, is set, even to a path below `/tmp`.
+- The chart's wallet files set `server.metrics_directory: /run/ows-server` (service and config) and `worker.state_directory: /run/ows-worker` (workers): each is an `emptyDir` of the pod. The render stops when `organisationWallet.advanced.extraConfig` puts such a folder outside the pod's `emptyDir` volumes.
+- No log files: each process logs to stdout and stderr (the container log), which the kubelet rotates (`containerLogMaxSize`, `containerLogMaxFiles`) and your log agent collects. A log file in a pod has no reader and is lost with the pod, and its rotation (by default 100 MB x 6 files) fills a `/tmp` of 64Mi: the pod is evicted or the process stops. So the render stops when `Log.file.path` of `api.advanced.extraConfig` or `gateway.advanced.extraConfig`, or `log_file.path` of `organisationWallet.advanced.extraConfig`, is set, even to a path below `/tmp`.
 - The images of the api, the gateway and the wallet have no shell and no `sleep` program (distroless), and the wallet image has no entrypoint script. Each container, Job and probe of the chart starts a program of the image directly (`/app/bin/igrant-api`, `/app/.venv/bin/<command>`, for example `/app/.venv/bin/start-server`). The probes are HTTP probes, and each preStop hook is the Kubernetes sleep action (`tests/check_lifecycle.py` checks it). Exec probes and hooks are only in the images that have the program: `nats-server` (NATS), the Valkey scripts, and `pg_isready` (PostgreSQL). Your own commands in the pods (`kubectl exec`) must also call the program directly, for example `kubectl -n ows exec deploy/ows-api -c api -- /app/bin/igrant-api platform status --config=/etc/igrant-api/config.yaml`.
 
 ## The SSRF guards
@@ -58,8 +58,8 @@ The api core, the webhook handler and the wallet call URLs that an organisation 
 
 | Role | The guard | Off with |
 | --- | --- | --- |
-| api core, webhook handler | `OutboundHttp.ssrfProtectionDisabled` of the api file (default `false`) | `api.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` |
-| wallet service, config, workers | `ssrf_protection.enabled` of the wallet files (default `true`) | `organisationWallet.extraConfig.ssrf_protection.enabled: false` |
+| api core, webhook handler | `OutboundHttp.ssrfProtectionDisabled` of the api file (default `false`) | `api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` |
+| wallet service, config, workers | `ssrf_protection.enabled` of the wallet files (default `true`) | `organisationWallet.advanced.extraConfig.ssrf_protection.enabled: false` |
 
 A guard that is off lets an organisation's URL reach every private, loopback and metadata address that the pod reaches: the services of your network, the services of the cluster, and the credentials on the metadata server of your cloud. The notes of `helm install` and `helm upgrade` then show a warning that names the role. Do not turn a guard off in production. If a host that the platform must call has a private address (on premise), allow only that host:
 
@@ -103,7 +103,7 @@ The render stops when:
 
 - the largest body that the gateway sends to the api (the larger of `gateway.proxy.maxBodyBytes.default` and `.file`; the class `large` goes only to the wallet) is above 32 MiB and above `api.tmp.sizeLimit`: set `api.tmp.sizeLimit` to at least that size;
 - the memory request plus `api.tmp.sizeLimit` is above the memory limit of the api or the webhook container (`api.resources`, `api.webhook.resources`): raise the memory limit by the size of `/tmp`;
-- the api's memory request plus `Uploads.maxInProgress` x the largest image (`ImageUpload.maxBytes` of `api.extraConfig`) is above the api's memory limit (`api.resources`): each upload in progress holds its file in memory (8 x 5 MiB = 40 MiB with the defaults). Lower `Uploads.maxInProgress` or `ImageUpload.maxBytes`, or raise the memory limit;
+- the api's memory request plus `Uploads.maxInProgress` x the largest image (`ImageUpload.maxBytes` of `api.advanced.extraConfig`) is above the api's memory limit (`api.resources`): each upload in progress holds its file in memory (8 x 5 MiB = 40 MiB with the defaults). Lower `Uploads.maxInProgress` or `ImageUpload.maxBytes`, or raise the memory limit;
 - `gateway.proxy.maxBodyBytes.file` is below `ImageUpload.maxBytes` + 65536: the gateway would refuse an upload that the api accepts.
 
 For example, for uploads of 100 MiB: `gateway.proxy.maxBodyBytes.file: 104857600` and `api.tmp.sizeLimit: 100Mi`. Each upload above 32 MiB then holds its size in `/tmp` while the request runs, so `/tmp` takes one such upload at a time: a second one at the same time fails with an error, and the pod stays.

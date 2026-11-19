@@ -196,3 +196,13 @@ The Job that makes the platform operator organisation and its first platform adm
 | `api.jobs.bootstrapPlatform.adminName` | `api.jobs.provisionPlatformOperator.firstAdmin.name` |
 | `api.jobs.bootstrapPlatform.passwordSecret` | `api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret` |
 | `api.jobs.bootstrapPlatform.passwordKey` | `api.jobs.provisionPlatformOperator.firstAdmin.password.key` |
+
+### Values that an operator seldom changes
+
+Each component has a group `advanced` for the values that an operator seldom changes (change them only with iGrant.io support). In this release, the extra configuration keys go there.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `api.extraConfig` | `api.advanced.extraConfig` |
+| `gateway.extraConfig` | `gateway.advanced.extraConfig` |
+| `organisationWallet.extraConfig` | `organisationWallet.advanced.extraConfig` |

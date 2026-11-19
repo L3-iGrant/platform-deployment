@@ -4,11 +4,11 @@ The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Releas
 {{- /* SSRF guards that an extraConfig turns off (docs/security-context.md,
 "The SSRF guards"). */}}
 {{- $ssrfOff := list }}
-{{- if eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true" }}
-{{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
+{{- if eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.advanced.extraConfig | default dict))) "true" }}
+{{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
 {{- end }}
-{{- if eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.extraConfig | default dict))) "false" }}
-{{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.extraConfig.ssrf_protection.enabled is false") }}
+{{- if eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.advanced.extraConfig | default dict))) "false" }}
+{{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.advanced.extraConfig.ssrf_protection.enabled is false") }}
 {{- end }}
 {{- range $ssrfOff }}
 

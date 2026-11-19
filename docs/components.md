@@ -22,7 +22,7 @@ You describe your installation in a few values files: your site, the database, t
 
 A release runs the gateway, the api, the webhook handler and the organisation wallet. The dashboard is a static web app: with `enterpriseDashboard.enabled: false`, the release does not run it, for example when you host it yourself.
 
-The chart writes the services of the installation into the api file, the webhook file and the gateway file (`Installation.services`: `[wallet]`). You cannot set this list. Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart.
+The chart writes the services of the installation into the api file, the webhook file and the gateway file (`Installation.services`: `[wallet]`). You cannot set this list. Do not set `Installation` in `api.advanced.extraConfig` or `gateway.advanced.extraConfig`: the render stops when it names other services than the chart.
 
 ## Optional features
 
@@ -32,4 +32,4 @@ An optional feature is a part of a service that an installation can leave out. E
 | --- | --- |
 | `protocol1` | Protocol 1 of the individual wallet provider: the protocol of the wallet apps that do not sign their requests. Protocol 2 signs each request. A new installation does not need protocol 1. |
 
-The chart writes the same list into the api file and the gateway file (`Installation.optionalFeatures`) and into each file of the organisation wallet (`installation.optional_features`). You cannot set it in `api.extraConfig`, `gateway.extraConfig` or `organisationWallet.extraConfig`. When an optional feature is off, its routes do not exist, the wallet refuses its settings, and the dashboard does not show it.
+The chart writes the same list into the api file and the gateway file (`Installation.optionalFeatures`) and into each file of the organisation wallet (`installation.optional_features`). You cannot set it in `api.advanced.extraConfig`, `gateway.advanced.extraConfig` or `organisationWallet.advanced.extraConfig`. When an optional feature is off, its routes do not exist, the wallet refuses its settings, and the dashboard does not show it.

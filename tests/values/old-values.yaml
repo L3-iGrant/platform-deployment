@@ -4,6 +4,8 @@
 # not change this file to the new shape.
 api:
   host: api.example.org
+  extraConfig:
+    Uploads: {maxInProgress: 4}
   smtp:
     host: smtp.example.org
     existingSecret: mail

@@ -2261,9 +2261,6 @@
             }
           }
         },
-        "extraConfig": {
-          "type": "object"
-        },
         "extraEnv": {
           "type": "array"
         },
@@ -2532,6 +2529,18 @@
               "deprecated": true
             }
           }
+        },
+        "advanced": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraConfig": {
+              "type": "object"
+            }
+          }
+        },
+        "extraConfig": {
+          "deprecated": true
         }
       }
     },
@@ -2743,9 +2752,6 @@
             }
           }
         },
-        "extraConfig": {
-          "type": "object"
-        },
         "extraEnv": {
           "type": "array"
         },
@@ -2806,6 +2812,18 @@
               "deprecated": true
             }
           }
+        },
+        "advanced": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraConfig": {
+              "type": "object"
+            }
+          }
+        },
+        "extraConfig": {
+          "deprecated": true
         }
       }
     },
@@ -3991,9 +4009,6 @@
           "type": "integer",
           "minimum": 0
         },
-        "extraConfig": {
-          "type": "object"
-        },
         "extraEnv": {
           "type": "array"
         },
@@ -4190,6 +4205,18 @@
               "deprecated": true
             }
           }
+        },
+        "advanced": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "extraConfig": {
+              "type": "object"
+            }
+          }
+        },
+        "extraConfig": {
+          "deprecated": true
         }
       }
     },

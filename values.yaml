@@ -180,8 +180,6 @@ api:
   limits:
     # -- The most organisations, 1 to 100. Empty: the api default (100).
     maxOrganisations: ""
-  # -- Extra api configuration keys, deep-merged. Not for secrets, Installation or Log.file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes of the api core (docs/security-context.md, "The stop of a pod").
@@ -278,6 +276,10 @@ api:
   tolerations: []
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra api configuration keys, deep-merged. Not for secrets, Installation or Log.file.
+    extraConfig: {}
 
 # The auth gateway: it checks each request of the api host and sends it on.
 gateway:
@@ -323,8 +325,6 @@ gateway:
   features:
     # -- Refuse the routes of a feature that is off for the organisation. false: emergency only.
     enforce: true
-  # -- Extra gateway configuration keys, deep-merged. Not for secrets, Installation or Log.file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes (docs/security-context.md, "The stop of a pod").
@@ -362,6 +362,10 @@ gateway:
   # -- Empty (and no global.affinity): a preferred anti-affinity over the nodes.
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra gateway configuration keys, deep-merged. Not for secrets, Installation or Log.file.
+    extraConfig: {}
 
 # Organisation wallet: service (public routes), config (behind the gateway), workers and clock.
 organisationWallet:
@@ -545,8 +549,6 @@ organisationWallet:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Extra wallet configuration keys of all roles, deep-merged. Not for secrets or log_file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (the configuration is in EUDI_WALLET_CONFIG).
   extraEnv: []
   service:
@@ -613,6 +615,10 @@ organisationWallet:
   tolerations: []
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra wallet configuration keys of all roles, deep-merged. Not for secrets or log_file.
+    extraConfig: {}
 
 # Enterprise dashboard: the web UI of the organisation admins.
 enterpriseDashboard:

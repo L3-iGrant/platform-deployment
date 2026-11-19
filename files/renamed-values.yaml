@@ -210,3 +210,11 @@
 - {old: api.jobs.bootstrapPlatform.adminName, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.name}
 - {old: api.jobs.bootstrapPlatform.passwordSecret, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret}
 - {old: api.jobs.bootstrapPlatform.passwordKey, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.key}
+
+# --- Values that an operator seldom changes
+# Each component has a group `advanced` for the values that an operator
+# seldom changes (change them only with iGrant.io support). In this
+# release, the extra configuration keys go there.
+- {old: api.extraConfig, after: 2026.11.7, new: api.advanced.extraConfig}
+- {old: gateway.extraConfig, after: 2026.11.7, new: gateway.advanced.extraConfig}
+- {old: organisationWallet.extraConfig, after: 2026.11.7, new: organisationWallet.advanced.extraConfig}

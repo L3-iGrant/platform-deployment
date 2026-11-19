@@ -128,15 +128,15 @@ file never has it, because the gateway refuses the section. */ -}}
 {{- if $api.verifierApp.androidPackageName -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}
-{{- /* api.extraConfig cannot set Installation: ow.installation.config
+{{- /* api.advanced.extraConfig cannot set Installation: ow.installation.config
 fails the render when it names other services, and the chart writes its
 own section. */ -}}
-{{- $extra := deepCopy ($api.extraConfig | default dict) -}}
+{{- $extra := deepCopy ($api.advanced.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
 {{- /* No log file (ow.noLogFile): the api and the webhook handler log to
 stdout. */ -}}
-{{- include "ow.noLogFile" (list "api.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- include "ow.noLogFile" (list "api.advanced.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
 {{- $config | toYaml -}}
 {{- end }}
 
@@ -156,7 +156,7 @@ it cannot read the release's new ConfigMaps.
 {{- end }}
 
 {{/*
-Render guard for the upload memory of the api core (api.extraConfig Uploads
+Render guard for the upload memory of the api core (api.advanced.extraConfig Uploads
 and ImageUpload). Each image upload in progress holds its file in memory,
 with at most Uploads.maxInProgress of them (default 8). The container's
 memory request (the process memory without uploads) plus maxInProgress x
@@ -165,7 +165,7 @@ context. Output: nothing.
 */}}
 {{- define "ow.api.checkUploads" -}}
 {{- $api := .Values.api -}}
-{{- $config := $api.extraConfig | default dict -}}
+{{- $config := $api.advanced.extraConfig | default dict -}}
 {{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}
 {{- $image := (dig "ImageUpload" "maxBytes" 0 $config) | int64 | default 5242880 -}}
 {{- $limit := (($api.resources | default dict).limits | default dict).memory -}}
@@ -173,7 +173,7 @@ context. Output: nothing.
 {{- $request := (($api.resources | default dict).requests | default dict).memory | default "0" -}}
 {{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $image) -}}
 {{- if gt $need (include "ow.quantityBytes" $limit | int64) -}}
-{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest image (%d bytes, ImageUpload.maxBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or ImageUpload.maxBytes of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $image $need $limit) -}}
+{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest image (%d bytes, ImageUpload.maxBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or ImageUpload.maxBytes of api.advanced.extraConfig, or raise api.resources.limits.memory" $request $inProgress $image $need $limit) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
