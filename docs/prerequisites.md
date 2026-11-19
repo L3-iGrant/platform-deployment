@@ -171,14 +171,14 @@ This chart is the community installation, for development and tests. Production 
 | Item | Development and tests | Extra small production | Small production |
 | --- | --- | --- | --- |
 | Capacity | Up to 10,000 wallet units | Up to 10,000 wallet units and 100 organisations, little traffic | Up to 250,000 wallet units |
-| Nodes | 1 | 3, with `profiles/size-extra-small.yaml` | 3 |
+| Nodes | 1, with `profiles/size-development.yaml` | 3, with `profiles/size-extra-small.yaml` | 3, with `profiles/size-small.yaml` |
 | CPU | 8 vCPU | 1 vCPU (burstable) for each node | 16 vCPU for each node |
 | Memory | 32 GB RAM | 6 GB RAM for each node | 64 GB RAM for each node |
 | Storage | 250 GB NVMe SSD | About 60 GB of volumes, with backups | 1 TB NVMe SSD for each node, with backups |
 | Network | 1 Gbit/s | 1 Gbit/s | 10 Gbit/s |
 | Key store | OpenBao, with the seal `shamir` | Your own OpenBao, unsealed by an HSM or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) | OpenBao, unsealed by an HSM (PKCS#11) or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) |
 
-The extra small figures come from the measured use of an installation with about 9,000 wallet units, not from a load test: when the use grows, move to larger nodes (see `profiles/size-extra-small.yaml`).
+The extra small figures come from the measured use of an installation with about 9,000 wallet units, not from a load test: when the use grows, move to larger nodes. The chart has a size profile for each size of this table (see [Sizing](sizing.md)).
 
 Run a staging installation with the same topology as production, at a smaller size. One node does not test updates, failover or the HSM path.
 

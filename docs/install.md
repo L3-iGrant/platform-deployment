@@ -103,6 +103,7 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 | `redis-external.yaml` | Your own Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
 | `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
 | `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
+| `size-development.yaml`, `size-extra-small.yaml`, `size-small.yaml` | The size of your installation: replicas, requests and limits, database pools and server settings. Add one, after the other profiles | [Sizing](sizing.md) |
 
 To change a profile, copy it first (for example to `my-exposure.yaml` for other TLS Secret names or another Gateway). Each profile names the Secrets that you must create before the install, for example the database admin password. Create them now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 

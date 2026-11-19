@@ -366,6 +366,80 @@ PY
   fi
   if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
 done
+# The size profiles (profiles/size-*.yaml, docs/sizing.md): each renders
+# with the profiles of its size, passes helm lint and the install order, and
+# fits its nodes:
+# the requests (spread over the nodes) are
+# at most 80 % of the allocatable of a node, a Deployment with a required
+# anti-affinity has fewer replicas than nodes (a rolling update needs one
+# more node), and a StatefulSet with a required anti-affinity has at most
+# one pod on each node.
+size_profile() {
+  local name="$1" nodes="$2" cpu="$3" memory="$4"; shift 4
+  local file="$out/size-$name.yaml" problems
+  local args=(-f "$keys" "${matrix_site[@]}" -f "$profiles/exposure-envoy-gateway.yaml" "$@" -f "$profiles/size-$name.yaml")
+  if ! helm lint "$chart" --quiet "${args[@]}" > "$out/lint.txt" 2>&1; then
+    bad "size $name: helm lint"
+    sed 's/^/  /' "$out/lint.txt" | head -10
+    return
+  fi
+  if ! helm template t "$chart" --namespace ow "${args[@]}" > "$file" 2> "$out/size-$name.err"; then
+    bad "size $name: helm template"
+    sed 's/^/  /' "$out/size-$name.err" | head -10
+    return
+  fi
+  if ! python3 "$here/check_hook_order.py" install "$file"; then
+    bad "size $name: install order"
+    return
+  fi
+  if problems="$(python3 - "$file" "$nodes" "$cpu" "$memory" <<'PY' 2>&1
+import sys, yaml
+def cpu(v):
+    v = str(v or 0)
+    return float(v[:-1]) / 1000 if v.endswith("m") else float(v)
+def mem(v):
+    v = str(v or 0)
+    for suffix, factor in (("Ki", 1 / 1024 ** 2), ("Mi", 1 / 1024), ("Gi", 1)):
+        if v.endswith(suffix):
+            return float(v[:-2]) * factor
+    return float(v) / 1024 ** 3
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+nodes, alloc_cpu, alloc_mem = int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
+hpa = {d["spec"]["scaleTargetRef"]["name"]: d["spec"]["maxReplicas"] for d in docs if d["kind"] == "HorizontalPodAutoscaler"}
+total_cpu = total_mem = 0.0
+for d in docs:
+    if d["kind"] not in ("Deployment", "StatefulSet"):
+        continue
+    spec = d["spec"]["template"]["spec"]
+    def req(c, key):
+        return ((c.get("resources") or {}).get("requests") or {}).get(key)
+    pod_cpu = max(sum(cpu(req(c, "cpu")) for c in spec["containers"]), max([cpu(req(c, "cpu")) for c in spec.get("initContainers", [])] or [0]))
+    pod_mem = max(sum(mem(req(c, "memory")) for c in spec["containers"]), max([mem(req(c, "memory")) for c in spec.get("initContainers", [])] or [0]))
+    replicas = hpa.get(d["metadata"]["name"]) or d["spec"].get("replicas", 1)
+    total_cpu += pod_cpu * replicas
+    total_mem += pod_mem * replicas
+    required = ((spec.get("affinity") or {}).get("podAntiAffinity") or {}).get("requiredDuringSchedulingIgnoredDuringExecution")
+    if required and d["kind"] == "Deployment" and replicas >= nodes:
+        print(f"{d['metadata']['name']}: {replicas} replicas with a required anti-affinity on {nodes} nodes")
+    if required and d["kind"] == "StatefulSet" and replicas > nodes:
+        print(f"{d['metadata']['name']}: {replicas} pods with a required anti-affinity on {nodes} nodes")
+if total_cpu / nodes > 0.8 * alloc_cpu:
+    print(f"the requests on a node are {total_cpu / nodes:.1f} vCPU, above 80 % of {alloc_cpu} vCPU")
+if total_mem / nodes > 0.8 * alloc_mem:
+    print(f"the requests on a node are {total_mem / nodes:.1f} GiB, above 80 % of {alloc_mem} GiB")
+print(f"{total_cpu / nodes:.1f} vCPU and {total_mem / nodes:.1f} GiB of requests on a node")
+PY
+)" && [ "$(printf '%s\n' "$problems" | wc -l | tr -d ' ')" = 1 ]; then
+    ok "size $name: $problems"
+  else
+    bad "size $name"
+    printf '%s\n' "$problems" | sed 's/^/  /' | head -10
+  fi
+}
+hsm_seal=(-f "$profiles/openbao-pkcs11.yaml" -f "$profiles/hsm-signer-local.yaml")
+size_profile development 1 7.9 28.3 -f "$profiles/openbao-shamir.yaml"
+size_profile extra-small 3 0.94 4.4 -f "$profiles/openbao-external.yaml"
+size_profile small 3 15.9 58.4 -f "$profiles/openbao-external.yaml"
 # The bundled Valkey's certificate: the pod names, the Sentinel Service and
 # 127.0.0.1 (clients check the host name).
 if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \

@@ -1,0 +1,79 @@
+# The size "Small production" (docs/sizing.md): up to 250,000 wallet units,
+# about 20 presentations and 30 WIA requests each second at peak, on 3 nodes
+# with 16 vCPU and 64 GB RAM each (GKE allocatable about 15.9 vCPU and 58 GiB
+# each). The bundled PostgreSQL runs in the cluster. The wallet service has 9
+# pods. Use it with your own OpenBao with an HSM seal
+# (profiles/openbao-external.yaml).
+# Requests on each node (spread over the 3 nodes): about 8.3 vCPU and 20 GiB
+# (52 % of the CPU and 34 % of the memory of the allocatable). The rest is
+# for the system pods, your ingress controller, monitoring and spikes.
+#
+# The values come from the costs that a load test measured on one computer
+# (each wallet process uses one core at peak; peak memory 1 GB for a service
+# pod, 0.75 GB for a config pod), with a CPU use of 60 % at peak. They are
+# estimates: confirm them with a load test of your installation.
+#
+# Note: organisationWallet.workers.groups is a list, and Helm replaces a list
+# as a whole. This file therefore repeats every field of the two groups of
+# values.yaml; when you change a group, copy all its fields.
+api:
+  replicas: 3
+  resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {memory: 1Gi}}
+  webhook:
+    replicas: 2
+    resources: {requests: {cpu: 200m, memory: 128Mi}, limits: {memory: 512Mi}}
+gateway:
+  replicas: 3
+  resources: {requests: {cpu: 500m, memory: 256Mi}, limits: {memory: 512Mi}}
+organisationWallet:
+  service:
+    replicas: 9
+    resources: {requests: {cpu: "1", memory: 1Gi}, limits: {memory: 2Gi}}
+  config:
+    replicas: 3
+    resources: {requests: {cpu: "1", memory: 768Mi}, limits: {memory: 1536Mi}}
+  clock:
+    replicas: 2
+    resources: {requests: {cpu: 20m, memory: 192Mi}, limits: {memory: 384Mi}}
+  workers:
+    groups:
+      - name: main
+        queues: [realtime, attestation, status, kms]
+        replicas: 3
+        processes: 2
+        threads: 8
+        shutdownTimeoutSeconds: 600
+        terminationGracePeriodSeconds: 630
+        resources: {requests: {cpu: "1", memory: 1Gi}, limits: {memory: 2Gi}}
+      - name: maintenance
+        queues: [maintenance]
+        replicas: 1
+        processes: 1
+        threads: 2
+        shutdownTimeoutSeconds: 14400
+        terminationGracePeriodSeconds: 14430
+        resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 1536Mi}}
+enterpriseDashboard:
+  replicas: 2
+database:
+  # The bundled PostgreSQL: shared_buffers about 25 % of its memory, and
+  # max_connections for the pools of this file.
+  resources: {requests: {cpu: "4", memory: 32Gi}, limits: {cpu: "8", memory: 32Gi}}
+  postgresql:
+    parameters:
+      max_connections: "700"
+      shared_buffers: 8GB
+      effective_cache_size: 24GB
+      work_mem: 8MB
+      maintenance_work_mem: 1GB
+  # The volume grows with the records that you keep (docs/database.md).
+  persistence: {size: 500Gi}
+nats:
+  resources: {requests: {cpu: 250m, memory: 512Mi}}
+  persistence: {size: 20Gi}
+  jetstream: {maxFileStore: 20Gi, maxMemoryStore: "0"}
+openbao:
+  resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {memory: 1536Mi}}
+redis:
+  resources: {requests: {cpu: 500m, memory: 3Gi}, limits: {memory: 3Gi}}
+  maxmemory: 2gb

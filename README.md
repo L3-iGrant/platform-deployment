@@ -16,6 +16,7 @@ These docs are for the developers and operations teams who install and run the p
 
 - [Components](docs/components.md): what the chart installs, how your values files describe an installation, where the organisation wallet runs, and the optional features.
 - [Prerequisites](docs/prerequisites.md): what your cluster, network and workstation need, and the Envoy Gateway setup of the default exposure (`manifests/envoy-gateway/`).
+- [Sizing](docs/sizing.md): the size profiles, from development and tests to 250,000 wallet units.
 - [Get the charts](docs/install.md#get-the-charts): clone this repository, or the enterprise repository with your access token, and check out your release.
 - [Install](docs/install.md): seven steps, each with a check.
 

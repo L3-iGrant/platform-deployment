@@ -23,6 +23,7 @@ The tests of the chart. They run without a cluster.
 - your own Valkey or Redis (`redis-external.yaml`, with two database choices, with and without network policies): no Valkey object, the `redis` section of each wallet role, the Secrets of the users, and egress to your servers only from the wallet roles and the gateway;
 - the tests after the matrix use `openbao-shamir.yaml`, and `exposure-envoy-gateway.yaml` where they pick an exposure;
 - the minimal profile (`minimal.yaml`, with and without network policies): one replica of each service except the worker groups, and 3 Valkey pods;
+- the size profiles (`size-*.yaml`, see [Sizing](sizing.md)): each with the profiles of its size passes `helm lint`, the install order and the security and lifecycle checks, and its requests are at most 80 % of the allocatable of a node;
 - the image pull Secrets of `global.imagePullSecrets` in every pod spec: the Deployments, StatefulSets, Jobs and hooks, also the optional ones;
 - the certificate of the bundled Valkey: the names of the pods, of the Sentinel Service, and 127.0.0.1;
 - the Valkey metrics: the exporter in each pod (the user `metrics`, no CONFIG, only the CA), its ACL user and password, the ServiceMonitor, the scrape port with network policies, none of them by default, and their guards;
