@@ -125,7 +125,7 @@ def main() -> int:
             expected.add((source, target, port))
             if source in present and target in present:
                 # The container's port number (a value can override the
-                # matrix default, for example gateway.listenPort).
+                # matrix default, for example the port of a database server).
                 actual = pods[target]["ports"].get(port, number)
                 if not allowed(pods[source], pods[target], actual, port):
                     failures.append(f"the matrix connection {source} -> {target}:{port} is denied")
