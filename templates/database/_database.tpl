@@ -78,9 +78,30 @@ cannot name the components.
 {{- end -}}
 {{- end }}
 
-{{/* Name of the Secret with the database passwords. */}}
+{{/*
+Name of the chart's Secret with the database passwords that the chart makes
+(<fullname>-postgres): the admin password of the bundled server and the
+password of each database without its own Secret.
+*/}}
 {{- define "ow.db.secretName" -}}
-{{- .Values.database.auth.existingSecret | default (include "ow.db.serverName" .) -}}
+{{- include "ow.db.serverName" . -}}
+{{- end }}
+
+{{/*
+The Secret of the password of one component database (the owner user):
+database.databases.<key>.password.existingSecret and .key, else the
+chart's Secret with the database name as key. Call with (list $ "<key of
+database.databases>"). Output: JSON {secret, key}.
+*/}}
+{{- define "ow.db.password" -}}
+{{- $root := index . 0 -}}
+{{- $database := index $root.Values.database.databases (index . 1) -}}
+{{- $password := $database.password | default dict -}}
+{{- if and (kindIs "map" $password) $password.existingSecret -}}
+{{- toJson (dict "secret" $password.existingSecret "key" ($password.key | default $database.name)) -}}
+{{- else -}}
+{{- toJson (dict "secret" (include "ow.db.secretName" $root) "key" $database.name) -}}
+{{- end -}}
 {{- end }}
 
 {{/* Key of the bundled server's admin password in the database Secret (the server image's variable name). */}}
@@ -89,27 +110,34 @@ cannot name the components.
 {{- end }}
 
 {{/*
-The server's admin user. It creates the databases and owner users (init
-hook), the wallet database roles (roles hook) and the read-only users (read
-access Jobs).
-bundled: the engine's admin user ("postgres") and the admin key of the
-database Secret.
-external: database.external.admin (an empty user means no admin, which the
-organisation wallet does not allow, see ow.db.check).
+The server's admin user (database.admin). It creates the databases and
+owner users (init hook), the wallet database roles (roles hook) and the
+read-only users (read access Jobs).
+bundled: the engine's admin user ("postgres"); its password from
+database.admin.password.existingSecret and .key, else the admin key of the
+chart's database Secret.
+external: database.admin.username and database.admin.password (an empty
+user means no admin, which the organisation wallet does not allow, see
+ow.db.check).
 Output: JSON {user, secret, key}, or {} when there is no admin user.
 */}}
 {{- define "ow.db.admin" -}}
-{{- $db := .Values.database -}}
+{{- $admin := .Values.database.admin -}}
 {{- if include "ow.db.bundled" . -}}
+{{- $user := (include "ow.db.engineFacts" . | fromJson).adminUser -}}
+{{- if and $admin.username (ne $admin.username $user) -}}
+{{- fail (printf "database.admin.username %q: the admin user of the bundled server is %s; leave database.admin.username empty with database.mode bundled" $admin.username $user) -}}
+{{- end -}}
+{{- if $admin.password.existingSecret -}}
+{{- toJson (dict "user" $user "secret" $admin.password.existingSecret "key" ($admin.password.key | default "password")) -}}
+{{- else -}}
+{{- toJson (dict "user" $user "secret" (include "ow.db.secretName" .) "key" (include "ow.db.adminPasswordKey" .)) -}}
+{{- end -}}
+{{- else if $admin.username -}}
 {{- toJson (dict
-  "user" (include "ow.db.engineFacts" . | fromJson).adminUser
-  "secret" (include "ow.db.secretName" .)
-  "key" (include "ow.db.adminPasswordKey" .)) -}}
-{{- else if $db.external.admin.user -}}
-{{- toJson (dict
-  "user" $db.external.admin.user
-  "secret" (required "database.external.admin.passwordSecret is required with database.external.admin.user" $db.external.admin.passwordSecret)
-  "key" ($db.external.admin.passwordKey | default "password")) -}}
+  "user" $admin.username
+  "secret" (required "database.admin.password.existingSecret is required with database.mode external: your Secret with the password of database.admin.username" $admin.password.existingSecret)
+  "key" ($admin.password.key | default "password")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -128,16 +156,17 @@ Output: JSON {user, secret, key}, or {} when there is no admin user.
 {{/*
 CA certificate that the components use to verify the server. Bundled with
 TLS: ca.crt of the server TLS Secret. External with TLS:
-database.tls.caSecret. Output: JSON {secret, key}, or {} when there is no CA.
+database.external.ca. Output: JSON {secret, key}, or {} when there is no
+CA.
 */}}
 {{- define "ow.db.ca" -}}
-{{- $tls := .Values.database.tls -}}
+{{- $ca := .Values.database.external.ca -}}
 {{- if not (include "ow.db.tls" .) -}}
 {{- toJson dict -}}
 {{- else if include "ow.db.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.db.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if $tls.caSecret -}}
-{{- toJson (dict "secret" $tls.caSecret "key" ($tls.caKey | default "ca.crt")) -}}
+{{- else if $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -190,15 +219,18 @@ database connection calls this (through ow.db.go and ow.db.wallet).
 {{- end -}}
 {{- /* The roles hook creates the wallet database roles as the admin user,
 so the chart cannot create them without one. */ -}}
-{{- if and (not $bundled) (not $db.external.admin.user) -}}
-{{- fail "database.external.admin.user is required with database.mode external: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
+{{- if and (not $bundled) (not $db.admin.username) -}}
+{{- fail "database.admin.username is required with database.mode external: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
+{{- end -}}
+{{- if and $bundled $db.external.ca.existingSecret -}}
+{{- fail "database.external.ca is the CA of an external server (database.mode external): the bundled server has its own TLS (database.tls)" -}}
 {{- end -}}
 {{- with $db.tls.sslMode -}}
 {{- if not (has . (list "disable" "require" "verify-ca" "verify-full")) -}}
 {{- fail (printf "database.tls.sslMode %q is not supported: disable, require, verify-ca or verify-full" .) -}}
 {{- end -}}
 {{- if and (has . (list "verify-ca" "verify-full")) (not (include "ow.db.ca" $ | fromJson).secret) -}}
-{{- fail (printf "database.tls.sslMode %s needs the CA of the server: database.tls.caSecret (external) or TLS of the bundled server" .) -}}
+{{- fail (printf "database.tls.sslMode %s needs the CA of the server: database.external.ca.existingSecret (external) or TLS of the bundled server" .) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}
@@ -289,7 +321,7 @@ Output: JSON "<file name>" -> {secret, key}.
 */}}
 {{- define "ow.db.secretFiles" -}}
 {{- $root := index . 0 -}}
-{{- $files := dict (index . 2) (dict "secret" (include "ow.db.secretName" $root) "key" (index $root.Values.database.databases (index . 1)).name) -}}
+{{- $files := dict (index . 2) (include "ow.db.password" (list $root (index . 1)) | fromJson) -}}
 {{- $ca := include "ow.db.ca" $root | fromJson -}}
 {{- if $ca.secret -}}
 {{- $_ := set $files (include "ow.db.caFileName" $root) $ca -}}

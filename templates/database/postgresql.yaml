@@ -64,8 +64,8 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ow.db.secretName" . }}
-                  key: {{ include "ow.db.adminPasswordKey" . }}
+                  name: {{ (include "ow.db.admin" . | fromJson).secret }}
+                  key: {{ (include "ow.db.admin" . | fromJson).key }}
             - name: POSTGRES_INITDB_ARGS
               value: "--encoding=UTF8 --locale=C.UTF-8"
           ports:

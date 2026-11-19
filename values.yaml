@@ -689,23 +689,25 @@ database:
   engine: postgresql
   # -- bundled (the chart runs <fullname>-postgres) or external (database.external).
   mode: bundled
-  # -- Database (= owner user) name and password of each component. Empty password: random.
+  # -- The admin user of the server, for the init hook, the roles hook and the read access Jobs.
+  # bundled: the user postgres (leave username empty); empty existingSecret: the chart makes the
+  # password and keeps it. external: both required.
+  admin:
+    username: ""
+    password: {existingSecret: "", key: password}
+  # -- Database (= owner user) name of each component, and your Secret with its password.
+  # Empty existingSecret: the chart makes the password and keeps it.
   databases:
-    api: {name: igrant_api, password: ""}
-    oidc: {name: igrant_oidc, password: ""}
-    wallet: {name: igrant_wallet, password: ""}
-  auth:
-    # -- Password of the admin user postgres of the bundled server. Empty: random.
-    adminPassword: ""
-    # -- Secret with one key per database name (bundled: also POSTGRES_PASSWORD).
-    existingSecret: ""
+    api: {name: igrant_api, password: {existingSecret: "", key: igrant_api}}
+    oidc: {name: igrant_oidc, password: {existingSecret: "", key: igrant_oidc}}
+    wallet: {name: igrant_wallet, password: {existingSecret: "", key: igrant_wallet}}
   external:
     # -- Host name of the external server (required for external).
     host: ""
     # -- Empty: 5432.
     port: ""
-    # -- Required: admin user of the external server and its password Secret.
-    admin: {user: "", passwordSecret: "", passwordKey: password}
+    # -- Secret with the CA of the server. Empty: sslmode require (no verification).
+    ca: {existingSecret: "", key: ca.crt}
   # -- Connection pools of each process (docs/database.md, "Connection budget").
   pools:
     api: {maxConns: 10, minConns: 2}
@@ -728,9 +730,6 @@ database:
     enabled: true
     # -- bundled: your kubernetes.io/tls Secret. Empty: the chart makes a CA and a certificate.
     existingSecret: ""
-    # -- external: Secret with the CA of the server. Empty: sslmode require (no verification).
-    caSecret: ""
-    caKey: ca.crt
     # -- disable, require, verify-ca or verify-full. Empty: verify-full with a CA, else require.
     sslMode: ""
   postgresql:
@@ -747,6 +746,30 @@ database:
       password_encryption: scram-sha-256
     # -- Log each DDL statement, connection and disconnection (docs/database.md).
     logDdlAndConnections: true
+  # -- Read-only database users of the reads between the services (docs/read-access.md).
+  readAccess:
+    api:
+      # -- The api reads the wallet views. Empty existingSecret: the chart makes the password.
+      wallet:
+        username: api_wallet_reader
+        password: {existingSecret: "", key: password}
+        host: ""
+        port: ""
+        name: ""
+    wallet:
+      # -- The wallet reads the api views.
+      api:
+        username: wallet_api_reader
+        password: {existingSecret: "", key: password}
+        host: ""
+        port: ""
+        name: ""
+    # -- Jobs that make the read-only users. Empty admin values: database.admin.
+    jobs:
+      enabled: true
+      api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+      wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+      ttlSecondsAfterFinished: 86400
   persistence: {size: 50Gi, storageClass: ""}
   # -- The memory must hold the PostgreSQL parameters under load.
   resources:
@@ -1075,30 +1098,3 @@ networkPolicy:
       wallet-clock: []
   # -- Scrape of the NATS monitor port and the metrics ports from a monitoring namespace.
   monitoring: {enabled: false, namespaceSelector: {}, podSelector: {}}
-
-# Read-only database users of the reads between the services (docs/read-access.md).
-readAccess:
-  api:
-    # -- The api reads the wallet views.
-    wallet:
-      username: api_wallet_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  wallet:
-    # -- The wallet reads the api views.
-    api:
-      username: wallet_api_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  # -- Jobs that make the read-only users. Empty admin values: the admin user of database.
-  jobs:
-    enabled: true
-    api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
-    wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
-    ttlSecondsAfterFinished: 86400

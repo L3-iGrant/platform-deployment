@@ -1,8 +1,8 @@
 {{- /*
 Init hook for the databases: one database and one owner user per
 component (the user name is the database name), with the password from the
-database Secret, on the bundled server or on an external server with
-database.external.admin.
+database Secret (or the Secret of each database), on the bundled server or
+on an external server with database.admin.
 
 It is a hook (helm post-install and pre-upgrade) that runs before every
 hook that connects to a component database (the wallet roles hook, weights
@@ -161,14 +161,19 @@ spec:
         - name: scripts
           configMap:
             name: {{ $name }}
+        # The password of each owner user, from the chart's database
+        # Secret or from the Secret of database.databases.<key>.password.
         - name: users
-          secret:
-            secretName: {{ include "ow.db.secretName" . }}
+          projected:
             defaultMode: 0440
-            items:
-              {{- range $user := $users }}
-              - key: {{ $user }}
-                path: {{ $user }}
+            sources:
+              {{- range $key := $keys }}
+              {{- $password := include "ow.db.password" (list $ $key) | fromJson }}
+              - secret:
+                  name: {{ $password.secret }}
+                  items:
+                    - key: {{ $password.key }}
+                      path: {{ (index $db.databases $key).name }}
               {{- end }}
         {{- if $ca.secret }}
         - name: ca

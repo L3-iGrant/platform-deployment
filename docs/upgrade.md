@@ -92,3 +92,40 @@ A secret is never a value: each secret is a reference to a Secret, `{existingSec
 | `api.twilio.existingSecret` | `api.twilio.accountSid.existingSecret` and `api.twilio.authToken.existingSecret` |
 | `api.twilio.accountSidKey` | `api.twilio.accountSid.key` |
 | `api.twilio.authTokenKey` | `api.twilio.authToken.key` |
+
+### Database
+
+One admin block for both modes (`database.admin`; the bundled server has the user `postgres`), one Secret reference for each database password, and the CA of an external server in `database.external.ca`. A plain password in a values file stops the render. At an upgrade, the chart keeps the passwords of its Secret `<fullname>-postgres`. The read-only users are in `database.readAccess` (see [Read access](read-access.md)).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `database.databases.api.password` (a text) | Remove it: a plain password in a values file is not permitted; the chart keeps the password of its Secret `<fullname>-postgres` at an upgrade. For a password of your own, make a Secret and set `database.databases.api.password.existingSecret` |
+| `database.databases.oidc.password` (a text) | Remove it: a plain password in a values file is not permitted; the chart keeps the password of its Secret `<fullname>-postgres` at an upgrade. For a password of your own, make a Secret and set `database.databases.oidc.password.existingSecret` |
+| `database.databases.wallet.password` (a text) | Remove it: a plain password in a values file is not permitted; the chart keeps the password of its Secret `<fullname>-postgres` at an upgrade. For a password of your own, make a Secret and set `database.databases.wallet.password.existingSecret` |
+| `database.auth.adminPassword` | Remove it: a plain password in a values file is not permitted; the chart keeps the password of its Secret `<fullname>-postgres` at an upgrade. For a password of your own, make a Secret and set `database.admin.password.existingSecret` |
+| `database.auth.existingSecret` | `database.databases.api.password.existingSecret` and `database.databases.oidc.password.existingSecret` and `database.databases.wallet.password.existingSecret` and `database.admin.password.existingSecret` (the key of each database is its name; for the bundled server, the admin password has the key POSTGRES_PASSWORD) |
+| `database.external.admin.user` | `database.admin.username` |
+| `database.external.admin.passwordSecret` | `database.admin.password.existingSecret` |
+| `database.external.admin.passwordKey` | `database.admin.password.key` |
+| `database.tls.caSecret` | `database.external.ca.existingSecret` |
+| `database.tls.caKey` | `database.external.ca.key` |
+| `readAccess.api.wallet.username` | `database.readAccess.api.wallet.username` |
+| `readAccess.api.wallet.passwordSecret` | `database.readAccess.api.wallet.password.existingSecret` |
+| `readAccess.api.wallet.passwordKey` | `database.readAccess.api.wallet.password.key` |
+| `readAccess.api.wallet.host` | `database.readAccess.api.wallet.host` |
+| `readAccess.api.wallet.port` | `database.readAccess.api.wallet.port` |
+| `readAccess.api.wallet.name` | `database.readAccess.api.wallet.name` |
+| `readAccess.wallet.api.username` | `database.readAccess.wallet.api.username` |
+| `readAccess.wallet.api.passwordSecret` | `database.readAccess.wallet.api.password.existingSecret` |
+| `readAccess.wallet.api.passwordKey` | `database.readAccess.wallet.api.password.key` |
+| `readAccess.wallet.api.host` | `database.readAccess.wallet.api.host` |
+| `readAccess.wallet.api.port` | `database.readAccess.wallet.api.port` |
+| `readAccess.wallet.api.name` | `database.readAccess.wallet.api.name` |
+| `readAccess.jobs.enabled` | `database.readAccess.jobs.enabled` |
+| `readAccess.jobs.api.adminUser` | `database.readAccess.jobs.api.adminUser` |
+| `readAccess.jobs.api.adminPasswordSecret` | `database.readAccess.jobs.api.adminPasswordSecret` |
+| `readAccess.jobs.api.adminPasswordKey` | `database.readAccess.jobs.api.adminPasswordKey` |
+| `readAccess.jobs.wallet.adminUser` | `database.readAccess.jobs.wallet.adminUser` |
+| `readAccess.jobs.wallet.adminPasswordSecret` | `database.readAccess.jobs.wallet.adminPasswordSecret` |
+| `readAccess.jobs.wallet.adminPasswordKey` | `database.readAccess.jobs.wallet.adminPasswordKey` |
+| `readAccess.jobs.ttlSecondsAfterFinished` | `database.readAccess.jobs.ttlSecondsAfterFinished` |

@@ -88,3 +88,60 @@
 - {old: api.twilio.existingSecret, after: 2026.11.7, new: [api.twilio.accountSid.existingSecret, api.twilio.authToken.existingSecret]}
 - {old: api.twilio.accountSidKey, after: 2026.11.7, new: api.twilio.accountSid.key}
 - {old: api.twilio.authTokenKey, after: 2026.11.7, new: api.twilio.authToken.key}
+
+# --- Database
+# One admin block for both modes (`database.admin`; the bundled server has
+# the user `postgres`), one Secret reference for each database password,
+# and the CA of an external server in `database.external.ca`. A plain
+# password in a values file stops the render. At an upgrade, the chart
+# keeps the passwords of its Secret `<fullname>-postgres`. The read-only
+# users are in `database.readAccess` (see [Read access](read-access.md)).
+- old: database.databases.api.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.api.password.existingSecret"
+  secret: kept
+- old: database.databases.oidc.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.oidc.password.existingSecret"
+  secret: kept
+- old: database.databases.wallet.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.wallet.password.existingSecret"
+  secret: kept
+- old: database.auth.adminPassword
+  after: 2026.11.7
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.admin.password.existingSecret"
+  secret: kept
+- old: database.auth.existingSecret
+  after: 2026.11.7
+  new: [database.databases.api.password.existingSecret, database.databases.oidc.password.existingSecret, database.databases.wallet.password.existingSecret, database.admin.password.existingSecret]
+  note: "the key of each database is its name; for the bundled server, the admin password has the key POSTGRES_PASSWORD"
+  convert: databaseSecret
+- {old: database.external.admin.user, after: 2026.11.7, new: database.admin.username}
+- {old: database.external.admin.passwordSecret, after: 2026.11.7, new: database.admin.password.existingSecret}
+- {old: database.external.admin.passwordKey, after: 2026.11.7, new: database.admin.password.key}
+- {old: database.tls.caSecret, after: 2026.11.7, new: database.external.ca.existingSecret}
+- {old: database.tls.caKey, after: 2026.11.7, new: database.external.ca.key}
+- {old: readAccess.api.wallet.username, after: 2026.11.7, new: database.readAccess.api.wallet.username}
+- {old: readAccess.api.wallet.passwordSecret, after: 2026.11.7, new: database.readAccess.api.wallet.password.existingSecret}
+- {old: readAccess.api.wallet.passwordKey, after: 2026.11.7, new: database.readAccess.api.wallet.password.key}
+- {old: readAccess.api.wallet.host, after: 2026.11.7, new: database.readAccess.api.wallet.host}
+- {old: readAccess.api.wallet.port, after: 2026.11.7, new: database.readAccess.api.wallet.port}
+- {old: readAccess.api.wallet.name, after: 2026.11.7, new: database.readAccess.api.wallet.name}
+- {old: readAccess.wallet.api.username, after: 2026.11.7, new: database.readAccess.wallet.api.username}
+- {old: readAccess.wallet.api.passwordSecret, after: 2026.11.7, new: database.readAccess.wallet.api.password.existingSecret}
+- {old: readAccess.wallet.api.passwordKey, after: 2026.11.7, new: database.readAccess.wallet.api.password.key}
+- {old: readAccess.wallet.api.host, after: 2026.11.7, new: database.readAccess.wallet.api.host}
+- {old: readAccess.wallet.api.port, after: 2026.11.7, new: database.readAccess.wallet.api.port}
+- {old: readAccess.wallet.api.name, after: 2026.11.7, new: database.readAccess.wallet.api.name}
+- {old: readAccess.jobs.enabled, after: 2026.11.7, new: database.readAccess.jobs.enabled}
+- {old: readAccess.jobs.api.adminUser, after: 2026.11.7, new: database.readAccess.jobs.api.adminUser}
+- {old: readAccess.jobs.api.adminPasswordSecret, after: 2026.11.7, new: database.readAccess.jobs.api.adminPasswordSecret}
+- {old: readAccess.jobs.api.adminPasswordKey, after: 2026.11.7, new: database.readAccess.jobs.api.adminPasswordKey}
+- {old: readAccess.jobs.wallet.adminUser, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminUser}
+- {old: readAccess.jobs.wallet.adminPasswordSecret, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordSecret}
+- {old: readAccess.jobs.wallet.adminPasswordKey, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordKey}
+- {old: readAccess.jobs.ttlSecondsAfterFinished, after: 2026.11.7, new: database.readAccess.jobs.ttlSecondsAfterFinished}

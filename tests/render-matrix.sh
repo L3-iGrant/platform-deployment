@@ -588,10 +588,10 @@ only_postgresql="is not supported: the api and the organisation wallet accept on
 guard "engine" "database.engine \"oracle\" $only_postgresql" --set database.engine=oracle
 guard "engine mysql" "database.engine \"mysql\" $only_postgresql" --set database.engine=mysql
 guard "mode" "database.mode" --set database.mode=cluster
-guard "external host" "database.external.host" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
+guard "external host" "database.external.host" --set database.mode=external --set database.admin.username=root --set database.admin.password.existingSecret=s --set database.external.ca.existingSecret=c
 # The wallet roles hook creates the wallet's database roles as the server
 # administrator, so an external server needs an admin user with the wallet.
-guard "external database without admin user" "database.external.admin.user is required with database.mode external:" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
+guard "external database without admin user" "database.admin.username is required with database.mode external:" --set database.mode=external --set database.external.host=db.example.org --set database.external.ca.existingSecret=c
 # The wallet database name is the prefix of the wallet's database roles:
 # <prefix>_business_wallet_app has at most 63 characters.
 guard "wallet database name too long for the role prefix" "can have at most 43" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
@@ -605,7 +605,7 @@ guard "host" "api.host" --set api.host=
 guard "image tag" "global.imageTag is required: the release tag of your version" --set global.imageTag=
 guard "client address" "clientAddress" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
 guard "unknown value" "Additional property" --set postgres.enabled=true
-guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.tls.caSecret= --set database.tls.sslMode=verify-full
+guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.external.ca.existingSecret= --set database.tls.sslMode=verify-full
 guard "OpenBao update strategy" "openbao.updateStrategy" --set openbao.updateStrategy=Sometimes
 # The platform operator Job: the required values, an http or https policy
 # URL, and no password as a value (the password is a file in a Secret).
@@ -663,6 +663,13 @@ guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreat
 guard "plain SMTP password" "api.smtp.password: make a Secret with the SMTP password and set api.smtp.password.existingSecret" --set api.smtp.password=not-a-value
 guard "plain Twilio auth token" "api.twilio.authToken: make a Secret with the auth token" --set api.twilio.authToken=not-a-value
 guard "Twilio account SID without auth token" "api.twilio.accountSid.existingSecret and api.twilio.authToken.existingSecret go together" --set api.twilio.accountSid.existingSecret=twilio
+# The database passwords: a plain password stops the render; each password
+# can come from its own Secret, and the bundled server takes its admin
+# password from database.admin.password.
+guard "plain database password" "database.databases.api.password: remove it (a plain password in a values file is not permitted" --set database.databases.api.password=not-a-value
+guard "plain admin password" "database.auth.adminPassword: remove it (a plain password in a values file is not permitted" --set database.auth.adminPassword=not-a-value
+guard "admin user of the bundled server" "the admin user of the bundled server is postgres" --set database.admin.username=root
+guard "CA of an external server with the bundled server" "database.external.ca is the CA of an external server" --set database.external.ca.existingSecret=c
 # The values that changed (files/renamed-values.yaml): one message names
 # every old value with its new value, the schema keeps each old path, and
 # scripts/upgrade-values.py writes a file that renders as the new values
@@ -715,6 +722,11 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 # the platform operator of a new installation (onboard bootstrap-platform).
 # The password is a file of its own Secret, never an argument, a variable or
 # a ConfigMap value.
+# The password of one database from its own Secret: the init hook, the api
+# pods and the database Secret of the chart (without that key).
+renders "database password from its Secret" "name: my-api-db" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/database/init.yaml
+lacks "database password from its Secret not in the chart Secret" "igrant_api:" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/secrets.yaml
+renders "admin password of the bundled server from its Secret" "name: my-postgres-admin" --set database.admin.password.existingSecret=my-postgres-admin --show-only templates/database/postgresql.yaml
 # The api files: the SMTP password from its Secret, and the sender address.
 renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
   --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml

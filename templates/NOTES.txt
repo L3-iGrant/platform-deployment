@@ -66,8 +66,8 @@ Next steps (docs/install.md explains each step and how to check it):
 {{- if (include "ow.db.admin" . | fromJson).user }}
    The init hook {{ include "ow.name" (list . "db-init") }} creates the databases and users.
 {{- end }}
-{{- if not .Values.readAccess.jobs.enabled }}
-   readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
+{{- if not .Values.database.readAccess.jobs.enabled }}
+   database.readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
 {{- end }}
 {{- $step = add1 $step }}
 

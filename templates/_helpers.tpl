@@ -875,8 +875,8 @@ this chart. The engine and TLS settings always come from database.*
 {{- $reader := index . 1 -}}
 {{- $owner := index . 2 -}}
 {{- include "ow.readAccess.checkNames" $root -}}
-{{- $entry := index (index $root.Values.readAccess $reader | default dict) $owner | default dict -}}
-{{- $key := printf "readAccess.%s.%s" $reader $owner -}}
+{{- $entry := index (index $root.Values.database.readAccess $reader | default dict) $owner | default dict -}}
+{{- $key := printf "database.readAccess.%s.%s" $reader $owner -}}
 {{- if not $entry.username -}}
 {{- fail (printf "%s.username is required: %s reads the views of the %s database with its own read-only user (see docs/read-access.md)" $key $reader $owner) -}}
 {{- end -}}
@@ -885,13 +885,14 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $entry.username) -}}
 {{- fail (printf "%s.username %q is not a database user name: a lower-case letter, then lower-case letters, digits or _ (at most 63)" $key $entry.username) -}}
 {{- end -}}
+{{- $password := $entry.password | default dict -}}
 {{- toJson (dict
   "host" ($entry.host | default (include "ow.db.host" $root))
   "port" ($entry.port | default (include "ow.db.port" $root) | int)
   "name" ($entry.name | default (index $root.Values.database.databases $owner).name)
   "username" $entry.username
-  "secret" ($entry.passwordSecret | default (include "ow.readAccess.secretName" $root))
-  "key" (ternary ($entry.passwordKey | default "password") (printf "%s-%s" $reader $owner) (not (empty $entry.passwordSecret)))) -}}
+  "secret" ($password.existingSecret | default (include "ow.readAccess.secretName" $root))
+  "key" (ternary ($password.key | default "password") (printf "%s-%s" $reader $owner) (not (empty $password.existingSecret)))) -}}
 {{- end }}
 
 {{/* Name of the chart's Secret with the read-only user passwords (key <reader>-<owner>). */}}
@@ -901,17 +902,17 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 
 {{/*
 Admin user of the read access Job for one owner database
-(readAccess.jobs.<owner>; "read-access apply --admin-user
+(database.readAccess.jobs.<owner>; "read-access apply --admin-user
 --admin-password-file"). It creates the read-only users and grants SELECT
-on the views. Empty values fall back to the admin of database.*
+on the views. Empty values fall back to the admin of the server
 (ow.db.admin: the "postgres" user of the bundled server, or
-database.external.admin). Call with (list $ "<owner>"). Output: JSON
-{user, secret, key}.
+database.admin). Call with (list $ "<owner>"). Output: JSON {user, secret,
+key}.
 */}}
 {{- define "ow.readAccess.admin" -}}
 {{- $root := index . 0 -}}
 {{- $owner := index . 1 -}}
-{{- $access := index $root.Values.readAccess.jobs $owner -}}
+{{- $access := index $root.Values.database.readAccess.jobs $owner -}}
 {{- $admin := include "ow.db.admin" $root | fromJson -}}
 {{- $user := $access.adminUser | default $admin.user -}}
 {{- $secret := $access.adminPasswordSecret -}}
@@ -920,10 +921,10 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 {{- $secret = $admin.secret -}}
 {{- $key = $key | default $admin.key -}}
 {{- end -}}
-{{- $prefix := printf "readAccess.jobs.%s" $owner -}}
+{{- $prefix := printf "database.readAccess.jobs.%s" $owner -}}
 {{- toJson (dict
-  "user" (required (printf "%s.adminUser (or database.external.admin.user) is required: the admin user that makes the read-only users" $prefix) $user)
-  "secret" (required (printf "%s.adminPasswordSecret (or database.external.admin.passwordSecret) is required: the Secret with the password of the admin user" $prefix) $secret)
+  "user" (required (printf "%s.adminUser (or database.admin.username) is required: the admin user that makes the read-only users" $prefix) $user)
+  "secret" (required (printf "%s.adminPasswordSecret (or database.admin.password.existingSecret) is required: the Secret with the password of the admin user" $prefix) $secret)
   "key" (required (printf "%s.adminPasswordKey is required with adminPasswordSecret" $prefix) $key)) -}}
 {{- end }}
 
@@ -949,13 +950,13 @@ password and one read connection would fail. Output: nothing.
 {{- range $pair := $pairs -}}
 {{- $reader := index $pair 0 -}}
 {{- $owner := index $pair 1 -}}
-{{- $entry := index (index $v.readAccess $reader | default dict) $owner | default dict -}}
+{{- $entry := index (index $v.database.readAccess $reader | default dict) $owner | default dict -}}
 {{- if $entry.username -}}
 {{- $host := $entry.host | default (include "ow.db.host" $root) -}}
 {{- $port := $entry.port | default (include "ow.db.port" $root) | toString -}}
 {{- $key := printf "%s|%s|%s" $host $port $entry.username -}}
 {{- with get $seen $key -}}
-{{- fail (printf "readAccess.%s.username and readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
+{{- fail (printf "database.readAccess.%s.username and database.readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
 {{- end -}}
 {{- $_ := set $seen $key (printf "%s.%s" $reader $owner) -}}
 {{- end -}}

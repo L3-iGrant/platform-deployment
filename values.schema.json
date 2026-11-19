@@ -180,6 +180,29 @@
             "external"
           ]
         },
+        "admin": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            }
+          }
+        },
         "databases": {
           "type": "object",
           "additionalProperties": false,
@@ -193,7 +216,26 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    },
+                    {
+                      "type": "string",
+                      "deprecated": true
+                    }
+                  ]
                 }
               }
             },
@@ -206,7 +248,26 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    },
+                    {
+                      "type": "string",
+                      "deprecated": true
+                    }
+                  ]
                 }
               }
             },
@@ -219,21 +280,28 @@
                   "pattern": "^[a-z][a-z0-9_]{0,62}$"
                 },
                 "password": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    },
+                    {
+                      "type": "string",
+                      "deprecated": true
+                    }
+                  ]
                 }
               }
-            }
-          }
-        },
-        "auth": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "adminPassword": {
-              "type": "string"
-            },
-            "existingSecret": {
-              "type": "string"
             }
           }
         },
@@ -250,18 +318,33 @@
                 "integer"
               ]
             },
-            "admin": {
+            "ca": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
+            "admin": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
                 "user": {
-                  "type": "string"
+                  "deprecated": true
                 },
                 "passwordSecret": {
-                  "type": "string"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string"
+                  "deprecated": true
                 }
               }
             }
@@ -434,12 +517,6 @@
             "existingSecret": {
               "type": "string"
             },
-            "caSecret": {
-              "type": "string"
-            },
-            "caKey": {
-              "type": "string"
-            },
             "sslMode": {
               "type": "string",
               "enum": [
@@ -449,6 +526,12 @@
                 "verify-ca",
                 "verify-full"
               ]
+            },
+            "caSecret": {
+              "deprecated": true
+            },
+            "caKey": {
+              "deprecated": true
             }
           }
         },
@@ -497,6 +580,136 @@
             }
           }
         },
+        "readAccess": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "wallet": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    },
+                    "host": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "wallet": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "api": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "username": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    },
+                    "host": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": [
+                        "string",
+                        "integer"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "jobs": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "api": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "adminUser": {
+                      "type": "string"
+                    },
+                    "adminPasswordSecret": {
+                      "type": "string"
+                    },
+                    "adminPasswordKey": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "wallet": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "adminUser": {
+                      "type": "string"
+                    },
+                    "adminPasswordSecret": {
+                      "type": "string"
+                    },
+                    "adminPasswordKey": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "ttlSecondsAfterFinished": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        },
         "persistence": {
           "type": "object",
           "additionalProperties": false,
@@ -535,6 +748,19 @@
         },
         "imagePullSecrets": {
           "type": "array"
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "adminPassword": {
+              "deprecated": true
+            },
+            "existingSecret": {
+              "deprecated": true
+            }
+          }
         }
       },
       "allOf": [
@@ -2478,120 +2704,6 @@
         }
       }
     },
-    "readAccess": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "api": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "wallet": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "port": {
-                  "type": [
-                    "string",
-                    "integer"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "wallet": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "api": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "port": {
-                  "type": [
-                    "string",
-                    "integer"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
-        "jobs": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "api": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "adminUser": {
-                  "type": "string"
-                },
-                "adminPasswordSecret": {
-                  "type": "string"
-                },
-                "adminPasswordKey": {
-                  "type": "string"
-                }
-              }
-            },
-            "wallet": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "adminUser": {
-                  "type": "string"
-                },
-                "adminPasswordSecret": {
-                  "type": "string"
-                },
-                "adminPasswordKey": {
-                  "type": "string"
-                }
-              }
-            },
-            "ttlSecondsAfterFinished": {
-              "type": "integer"
-            }
-          }
-        }
-      }
-    },
     "openbao": {
       "type": "object",
       "additionalProperties": false,
@@ -4014,6 +4126,122 @@
               "deprecated": true
             },
             "eudi-wallet": {
+              "deprecated": true
+            }
+          }
+        }
+      }
+    },
+    "readAccess": {
+      "type": "object",
+      "additionalProperties": false,
+      "deprecated": true,
+      "properties": {
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "wallet": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "username": {
+                  "deprecated": true
+                },
+                "passwordSecret": {
+                  "deprecated": true
+                },
+                "passwordKey": {
+                  "deprecated": true
+                },
+                "host": {
+                  "deprecated": true
+                },
+                "port": {
+                  "deprecated": true
+                },
+                "name": {
+                  "deprecated": true
+                }
+              }
+            }
+          }
+        },
+        "wallet": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "api": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "username": {
+                  "deprecated": true
+                },
+                "passwordSecret": {
+                  "deprecated": true
+                },
+                "passwordKey": {
+                  "deprecated": true
+                },
+                "host": {
+                  "deprecated": true
+                },
+                "port": {
+                  "deprecated": true
+                },
+                "name": {
+                  "deprecated": true
+                }
+              }
+            }
+          }
+        },
+        "jobs": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "enabled": {
+              "deprecated": true
+            },
+            "api": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "adminUser": {
+                  "deprecated": true
+                },
+                "adminPasswordSecret": {
+                  "deprecated": true
+                },
+                "adminPasswordKey": {
+                  "deprecated": true
+                }
+              }
+            },
+            "wallet": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "adminUser": {
+                  "deprecated": true
+                },
+                "adminPasswordSecret": {
+                  "deprecated": true
+                },
+                "adminPasswordKey": {
+                  "deprecated": true
+                }
+              }
+            },
+            "ttlSecondsAfterFinished": {
               "deprecated": true
             }
           }

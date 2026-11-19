@@ -27,7 +27,7 @@ The chart creates these Secrets itself (random values, kept across upgrades):
 
 | Secret | Keys |
 | --- | --- |
-| `<release>-postgres` | one key per database name, and the admin password of the bundled server (`POSTGRES_PASSWORD`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#hooks-of-the-databases)) |
+| `<release>-postgres` | one key per database name (without `database.databases.<component>.password.existingSecret`), and the admin password of the bundled server (`POSTGRES_PASSWORD`, without `database.admin.password.existingSecret`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#hooks-of-the-databases)) |
 | `<release>-postgres-tls` | `tls.crt`, `tls.key`, `ca.crt` of the bundled server |
 | `<release>-read-access` | the passwords of the read-only users (`<reader>-<owner>`); a Helm hook, like `<release>-postgres` |
 | `<release>-wallet-database-roles` | the passwords of the wallet's database roles, one key per role without the prefix (for example `launcher_app`, `jobs`, `clock`, `migrator`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#database-roles-of-the-wallet)) |

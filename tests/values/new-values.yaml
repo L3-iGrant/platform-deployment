@@ -13,6 +13,19 @@ organisationWallet:
   host: wallet.example.org
 enterpriseDashboard:
   host: dashboard.example.org
+database:
+  admin:
+    password: {existingSecret: db-passwords, key: POSTGRES_PASSWORD}
+  databases:
+    api: {password: {existingSecret: db-passwords, key: igrant_api}}
+    oidc: {password: {existingSecret: db-passwords, key: igrant_oidc}}
+    wallet: {password: {existingSecret: db-passwords, key: igrant_wallet}}
+  readAccess:
+    api:
+      wallet:
+        password: {existingSecret: api-reader}
+    jobs:
+      ttlSecondsAfterFinished: 3600
 keys:
   apiTokenSigning:
     activeKid: test-token-kid

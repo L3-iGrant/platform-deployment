@@ -23,6 +23,17 @@ organisationWallet:
     activeKid: test-wallet-envelope-kid
 enterpriseDashboard:
   host: dashboard.example.org
+database:
+  databases:
+    oidc: {name: igrant_oidc, password: ""}
+  auth:
+    existingSecret: db-passwords
+readAccess:
+  api:
+    wallet:
+      passwordSecret: api-reader
+  jobs:
+    ttlSecondsAfterFinished: 3600
 gateway:
   internalToken:
     activeKid: test-gateway-kid
