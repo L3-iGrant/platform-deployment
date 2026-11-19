@@ -18,9 +18,6 @@ the value from api.image (one release train). */}}
 {{- if and (not $keys.existingConfigMap) (not $keys.apiTokenVerification) }}
 {{- fail "keys.publicJwks.apiTokenVerification (or keys.publicJwks.existingConfigMap) is required: the public keys of the api tokens (scripts/make-keys.sh; see docs/keys.md)" }}
 {{- end }}
-{{- if lt ($g.listenPort | int) 1024 }}
-{{- fail "gateway.listenPort must be 1024 or more (a non-root container)" }}
-{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,9 +46,8 @@ spec:
       {{- include "ow.podSpecCommon" (list . $g) | nindent 6 }}
       # The gateway does not call the Kubernetes API.
       automountServiceAccountToken: false
-      {{- include "ow.checkStopBudget" (list "gateway" $g 5 20) }}
       # Stop budget: preStop sleep + drain + graceful shutdown + margin.
-      terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds | int }}
+      terminationGracePeriodSeconds: {{ include "ow.goGracePeriod" (list $g 5 20) }}
       containers:
         - name: gateway
           image: {{ include "ow.image" (list . $image) }}
@@ -64,7 +60,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ $g.listenPort }}
+              containerPort: {{ include "ow.gateway.listenPort" . }}
           {{- with $g.startupProbe }}
           startupProbe:
             {{- toYaml . | nindent 12 }}

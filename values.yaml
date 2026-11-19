@@ -135,15 +135,10 @@ api:
     timeouts: {}
   # -- debug, info, warn or error.
   logLevel: info
-  iam:
-    # -- Provider name of the admin wallet logins. Do not change it after the first login.
-    idpAlias: login-with-eudi-wallet
   adminAuth:
     walletLogin:
       # -- Organisation of the OpenID provider of the admin wallet login.
       organisationId: ""
-  # -- Public URL of the dashboard. Empty: the URL of enterpriseDashboard.host.
-  dashboardUrl: ""
   # -- SMTP server of the api e-mails. Empty host: no e-mail.
   smtp:
     host: ""
@@ -171,12 +166,11 @@ api:
   actionLogRetentionDays: 30
   # -- NATS connect timeout (seconds) and the NATS requests that one process handles at once.
   nats: {timeout: 5, maxConcurrentHandlers: 64}
-  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
+  # -- Pod stop (docs/security-context.md). The grace period of the pods is the sum + 5.
   server:
     preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 40
   limits:
     # -- The most organisations, 1 to 100. Empty: the api default (100).
     maxOrganisations: ""
@@ -293,19 +287,13 @@ gateway:
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
   revisionHistoryLimit: 5
-  # -- 1024 or more (the gateway runs as non-root).
-  listenPort: 8070
-  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
+  # -- Pod stop (docs/security-context.md). The grace period of the pods is the sum + 5.
   preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
-  terminationGracePeriodSeconds: 40
   # -- Empty: api.logLevel.
   logLevel: ""
   upstreams:
-    core:
-      # -- Base URL of the api core. Empty: the api Service of the chart.
-      url: ""
     walletConfig:
       # -- Time limit of a wallet config request; then the client gets 504. 0: 60 s.
       requestTimeoutSeconds: 60
@@ -521,11 +509,10 @@ organisationWallet:
     maxRequestBodyBytes: 1048576
     maxBatchRequestBodyBytes: 4194304
     maxLargeRequestBodyBytes: 10485760
-    # -- Pod stop: preStop, open requests, background tasks; the sum is below the grace period.
+    # -- Pod stop: preStop, open requests, background tasks. The grace period of the pods is the sum + 5.
     gracefulShutdownSeconds: 20
     backgroundShutdownSeconds: 10
     preStopSeconds: 10
-    terminationGracePeriodSeconds: 45
     # -- Nonce requests of one client address (an IPv6 /64) in 60 s; more get 429.
     nonceRequestsPerMinute: 300
   # -- The hooks of the wallet (roles, migration and read access).
@@ -631,9 +618,8 @@ enterpriseDashboard:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Pod stop: the grace period is at least preStopSeconds + 10.
+  # -- Pod stop. The grace period of the pods is preStopSeconds + 20 (nginx ends the open requests).
   preStopSeconds: 10
-  terminationGracePeriodSeconds: 30
   # -- Probes of nginx on the start page.
   startupProbe:
     httpGet: {path: /, port: http}
@@ -663,11 +649,6 @@ enterpriseDashboard:
     tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- config.json. Empty values: the api URL, the wallet URL and the image tag.
-  configuration:
-    baseUrl: ""
-    walletUrl: ""
-    appVersion: ""
   resources:
     requests: {cpu: 10m, memory: 32Mi}
   # -- nginx runs as UID 101. The sysctl lets the pod listen on port 80 without a capability.

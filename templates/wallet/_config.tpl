@@ -374,10 +374,8 @@ nothing.
 {{- end }}
 
 {{/*
-Render guards for the wallet server keys:
-- a service or config pod must finish stopping before Kubernetes kills the
-  process: preStopSeconds + gracefulShutdownSeconds +
-  backgroundShutdownSeconds must be below terminationGracePeriodSeconds;
+Render guard for the wallet server keys (the chart calculates the grace
+period of the pods from the stop times):
 - the gateway must not refuse a body that the wallet accepts: the gateway
   limit for the class (gateway.proxy.maxBodyBytes; 0 = the gateway's class
   default) must be at least the wallet limit (default >= S, large >= L).
@@ -385,10 +383,6 @@ Call with the root context.
 */}}
 {{- define "ow.wallet.checkServer" -}}
 {{- $s := .Values.organisationWallet.server -}}
-{{- $stop := add ($s.preStopSeconds | int) ($s.gracefulShutdownSeconds | int) ($s.backgroundShutdownSeconds | int) -}}
-{{- if ge $stop ($s.terminationGracePeriodSeconds | int) -}}
-{{- fail (printf "organisationWallet.server: preStopSeconds (%v) + gracefulShutdownSeconds (%v) + backgroundShutdownSeconds (%v) = %v must be below terminationGracePeriodSeconds (%v): Kubernetes would kill the wallet before it stops" $s.preStopSeconds $s.gracefulShutdownSeconds $s.backgroundShutdownSeconds $stop $s.terminationGracePeriodSeconds) -}}
-{{- end -}}
 {{- $gateway := .Values.gateway.proxy.maxBodyBytes -}}
 {{- $default := $gateway.default | int64 | default 1048576 -}}
 {{- $large := $gateway.large | int64 | default 10485760 -}}

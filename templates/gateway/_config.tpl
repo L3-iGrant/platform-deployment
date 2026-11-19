@@ -23,7 +23,7 @@ config.yaml of the auth gateway: its own file, not the api config.
 {{- $api := $v.api -}}
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
-{{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
+{{- $coreUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace -}}
 {{- /* Upstream for the wallet config role: its Service in this release. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
 {{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
@@ -54,7 +54,7 @@ file without the key keeps the gateway default). */ -}}
   "Log" (dict "level" ($g.logLevel | default $api.logLevel))
   "Features" (dict "enforce" $enforce)
   "Gateway" (dict
-    "listenPort" ($g.listenPort | int)
+    "listenPort" (include "ow.gateway.listenPort" $root | int)
     "drainSeconds" ($g.drainSeconds | int)
     "gracefulShutdownSeconds" ($g.gracefulShutdownSeconds | int)
     "upstreams" (dict

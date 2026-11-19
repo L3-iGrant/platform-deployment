@@ -26,9 +26,9 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "ServiceName" "igrant-api"
   "ApiSecretKeyFile" (include "ow.api.secretFile" (list $root "api-secret-key"))
   "DataBase" (include "ow.db.goOwner" (dict "root" $root "db" "api" "secretDir" $dir "passwordFile" "db-password" "pool" $pool) | fromJson)
-  "Dashboard" (dict "url" ($api.dashboardUrl | default (include "ow.publicUrlOf" (list $root "enterpriseDashboard"))))
+  "Dashboard" (dict "url" (include "ow.publicUrlOf" (list $root "enterpriseDashboard")))
   "Iam" (dict
-    "IdPAlias" $api.iam.idpAlias
+    "IdPAlias" "login-with-eudi-wallet"
     "APIBaseUrl" $apiUrl
     "mode" "builtin")
   "AdminAuth" (dict

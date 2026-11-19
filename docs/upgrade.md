@@ -206,3 +206,21 @@ Each component has a group `advanced` for the values that an operator seldom cha
 | `api.extraConfig` | `api.advanced.extraConfig` |
 | `gateway.extraConfig` | `gateway.advanced.extraConfig` |
 | `organisationWallet.extraConfig` | `organisationWallet.advanced.extraConfig` |
+
+### Values that the chart knows
+
+A constant of a protocol, a fact of an image or a value that the chart can calculate is not a value. The chart calculates the grace period of the pods from their stop times (`terminationGracePeriodSeconds`), and writes the public URLs of the dashboard file and of the api from the host names.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `api.server.terminationGracePeriodSeconds` | Remove it: the chart calculates it: `api.server.preStopSeconds` + drainSeconds + gracefulShutdownSeconds + 5 |
+| `gateway.terminationGracePeriodSeconds` | Remove it: the chart calculates it: `gateway.preStopSeconds` + drainSeconds + gracefulShutdownSeconds + 5 |
+| `organisationWallet.server.terminationGracePeriodSeconds` | Remove it: the chart calculates it: `organisationWallet.server.preStopSeconds` + gracefulShutdownSeconds + backgroundShutdownSeconds + 5 |
+| `enterpriseDashboard.terminationGracePeriodSeconds` | Remove it: the chart calculates it: `enterpriseDashboard.preStopSeconds` + 20 |
+| `gateway.listenPort` | Remove it: the port of the gateway process is the constant 8070 |
+| `gateway.upstreams.core.url` | Remove it: the gateway always sends the requests of the api core to the api of this release |
+| `api.iam.idpAlias` | Remove it: the chart writes the constant login-with-eudi-wallet. An installation that has another value since its first login sets Iam.IdPAlias in `api.advanced.extraConfig` |
+| `api.dashboardUrl` | Remove it: the chart writes the public URL of `enterpriseDashboard.host` |
+| `enterpriseDashboard.configuration.baseUrl` | Remove it: the chart writes the public URL of `api.host` |
+| `enterpriseDashboard.configuration.walletUrl` | Remove it: the chart writes the public URL of `organisationWallet.host` |
+| `enterpriseDashboard.configuration.appVersion` | Remove it: the chart writes the image tag of the dashboard |

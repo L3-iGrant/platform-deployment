@@ -32,8 +32,8 @@ spec:
     spec:
       {{- include "ow.podSpecCommon" (list $ $w) | nindent 6 }}
       {{- /* Service and config pods: the stop budget from
-      organisationWallet.server (ow.wallet.checkServer). */}}
-      terminationGracePeriodSeconds: {{ $w.server.terminationGracePeriodSeconds | int }}
+      organisationWallet.server, + 5 s. */}}
+      terminationGracePeriodSeconds: {{ add ($w.server.preStopSeconds | int) ($w.server.gracefulShutdownSeconds | int) ($w.server.backgroundShutdownSeconds | int) 5 }}
       containers:
         - name: {{ $component }}
           image: {{ include "ow.image" (list $ $w.image) }}

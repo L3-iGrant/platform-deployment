@@ -500,6 +500,11 @@ Output: a list at column 0, or nothing.
 /run/secrets/igrant-gateway
 {{- end }}
 
+{{/* The port of the gateway process: a constant of the chart (1024 or more, the gateway runs as non-root). */}}
+{{- define "ow.gateway.listenPort" -}}
+8070
+{{- end }}
+
 {{/* Path of the gateway configuration file (--config). */}}
 {{- define "ow.gateway.configPath" -}}
 /etc/igrant-gateway/config.yaml
@@ -973,25 +978,20 @@ password and one read connection would fail. Output: nothing.
 {{- end }}
 
 {{/*
-Stop budget of a Go server (api, webhook handler, gateway). The
-preStop hook first sleeps preStopSeconds, so the pod keeps serving while
-Kubernetes removes it from the endpoints. Then, on SIGTERM, the server
-drains for drainSeconds and waits at most gracefulShutdownSeconds.
-Kubernetes counts terminationGracePeriodSeconds from the start of the
-preStop, so it must be at least preStop + drain + graceful + a 5 s margin.
-A drain or graceful value of 0 means the service's own default. Call with
-(list "<values path>" <values with preStopSeconds, drainSeconds,
-gracefulShutdownSeconds, terminationGracePeriodSeconds> <default drain>
-<default graceful>).
+terminationGracePeriodSeconds of a Go server (api, webhook handler,
+gateway): the chart calculates it. The preStop hook first sleeps
+preStopSeconds, so the pod keeps serving while Kubernetes removes it from
+the endpoints. Then, on SIGTERM, the server drains for drainSeconds and
+waits at most gracefulShutdownSeconds. Kubernetes counts the grace period
+from the start of the preStop, so it is preStop + drain + graceful + a 5 s
+margin. A drain or graceful value of 0 means the service's own default.
+Call with (list <values with preStopSeconds, drainSeconds,
+gracefulShutdownSeconds> <default drain> <default graceful>). Output: the
+number of seconds.
 */}}
-{{- define "ow.checkStopBudget" -}}
-{{- $path := index . 0 -}}
-{{- $v := index . 1 -}}
-{{- $preStop := $v.preStopSeconds | int -}}
-{{- $drain := $v.drainSeconds | int | default (index . 2) -}}
-{{- $graceful := $v.gracefulShutdownSeconds | int | default (index . 3) -}}
-{{- $need := add $preStop $drain $graceful 5 -}}
-{{- if lt ($v.terminationGracePeriodSeconds | int) $need -}}
-{{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + drainSeconds (%v) + gracefulShutdownSeconds (%v) + 5 = %v: Kubernetes would kill the process before it stops" $path $v.terminationGracePeriodSeconds $preStop $drain $graceful $need) -}}
-{{- end -}}
+{{- define "ow.goGracePeriod" -}}
+{{- $v := index . 0 -}}
+{{- $drain := $v.drainSeconds | int | default (index . 1) -}}
+{{- $graceful := $v.gracefulShutdownSeconds | int | default (index . 2) -}}
+{{- add ($v.preStopSeconds | int) $drain $graceful 5 -}}
 {{- end }}

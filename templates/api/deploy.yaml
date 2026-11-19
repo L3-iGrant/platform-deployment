@@ -30,9 +30,8 @@ spec:
       {{- include "ow.podSpecCommon" (list $ $api) | nindent 6 }}
       # The process does not call the Kubernetes API.
       automountServiceAccountToken: false
-      {{- include "ow.checkStopBudget" (list "api.server" $api.server 5 20) }}
       # Stop budget: preStop sleep + drain + graceful shutdown + margin.
-      terminationGracePeriodSeconds: {{ $api.server.terminationGracePeriodSeconds | int }}
+      terminationGracePeriodSeconds: {{ include "ow.goGracePeriod" (list $api.server 5 20) }}
       {{- if eq $role "api" }}
       initContainers:
         # Applies the database schema migrations before the api starts. The

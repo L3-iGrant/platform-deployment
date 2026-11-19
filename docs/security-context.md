@@ -74,7 +74,7 @@ A rolling update or a node drain stops pods while clients still send them reques
 
 1. The preStop hook: the Kubernetes sleep action for `preStopSeconds` (default 10 s; `api.server.preStopSeconds`, `gateway.preStopSeconds`, `enterpriseDashboard.preStopSeconds`, `organisationWallet.server.preStopSeconds`). The pod keeps serving while the endpoints and the proxies forget it. The sleep must be longer than this time on your cluster.
 2. The stop signal: the Go servers (api, webhook handler, gateway) answer 503 on `/readyz` and still accept requests for `drainSeconds`, then wait at most `gracefulShutdownSeconds` for the requests in progress. nginx (the dashboard, `SIGQUIT`) finishes the requests in progress. The wallet waits for its requests (`gracefulShutdownSeconds`) and its background tasks (`backgroundShutdownSeconds`).
-3. Kubernetes kills the process after `terminationGracePeriodSeconds`, counted from the start of the preStop. The render stops when it is too short: at least preStop + drain + graceful + 5 s for a Go server (default 10 + 5 + 20 + 5 = 40 s), at least preStop + 10 s for the dashboard, and more than preStop + graceful + background for the wallet.
+3. Kubernetes kills the process after `terminationGracePeriodSeconds`, counted from the start of the preStop. The chart calculates it from the stop times: preStop + drain + graceful + 5 s for a Go server (default 10 + 5 + 20 + 5 = 40 s), preStop + 20 s for the dashboard (default 30 s), and preStop + graceful + background + 5 s for the wallet (default 45 s).
 
 The rollout of each HTTP Deployment (`strategy`, `minReadySeconds` of the component):
 

@@ -649,13 +649,6 @@ guard "api /tmp sizeLimit not a quantity" "api.tmp.sizeLimit" --set api.tmp.size
 # schema): the grace period covers the preStop sleep and the server stop; a
 # preStop of 0 seconds or a strategy other than RollingUpdate stops the
 # render.
-guard "gateway stop budget with the preStop" "gateway.terminationGracePeriodSeconds (35) must be at least preStopSeconds (10) + drainSeconds (5) + gracefulShutdownSeconds (20) + 5 = 40" \
-  --set gateway.terminationGracePeriodSeconds=35
-guard "api stop budget with the preStop" "api.server.terminationGracePeriodSeconds (40) must be at least preStopSeconds (15)" --set api.server.preStopSeconds=15
-guard "dashboard stop budget" "enterpriseDashboard.terminationGracePeriodSeconds (15) must be at least preStopSeconds (10) + 10" \
-  --set enterpriseDashboard.terminationGracePeriodSeconds=15
-guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gracefulShutdownSeconds (20) + backgroundShutdownSeconds (10) = 50 must be below terminationGracePeriodSeconds (45)" \
-  --set organisationWallet.server.preStopSeconds=20
 guard "preStop of 0 seconds" "preStopSeconds" --set api.server.preStopSeconds=0
 guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreate
 # A plain secret in a values file stops the render (a Secret reference
@@ -727,6 +720,13 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 renders "database password from its Secret" "name: my-api-db" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/database/init.yaml
 lacks "database password from its Secret not in the chart Secret" "igrant_api:" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/secrets.yaml
 renders "admin password of the bundled server from its Secret" "name: my-postgres-admin" --set database.admin.password.existingSecret=my-postgres-admin --show-only templates/database/postgresql.yaml
+# The grace period of the HTTP pods: the chart calculates it from the stop
+# times (preStop + drain + graceful + 5; the wallet preStop + graceful +
+# background + 5; the dashboard preStop + 20).
+renders "gateway grace period from the stop times" "terminationGracePeriodSeconds: 45" --set gateway.preStopSeconds=15 --show-only templates/gateway/deploy.yaml
+renders "api grace period from the stop times" "terminationGracePeriodSeconds: 50" --set api.server.gracefulShutdownSeconds=30 --show-only templates/api/deploy.yaml
+renders "dashboard grace period from the preStop" "terminationGracePeriodSeconds: 35" --set enterpriseDashboard.preStopSeconds=15 --show-only templates/dashboard/deploy.yaml
+renders "wallet grace period from the stop times" "terminationGracePeriodSeconds: 55" --set organisationWallet.server.preStopSeconds=20 --show-only templates/wallet/deploy.yaml
 # The api files: the SMTP password from its Secret, and the sender address.
 renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
   --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml
@@ -1672,7 +1672,7 @@ guard "too many uploads in progress for the api memory limit" "Uploads.maxInProg
 # The dashboard config.json: a change restarts the dashboard pods (the
 # config.json checksum).
 if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
-     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set enterpriseDashboard.configuration.appVersion=test-version --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set enterpriseDashboard.image.tag=test-version --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
   ok "a new config.json restarts the dashboard pods (config.json checksum)"
 else
   bad "a new config.json restarts the dashboard pods (config.json checksum)"

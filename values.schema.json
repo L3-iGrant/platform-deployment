@@ -2047,15 +2047,6 @@
             "error"
           ]
         },
-        "iam": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "idpAlias": {
-              "type": "string"
-            }
-          }
-        },
         "adminAuth": {
           "type": "object",
           "additionalProperties": false,
@@ -2070,9 +2061,6 @@
               }
             }
           }
-        },
-        "dashboardUrl": {
-          "type": "string"
         },
         "smtp": {
           "type": "object",
@@ -2242,7 +2230,7 @@
               "type": "integer"
             },
             "terminationGracePeriodSeconds": {
-              "type": "integer"
+              "deprecated": true
             }
           }
         },
@@ -2541,6 +2529,19 @@
         },
         "extraConfig": {
           "deprecated": true
+        },
+        "iam": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "idpAlias": {
+              "deprecated": true
+            }
+          }
+        },
+        "dashboardUrl": {
+          "deprecated": true
         }
       }
     },
@@ -2626,9 +2627,6 @@
         "revisionHistoryLimit": {
           "type": "integer"
         },
-        "listenPort": {
-          "type": "integer"
-        },
         "preStopSeconds": {
           "type": "integer",
           "minimum": 1
@@ -2637,9 +2635,6 @@
           "type": "integer"
         },
         "gracefulShutdownSeconds": {
-          "type": "integer"
-        },
-        "terminationGracePeriodSeconds": {
           "type": "integer"
         },
         "logLevel": {
@@ -2656,21 +2651,22 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "core": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "url": {
-                  "type": "string"
-                }
-              }
-            },
             "walletConfig": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "requestTimeoutSeconds": {
                   "type": "integer"
+                }
+              }
+            },
+            "core": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "url": {
+                  "deprecated": true
                 }
               }
             }
@@ -2823,6 +2819,12 @@
           }
         },
         "extraConfig": {
+          "deprecated": true
+        },
+        "terminationGracePeriodSeconds": {
+          "deprecated": true
+        },
+        "listenPort": {
           "deprecated": true
         }
       }
@@ -3943,12 +3945,12 @@
               "type": "integer",
               "minimum": 1
             },
-            "terminationGracePeriodSeconds": {
-              "type": "integer"
-            },
             "nonceRequestsPerMinute": {
               "type": "integer",
               "minimum": 1
+            },
+            "terminationGracePeriodSeconds": {
+              "deprecated": true
             }
           }
         },
@@ -4306,10 +4308,6 @@
           "type": "integer",
           "minimum": 1
         },
-        "terminationGracePeriodSeconds": {
-          "type": "integer",
-          "minimum": 1
-        },
         "startupProbe": {
           "type": "object"
         },
@@ -4412,21 +4410,6 @@
             }
           }
         },
-        "configuration": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "baseUrl": {
-              "type": "string"
-            },
-            "walletUrl": {
-              "type": "string"
-            },
-            "appVersion": {
-              "type": "string"
-            }
-          }
-        },
         "resources": {
           "type": "object"
         },
@@ -4450,6 +4433,25 @@
         },
         "imagePullSecrets": {
           "type": "array"
+        },
+        "terminationGracePeriodSeconds": {
+          "deprecated": true
+        },
+        "configuration": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "baseUrl": {
+              "deprecated": true
+            },
+            "walletUrl": {
+              "deprecated": true
+            },
+            "appVersion": {
+              "deprecated": true
+            }
+          }
         }
       },
       "if": {
