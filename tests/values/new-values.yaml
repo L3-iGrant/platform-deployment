@@ -12,7 +12,7 @@ installation:
 api:
   host: api.example.org
   exposure:
-    clientAddress: {header: X-Real-IP}
+    clientAddress: {header: X-Real-IP, trustedProxies: [173.245.48.0/20], trustedProxyHeader: CF-Connecting-IP}
   advanced:
     extraConfig:
       Uploads: {maxInProgress: 4}

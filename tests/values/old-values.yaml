@@ -76,6 +76,8 @@ enterpriseDashboard:
   host: dashboard.example.org
 clientAddress:
   header: X-Real-IP
+  trustedProxies: [173.245.48.0/20]
+  trustedProxyHeader: CF-Connecting-IP
 openbao:
   wallet:
     existingSecret: ""

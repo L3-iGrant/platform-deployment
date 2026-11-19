@@ -239,6 +239,8 @@ def upgrade(data, table, defaults, report):
             for target in targets:
                 put(data, target, value, report, old)
             report.change(f"{old} is now {' and '.join(targets)}")
+            if entry.get("note"):
+                report.note(f"{old}: {entry['note']}")
             continue
         empty = value in ("", None, [], {})
         if entry.get("secret") is True and not empty:
