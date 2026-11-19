@@ -17,7 +17,7 @@ What the chart installs, how your values files describe an installation, and whi
 | OpenBao | Keeps the wallet's signing keys. | None |
 | Valkey | The wallet's work queue, single-use values and shared caches: three pods, each with a data server and a Sentinel, or your own Valkey or Redis. Never a record. | None |
 
-You describe your installation in a few values files: your site, the database, the OpenBao seal, the exposure and, if you need them, your own Valkey or Redis and the network policies. The `profiles/` folder has a ready file for each option, and `profiles/minimal.yaml` gives a small installation for tests and development.
+You describe your installation in a few values files: your site, the database, the OpenBao seal, the exposure and, if you need them, your own Valkey or Redis and the network policies. The `profiles/` folder has a ready file for each option, `profiles/minimal.yaml` gives a small installation for tests and development, `profiles/size-extra-small.yaml` an extra small production installation (up to about 10,000 wallets, with the redundancy of the defaults) and `profiles/gke.yaml` the settings for a node pool of its own on Google Kubernetes Engine.
 
 ## The services of the installation
 

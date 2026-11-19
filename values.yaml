@@ -985,9 +985,12 @@ openbao:
   extraConfig: ""
   extraEnv: []
   persistence: {size: 10Gi, storageClass: ""}
+  # An OpenBao pod uses about 100 to 950 MiB: the active node, with the
+  # Transit keys of many organisations, uses the most. A limit of 512 MiB
+  # stops it with OOMKilled.
   resources:
-    requests: {cpu: 50m, memory: 128Mi}
-    limits: {memory: 512Mi}
+    requests: {cpu: 50m, memory: 256Mi}
+    limits: {memory: 1536Mi}
   podSecurityContext:
     runAsNonRoot: true
     runAsUser: 10001

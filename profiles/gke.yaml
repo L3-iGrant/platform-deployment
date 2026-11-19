@@ -1,0 +1,40 @@
+# A platform on Google Kubernetes Engine (GKE), in a cluster that other
+# workloads share. Use it with one exposure profile (on a cluster with
+# ingress-nginx: exposure-ingress-nginx.yaml).
+#
+# Before the install (once per platform; the commands need the rights of a
+# project owner):
+#
+# 1. A node pool for the platform alone, with a taint, so that no other
+#    workload uses its nodes and the platform uses no other node:
+#      gcloud container node-pools create <pool> --cluster <cluster> --zone <zone> \
+#        --machine-type e2-custom-medium-6144 --num-nodes 3 \
+#        --enable-autoscaling --min-nodes 3 --max-nodes 4 \
+#        --disk-type pd-balanced --disk-size 50 \
+#        --node-taints dedicated=<pool>:NoSchedule --node-labels pool=<pool>
+#    3 nodes: OpenBao, NATS and Valkey have 3 members each and need a
+#    majority; with one member on each node, one node can fail or drain.
+#
+# 2. The images: a node pulls from Artifact Registry of the same project with
+#    the node service account (roles/artifactregistry.reader on the
+#    repository). Then the platform needs no pull Secret (imagePullSecrets:
+#    [] below). Test one pull on the new pool before the install.
+#
+# 3. OpenBao: the bundled OpenBao uses the Shamir seal, so an operator
+#    unseals each pod after each start (docs/openbao.md); or use your own
+#    OpenBao (profiles/openbao-external.yaml).
+#
+# 4. A dry run on the API server before helm install: it shows conflicts that
+#    helm template cannot see, for example an Ingress of another release for
+#    the same host (the ingress-nginx admission webhook refuses it):
+#      helm template ows ./platform-deployment-enterprise -n <ns> <your -f files> \
+#        | kubectl apply --dry-run=server -n <ns> -f -
+#
+# Backup for GKE: when a backup plan covers the namespace, the volumes of
+# the platform (PostgreSQL, OpenBao, NATS, Valkey) are in the backups.
+global:
+  imagePullSecrets: []
+  nodeSelector:
+    cloud.google.com/gke-nodepool: production   # your node pool
+  tolerations:
+    - {key: dedicated, operator: Equal, value: production, effect: NoSchedule}

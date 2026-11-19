@@ -121,6 +121,14 @@ The command writes the manifests to `/tmp/ows.yaml`. A wrong or missing value st
 
 Add every other profile that you use to this command, and to every `helm install` and `helm upgrade` command in these docs (for example `-f ./platform-deployment/profiles/network-policies.yaml`).
 
+Check on the cluster: a dry run on the API server finds what the render cannot, for example an Ingress of another release for one of your hosts (the ingress-nginx admission webhook refuses a second Ingress for the same host and path), a quota or an admission policy. It creates nothing:
+
+```bash
+kubectl apply --dry-run=server -n ows -f /tmp/ows.yaml
+```
+
+Every object must show `(server dry run)`. Fix each error before step 4.
+
 ## Step 4: install
 
 ```bash
