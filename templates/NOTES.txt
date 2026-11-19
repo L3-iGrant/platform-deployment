@@ -72,6 +72,6 @@ Next steps (docs/install.md explains each step and how to check it):
 {{- $step = add1 $step }}
 
 {{ $step }}. Make the platform operator organisation and its first platform admin, on the first installation only (docs/install.md, step 7):
-   set api.jobs.bootstrapPlatform, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
+   set api.jobs.provisionPlatformOperator, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
 {{- $step = add1 $step }}
 

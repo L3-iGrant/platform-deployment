@@ -202,7 +202,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://dashboard.example.org/       # 
 
 An installation has one platform operator organisation. Its platform admins add, suspend and delete the other organisations in the dashboard. Only the command line can create the platform operator organisation and give the first platform admin right: no API route does this.
 
-The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`. In one command, it creates:
+The chart's platform operator Job (`api.jobs.provisionPlatformOperator`) runs `igrant-api onboard bootstrap-platform`. In one command, it creates:
 
 - the organisation type (if no type has that name);
 - the first admin;
@@ -228,15 +228,17 @@ The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`
    ```yaml
    api:
      jobs:
-       bootstrapPlatform:
+       provisionPlatformOperator:
          enabled: true
-         adminEmail: admin@example.org
-         adminName: First Admin
-         passwordSecret: ows-platform-admin
-         organisationName: Example Wallet Provider
-         type: Technology
-         location: Stockholm
-         policyUrl: https://example.org/privacy
+         organisation:
+           name: Example Wallet Provider
+           type: Technology
+           location: Stockholm
+           policyUrl: https://example.org/privacy
+         firstAdmin:
+           email: admin@example.org
+           name: First Admin
+           password: {existingSecret: ows-platform-admin}
    ```
 
    ```bash

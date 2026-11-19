@@ -195,3 +195,18 @@
 - {old: organisationWallet.audit.bucket.accessKey.existingSecret, after: 2026.11.7, new: [organisationWallet.audit.bucket.accessKeyId.existingSecret, organisationWallet.audit.bucket.secretAccessKey.existingSecret]}
 - {old: organisationWallet.audit.bucket.accessKey.idKey, after: 2026.11.7, new: organisationWallet.audit.bucket.accessKeyId.key}
 - {old: organisationWallet.audit.bucket.accessKey.secretKey, after: 2026.11.7, new: organisationWallet.audit.bucket.secretAccessKey.key}
+
+# --- The platform operator Job
+# The Job that makes the platform operator organisation and its first
+# platform admin is `api.jobs.provisionPlatformOperator` (the words of the glossary), with
+# the groups `organisation` and `firstAdmin`, and the first password as a
+# Secret reference (see [Install](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin)).
+- {old: api.jobs.bootstrapPlatform.enabled, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.enabled}
+- {old: api.jobs.bootstrapPlatform.organisationName, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.name}
+- {old: api.jobs.bootstrapPlatform.type, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.type}
+- {old: api.jobs.bootstrapPlatform.location, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.location}
+- {old: api.jobs.bootstrapPlatform.policyUrl, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.policyUrl}
+- {old: api.jobs.bootstrapPlatform.adminEmail, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.email}
+- {old: api.jobs.bootstrapPlatform.adminName, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.name}
+- {old: api.jobs.bootstrapPlatform.passwordSecret, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret}
+- {old: api.jobs.bootstrapPlatform.passwordKey, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.key}

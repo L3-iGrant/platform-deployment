@@ -12,6 +12,16 @@ api:
     password: ""
   twilio:
     existingSecret: twilio
+  jobs:
+    bootstrapPlatform:
+      enabled: true
+      adminEmail: admin@example.org
+      adminName: First Admin
+      passwordSecret: platform-admin
+      organisationName: Example Wallet Provider
+      type: Technology
+      location: Stockholm
+      policyUrl: https://example.org/privacy
   keyStorage:
     tokenSigning:
       activeKid: test-token-kid

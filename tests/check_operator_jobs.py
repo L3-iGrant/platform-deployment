@@ -5,7 +5,7 @@ Usage: check_operator_jobs.py <render.yaml> <case>
 
 The cases:
   none       the default values: no operator Job
-  bootstrap  api.jobs.bootstrapPlatform (a new installation)
+  bootstrap  api.jobs.provisionPlatformOperator (a new installation)
 
 For each Job: the command and arguments of each container, the order of
 the init containers (migrate first), and the password, which must be a file

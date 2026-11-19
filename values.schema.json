@@ -2305,37 +2305,57 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "bootstrapPlatform": {
+            "provisionPlatformOperator": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
                 "enabled": {
                   "type": "boolean"
                 },
-                "adminEmail": {
-                  "type": "string"
+                "organisation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "location": {
+                      "type": "string"
+                    },
+                    "policyUrl": {
+                      "type": "string",
+                      "pattern": "^(|https?://[^\\s/]+.*)$"
+                    }
+                  }
                 },
-                "adminName": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "organisationName": {
-                  "type": "string"
-                },
-                "type": {
-                  "type": "string"
-                },
-                "location": {
-                  "type": "string"
-                },
-                "policyUrl": {
-                  "type": "string",
-                  "pattern": "^(|https?://[^\\s/]+.*)$"
+                "firstAdmin": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "password": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                        "existingSecret": {
+                          "type": "string",
+                          "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                        },
+                        "key": {
+                          "type": "string",
+                          "pattern": "^[-._a-zA-Z0-9]+$"
+                        }
+                      }
+                    }
+                  }
                 }
               }
             },
@@ -2350,6 +2370,40 @@
             },
             "containerSecurityContext": {
               "type": "object"
+            },
+            "bootstrapPlatform": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "enabled": {
+                  "deprecated": true
+                },
+                "organisationName": {
+                  "deprecated": true
+                },
+                "type": {
+                  "deprecated": true
+                },
+                "location": {
+                  "deprecated": true
+                },
+                "policyUrl": {
+                  "deprecated": true
+                },
+                "adminEmail": {
+                  "deprecated": true
+                },
+                "adminName": {
+                  "deprecated": true
+                },
+                "passwordSecret": {
+                  "deprecated": true
+                },
+                "passwordKey": {
+                  "deprecated": true
+                }
+              }
             }
           }
         },

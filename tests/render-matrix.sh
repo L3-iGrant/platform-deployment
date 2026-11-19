@@ -610,15 +610,15 @@ guard "OpenBao update strategy" "openbao.updateStrategy" --set openbao.updateStr
 # The platform operator Job: the required values, an http or https policy
 # URL, and no password as a value (the password is a file in a Secret).
 bootstrap=(-f "$here/values/operator-jobs-bootstrap.yaml")
-guard "platform operator without admin e-mail" "api.jobs.bootstrapPlatform.adminEmail" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminEmail=
-guard "platform operator without admin name" "api.jobs.bootstrapPlatform.adminName" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminName=
-guard "platform operator without password Secret" "api.jobs.bootstrapPlatform.passwordSecret" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.passwordSecret=
-guard "platform operator without organisation name" "api.jobs.bootstrapPlatform.organisationName" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.organisationName=
-guard "platform operator without organisation type" "api.jobs.bootstrapPlatform.type" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.type=
-guard "platform operator without location" "api.jobs.bootstrapPlatform.location" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.location=
-guard "platform operator without policy URL" "api.jobs.bootstrapPlatform.policyUrl" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=
-guard "platform operator policy URL not http or https" "policyUrl" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=ftp://example.org/privacy
-guard "platform operator password as a value" "Additional property password" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.password=not-a-value
+guard "platform operator without admin e-mail" "api.jobs.provisionPlatformOperator.firstAdmin.email" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.email=
+guard "platform operator without admin name" "api.jobs.provisionPlatformOperator.firstAdmin.name" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.name=
+guard "platform operator without password Secret" "api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret=
+guard "platform operator without organisation name" "api.jobs.provisionPlatformOperator.organisation.name" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.name=
+guard "platform operator without organisation type" "api.jobs.provisionPlatformOperator.organisation.type" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.type=
+guard "platform operator without location" "api.jobs.provisionPlatformOperator.organisation.location" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.location=
+guard "platform operator without policy URL" "api.jobs.provisionPlatformOperator.organisation.policyUrl" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.policyUrl=
+guard "platform operator policy URL not http or https" "policyUrl" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.policyUrl=ftp://example.org/privacy
+guard "platform operator password as a value" "api.jobs.provisionPlatformOperator.firstAdmin.password" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.password=not-a-value
 guard "feature gate not a boolean" "enforce" --set-string gateway.features.enforce=off
 # A folder that a process writes to must be on an emptyDir of its pod (the
 # root file system is read-only).

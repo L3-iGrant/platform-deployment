@@ -213,19 +213,16 @@ api:
   # -- One-off operator Jobs: a Job runs at each install or upgrade while it is enabled.
   jobs:
     # -- The platform operator organisation and its first admin (docs/install.md, step 7).
-    bootstrapPlatform:
+    provisionPlatformOperator:
       enabled: false
-      # -- Login e-mail and name of the first platform admin (required when enabled).
-      adminEmail: ""
-      adminName: ""
-      # -- Existing Secret with the first password of the admin, mounted as a file.
-      passwordSecret: ""
-      passwordKey: password
-      # -- Name, type, location and privacy policy URL of the organisation (required).
-      organisationName: ""
-      type: ""
-      location: ""
-      policyUrl: ""
+      # -- Name, type, location and privacy policy URL of the organisation (required when enabled).
+      organisation: {name: "", type: "", location: "", policyUrl: ""}
+      # -- Login e-mail and name of the first platform admin (required), and your Secret with
+      # the first password, mounted as a file.
+      firstAdmin:
+        email: ""
+        name: ""
+        password: {existingSecret: "", key: password}
     # -- Resources of the Jobs, their migrate init container and the api migration hook.
     resources:
       requests: {cpu: 50m, memory: 64Mi}

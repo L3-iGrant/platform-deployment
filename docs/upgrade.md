@@ -180,3 +180,19 @@ The same Secret reference `{existingSecret, key}` for the password of the OpenBa
 | `organisationWallet.audit.bucket.accessKey.existingSecret` | `organisationWallet.audit.bucket.accessKeyId.existingSecret` and `organisationWallet.audit.bucket.secretAccessKey.existingSecret` |
 | `organisationWallet.audit.bucket.accessKey.idKey` | `organisationWallet.audit.bucket.accessKeyId.key` |
 | `organisationWallet.audit.bucket.accessKey.secretKey` | `organisationWallet.audit.bucket.secretAccessKey.key` |
+
+### The platform operator Job
+
+The Job that makes the platform operator organisation and its first platform admin is `api.jobs.provisionPlatformOperator` (the words of the glossary), with the groups `organisation` and `firstAdmin`, and the first password as a Secret reference (see [Install](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin)).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `api.jobs.bootstrapPlatform.enabled` | `api.jobs.provisionPlatformOperator.enabled` |
+| `api.jobs.bootstrapPlatform.organisationName` | `api.jobs.provisionPlatformOperator.organisation.name` |
+| `api.jobs.bootstrapPlatform.type` | `api.jobs.provisionPlatformOperator.organisation.type` |
+| `api.jobs.bootstrapPlatform.location` | `api.jobs.provisionPlatformOperator.organisation.location` |
+| `api.jobs.bootstrapPlatform.policyUrl` | `api.jobs.provisionPlatformOperator.organisation.policyUrl` |
+| `api.jobs.bootstrapPlatform.adminEmail` | `api.jobs.provisionPlatformOperator.firstAdmin.email` |
+| `api.jobs.bootstrapPlatform.adminName` | `api.jobs.provisionPlatformOperator.firstAdmin.name` |
+| `api.jobs.bootstrapPlatform.passwordSecret` | `api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret` |
+| `api.jobs.bootstrapPlatform.passwordKey` | `api.jobs.provisionPlatformOperator.firstAdmin.password.key` |
