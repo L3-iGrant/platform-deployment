@@ -240,16 +240,21 @@ status_list.write_changes reads the interval. */ -}}
     "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int)
     "metrics_port" (include "ow.wallet.serverMetricsPort" $root | int)
     "metrics_directory" (include "ow.wallet.serverMetricsDir" $root) -}}
-{{- /* forwarded_allow_ips: the service pods sit behind your ingress
-controller or Gateway. The auth gateway calls the config pods directly, so
-they keep the wallet default (127.0.0.1). */ -}}
-{{- if eq $role "service" -}}
-{{- if not $w.forwardedAllowIps -}}
-{{- fail "organisationWallet.forwardedAllowIps needs at least one entry (an IP address, a network, or only \"*\")" -}}
-{{- end -}}
-{{- $_ := set $server "forwarded_allow_ips" $w.forwardedAllowIps -}}
-{{- end -}}
 {{- $_ := set $config "server" $server -}}
+{{- /* client_address: the rule of the wallet host
+(organisationWallet.exposure.clientAddress), only in the file of the
+service role: your entry proxy calls the service pods. The gateway calls
+the config pods and sends the client address in its token; the other
+roles and the hooks have no server, and the migration refuses the key. */ -}}
+{{- if eq $role "service" -}}
+{{- with include "ow.clientAddress" (list $root "organisationWallet") | fromJson -}}
+{{- $section := dict -}}
+{{- with .header -}}{{- $_ := set $section "header" . -}}{{- end -}}
+{{- with .trustedProxies -}}{{- $_ := set $section "trusted_proxies" . -}}{{- end -}}
+{{- with .trustedProxyHeader -}}{{- $_ := set $section "trusted_proxy_header" . -}}{{- end -}}
+{{- $_ := set $config "client_address" $section -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and (include "ow.nats.ca" $root | fromJson).secret (ne $role "clock") -}}
 {{- $_ := set $config.nats "tls_ca_file" (printf "%s/nats-ca.crt" $dir) -}}

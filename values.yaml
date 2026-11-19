@@ -58,15 +58,6 @@ exposure:
     # -- Timeouts of the route rules ({request, backendRequest}). Empty: the Gateway default.
     timeouts: {}
 
-# The client address behind your proxies: the rate limits and the IP allow-lists.
-clientAddress:
-  # -- Header with the client address, set by your entry proxy (X-Real-IP). Empty: the TCP peer.
-  header: ""
-  # -- CIDRs of trusted proxies in front of the entry proxy, for example a CDN.
-  trustedProxies: []
-  # -- Header in which the trusted proxies send the client address.
-  trustedProxyHeader: ""
-
 # The installation.
 installation:
   # -- The optional features of the installation. An optional feature is off
@@ -159,6 +150,10 @@ api:
     parentRefs: []
     # -- gatewayAPI: the timeouts of this route.
     timeouts: {}
+    # -- The client address on the api host: the rate limits and the IP allow-lists of the api and
+    # the gateway (docs/exposure.md). header: set by your entry proxy (X-Real-IP); empty: the TCP
+    # peer. trustedProxies (CIDRs, for example a CDN) and trustedProxyHeader go together.
+    clientAddress: {header: "", trustedProxies: [], trustedProxyHeader: ""}
   # -- Log level of the api and the webhook handler. Empty: global.logLevel.
   logLevel: ""
   adminAuth:
@@ -394,6 +389,9 @@ organisationWallet:
     tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
+    # -- The client address on the wallet host (the nonce rate limits and the logs of the wallet):
+    # the fields of api.exposure.clientAddress, for the proxies in front of this host.
+    clientAddress: {header: "", trustedProxies: [], trustedProxyHeader: ""}
   # -- Log level of the wallet. Empty: global.logLevel.
   logLevel: ""
   # -- Wallet units: the protocol 1 checks, and the first wallet app records (made one time).
@@ -493,15 +491,6 @@ organisationWallet:
       enabled: true
       # -- Validity in days of a test certificate without one in the request (1 to 3650).
       leafValidityDays: 365
-  # -- Proxies trusted for X-Forwarded-For and -Proto. Include your ingress controller pods.
-  forwardedAllowIps:
-    - 127.0.0.1
-    - ::1
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-    - 100.64.0.0/10
-    - fc00::/7
   nats:
     # -- Wait after a failed first connect; it doubles up to 60 s.
     connectRetrySeconds: 5

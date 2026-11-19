@@ -54,7 +54,7 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "tokenSigningActiveKid" (required "keys.apiTokenSigning.activeKid is required: the kid of the active key in the token signing JWKS (scripts/make-keys.sh; see docs/keys.md)" $v.keys.apiTokenSigning.activeKid | toString)
     "dbWrappingKeysFile" (include "ow.api.secretFile" (list $root "db-wrapping-keys.json"))
     "allowPlaintextProviderKeys" false)
-  "ClientAddress" (include "ow.clientAddress" $root | fromJson)
+  "ClientAddress" (include "ow.clientAddress" (list $root "api") | fromJson)
   "Log" (dict "level" (include "ow.logLevel" (list $root "api")))
 -}}
 {{- /* The installation (ow.installation.config): its services and its

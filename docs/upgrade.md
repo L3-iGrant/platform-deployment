@@ -278,3 +278,14 @@ One block `outboundHttp` for the SSRF guards of the api, the gateway and the wal
 | Old value | New value, or what to do |
 | --- | --- |
 | `organisationWallet.workers.groups` (a list) | A map with the group name as key now, for example {main: {queues: [...], replicas: 2, ...}}; without terminationGracePeriodSeconds (the chart calculates it) |
+
+### Client address
+
+Each public host has its own client address rule, in its exposure block: `api.exposure.clientAddress` (the gateway, the api and the webhook handler) and `organisationWallet.exposure.clientAddress` (the service pods of the wallet), because the hosts can be behind different proxies, for example a CDN only in front of the api host. The wallet reads the client address with the same rules as the gateway now: it no longer trusts `X-Forwarded-For` from a list of proxy networks. Behind ingress-nginx or the Envoy Gateway policy of the chart, set `header: X-Real-IP` for both hosts (the exposure profiles do it); see [Exposure](exposure.md). This release needs the wallet image of the same release.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `clientAddress.header` | `api.exposure.clientAddress.header` and `organisationWallet.exposure.clientAddress.header` |
+| `clientAddress.trustedProxies` | `api.exposure.clientAddress.trustedProxies` and `organisationWallet.exposure.clientAddress.trustedProxies` |
+| `clientAddress.trustedProxyHeader` | `api.exposure.clientAddress.trustedProxyHeader` and `organisationWallet.exposure.clientAddress.trustedProxyHeader` |
+| `organisationWallet.forwardedAllowIps` | Remove it: the wallet reads the client address with the rules of the gateway now: set `organisationWallet.exposure.clientAddress`, for example header X-Real-IP behind ingress-nginx or the Envoy Gateway policy of the chart |

@@ -1,7 +1,8 @@
 {{/*
 config.yaml of the auth gateway: its own file, not the api config.
 - Sections shared with the api have the same keys and values as api.yaml:
-  ClientAddress comes from clientAddress, OutboundHttp from outboundHttp,
+  ClientAddress comes from api.exposure.clientAddress (the rule of the api
+  host), OutboundHttp from outboundHttp,
   and Cors and the other OutboundHttp keys from api.advanced.extraConfig,
   so the gateway and the api core apply the same rules.
 - An unknown key stops the gateway, and the gateway reads every <Name>File
@@ -50,7 +51,7 @@ file without the key keeps the gateway default). */ -}}
   "KeyStorage" (dict
     "tokenHashSecretFile" (printf "%s/token-hash-secret.json" $dir)
     "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir)))
-  "ClientAddress" (include "ow.clientAddress" $root | fromJson)
+  "ClientAddress" (include "ow.clientAddress" (list $root "api") | fromJson)
   "Log" (dict "level" (include "ow.logLevel" (list $root "gateway")))
   "Features" (dict "enforce" $enforce)
   "Gateway" (dict

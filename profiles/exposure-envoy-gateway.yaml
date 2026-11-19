@@ -10,8 +10,9 @@
 # platform in envoy-gateway-system, the redirect to HTTPS, the certificate
 # from cert-manager, and the ClientTrafficPolicy that sets X-Real-IP to the
 # client address and overwrites any value that a client sends. Without that
-# policy, do NOT set clientAddress.header (a client could then pick its own
-# address); the services then see an Envoy pod address for every client.
+# policy, do NOT set the clientAddress.header of the hosts (a client could
+# then pick its own address); the services then see an Envoy pod address
+# for every client.
 #
 # Network policies: the chart defaults (networkPolicy.ingressController and
 # networkPolicy.egress.profiles.platform) select the pods of the namespace
@@ -35,5 +36,9 @@ api:
   exposure:
     timeouts:
       request: 3900s
-clientAddress:
-  header: X-Real-IP                        # set by manifests/envoy-gateway/03-client-traffic-policy.yaml
+    # The client address of the host: X-Real-IP, set by
+    # manifests/envoy-gateway/03-client-traffic-policy.yaml.
+    clientAddress: {header: X-Real-IP}
+organisationWallet:
+  exposure:
+    clientAddress: {header: X-Real-IP}

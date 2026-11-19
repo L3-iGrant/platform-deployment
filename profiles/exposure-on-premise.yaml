@@ -25,6 +25,10 @@ api:
       nginx.ingress.kubernetes.io/proxy-buffering: "off"
     tls:
       secretName: api-tls
+    # Both controllers set X-Real-IP to their TCP peer's address and
+    # overwrite any value that the client sends: the client address of each
+    # host.
+    clientAddress: {header: X-Real-IP}
 organisationWallet:
   # Public: the wallet's public routes (the service role), for example
   # the wallet unit flow of the phone apps.
@@ -32,15 +36,12 @@ organisationWallet:
     className: nginx
     tls:
       secretName: wallet-tls
+    clientAddress: {header: X-Real-IP}
 enterpriseDashboard:
   # Internal.
   exposure:
     tls:
       secretName: dashboard-tls
-# Both controllers set X-Real-IP to their TCP peer's address and overwrite
-# any value that the client sends.
-clientAddress:
-  header: X-Real-IP
 networkPolicy:
   # The pods of both controllers: the only source for the gateway, wallet
   # service and dashboard pods.

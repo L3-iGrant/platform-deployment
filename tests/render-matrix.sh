@@ -601,7 +601,8 @@ guard "exposure type" "exposure.type" --set exposure.type=route
 guard "gatewayAPI without parentRefs" "parentRefs" --set exposure.type=gatewayAPI
 guard "host" "api.host" --set api.host=
 guard "image tag" "global.imageTag is required: the release tag of your version" --set global.imageTag=
-guard "client address" "clientAddress" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
+guard "client address of the api host" "api.exposure.clientAddress.trustedProxies and api.exposure.clientAddress.trustedProxyHeader go together" --set 'api.exposure.clientAddress.trustedProxies={192.0.2.0/24}'
+guard "client address of the wallet host" "organisationWallet.exposure.clientAddress.trustedProxyHeader and organisationWallet.exposure.clientAddress.trustedProxies go together" --set organisationWallet.exposure.clientAddress.trustedProxyHeader=CF-Connecting-IP
 guard "unknown value" "Additional property" --set postgres.enabled=true
 guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.external.ca.existingSecret= --set database.tls.sslMode=verify-full
 guard "OpenBao update strategy" "openbao.updateStrategy" --set openbao.updateStrategy=Sometimes
@@ -733,6 +734,47 @@ renders "global log level in the wallet" "log_level: WARNING" --set global.logLe
 renders "global log level in the gateway" "level: warn" --set global.logLevel=warn --show-only templates/gateway/configmap.yaml
 renders "global log level in OpenBao" 'log_level = "warn"' --set global.logLevel=warn --show-only templates/openbao/configmap.yaml
 renders "log level of the api over the global value" "level: error" --set global.logLevel=debug --set api.logLevel=error --show-only templates/api/configmap.yaml
+# One client address rule per host (docs/exposure.md): the rule of the api
+# host in the gateway, api and webhook files (ClientAddress), the rule of
+# the wallet host only in the file of the wallet service role
+# (client_address, snake_case keys), and no forwarded_allow_ips.
+client_address=(--set api.exposure.clientAddress.header=X-Real-IP --set 'api.exposure.clientAddress.trustedProxies={173.245.48.0/20}' --set api.exposure.clientAddress.trustedProxyHeader=CF-Connecting-IP
+  --set organisationWallet.exposure.clientAddress.header=X-Real-IP)
+if helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "${client_address[@]}" > "$out/client-address.yaml" 2> "$out/client-address.err" \
+  && problems="$(python3 - "$out/client-address.yaml" <<'PY' 2>&1
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+api_rule = {"header": "X-Real-IP", "trustedProxies": ["173.245.48.0/20"], "trustedProxyHeader": "CF-Connecting-IP"}
+for doc in docs:
+    if doc.get("kind") != "ConfigMap":
+        continue
+    name = doc["metadata"]["name"]
+    for key, text in (doc.get("data") or {}).items():
+        if not key.endswith(".yaml"):
+            continue
+        try:
+            config = yaml.safe_load(text) or {}
+        except yaml.YAMLError:
+            continue
+        if not isinstance(config, dict):
+            continue
+        if name in ("t-api", "t-gateway") and key in ("api.yaml", "webhook.yaml", "config.yaml"):
+            if config.get("ClientAddress") != api_rule:
+                print(f"{name} {key} ClientAddress is {config.get('ClientAddress')!r}")
+        elif name == "t-wallet" and key == "service.yaml":
+            if config.get("client_address") != {"header": "X-Real-IP"}:
+                print(f"{name} {key} client_address is {config.get('client_address')!r}")
+        elif "client_address" in config or "ClientAddress" in config:
+            print(f"{name} {key} has a client address rule")
+        if "forwarded_allow_ips" in str(config):
+            print(f"{name} {key} has forwarded_allow_ips")
+PY
+)" && [ -z "$problems" ]; then
+  ok "client address: one rule per host, the wallet rule only in the service file"
+else
+  bad "client address: $(head -c 300 "$out/client-address.err") $(printf '%s' "${problems:-}" | tr '\n' ';' | head -c 400)"
+fi
+lacks "client address: no rule of the wallet host by default" "client_address" --show-only templates/wallet/configmap.yaml
 # The api files: the SMTP password from its Secret, and the sender address.
 renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
   --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml

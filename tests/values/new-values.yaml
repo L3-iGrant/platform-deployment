@@ -11,6 +11,8 @@ installation:
     maxOrganisations: 20
 api:
   host: api.example.org
+  exposure:
+    clientAddress: {header: X-Real-IP}
   advanced:
     extraConfig:
       Uploads: {maxInProgress: 4}
@@ -28,6 +30,8 @@ api:
       firstAdmin: {email: admin@example.org, name: First Admin, password: {existingSecret: platform-admin}}
 organisationWallet:
   host: wallet.example.org
+  exposure:
+    clientAddress: {header: X-Real-IP}
   logLevel: warn
   workers:
     groups:

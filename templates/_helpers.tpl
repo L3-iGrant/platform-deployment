@@ -4,17 +4,27 @@ helpers are in templates/database/_database.tpl.
 */}}
 
 {{/*
-The ClientAddress section of the api and gateway configs (the same in both):
-clientAddress.header, .trustedProxies and .trustedProxyHeader. When empty,
-the services use the TCP peer address. Output: JSON.
+The client address rule of one public host (<component>.exposure.clientAddress:
+header, trustedProxies and trustedProxyHeader). Each host has its own rule,
+because the hosts can be behind different proxies (for example a CDN in
+front of the api host, and a wallet host with DNS only). When empty, the
+services use the TCP peer address. Call with (list $ "api"|"organisationWallet").
+Output: JSON with the keys of the rule (camelCase).
+- api: ClientAddress of the gateway, api and webhook files.
+- organisationWallet: client_address of the wallet service file (snake_case
+  keys, in ow.wallet.config); the config role gets the client address
+  from the gateway.
 */}}
 {{- define "ow.clientAddress" -}}
-{{- $c := .Values.clientAddress | default dict -}}
+{{- $root := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- $c := ((index $root.Values $key).exposure | default dict).clientAddress | default dict -}}
+{{- $path := printf "%s.exposure.clientAddress" $key -}}
 {{- if and $c.trustedProxies (not $c.trustedProxyHeader) -}}
-{{- fail "clientAddress.trustedProxies and clientAddress.trustedProxyHeader go together: set both or none" -}}
+{{- fail (printf "%s.trustedProxies and %s.trustedProxyHeader go together: set both or none" $path $path) -}}
 {{- end -}}
 {{- if and $c.trustedProxyHeader (not $c.trustedProxies) -}}
-{{- fail "clientAddress.trustedProxyHeader and clientAddress.trustedProxies go together: set both or none" -}}
+{{- fail (printf "%s.trustedProxyHeader and %s.trustedProxies go together: set both or none" $path $path) -}}
 {{- end -}}
 {{- $out := dict -}}
 {{- with $c.header -}}{{- $_ := set $out "header" . -}}{{- end -}}
