@@ -20,18 +20,9 @@ You describe your installation in a few values files: your site, the database, t
 
 ## The services of the installation
 
-An installation has the organisation wallet. This release runs it, or the gateway sends its routes to the organisation wallet of another release:
+A release runs the gateway, the api, the webhook handler and the organisation wallet. The dashboard is a static web app: with `enterpriseDashboard.enabled: false`, the release does not run it, for example when you host it yourself.
 
-| Values | The organisation wallet |
-| --- | --- |
-| `organisationWallet.enabled: true` (the default) | This release runs the organisation wallet |
-| `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` | The organisation wallet of another release |
-
-The render stops when `organisationWallet.enabled` is `false` and `gateway.upstreams.walletConfig.url` is empty.
-
-The chart writes the list of services into the api file and the gateway file (`Installation.services`: `[wallet]`). You cannot set this list. Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart.
-
-With the organisation wallet of another release, the chart runs no OpenBao and no pods or Jobs of the wallet. The gateway sends the wallet configuration routes to `gateway.upstreams.walletConfig.url`.
+The chart writes the services of the installation into the api file, the webhook file and the gateway file (`Installation.services`: `[wallet]`). You cannot set this list. Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart.
 
 ## Optional features
 

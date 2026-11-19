@@ -10,7 +10,7 @@ The iGrant.io images come from the iGrant.io registry (`global.imageRegistry`) w
 | --- | --- | --- | --- |
 | `api.image` | `api` (iGrant.io) | `global.imageTag` | always (the API core, the webhook handler and their Jobs) |
 | `gateway.image` | `gateway` (iGrant.io) | `global.imageTag` | always |
-| `organisationWallet.image` | `eudi-wallet` (iGrant.io) | `global.imageTag` | `organisationWallet.enabled` |
+| `organisationWallet.image` | `eudi-wallet` (iGrant.io) | `global.imageTag` | always |
 | `enterpriseDashboard.image` | `dashboard` (iGrant.io) | `global.imageTag` | `enterpriseDashboard.enabled` |
 | `openbao.image` | `openbao` (iGrant.io) | `global.imageTag` | `openbao.mode: bundled` |
 | `database.postgresql.image` | `docker.io/library/postgres` | `18.7`, with its digest | `database.mode: bundled` |

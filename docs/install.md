@@ -104,8 +104,6 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 | `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
 | `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
 
-An installation has the organisation wallet. To use the organisation wallet of another release, set `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Then the chart runs no OpenBao: the OpenBao profiles have no effect, and you skip step 5.
-
 To change a profile, copy it first (for example to `my-exposure.yaml` for other TLS Secret names or another Gateway). Each profile names the Secrets that you must create before the install, for example the database admin password. Create them now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 
 Check: the render has no error:
@@ -154,7 +152,7 @@ If a hook fails, the install stops. Read the log of its Job (for example `kubect
 
 ## Step 5: initialise OpenBao (bundled OpenBao only)
 
-With an external OpenBao (`openbao-external.yaml`), or with the organisation wallet of another release, go to step 6.
+With an external OpenBao (`openbao-external.yaml`), go to step 6.
 
 1. Initialise OpenBao once. The unseal keys and the root token appear only in your terminal. Keep them outside the cluster, for example in a password safe, and give the keys to different people.
 

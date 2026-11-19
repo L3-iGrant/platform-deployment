@@ -11,7 +11,7 @@ Each component has its own database and owner user: `igrant_api`, `igrant_oidc` 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |
 | `bundled` (default) | Runs one PostgreSQL 18.7 server (`<release>-postgres`). Creates the databases and the users (init hook), the wallet's database roles (roles hook) and a TLS certificate. | The size of the volume and the resources |
-| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. With the organisation wallet of another release, it can also use your own databases and users. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`, required with the organisation wallet) or the passwords of your users (`database.auth.existingSecret`, one key for each database name) |
+| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`) |
 
 ## TLS
 
@@ -143,14 +143,14 @@ The database hooks run in this order:
 | Order | Hook | Connects as | What it does |
 | --- | --- | --- | --- |
 | 1 | The Secrets `<release>-postgres` (the database user passwords), `<release>-read-access` (the read-only user passwords), `<release>-wallet-database-roles` (the passwords of the wallet's database roles) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks; at a `helm upgrade` they keep their passwords and their certificate |
-| 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the owner users' passwords |
+| 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each component and sets the owner users' passwords |
 | 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the wallet database objects, creates the missing data scope schemas and gives the grants |
 | 4 | `<release>-wallet-migrate`; at a `helm upgrade` also `<release>-api-migrate` | `<prefix>_migrator`; the owner user of the api | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api migrates its databases |
 | 5 | `<release>-wallet-read-access-api` | The admin user | `read-access apply`: the read-only user that the api uses to read the wallet database (see [Read access](read-access.md)) |
 
 On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api migrates its databases when its pods start, in an init container. At a `helm upgrade`, the hooks run before any pod changes (Helm `pre-upgrade`). If a hook fails, the `helm upgrade` stops and the pods keep running. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`.
 
-A `helm upgrade` can turn a component on (the organisation wallet or the api): the hooks create its passwords and its database before its migration hook connects. With `database.auth.existingSecret`, add the password of the new database to your Secret before that `helm upgrade`. The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
+The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
 
 The exit codes of the wallet migration hook (`migrate-database`). After you fix the cause, run the hook again: do install step 4 again after a failed install, else run the same `helm upgrade` again.
 
@@ -168,6 +168,3 @@ The wallet keeps its tables in data scopes: `platform`, `kms`, `trust`, `issuer`
 
 The read views stay in the schemas `read_v1` and `read_v2`, with the same names and columns (see [Read access](read-access.md)).
 
-## Without an admin user
-
-Only with the organisation wallet of another release (`organisationWallet.enabled: false`): create the databases and the users yourself, so that each user owns its database. Then set `readAccess.jobs.enabled: false`, and have a DBA create the read-only users (see [Read access](read-access.md)). The organisation wallet always needs the admin user, because the chart creates its database roles.
