@@ -248,8 +248,7 @@ Then log in to the dashboard with the e-mail address and the password. The
 account must change its password at the first login: the dashboard opens
 the new password page (15 characters or more, with at least one special
 character). This needs no e-mail service. The dashboard shows the platform
-admin functions in the group "Wallet Provider (Organisations)" ("Platform"
-without the wallet).
+admin functions in the group "Wallet Provider (Organisations)".
 
 Rules of the command:
 
@@ -264,8 +263,7 @@ Rules of the command:
 ### After the installation: the other organisations and admins
 
 A platform admin does these tasks in the dashboard, in the group "Wallet
-Provider (Organisations)" ("Platform" without the wallet). No `make` target
-is needed.
+Provider (Organisations)". No `make` target is needed.
 
 | Task | What the operator must know |
 |---|---|

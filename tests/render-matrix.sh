@@ -26,7 +26,7 @@
 #    Each render goes through helm template, kubeconform -strict (if
 #    installed; the Gateway API HTTPRoute schema comes from the CRDs
 #    catalog), tests/check_render.py, tests/check_hook_order.py and
-#    tests/check_installation.py wallet-here; with network policies also
+#    tests/check_installation.py; with network policies also
 #    tests/check_network_matrix.py (the policies against
 #    policies/network-matrix.yaml, with a model of the ingress controller
 #    pods of the exposure: tests/fixtures/ingress-controller-pods.yaml).
@@ -42,15 +42,12 @@
 # 4. Render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
 # 5. Rendered settings, also the services of the installation
-#    (tests/check_installation.py): the wallet of this release and the
-#    wallet of another release; the user and
+#    (tests/check_installation.py); the user and
 #    group of the NATS JetStream store; global.podSecurityContext and
 #    global.containerSecurityContext below the component values.
 # 6. Install and upgrade: tests/check_hook_order.py replays the Helm steps on
-#    the renders (each matrix render is an install; installs with the api or
-#    the organisation wallet off; an upgrade with the same values; upgrades
-#    that turn the organisation wallet or the api on, and the organisation
-#    wallet off). Hook Secrets
+#    the renders (each matrix render is an install; an upgrade with the same
+#    values and an upgrade that turns the database TLS on). Hook Secrets
 #    keep the values of the earlier Secrets (a copy of the chart reads them
 #    from a file instead of lookup).
 # 7. Security settings of every container in every render:
@@ -234,7 +231,7 @@ for database in database-bundled database-external; do
         if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
           good=0
         fi
-        if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" wallet-here 2>&1)"; then
+        if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" 2>&1)"; then
           printf '%s\n' "$result" | sed 's/^/  /' | head -10
           good=0
         fi
@@ -502,22 +499,15 @@ guard_property_name() {
 }
 # PostgreSQL is the only engine: the template guard (ow.db.engine) refuses
 # any other engine with a message that names the components (the schema has
-# no enum for it). mysql also stops the render when only one of the api and
-# the organisation wallet is on.
+# no enum for it).
 only_postgresql="is not supported: the api and the organisation wallet accept only postgresql"
 guard "engine" "database.engine \"oracle\" $only_postgresql" --set database.engine=oracle
 guard "engine mysql" "database.engine \"mysql\" $only_postgresql" --set database.engine=mysql
-mysql_external=(-f "$profiles/database-external.yaml" --set database.engine=mysql
-  --set api.enabled=false --set organisationWallet.enabled=false)
-guard "engine mysql with the api only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set api.enabled=true \
-  --set gateway.upstreams.walletConfig.url=http://wallet.example.org
-guard "engine mysql with the organisation wallet only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set organisationWallet.enabled=true
 guard "mode" "database.mode" --set database.mode=cluster
 guard "external host" "database.external.host" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
 # The wallet roles hook creates the wallet's database roles as the server
 # administrator, so an external server needs an admin user with the wallet.
-guard "external database without admin user" "database.external.admin.user is required with database.mode external and the organisation wallet" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
-guard "external database without admin user, wallet off" "database.auth.existingSecret" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org
+guard "external database without admin user" "database.external.admin.user is required with database.mode external:" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
 # The wallet database name is the prefix of the wallet's database roles:
 # <prefix>_business_wallet_app has at most 63 characters.
 guard "wallet database name too long for the role prefix" "can have at most 43" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
@@ -971,19 +961,18 @@ guard "development apps as a text" "organisationWallet.walletUnit.developmentApp
 guard "development apps as a text without the schema" 'organisationWallet.walletUnit.developmentAppsAllowed ("true") must be true, false or empty' --skip-schema-validation --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
 # The services of the installation (docs/components.md): Installation in the
 # api, webhook and gateway files (and in no other object) has the services
-# [wallet] and the optional features, with the wallet of this release or of
-# another release (tests/check_installation.py). Each case is also an
-# install (tests/check_hook_order.py) and, with network policies, a network
-# matrix check (tests/check_network_matrix.py).
-wallet_elsewhere=(--set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org)
+# [wallet], a constant of the chart, and the optional features
+# (tests/check_installation.py). Each case is also an install
+# (tests/check_hook_order.py) and, with network policies, a network matrix
+# check (tests/check_network_matrix.py).
 installation() {
-  local name="$1" case="$2"; shift 2
+  local name="$1"; shift
   local file="$out/installation-${name// /-}.yaml" result good=1
   if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 > "$file")"; then
     bad "installation $name: $(printf '%s' "$result" | head -c 300)"
     return
   fi
-  if ! result="$(python3 "$here/check_installation.py" "$file" "$case" ${optional:+$optional} 2>&1)"; then
+  if ! result="$(python3 "$here/check_installation.py" "$file" ${optional:+$optional} 2>&1)"; then
     good=0
     printf '%s\n' "$result" | sed 's/^/  /' | head -20
   fi
@@ -995,21 +984,17 @@ installation() {
   fi
   if [ "$good" = 1 ]; then ok "installation $name"; else bad "installation $name"; fi
 }
-installation "the wallet of this release" wallet-here
-installation "the wallet of this release, network policies" wallet-here -f "$profiles/network-policies.yaml"
-installation "the wallet of this release, external database" wallet-here -f "$profiles/database-external.yaml"
-installation "the wallet of another release" wallet-elsewhere "${wallet_elsewhere[@]}"
-installation "the wallet of another release, network policies" wallet-elsewhere "${wallet_elsewhere[@]}" -f "$profiles/network-policies.yaml"
+installation "the default values"
+installation "network policies" -f "$profiles/network-policies.yaml"
+installation "external database" -f "$profiles/database-external.yaml"
 # The optional features (installation.optionalFeatures): the same list in the
 # api, webhook, gateway and wallet files.
-optional=protocol1 installation "the wallet of this release with protocol1" wallet-here --set 'installation.optionalFeatures={protocol1}'
-optional=protocol1 installation "the wallet of another release with protocol1" wallet-elsewhere "${wallet_elsewhere[@]}" --set 'installation.optionalFeatures={protocol1}'
+optional=protocol1 installation "protocol1" --set 'installation.optionalFeatures={protocol1}'
 guard "organisationWallet.extraConfig.installation" "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.extraConfig.installation={"optional_features":["protocol1"]}'
 # api.extraConfig and gateway.extraConfig cannot set a different list: the
 # same services are accepted, and the files keep the chart's form.
-installation "the same list in api.extraConfig and gateway.extraConfig" wallet-here \
+installation "the same list in api.extraConfig and gateway.extraConfig" \
   --set-json 'api.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.extraConfig.Installation={"services":["wallet"]}'
-guard "no organisation wallet" "the installation needs the organisation wallet: set organisationWallet.enabled to true, or set gateway.upstreams.walletConfig.url" --set organisationWallet.enabled=false
 guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet)" \
   --set-json 'api.extraConfig.Installation={"services":[]}'
 guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" \
@@ -1413,8 +1398,6 @@ guard "redis replica wait" "redis.client.replicaWaitMilliseconds" --set redis.cl
 # whose float product is not exact (2.01 x 1000 / 2 = 1004.9999999999999):
 # each renders, and 1 ms more stops the render. A timeout with more than 3
 # decimals stops the render (the schema, and the template without it).
-# With the wallet of another release there is no check (only the wallet of
-# this release reads the wait).
 replica_wait() {
   local seconds="$1" wait="$2" limit="$3"
   renders "redis replica wait $wait ms with $seconds s" "replica_wait_milliseconds: $wait" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$wait" --show-only templates/wallet/configmap.yaml
@@ -1431,7 +1414,6 @@ replica_wait 0.003 1 3
 guard "redis replica wait of 10000 ms with 19 s" "redis.client.replicaWaitMilliseconds (10000) must be at most half of redis.client.timeoutSeconds (19 s = 19000 ms), that is at most 9500 ms" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
 guard "redis timeout with 4 decimals" "redis.client.timeoutSeconds" --set-json redis.client.timeoutSeconds=2.0005
 guard "redis timeout with 4 decimals without the schema" "redis.client.timeoutSeconds (2.0005) has more than 3 decimals" --skip-schema-validation --set-json redis.client.timeoutSeconds=2.0005
-renders "redis replica wait with the wallet of another release" "kind: Deployment" "${wallet_elsewhere[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=(-f "$profiles/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
@@ -1454,7 +1436,6 @@ renders "external redis address" "address: redis.example.org:6379" "${external_r
 lacks "external redis address without the Sentinel login" "sentinel_username" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
 lacks "external redis Sentinels without a login" "sentinel_username" "${external_redis[@]}" --set redis.external.sentinelAuth=false
 lacks "external redis without CA (uses the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.caSecret=
-lacks "no Valkey without the wallet and the api" "t-redis" --set organisationWallet.enabled=false --set api.enabled=false
 
 # Bundled Valkey metrics (redis.metrics): the exporter in each pod with the
 # ACL user metrics, its password, the ServiceMonitor, and the scrape port
@@ -1753,24 +1734,8 @@ fi
 # Hook order (tests/check_hook_order.py, no cluster): each hook Job finds
 # its Secrets, ConfigMaps, databases and users when it starts, and each Job
 # and pod finds its Secrets at the end.
-# An install with one component off: no read access Job for a reader that is
-# off (the read access Secret has no password for it).
-install_order() {
-  local name="$1" database="$2"; shift 2
-  local case="$out/install-$database-${name// /-}"
-  local args=(-f "$keys" "${site[@]}" -f "$profiles/exposure-envoy-gateway.yaml")
-  [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
-  if ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case.yaml" 2> "$case.err"; then
-    bad "install $name ($database): helm template"
-    sed 's/^/  /' "$case.err" | head -5
-  elif python3 "$here/check_hook_order.py" install "$case.yaml"; then
-    ok "install $name ($database)"
-  else
-    bad "install $name ($database)"
-  fi
-}
 # An upgrade from a release with the values of each case to a release with
-# all components on.
+# the default values.
 upgrade_order() {
   local name="$1" database="$2"; shift 2
   local args=(-f "$keys" "${site[@]}"
@@ -1787,42 +1752,17 @@ upgrade_order() {
     bad "upgrade $name ($database)"
   fi
 }
-# An upgrade that turns a component off: from a release with all components
-# on to a release with the values of each case.
-upgrade_removes() {
-  local name="$1" database="$2"; shift 2
-  local args=(-f "$keys" "${site[@]}"
-    -f "$profiles/exposure-envoy-gateway.yaml")
-  [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
-  local case="$out/upgrade-$database-${name// /-}"
-  if ! helm template t "$chart" --namespace ow "${args[@]}" > "$case-before.yaml" 2> "$case.err" \
-      || ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case-after.yaml" 2> "$case.err"; then
-    bad "upgrade $name ($database): helm template"
-    sed 's/^/  /' "$case.err" | head -5
-  elif python3 "$here/check_hook_order.py" upgrade "$case-before.yaml" "$case-after.yaml"; then
-    ok "upgrade $name ($database)"
-  else
-    bad "upgrade $name ($database)"
-  fi
-}
 for database in database-bundled database-external; do
-  install_order "with the api off" "$database" --set api.enabled=false
-  install_order "with the organisation wallet off" "$database" --set organisationWallet.enabled=false \
-    --set gateway.upstreams.walletConfig.url=http://wallet.example.org
   upgrade_order "with the same values" "$database"
-  upgrade_order "that turns the organisation wallet on" "$database" --set organisationWallet.enabled=false \
-    --set gateway.upstreams.walletConfig.url=http://wallet.example.org
-  upgrade_order "that turns the api on" "$database" --set api.enabled=false
   upgrade_order "that turns the database TLS on" "$database" --set database.tls.enabled=false
-  upgrade_removes "that turns the organisation wallet off" "$database" "${wallet_elsewhere[@]}"
 done
 
 # Hook Secrets (the database Secret, the read access Secret and the wallet
 # role Secret) keep the values of the earlier release's Secrets. "helm
 # template" has no cluster, so a copy of the chart reads the earlier Secrets
 # from earlier-secrets.json instead of lookup (ow.lookupSecretKey). The
-# earlier database Secret has no wallet password (as in an upgrade that
-# turns the organisation wallet on): the render must create a new one.
+# earlier database Secret has no wallet password (as for a new database of
+# a later chart version): the render must create a new one.
 lookup_chart="$out/lookup-chart"
 rm -rf "$lookup_chart"
 mkdir -p "$lookup_chart"
