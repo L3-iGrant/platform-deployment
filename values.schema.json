@@ -35,6 +35,15 @@
         "storageClass": {
           "type": "string"
         },
+        "logLevel": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "info",
+            "warn",
+            "error"
+          ]
+        },
         "priorityClassName": {
           "type": "string"
         },
@@ -2041,6 +2050,7 @@
         "logLevel": {
           "type": "string",
           "enum": [
+            "",
             "debug",
             "info",
             "warn",
@@ -3145,6 +3155,7 @@
         "logLevel": {
           "type": "string",
           "enum": [
+            "",
             "trace",
             "debug",
             "info",
@@ -3340,18 +3351,30 @@
           }
         },
         "logLevel": {
-          "type": "string",
-          "enum": [
-            "DEBUG",
-            "INFO",
-            "WARNING",
-            "ERROR",
-            "CRITICAL",
-            "debug",
-            "info",
-            "warning",
-            "error",
-            "critical"
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "",
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            {
+              "type": "string",
+              "enum": [
+                "DEBUG",
+                "INFO",
+                "WARNING",
+                "ERROR",
+                "CRITICAL",
+                "warning",
+                "critical"
+              ],
+              "deprecated": true
+            }
           ]
         },
         "walletUnit": {

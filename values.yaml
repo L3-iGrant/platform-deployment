@@ -21,6 +21,8 @@ global:
   imagePullPolicy: IfNotPresent
   # -- Storage class of all volumes. Empty: the cluster default. "-": none.
   storageClass: ""
+  # -- Log level of all components: debug, info, warn or error. Each component can override it.
+  logLevel: info
   # -- Priority class of all pods (it must exist). Empty: none.
   priorityClassName: ""
   # -- Pod security context of all pods, under the value of each component.
@@ -133,8 +135,8 @@ api:
     parentRefs: []
     # -- gatewayAPI: the timeouts of this route.
     timeouts: {}
-  # -- debug, info, warn or error.
-  logLevel: info
+  # -- Log level of the api and the webhook handler. Empty: global.logLevel.
+  logLevel: ""
   adminAuth:
     walletLogin:
       # -- Organisation of the OpenID provider of the admin wallet login.
@@ -291,7 +293,7 @@ gateway:
   preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
-  # -- Empty: api.logLevel.
+  # -- Log level of the gateway. Empty: global.logLevel.
   logLevel: ""
   upstreams:
     walletConfig:
@@ -371,8 +373,8 @@ organisationWallet:
     tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- DEBUG, INFO, WARNING, ERROR or CRITICAL.
-  logLevel: INFO
+  # -- Log level of the wallet. Empty: global.logLevel.
+  logLevel: ""
   # -- Wallet units: the protocol 1 checks, and the first wallet app records (made one time).
   walletUnit:
     # -- Protocol 1. true: the production checks of the store apps. false: development builds.
@@ -870,8 +872,8 @@ openbao:
   tls:
     # -- Your TLS Secret of the listener. Empty: the chart makes a CA and a certificate.
     existingSecret: ""
-  # -- trace, debug, info, warn or error.
-  logLevel: info
+  # -- Log level of OpenBao: trace or a word of global.logLevel. Empty: global.logLevel.
+  logLevel: ""
   audit:
     # -- File audit device to stdout (the values are HMAC-SHA256 hashes).
     stdout: true

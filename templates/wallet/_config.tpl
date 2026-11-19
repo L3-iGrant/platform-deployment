@@ -162,7 +162,7 @@ trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
 {{- end -}}
 {{- $config := dict
   "domain" (include "ow.publicUrlOf" (list $root "organisationWallet"))
-  "log_level" ($w.logLevel | upper)
+  "log_level" (include "ow.logLevelUpper" (list $root "organisationWallet"))
   "database" (include "ow.wallet.database" (list $root (include "ow.wallet.databaseUser" (list $root (include "ow.wallet.databaseRole" $role))) "database-password") | fromJson)
   "nats" (dict
     "url" (include "ow.nats.url" $root)
@@ -404,7 +404,7 @@ Call with (list $ "<user>" "<password file name>").
 */}}
 {{- define "ow.wallet.hookConfig" -}}
 {{- toYaml (dict
-    "log_level" ((index . 0).Values.organisationWallet.logLevel | upper)
+    "log_level" (include "ow.logLevelUpper" (list (index . 0) "organisationWallet"))
     "database" (include "ow.wallet.database" . | fromJson)) }}
 {{- end }}
 

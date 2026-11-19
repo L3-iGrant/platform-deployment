@@ -51,7 +51,7 @@ file without the key keeps the gateway default). */ -}}
     "tokenHashSecretFile" (printf "%s/token-hash-secret.json" $dir)
     "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir)))
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
-  "Log" (dict "level" ($g.logLevel | default $api.logLevel))
+  "Log" (dict "level" (include "ow.logLevel" (list $root "gateway")))
   "Features" (dict "enforce" $enforce)
   "Gateway" (dict
     "listenPort" (include "ow.gateway.listenPort" $root | int)

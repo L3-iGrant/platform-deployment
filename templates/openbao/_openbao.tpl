@@ -151,9 +151,6 @@ so the guards also allow only safe characters. Output: nothing.
 {{- if or (lt $replicas 1) (eq (mod $replicas 2) 0) -}}
 {{- fail (printf "openbao.replicas (%v) must be an odd number (1, 3 or 5): a raft cluster needs a majority of its nodes" $ob.replicas) -}}
 {{- end -}}
-{{- if not (has $ob.logLevel (list "trace" "debug" "info" "warn" "error")) -}}
-{{- fail (printf "openbao.logLevel %q is not supported: trace, debug, info, warn or error" $ob.logLevel) -}}
-{{- end -}}
 {{- end }}
 
 {{/*
@@ -169,7 +166,7 @@ disable_mlock.
 # The chart's OpenBao server config (seal {{ $seal }}). No secrets in this
 # file. Per pod: BAO_RAFT_NODE_ID, BAO_API_ADDR, BAO_CLUSTER_ADDR.
 ui        = false
-log_level = {{ $ob.logLevel | quote }}
+log_level = {{ include "ow.logLevel" (list . "openbao") | quote }}
 
 # Standby nodes forward every request to the active node. The wallet reads a
 # key right after it creates it, and a standby that served reads itself

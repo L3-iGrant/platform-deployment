@@ -31,6 +31,7 @@ api:
     activeKid: test-api-envelope-kid
 organisationWallet:
   host: wallet.example.org
+  logLevel: WARNING
   audit:
     bucket:
       name: example-audit

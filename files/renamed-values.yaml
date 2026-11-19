@@ -236,3 +236,11 @@
 - {old: enterpriseDashboard.configuration.baseUrl, after: 2026.11.7, removed: "the chart writes the public URL of api.host"}
 - {old: enterpriseDashboard.configuration.walletUrl, after: 2026.11.7, removed: "the chart writes the public URL of organisationWallet.host"}
 - {old: enterpriseDashboard.configuration.appVersion, after: 2026.11.7, removed: "the chart writes the image tag of the dashboard"}
+
+# --- Log level
+# One value `global.logLevel` with one vocabulary for all components:
+# `debug`, `info`, `warn` or `error` (OpenBao also `trace`). The log level
+# of each component is empty by default (`global.logLevel`) and can
+# override it. The chart writes the words of each program, for example
+# `INFO` for the wallet.
+- {old: organisationWallet.logLevel, after: 2026.11.7, kind: string, values: {DEBUG: debug, INFO: info, WARNING: warn, ERROR: error, CRITICAL: error, warning: warn, critical: error}, note: "the words of all components: debug, info, warn, error"}

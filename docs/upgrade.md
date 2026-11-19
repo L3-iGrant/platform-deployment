@@ -224,3 +224,11 @@ A constant of a protocol, a fact of an image or a value that the chart can calcu
 | `enterpriseDashboard.configuration.baseUrl` | Remove it: the chart writes the public URL of `api.host` |
 | `enterpriseDashboard.configuration.walletUrl` | Remove it: the chart writes the public URL of `organisationWallet.host` |
 | `enterpriseDashboard.configuration.appVersion` | Remove it: the chart writes the image tag of the dashboard |
+
+### Log level
+
+One value `global.logLevel` with one vocabulary for all components: `debug`, `info`, `warn` or `error` (OpenBao also `trace`). The log level of each component is empty by default (`global.logLevel`) and can override it. The chart writes the words of each program, for example `INFO` for the wallet.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `organisationWallet.logLevel` (a text) | The same value, with the new words (`DEBUG`: `debug`, `INFO`: `info`, `WARNING`: `warn`, `ERROR`: `error`, `CRITICAL`: `error`, `warning`: `warn`, `critical`: `error`) (the words of all components: debug, info, warn, error) |

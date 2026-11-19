@@ -49,11 +49,12 @@ first with a general message. Call with the root context. Output: nothing.
 {{- $text = printf "use %s" (join " and " $entry.new) -}}
 {{- else if $entry.removed -}}
 {{- $text = printf "remove it (%s)" $entry.removed -}}
-{{- else -}}
+{{- else if $entry.shape -}}
 {{- $text = $entry.shape -}}
 {{- end -}}
 {{- if $entry.values -}}
-{{- $text = printf "%s (%s is now %s)" $text (toString $node) (get $entry.values (toString $node)) -}}
+{{- $change := printf "%s is now %s" (toString $node) (get $entry.values (toString $node)) -}}
+{{- $text = ternary (printf "%s (%s)" $text $change) $change (ne $text "") -}}
 {{- end -}}
 {{- with $entry.note -}}
 {{- $text = printf "%s (%s)" $text . -}}

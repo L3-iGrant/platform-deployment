@@ -55,7 +55,7 @@ Call with (dict "root" $ "role" "api"|"webhook").
     "dbWrappingKeysFile" (include "ow.api.secretFile" (list $root "db-wrapping-keys.json"))
     "allowPlaintextProviderKeys" false)
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
-  "Log" (dict "level" $api.logLevel)
+  "Log" (dict "level" (include "ow.logLevel" (list $root "api")))
 -}}
 {{- /* The installation (ow.installation.config): its services and its
 optional features. */ -}}
@@ -152,7 +152,7 @@ it cannot read the release's new ConfigMaps.
 {{- toYaml (dict
     "DataBase" (include "ow.db.goOwner" (dict "root" . "db" "api" "secretDir" $dir "passwordFile" "db-password") | fromJson)
     "Extensions" (dict "oidc" (dict "database" (include "ow.db.goOwner" (dict "root" . "db" "oidc" "secretDir" $dir "passwordFile" "oidc-db-password") | fromJson)))
-    "Log" (dict "level" .Values.api.logLevel)) }}
+    "Log" (dict "level" (include "ow.logLevel" (list . "api")))) }}
 {{- end }}
 
 {{/*

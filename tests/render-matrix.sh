@@ -663,6 +663,8 @@ guard "plain database password" "database.databases.api.password: remove it (a p
 guard "plain admin password" "database.auth.adminPassword: remove it (a plain password in a values file is not permitted" --set database.auth.adminPassword=not-a-value
 guard "admin user of the bundled server" "the admin user of the bundled server is postgres" --set database.admin.username=root
 guard "CA of an external server with the bundled server" "database.external.ca is the CA of an external server" --set database.external.ca.existingSecret=c
+guard "global log level" "global.logLevel" --set global.logLevel=verbose
+guard "old log level word of the wallet" "organisationWallet.logLevel: WARNING is now warn" --set organisationWallet.logLevel=WARNING
 # The values that changed (files/renamed-values.yaml): one message names
 # every old value with its new value, the schema keeps each old path, and
 # scripts/upgrade-values.py writes a file that renders as the new values
@@ -727,6 +729,12 @@ renders "gateway grace period from the stop times" "terminationGracePeriodSecond
 renders "api grace period from the stop times" "terminationGracePeriodSeconds: 50" --set api.server.gracefulShutdownSeconds=30 --show-only templates/api/deploy.yaml
 renders "dashboard grace period from the preStop" "terminationGracePeriodSeconds: 35" --set enterpriseDashboard.preStopSeconds=15 --show-only templates/dashboard/deploy.yaml
 renders "wallet grace period from the stop times" "terminationGracePeriodSeconds: 55" --set organisationWallet.server.preStopSeconds=20 --show-only templates/wallet/deploy.yaml
+# One log level for all components (global.logLevel), in the words of each
+# program, and the value of one component over it.
+renders "global log level in the wallet" "log_level: WARNING" --set global.logLevel=warn --show-only templates/wallet/configmap.yaml
+renders "global log level in the gateway" "level: warn" --set global.logLevel=warn --show-only templates/gateway/configmap.yaml
+renders "global log level in OpenBao" 'log_level = "warn"' --set global.logLevel=warn --show-only templates/openbao/configmap.yaml
+renders "log level of the api over the global value" "level: error" --set global.logLevel=debug --set api.logLevel=error --show-only templates/api/configmap.yaml
 # The api files: the SMTP password from its Secret, and the sender address.
 renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
   --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml

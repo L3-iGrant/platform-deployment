@@ -19,6 +19,7 @@ api:
       firstAdmin: {email: admin@example.org, name: First Admin, password: {existingSecret: platform-admin}}
 organisationWallet:
   host: wallet.example.org
+  logLevel: warn
   audit:
     bucket:
       name: example-audit
