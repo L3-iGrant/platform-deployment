@@ -165,12 +165,9 @@ require
 {{- end -}}
 {{- end }}
 
-{{/* The keys of database.databases that the enabled components use, comma-separated. */}}
-{{- define "ow.db.enabledDatabases" -}}
-{{- $keys := list -}}
-{{- if .Values.api.enabled -}}{{- $keys = concat $keys (list "api" "oidc") -}}{{- end -}}
-{{- if .Values.organisationWallet.enabled -}}{{- $keys = append $keys "wallet" -}}{{- end -}}
-{{ join "," $keys }}
+{{/* The keys of database.databases (api, oidc, wallet), comma-separated. */}}
+{{- define "ow.db.keys" -}}
+api,oidc,wallet
 {{- end }}
 
 {{/*
@@ -181,7 +178,7 @@ database connection calls this (through ow.db.go and ow.db.wallet).
 {{- $db := .Values.database -}}
 {{- $bundled := include "ow.db.bundled" . -}}
 {{- $names := list -}}
-{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
+{{- range $key := include "ow.db.keys" . | splitList "," | compact -}}
 {{- $name := (index $db.databases $key).name | default "" -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $name) -}}
 {{- fail (printf "database.databases.%s.name %q is not a database name: a lower-case letter, then lower-case letters, digits or _" $key $name) -}}
@@ -193,15 +190,8 @@ database connection calls this (through ow.db.go and ow.db.wallet).
 {{- end -}}
 {{- /* The roles hook creates the wallet database roles as the admin user,
 so the chart cannot create them without one. */ -}}
-{{- if and .Values.organisationWallet.enabled (not $bundled) (not $db.external.admin.user) -}}
-{{- fail "database.external.admin.user is required with database.mode external and the organisation wallet: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
-{{- end -}}
-{{- if and (not $bundled) (not $db.external.admin.user) (not $db.auth.existingSecret) -}}
-{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
-{{- if not (index $db.databases $key).password -}}
-{{- fail (printf "database.mode external without database.external.admin.user: the databases and the users exist, so give their passwords in database.auth.existingSecret (or database.databases.%s.password); the chart cannot make them" $key) -}}
-{{- end -}}
-{{- end -}}
+{{- if and (not $bundled) (not $db.external.admin.user) -}}
+{{- fail "database.external.admin.user is required with database.mode external: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
 {{- end -}}
 {{- with $db.tls.sslMode -}}
 {{- if not (has . (list "disable" "require" "verify-ca" "verify-full")) -}}

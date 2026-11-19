@@ -1,15 +1,14 @@
 {{- /*
 Read access hooks of the wallet (readAccess.jobs; helm post-install and
 pre-upgrade, after the migration hook, so the views exist): "read-access
-apply" for the reader api when it is enabled
-(ow.readAccess.enabledReaders). The command connects as the admin user
+apply" for the reader api. The command connects as the admin user
 (readAccess.jobs.wallet, else ow.db.admin). Its config has only the
 database, with the admin user and its password file (a pre-upgrade hook
 cannot read the release's new ConfigMaps). The hooks run on every install
 and upgrade (idempotent; a new release can add views).
 */}}
-{{- $readers := include "ow.readAccess.enabledReaders" (list . (list "api")) | splitList "," | compact }}
-{{- if and .Values.organisationWallet.enabled .Values.readAccess.jobs.enabled $readers }}
+{{- $readers := list "api" }}
+{{- if .Values.readAccess.jobs.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $admin := include "ow.readAccess.admin" (list . "wallet") | fromJson }}
 {{- $name := include "ow.name" (list . "wallet-read-access") }}

@@ -6,7 +6,6 @@ signed internal token. Every installation with the api has it. It runs no
 migrations, NATS, cron or OIDC provider, and writes no files, so it runs as
 a non-root user with a read-only root file system.
 */}}
-{{- if .Values.api.enabled }}
 {{- $g := .Values.gateway }}
 {{- /* The gateway's own image: an empty registry, tag or pull policy takes
 the value from api.image (one release train). */}}
@@ -117,4 +116,3 @@ spec:
                     - key: {{ $file.key }}
                       path: {{ $path }}
               {{- end }}
-{{- end }}

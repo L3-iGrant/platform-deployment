@@ -4,10 +4,10 @@ The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Releas
 {{- /* SSRF guards that an extraConfig turns off (docs/security-context.md,
 "The SSRF guards"). */}}
 {{- $ssrfOff := list }}
-{{- if and .Values.api.enabled (eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true") }}
+{{- if eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true" }}
 {{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
 {{- end }}
-{{- if and .Values.organisationWallet.enabled (eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.extraConfig | default dict))) "false") }}
+{{- if eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.extraConfig | default dict))) "false" }}
 {{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.extraConfig.ssrf_protection.enabled is false") }}
 {{- end }}
 {{- range $ssrfOff }}
@@ -17,12 +17,8 @@ WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods 
 {{- end }}
 
 Public URLs (exposure {{ .Values.exposure.type }} by default; make sure your DNS names point to your ingress controller or Gateway):
-{{- if .Values.api.enabled }}
   API:                 {{ include "ow.publicUrlOf" (list . "api") }}
-{{- end }}
-{{- if .Values.organisationWallet.enabled }}
   Organisation wallet: {{ include "ow.publicUrlOf" (list . "organisationWallet") }}
-{{- end }}
 {{- if .Values.enterpriseDashboard.enabled }}
   Dashboard:           {{ include "ow.publicUrlOf" (list . "enterpriseDashboard") }}
 {{- end }}
@@ -35,7 +31,7 @@ Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ inclu
 {{- end }}
 {{- if include "ow.redis.bundled" . }}
 Valkey: bundled, {{ .Values.redis.replicas }} pods {{ include "ow.redis.name" . }}-<n> (a data server and a Sentinel in each; docs/redis.md).
-{{- else if include "ow.redis.enabled" . }}
+{{- else }}
 Valkey or Redis: external, {{ .Values.redis.external.sentinels | default (list .Values.redis.external.address) | join ", " }} (docs/redis.md).
 {{- end }}
 {{- range include "ow.securityContextShadowed" . | fromJsonArray }}
@@ -69,10 +65,8 @@ Next steps (docs/install.md explains each step and how to check it):
    readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
 {{- end }}
 {{- $step = add1 $step }}
-{{- if .Values.api.enabled }}
 
 {{ $step }}. Make the platform operator organisation and its first platform admin, on the first installation only (docs/install.md, step 7):
    set api.jobs.bootstrapPlatform, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
 {{- $step = add1 $step }}
-{{- end }}
 

@@ -24,11 +24,9 @@ config.yaml of the auth gateway: its own file, not the api config.
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
 {{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
-{{- /* Upstream for the wallet config role: the URL of the wallet of
-another release, else the Service in this release. ow.installation.config
-fails the render when there is no wallet. */ -}}
+{{- /* Upstream for the wallet config role: its Service in this release. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
-{{- $walletConfigUrl := $g.upstreams.walletConfig.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace) -}}
+{{- $walletConfigUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- /* The gateway's file body limit must not refuse an image that the api
 accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), or the client
 gets the gateway's 413 with a different text. 0 = the defaults (5 MiB +

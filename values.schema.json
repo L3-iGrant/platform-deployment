@@ -1278,9 +1278,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
         "image": {
           "type": "object",
           "additionalProperties": false,
@@ -1358,7 +1355,8 @@
         },
         "host": {
           "type": "string",
-          "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+          "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+          "minLength": 1
         },
         "exposure": {
           "type": "object",
@@ -1824,20 +1822,6 @@
         "imagePullSecrets": {
           "type": "array"
         }
-      },
-      "if": {
-        "properties": {
-          "enabled": {
-            "const": true
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "host": {
-            "minLength": 1
-          }
-        }
       }
     },
     "gateway": {
@@ -1965,9 +1949,6 @@
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "url": {
-                  "type": "string"
-                },
                 "requestTimeoutSeconds": {
                   "type": "integer"
                 }
@@ -2615,9 +2596,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
         "image": {
           "type": "object",
           "additionalProperties": false,
@@ -2653,7 +2631,8 @@
         },
         "host": {
           "type": "string",
-          "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$"
+          "pattern": "^$|^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$",
+          "minLength": 1
         },
         "exposure": {
           "type": "object",
@@ -3584,20 +3563,6 @@
         },
         "imagePullSecrets": {
           "type": "array"
-        }
-      },
-      "if": {
-        "properties": {
-          "enabled": {
-            "const": true
-          }
-        }
-      },
-      "then": {
-        "properties": {
-          "host": {
-            "minLength": 1
-          }
         }
       }
     },

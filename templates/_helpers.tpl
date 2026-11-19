@@ -630,8 +630,8 @@ the user's values key. Output: JSON list.
 {{/*
 NATS users of the services: one nkey user per service process in the global
 account, limited to the subjects of that process. Each item has: name,
-values key, nkey, seed {secret, key}, inbox prefix, publish, subscribe,
-allowResponses and enabled (the process is in the chart).
+values key, nkey, seed {secret, key}, inbox prefix, publish, subscribe and
+allowResponses.
 
 Publish:
 - The services publish events and requests by name (the stream and subject
@@ -670,22 +670,22 @@ consumers of another. Output: JSON list.
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
 {{- $table := list
-  (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
+  (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
       (list "api.v1.evt.organisation.created" "api.v1.evt.organisation.updated" "api.v1.evt.organisation.deleted" "api.v1.evt.sandbox.updated" "api.v1.evt.sandbox.deleted" "api.v1.evt.extension.updated")
       (list "ows.openidprovider.client.created" "ows.openidprovider.client.deleted" "ows.openidprovider.clients.deleted")
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))
-  (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "enabled" $v.api.enabled "allowResponses" false
+  (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "allowResponses" false
     "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
     "subscribe" (list))
-  (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
+  (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
     "subscribe" (concat (list "ows.cmd.*.>" "ows.*.notification" "ows.*.webhook.present_proof") $cacheClears))
-  (dict "name" "wallet-service" "key" "walletService" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
+  (dict "name" "wallet-service" "key" "walletService" "inbox" "_INBOX_wallet" "allowResponses" false
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletService" | fromJsonArray))
     "subscribe" $cacheClears)
-  (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
+  (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "allowResponses" false
     "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
     "subscribe" (list)) -}}
 {{- $out := list -}}
@@ -695,7 +695,7 @@ consumers of another. Output: JSON list.
 {{- with $values.seedSecret -}}{{- $seed = dict "secret" . "key" ($values.seedKey | default "seed") -}}{{- end -}}
 {{- $out = append $out (dict
     "name" $user.name "key" $user.key "nkey" ($values.nkey | default "") "seed" $seed "inbox" $user.inbox
-    "enabled" $user.enabled "allowResponses" $user.allowResponses
+    "allowResponses" $user.allowResponses
     "publish" $user.publish
     "subscribe" (concat $user.subscribe (list (printf "%s.>" $user.inbox)))) -}}
 {{- end -}}
@@ -713,7 +713,7 @@ without credentials. Output: nothing.
 {{- if and $user.nkey (not (hasPrefix "U" $user.nkey)) -}}
 {{- fail (printf "nats.auth.users.%s.nkey must be a public user nkey (it starts with U), never the seed" $user.key) -}}
 {{- end -}}
-{{- if and $user.enabled (or (not $user.nkey) (not $user.seed)) -}}
+{{- if or (not $user.nkey) (not $user.seed) -}}
 {{- $missing = append $missing (printf "nats.auth.users.%s (%s)" $user.key $user.name) -}}
 {{- end -}}
 {{- end -}}
@@ -723,20 +723,18 @@ without credentials. Output: nothing.
 {{- end }}
 
 {{/*
-The authorization block of nats.conf: users for the chart's processes and
-the wallet, and no user without credentials. Output: text at column 0.
+The authorization block of nats.conf: the users of the chart's processes,
+each with its credentials. Output: text at column 0.
 */}}
 {{- define "ow.nats.authorization" -}}
 {{- include "ow.nats.checkUsers" . -}}
 authorization {
   users = [
     {{- range $user := include "ow.nats.users" . | fromJsonArray }}
-    {{- if $user.nkey }}
     # {{ $user.name }}
     {{- /* In nats.conf an empty allow list means no restriction, so a process
     with no publish subjects gets deny [">"]. */}}
     { nkey: {{ $user.nkey | quote }}, permissions: { publish: { {{ if $user.publish }}allow: {{ include "ow.nats.list" $user.publish }}{{ else }}deny: [">"]{{ end }} }, subscribe: { allow: {{ include "ow.nats.list" $user.subscribe }} }{{ if $user.allowResponses }}, allow_responses: true{{ end }} } }
-    {{- end }}
     {{- end }}
   ]
 }
@@ -875,22 +873,6 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 {{- end }}
 
 {{/*
-The readers in a list (keys of database.databases: api, wallet)
-that are on in this chart. Only these get a read access Job on an owner
-database: the read access Secret has a reader's password only when the
-reader is on, and a reader that is off reads nothing. Call with (list $
-(list "<reader>" ...)). Output: the readers, comma-separated.
-*/}}
-{{- define "ow.readAccess.enabledReaders" -}}
-{{- $enabled := include "ow.db.enabledDatabases" (index . 0) | splitList "," -}}
-{{- $readers := list -}}
-{{- range $reader := index . 1 -}}
-{{- if has $reader $enabled -}}{{- $readers = append $readers $reader -}}{{- end -}}
-{{- end -}}
-{{ join "," $readers }}
-{{- end }}
-
-{{/*
 Admin user of the read access Job for one owner database
 (readAccess.jobs.<owner>; "read-access apply --admin-user
 --admin-password-file"). It creates the read-only users and grants SELECT
@@ -919,16 +901,11 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 {{- end }}
 
 {{/*
-The chart's read-only users as (reader, owner) pairs: the readers that this
-release runs. api -> wallet (also the wallet of another release); wallet ->
-api. Output: JSON list of [reader, owner].
+The chart's read-only users as (reader, owner) pairs: api -> wallet and
+wallet -> api. Output: JSON list of [reader, owner].
 */}}
 {{- define "ow.readAccess.pairs" -}}
-{{- $v := .Values -}}
-{{- $pairs := list -}}
-{{- if $v.api.enabled -}}{{- $pairs = append $pairs (list "api" "wallet") -}}{{- end -}}
-{{- if $v.organisationWallet.enabled -}}{{- $pairs = append $pairs (list "wallet" "api") -}}{{- end -}}
-{{- toJson $pairs -}}
+{{- toJson (list (list "api" "wallet") (list "wallet" "api")) -}}
 {{- end }}
 
 {{/*

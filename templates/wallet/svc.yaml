@@ -1,4 +1,3 @@
-{{- if .Values.organisationWallet.enabled }}
 {{- range $role := list "service" "config" }}
 {{- $component := printf "wallet-%s" $role }}
 ---
@@ -16,5 +15,4 @@ spec:
       targetPort: http
   selector:
     {{- include "ow.selectorLabels" (list $ $component) | nindent 4 }}
-{{- end }}
 {{- end }}

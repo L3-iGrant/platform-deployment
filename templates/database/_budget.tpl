@@ -16,13 +16,10 @@ pooler counts database.pooler.serverConnections. Output: JSON {processes:
 {{- /* The api core, the webhook handler and the gateway: plus one health
 connection per pod outside the pools (it checks the database every 2 s).
 The api core and the webhook handler also read the wallet views. */ -}}
-{{- if $v.api.enabled -}}
 {{- $apiReader := $p.apiReadAccess.maxConns | int -}}
 {{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader 1)) -}}
 {{- $processes = append $processes (dict "name" "webhook handler" "pods" ($v.api.webhook.replicas | int) "each" (add $p.webhook.maxConns $p.oidc.maxConns $apiReader 1)) -}}
 {{- $processes = append $processes (dict "name" "gateway" "pods" ($v.gateway.replicas | int) "each" (add $p.gateway.maxConns 1)) -}}
-{{- end -}}
-{{- if $v.organisationWallet.enabled -}}
 {{- $w := $v.organisationWallet -}}
 {{- $pooled := not (empty $v.database.pooler.host) -}}
 {{- /* service and config: the session pool, the allocation pool and the
@@ -54,7 +51,6 @@ pod: its processes plus its health server. */ -}}
 {{- $processes = append $processes (dict "name" "clock" "pods" ($w.clock.replicas | int) "each" 2) -}}
 {{- if $pooled -}}
 {{- $processes = append $processes (dict "name" "connection pooler" "pods" 1 "each" ($v.database.pooler.serverConnections | int)) -}}
-{{- end -}}
 {{- end -}}
 {{- $total := 0 -}}
 {{- range $process := $processes -}}

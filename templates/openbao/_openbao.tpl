@@ -5,13 +5,13 @@ with raft storage and the Shamir seal) or an external OpenBao (openbao.mode
 external). See docs/openbao.md.
 */}}
 
-{{/* "true" when the chart runs OpenBao (openbao.mode bundled and the wallet is enabled), else "". */}}
+{{/* "true" when the chart runs OpenBao (openbao.mode bundled), else "". */}}
 {{- define "ow.openbao.bundled" -}}
 {{- $mode := .Values.openbao.mode | default "bundled" -}}
 {{- if not (has $mode (list "bundled" "external")) -}}
 {{- fail (printf "openbao.mode %q is not supported: use \"bundled\" or \"external\"" $mode) -}}
 {{- end -}}
-{{- if and (eq $mode "bundled") .Values.organisationWallet.enabled -}}true{{- end -}}
+{{- if eq $mode "bundled" -}}true{{- end -}}
 {{- end }}
 
 {{/* Seal of the bundled OpenBao, validated. */}}

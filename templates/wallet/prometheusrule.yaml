@@ -7,7 +7,7 @@ hence max), from the targets of the chart's ServiceMonitor (job
 wallet-worker) in the release namespace. With other monitoring, take the
 rules from the docs.
 */}}
-{{- if and .Values.organisationWallet.enabled .Values.organisationWallet.prometheusRule.enabled }}
+{{- if .Values.organisationWallet.prometheusRule.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- if not $w.serviceMonitor.enabled }}
 {{- fail "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled: the rules read the targets of its job wallet-worker (with other monitoring, take the rules of docs/workers.md, \"Alerts\")" }}

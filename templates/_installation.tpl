@@ -1,28 +1,15 @@
 {{/*
-The services of the installation (docs/components.md, "The services of the
-installation"). The installation has the organisation wallet: this release
-runs it (organisationWallet.enabled), or the gateway routes to the wallet of
-another release (gateway.upstreams.walletConfig.url).
-*/}}
-
-{{/*
-The Installation section of the api and gateway files:
-{"optionalFeatures": [...], "services": ["wallet"]}. There is no value for
-the list of services. Without the key services, the api and the gateway
-turn on all services; without the key optionalFeatures, all optional
-features. So the section always has both keys.
-The render fails when:
-- the wallet is not installed (organisationWallet.enabled is false and
-  gateway.upstreams.walletConfig.url is empty);
-- api.extraConfig.Installation or gateway.extraConfig.Installation names
-  other services than the chart does.
-Output: JSON.
+The Installation section of the api, webhook and gateway files
+(docs/components.md, "The services of the installation"):
+{"optionalFeatures": [...], "services": ["wallet"]}. The list of services
+is a constant of the chart, not a value. Without the key services, the api
+and the gateway turn on all services; without the key optionalFeatures,
+all optional features. So the section always has both keys. The render
+fails when api.extraConfig.Installation or gateway.extraConfig.Installation
+names other services than the chart. Output: JSON.
 */}}
 {{- define "ow.installation.config" -}}
 {{- $v := .Values -}}
-{{- if not (or $v.organisationWallet.enabled (dig "walletConfig" "url" "" ($v.gateway.upstreams | default dict))) -}}
-{{- fail "the installation needs the organisation wallet: set organisationWallet.enabled to true, or set gateway.upstreams.walletConfig.url (the wallet of another release)" -}}
-{{- end -}}
 {{- $services := list "wallet" -}}
 {{- range $key := list "api" "gateway" -}}
 {{- $extra := (index $v $key).extraConfig | default dict -}}

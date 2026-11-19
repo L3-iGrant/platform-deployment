@@ -4,7 +4,6 @@ migrate" (the api database with the read-only user views, and the OIDC
 provider database) before any Deployment of the release changes. Its config
 has only the databases (ow.api.migrateConfig).
 */}}
-{{- if .Values.api.enabled }}
 {{- include "ow.migrateHook" (dict
   "root" .
   "component" "api-migrate"
@@ -17,4 +16,3 @@ has only the databases (ow.api.migrateConfig).
     (include "ow.db.secretFiles" (list . "api" "db-password") | fromJson)
     (include "ow.db.secretFiles" (list . "oidc" "oidc-db-password") | fromJson)) | fromJsonArray)
   "secretDir" (include "ow.api.secretDir" .)) }}
-{{- end }}

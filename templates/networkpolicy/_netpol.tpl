@@ -50,9 +50,7 @@ Roles that run in this release (the chart's pods). Output: JSON list.
 */}}
 {{- define "ow.netpol.presentRoles" -}}
 {{- $v := .Values -}}
-{{- $roles := list "job" -}}
-{{- if $v.api.enabled -}}{{- $roles = concat $roles (list "gateway" "api" "webhook") -}}{{- end -}}
-{{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-worker" "wallet-clock") -}}{{- end -}}
+{{- $roles := list "job" "gateway" "api" "webhook" "wallet-service" "wallet-config" "wallet-worker" "wallet-clock" -}}
 {{- if $v.enterpriseDashboard.enabled -}}{{- $roles = append $roles "dashboard" -}}{{- end -}}
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}
 {{- if $v.nats.enabled -}}{{- $roles = append $roles "nats" -}}{{- end -}}

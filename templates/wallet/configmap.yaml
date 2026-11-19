@@ -1,4 +1,3 @@
-{{- if .Values.organisationWallet.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -22,4 +21,3 @@ data:
     {{- end }}
     {{- include "ow.wallet.config" (dict "root" $ "role" $file.role "group" $file.group) | nindent 4 }}
   {{- end }}
-{{- end }}

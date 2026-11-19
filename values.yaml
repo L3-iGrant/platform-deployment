@@ -76,8 +76,6 @@ installation:
 
 # The api core and the webhook handler (one image). The OIDC provider runs in the api.
 api:
-  # -- Run the api and the webhook handler. false: no gateway either (docs/components.md).
-  enabled: true
   # -- Empty registry and tag: global.imageRegistry and global.imageTag.
   image: {registry: "", repository: api, tag: ""}
   replicas: 1
@@ -310,8 +308,6 @@ gateway:
       # -- Base URL of the api core. Empty: the api Service of the chart.
       url: ""
     walletConfig:
-      # -- Wallet config role of another release. Empty: the Service of the chart.
-      url: ""
       # -- Time limit of a wallet config request; then the client gets 504. 0: 60 s.
       requestTimeoutSeconds: 60
   internalToken:
@@ -390,11 +386,9 @@ gateway:
 
 # Organisation wallet: service (public routes), config (behind the gateway), workers and clock.
 organisationWallet:
-  # -- false: the wallet of another release (gateway.upstreams.walletConfig.url).
-  enabled: true
   # -- Empty registry and tag: global.imageRegistry and global.imageTag.
   image: {registry: "", repository: eudi-wallet, tag: ""}
-  # -- Public host name of the wallet (required with the wallet).
+  # -- Required: public host name of the wallet.
   host: ""
   # -- Exposure of the wallet host: the fields of api.exposure.
   exposure:
@@ -737,7 +731,7 @@ database:
     host: ""
     # -- Empty: 5432.
     port: ""
-    # -- Admin user of the external server (required with the wallet) and its password Secret.
+    # -- Required: admin user of the external server and its password Secret.
     admin: {user: "", passwordSecret: "", passwordKey: password}
   # -- Connection pools of each process (docs/database.md, "Connection budget").
   pools:
