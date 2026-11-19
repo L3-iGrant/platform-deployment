@@ -101,10 +101,13 @@ text_check() {
   # the types ([vault, ...]), the product name Azure Key Vault and its host
   # names (<vault>.vault.azure.net), and the local key store name that the
   # wallet and the dashboard show, in quotes ("Local vault").
+  # The title and the rows of badges and links of README.md are HTML:
+  # align="center" is a word of HTML, not of the text.
   hits="$(grep -n -i -E "$pattern" "$@" 2>/dev/null | grep -v -F 'tests/render-matrix.sh:' | grep -v -F 'tests/check_render.py:' \
     | grep -v -F 'tests/compose-files.sh:' \
     | grep -v -E '^[^:]*docs/install\.md:[0-9]+:.*"organization": "' \
     | grep -v -E '\.initialized|Initialized +true|"Initialized' \
+    | grep -v -E '^[^:]*README\.md:[0-9]+:<(h1|p) align="center">$' \
     | grep -v -E '^[^:]*\.py:[0-9]+:.*(\bserialization\.|import .*\bserialization\b)' \
     | grep -v -E '^[^:]*:[0-9]+: +types: \[vault(, [a-z-]+)*\]$|^[^:]*values\.schema\.json:[0-9]+: +"(external-|azure-key-)?vault",?$' \
     | CHECK_WHAT="$what" perl -ne '($t = $_) =~ s/azure[- ]key[- ]vault|external-vault|`vault`|\[vault,|<vault>\.vault\.azure\.net|"local vault(?: \((?:hsm|openbao)\))?"//gi; print if $ENV{CHECK_WHAT} !~ /^no vault/ || $t =~ /vault/i' || true)"
