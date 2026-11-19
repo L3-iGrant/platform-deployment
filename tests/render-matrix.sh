@@ -16,8 +16,7 @@
 #    redis_exporter licence texts are in licenses/.
 # 2. The matrix of the profiles (profiles/): every combination of one choice
 #    per group, with profiles/site.yaml, tests/values/release.yaml and
-#    tests/values/keys.yaml, without consent (the default). A default choice
-#    has no file:
+#    tests/values/keys.yaml. A default choice has no file:
 #      database   database-bundled (default), database-external
 #      OpenBao    openbao-shamir (default), openbao-external
 #      exposure   exposure-ingress-nginx, exposure-ingress-nginx-cert-manager,
@@ -27,7 +26,7 @@
 #    Each render goes through helm template, kubeconform -strict (if
 #    installed; the Gateway API HTTPRoute schema comes from the CRDs
 #    catalog), tests/check_render.py, tests/check_hook_order.py and
-#    tests/check_installation.py no-consent; with network policies also
+#    tests/check_installation.py wallet-here; with network policies also
 #    tests/check_network_matrix.py (the policies against
 #    policies/network-matrix.yaml, with a model of the ingress controller
 #    pods of the exposure: tests/fixtures/ingress-controller-pods.yaml).
@@ -35,25 +34,23 @@
 #    bundled server with the DDL and connection logs off; your own Valkey or
 #    Redis (redis-external) with both database choices, with and without
 #    network policies; the minimal profile, with and without network
-#    policies; consent (profiles/consent.yaml) with each exposure, with and
-#    without network policies (also tests/check_installation.py all). Then
-#    the bundled Valkey and NATS certificates and the NATS configuration.
-#    The tests after the matrix use profiles/consent.yaml, and
+#    policies. Then the bundled Valkey and NATS certificates and the NATS
+#    configuration. The tests after the matrix use
 #    profiles/exposure-envoy-gateway.yaml where they pick an exposure. The
 #    files of manifests/envoy-gateway/ go through kubeconform -strict.
 # 3. The next steps (NOTES.txt).
 # 4. Render guards: wrong values stop the render with a clear message
 #    (values.schema.json and the template guards).
-# 5. Rendered settings, also the installed services
-#    (tests/check_installation.py): all services, consent or the wallet from
-#    another release, without consent, without the wallet; the user and
+# 5. Rendered settings, also the services of the installation
+#    (tests/check_installation.py): the wallet of this release and the
+#    wallet of another release; the user and
 #    group of the NATS JetStream store; global.podSecurityContext and
 #    global.containerSecurityContext below the component values.
 # 6. Install and upgrade: tests/check_hook_order.py replays the Helm steps on
-#    the renders (each matrix render is an install; installs with consent,
-#    the api or the organisation wallet off; an upgrade with the same values;
-#    upgrades that turn the organisation wallet, consent or the api on; and
-#    upgrades that install or remove consent or the wallet). Hook Secrets
+#    the renders (each matrix render is an install; installs with the api or
+#    the organisation wallet off; an upgrade with the same values; upgrades
+#    that turn the organisation wallet or the api on, and the organisation
+#    wallet off). Hook Secrets
 #    keep the values of the earlier Secrets (a copy of the chart reads them
 #    from a file instead of lookup).
 # 7. Security settings of every container in every render:
@@ -73,9 +70,6 @@ profiles="$chart/profiles"
 keys="$here/values/keys.yaml"
 # profiles/site.yaml with the release tag that the tests use.
 site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
-# All services, with consent (off by default): for the tests after the
-# matrix.
-all=("${site[@]}" -f "$profiles/consent.yaml")
 out=""
 if [ "${1:-}" = "--keep" ]; then
   out="${2:?--keep needs a folder}"
@@ -240,7 +234,7 @@ for database in database-bundled database-external; do
         if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
           good=0
         fi
-        if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" no-consent 2>&1)"; then
+        if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" wallet-here 2>&1)"; then
           printf '%s\n' "$result" | sed 's/^/  /' | head -10
           good=0
         fi
@@ -250,42 +244,6 @@ for database in database-bundled database-external; do
         if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
       done
     done
-  done
-done
-# With consent (profiles/consent.yaml): the bundled database, the shamir
-# seal, each exposure, with and without network policies.
-for exposure in exposure-ingress-nginx exposure-ingress-nginx-cert-manager exposure-envoy-gateway exposure-kgateway exposure-none exposure-on-premise; do
-  for policies in none network-policies; do
-    name="consent-$exposure-$policies"
-    args=(-f "$keys" "${all[@]}" -f "$profiles/$exposure.yaml")
-    [ "$policies" = network-policies ] && args+=(-f "$profiles/network-policies.yaml")
-    if ! helm template t "$chart" --namespace ow "${args[@]}" > "$out/$name.yaml" 2> "$out/$name.err"; then
-      bad "$name: helm template"
-      sed 's/^/  /' "$out/$name.err" | head -10
-      continue
-    fi
-    good=1
-    if [ -n "$kubeconform_bin" ] && ! "$kubeconform_bin" -strict -summary -kubernetes-version 1.30.0 -cache "$kubeconform_cache" \
-        -schema-location default \
-        -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-        "$out/$name.yaml" > "$out/$name.kubeconform" 2>&1; then
-      echo "  kubeconform:"; grep -v '^Summary' "$out/$name.kubeconform" | sed 's/^/  /' | head -10
-      good=0
-    fi
-    if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql bundled shamir "$(exposure_of "$exposure")" "$([ "$policies" = network-policies ] && echo on || echo off)"; then
-      good=0
-    fi
-    if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
-      good=0
-    fi
-    if ! result="$(python3 "$here/check_installation.py" "$out/$name.yaml" all 2>&1)"; then
-      printf '%s\n' "$result" | sed 's/^/  /' | head -10
-      good=0
-    fi
-    if [ "$policies" = network-policies ] && ! network_matrix "$out/$name.yaml" "$exposure"; then
-      good=0
-    fi
-    if [ "$good" = 1 ]; then ok "$name"; else bad "$name"; fi
   done
 done
 # The files of manifests/envoy-gateway/ (the Gateway of the default
@@ -472,7 +430,7 @@ printf 'apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: notes\ndata:\n  note
 notes() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template ows "$notes_chart" --namespace ows -f "$keys" "${all[@]}" "$@" --show-only templates/zz-test-notes.yaml 2>&1)"; then
+  if ! text="$(helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" "$@" --show-only templates/zz-test-notes.yaml 2>&1)"; then
     bad "notes $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     ok "notes $name"
@@ -487,27 +445,16 @@ notes "URLs" "https://api.example.org"
 # that names the role; no warning by default.
 notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
   --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
-notes "SSRF guard off: consent" "WARNING: the SSRF guard of consent is off (consent.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
-  --set-json 'consent.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
 notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" \
   --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
-if helm template ows "$notes_chart" --namespace ows -f "$keys" "${all[@]}" \
+if helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" \
     --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
   bad "notes: an SSRF warning with the guards on"
 else
   ok "notes: no SSRF warning with the guards on"
 fi
-notes "connection budget of the bundled server" "can open 225 connections to it, and the hooks 5 more (max_connections"
-notes "connection budget of an external server" "set max_connections of your server to at least 230" -f "$profiles/database-external.yaml"
-notes "without consent" "Consent is not installed: the gateway answers 404 to the consent routes" --set consent.enabled=false
-notes "without the wallet" "The organisation wallet is not installed" --set organisationWallet.enabled=false
-# Readers of a missing service's views open no connection: without the
-# wallet, the api core and the webhook handler have no reader pool and
-# consent has one reader (71 = 1 x 16 + 1 x 11 + 2 x 11 + 2 x 11, with the
-# health connection of each api and gateway pod); without consent, the
-# wallet config role has one reader (225 less 2 x 16 for consent and 10).
-notes "connection budget without the wallet" "can open 71 connections to it" --set organisationWallet.enabled=false
-notes "connection budget without consent" "can open 183 connections to it" --set consent.enabled=false
+notes "connection budget of the bundled server" "can open 183 connections to it, and the hooks 5 more (max_connections"
+notes "connection budget of an external server" "set max_connections of your server to at least 188" -f "$profiles/database-external.yaml"
 
 # --- 4. The render guards --------------------------------------------------------
 # Each case: values that must stop the render, and a text that the message
@@ -525,7 +472,7 @@ guard() {
     *[!A-Za-z0-9.]*) ;;
     *.*) pointer="/${expect//./\/}" ;;
   esac
-  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 >/dev/null)"; then
+  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 >/dev/null)"; then
     bad "guard $name: the render did not stop"
   elif grep -q -F -- "$expect" <<< "$err" || grep -q -F -- "$pointer" <<< "$err"; then
     # A here-string, as in renders: with pipefail, "printf | grep -q" fails
@@ -544,7 +491,7 @@ guard() {
 guard_property_name() {
   local name="$1" expect="$2" property="$3"; shift 3
   local err
-  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 >/dev/null)"; then
+  if err="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 >/dev/null)"; then
     bad "guard $name: the render did not stop"
   elif grep -q -F -- "$expect" <<< "$err" || grep -q -F -- "invalid propertyName '$property'" <<< "$err"; then
     ok "guard $name"
@@ -555,16 +502,15 @@ guard_property_name() {
 }
 # PostgreSQL is the only engine: the template guard (ow.db.engine) refuses
 # any other engine with a message that names the components (the schema has
-# no enum for it). mysql also stops the render when only one of the api,
-# consent and the organisation wallet is on.
-only_postgresql="is not supported: the api, consent and the organisation wallet accept only postgresql"
+# no enum for it). mysql also stops the render when only one of the api and
+# the organisation wallet is on.
+only_postgresql="is not supported: the api and the organisation wallet accept only postgresql"
 guard "engine" "database.engine \"oracle\" $only_postgresql" --set database.engine=oracle
 guard "engine mysql" "database.engine \"mysql\" $only_postgresql" --set database.engine=mysql
 mysql_external=(-f "$profiles/database-external.yaml" --set database.engine=mysql
-  --set api.enabled=false --set consent.enabled=false --set organisationWallet.enabled=false)
+  --set api.enabled=false --set organisationWallet.enabled=false)
 guard "engine mysql with the api only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set api.enabled=true \
-  --set gateway.upstreams.consent.url=http://consent.example.org --set gateway.upstreams.walletConfig.url=http://wallet.example.org
-guard "engine mysql with consent only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set consent.enabled=true
+  --set gateway.upstreams.walletConfig.url=http://wallet.example.org
 guard "engine mysql with the organisation wallet only" "database.engine \"mysql\" $only_postgresql" "${mysql_external[@]}" --set organisationWallet.enabled=true
 guard "mode" "database.mode" --set database.mode=cluster
 guard "external host" "database.external.host" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
@@ -584,7 +530,6 @@ guard "host" "api.host" --set api.host=
 guard "image tag" "global.imageTag is required: the release tag of your version" --set global.imageTag=
 guard "client address" "clientAddress" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
 guard "unknown value" "Additional property" --set postgres.enabled=true
-guard "privacy dashboard network policy without Kubernetes API address" "networkPolicy.egress.profiles.kubeApi" --set networkPolicy.enabled=true --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards
 guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.tls.caSecret= --set database.tls.sslMode=verify-full
 guard "OpenBao update strategy" "openbao.updateStrategy" --set openbao.updateStrategy=Sometimes
 # The platform operator Job: the required values, an http or https policy
@@ -610,7 +555,6 @@ guard "no wallet log file" "organisationWallet.extraConfig sets log_file.path \"
 guard "no wallet log file outside /tmp" "organisationWallet.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
 guard "no api log file" "api.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" --set api.extraConfig.Log.file.path=/tmp/api.log
 guard "no gateway log file" "gateway.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" --set gateway.extraConfig.Log.file.path=/tmp/gateway.log
-guard "no consent log file" "consent.extraConfig sets Log.file.path \"/tmp/consent.log\": $no_log_file" --set consent.extraConfig.Log.file.path=/tmp/consent.log
 # The api /tmp (api.tmp, an emptyDir in memory) must hold one upload of the
 # largest gateway body above 32 MiB (Go's multipart parser writes such a
 # file part whole to /tmp), and the memory request plus /tmp must fit below
@@ -633,7 +577,6 @@ guard "api /tmp sizeLimit not a quantity" "api.tmp.sizeLimit" --set api.tmp.size
 guard "gateway stop budget with the preStop" "gateway.terminationGracePeriodSeconds (35) must be at least preStopSeconds (10) + drainSeconds (5) + gracefulShutdownSeconds (20) + 5 = 40" \
   --set gateway.terminationGracePeriodSeconds=35
 guard "api stop budget with the preStop" "api.server.terminationGracePeriodSeconds (40) must be at least preStopSeconds (15)" --set api.server.preStopSeconds=15
-guard "consent stop budget with the preStop" "consent.server.terminationGracePeriodSeconds (39)" --set consent.server.terminationGracePeriodSeconds=39
 guard "dashboard stop budget" "enterpriseDashboard.terminationGracePeriodSeconds (15) must be at least preStopSeconds (10) + 10" \
   --set enterpriseDashboard.terminationGracePeriodSeconds=15
 guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gracefulShutdownSeconds (20) + backgroundShutdownSeconds (10) = 50 must be below terminationGracePeriodSeconds (45)" \
@@ -646,7 +589,7 @@ guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreat
 renders() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1)"; then
     bad "renders $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     # A here-string: with pipefail, "printf | grep -q" of a large render
@@ -660,7 +603,7 @@ renders() {
 lacks() {
   local name="$1" unexpected="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1)"; then
     bad "lacks $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$unexpected" <<< "$text"; then
     bad "lacks $name: has \"$unexpected\""
@@ -682,7 +625,7 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result
-  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 > "$file")"; then
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 > "$file")"; then
     bad "operator Jobs $case: $(printf '%s' "$result" | head -c 300)"
   elif result="$(python3 "$here/check_operator_jobs.py" "$file" "$case" 2>&1)"; then
     ok "operator Jobs $case"
@@ -702,8 +645,8 @@ renders "feature gate off with extraConfig" "enforce: false" --set gateway.extra
 # Each organisation's effective features select its webhook event types, so
 # the api files have no Webhooks.events and the schema refuses the value.
 renders "webhook delivery retention in the api files" "DeliveryRetentionDays: 10" --show-only templates/api/configmap.yaml
-lacks "no webhook event types in the api files" "consent.allowed" --show-only templates/api/configmap.yaml
-guard "no api.webhooks.events" "api.webhooks" --set-json 'api.webhooks.events=["consent.allowed"]'
+lacks "no webhook event types in the api files" "ows.issuer.issuance_history.credential_issued" --show-only templates/api/configmap.yaml
+guard "no api.webhooks.events" "api.webhooks" --set-json 'api.webhooks.events=["ows.issuer.issuance_history.credential_issued"]'
 # The API core publishes an event when an organisation is deleted.
 renders "api publishes the organisation deleted event" '"api.v1.evt.organisation.deleted"'
 # The wallet's EU trusted list check and key store providers.
@@ -724,7 +667,7 @@ test_ca() {
   local name="$1" expect="$2"; shift 2
   local text problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" --show-only templates/wallet/configmap.yaml 2> "$out/test-ca.err")"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" --show-only templates/wallet/configmap.yaml 2> "$out/test-ca.err")"; then
     bad "test CA $name: $(head -c 200 "$out/test-ca.err")"
   elif problems="$(python3 -c '
 import json, sys, yaml
@@ -754,7 +697,7 @@ audit() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/audit.yaml" 2> "$out/audit.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/audit.yaml" 2> "$out/audit.err"; then
     bad "audit $name: $(head -c 200 "$out/audit.err")"
   elif problems="$(python3 - "$out/audit.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -795,7 +738,7 @@ play_integrity() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
     bad "play integrity $name: $(head -c 200 "$out/play.err")"
   elif problems="$(python3 - "$out/play.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -848,7 +791,7 @@ app_attest() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
     bad "app attest $name: $(head -c 200 "$out/app-attest.err")"
   elif problems="$(python3 - "$out/app-attest.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -883,7 +826,7 @@ trust_anchors() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/anchors.yaml" 2> "$out/anchors.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/anchors.yaml" 2> "$out/anchors.err"; then
     bad "trust anchors $name: $(head -c 200 "$out/anchors.err")"
   elif problems="$(python3 - "$out/anchors.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -928,7 +871,7 @@ installation_limits() {
   local name="$1" expect="$2"; shift 2
   local problems
   # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" > "$out/limits.yaml" 2> "$out/limits.err"; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/limits.yaml" 2> "$out/limits.err"; then
     bad "installation limits $name: $(head -c 200 "$out/limits.err")"
   elif problems="$(python3 - "$out/limits.yaml" "$expect" <<'PY' 2>&1
 import json, sys, yaml
@@ -994,7 +937,7 @@ guard "organisation wallet unit limit as a string" "organisationWallet.walletUni
 development_apps() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" \
       --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -1026,20 +969,17 @@ development_apps "true in the service, config and worker files" 'true' --set org
 development_apps "false in the service, config and worker files" 'false' --set organisationWallet.walletUnit.developmentAppsAllowed=false
 guard "development apps as a text" "organisationWallet.walletUnit.developmentAppsAllowed" --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
 guard "development apps as a text without the schema" 'organisationWallet.walletUnit.developmentAppsAllowed ("true") must be true, false or empty' --skip-schema-validation --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
-# Installed services (docs/components.md): Installation.services is in the
-# api, webhook and gateway files only when a service is not installed, and
-# that service has no upstream, object, read user, trust, NATS user or
-# Valkey user (tests/check_installation.py). A release without a service
-# needs none of its keys: the cases remove its public keys and NATS users.
-# Each case is also an install (tests/check_hook_order.py) and, with network
-# policies, a network matrix check (tests/check_network_matrix.py).
-no_consent=(--set consent.enabled=false)
-no_wallet=(--set organisationWallet.enabled=false --set organisationWallet.host= --set serviceKeys.publicJwks.eudi-wallet=null
-  --set nats.auth.users.walletConfig=null --set nats.auth.users.walletService=null --set nats.auth.users.walletWorker=null)
+# The services of the installation (docs/components.md): Installation in the
+# api, webhook and gateway files (and in no other object) has the services
+# [wallet] and the optional features, with the wallet of this release or of
+# another release (tests/check_installation.py). Each case is also an
+# install (tests/check_hook_order.py) and, with network policies, a network
+# matrix check (tests/check_network_matrix.py).
+wallet_elsewhere=(--set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org)
 installation() {
   local name="$1" case="$2"; shift 2
   local file="$out/installation-${name// /-}.yaml" result good=1
-  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" 2>&1 > "$file")"; then
+  if ! result="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" 2>&1 > "$file")"; then
     bad "installation $name: $(printf '%s' "$result" | head -c 300)"
     return
   fi
@@ -1055,40 +995,28 @@ installation() {
   fi
   if [ "$good" = 1 ]; then ok "installation $name"; else bad "installation $name"; fi
 }
-installation "all services" all
-installation "all services with network policies" all -f "$profiles/network-policies.yaml"
-installation "consent of another release" consent-elsewhere --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
-installation "the wallet of another release" wallet-elsewhere --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org
-installation "without consent" no-consent "${no_consent[@]}"
-installation "without consent, network policies" no-consent "${no_consent[@]}" -f "$profiles/network-policies.yaml"
-installation "without consent, external database" no-consent "${no_consent[@]}" -f "$profiles/database-external.yaml"
-installation "without the wallet" no-wallet "${no_wallet[@]}"
+installation "the wallet of this release" wallet-here
+installation "the wallet of this release, network policies" wallet-here -f "$profiles/network-policies.yaml"
+installation "the wallet of this release, external database" wallet-here -f "$profiles/database-external.yaml"
+installation "the wallet of another release" wallet-elsewhere "${wallet_elsewhere[@]}"
+installation "the wallet of another release, network policies" wallet-elsewhere "${wallet_elsewhere[@]}" -f "$profiles/network-policies.yaml"
 # The optional features (installation.optionalFeatures): the same list in the
-# api, webhook, gateway and wallet files; protocol1 needs the wallet.
-optional=protocol1 installation "all services with protocol1" all --set 'installation.optionalFeatures={protocol1}'
-optional=protocol1 installation "the wallet of another release with protocol1" wallet-elsewhere --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org --set 'installation.optionalFeatures={protocol1}'
-guard "protocol1 without the wallet" "installation.optionalFeatures: protocol1 needs the wallet" "${no_wallet[@]}" --set 'installation.optionalFeatures={protocol1}'
+# api, webhook, gateway and wallet files.
+optional=protocol1 installation "the wallet of this release with protocol1" wallet-here --set 'installation.optionalFeatures={protocol1}'
+optional=protocol1 installation "the wallet of another release with protocol1" wallet-elsewhere "${wallet_elsewhere[@]}" --set 'installation.optionalFeatures={protocol1}'
 guard "organisationWallet.extraConfig.installation" "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.extraConfig.installation={"optional_features":["protocol1"]}'
-installation "without the wallet, network policies" no-wallet "${no_wallet[@]}" -f "$profiles/network-policies.yaml"
-installation "without the wallet, external database" no-wallet "${no_wallet[@]}" -f "$profiles/database-external.yaml"
 # api.extraConfig and gateway.extraConfig cannot set a different list: the
 # same services are accepted, and the files keep the chart's form.
-installation "without consent, the same list in api.extraConfig" no-consent "${no_consent[@]}" \
+installation "the same list in api.extraConfig and gateway.extraConfig" wallet-here \
   --set-json 'api.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.extraConfig.Installation={"services":["wallet"]}'
-installation "all services, the full list in api.extraConfig" all --set-json 'api.extraConfig.Installation={"services":["consent","wallet"]}'
-guard "no service installed" "the installation has no service" --set consent.enabled=false --set organisationWallet.enabled=false
-guard "privacy dashboard without consent" "privacyDashboard.enabled needs the consent service" "${no_consent[@]}" \
-  --set privacyDashboard.enabled=true --set privacyDashboard.namespace=privacy-dashboards
-guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet, consent)" \
-  --set-json 'api.extraConfig.Installation={"services":["wallet"]}'
-guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" "${no_consent[@]}" \
-  --set-json 'gateway.extraConfig.Installation={"services":["wallet","consent"]}'
-guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" "${no_consent[@]}" \
+guard "no organisation wallet" "the installation needs the organisation wallet: set organisationWallet.enabled to true, or set gateway.upstreams.walletConfig.url" --set organisationWallet.enabled=false
+guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'api.extraConfig.Installation={"services":[]}'
+guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'gateway.extraConfig.Installation={"services":["wallet","api"]}'
+guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" \
   --set-json 'api.extraConfig.Installation={}'
-guard "without consent, the public keys of the wallet are still required" "serviceKeys.publicJwks.eudi-wallet" "${no_consent[@]}" \
-  --set serviceKeys.publicJwks.eudi-wallet=null
-guard "without the wallet, the public keys of consent are still required" "serviceKeys.publicJwks.igrant-consent-management" "${no_wallet[@]}" \
-  --set serviceKeys.publicJwks.igrant-consent-management=null
+guard "the public keys of the wallet" "serviceKeys.publicJwks.eudi-wallet" --set serviceKeys.publicJwks.eudi-wallet=null
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}'
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
     --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
@@ -1205,7 +1133,7 @@ renders "worker group metrics Service includes pods that are not ready" "publish
 # Scrape ports, open only to the monitoring namespace
 # (networkPolicy.monitoring): the health port of the workers and the clock
 # (/metrics), and the metrics port of the servers.
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
     --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
     --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import sys, yaml
@@ -1231,7 +1159,7 @@ lacks "no scrape of the workers and the clock without the monitoring namespace" 
 dns_policy() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
       "$@" --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -1256,14 +1184,14 @@ dns_policy "the DNS pods only by default" '[]'
 dns_policy "the DNS pods and the DNS server outside the pod network" '["169.254.20.10/32"]' --set-json 'networkPolicy.dns.cidrs=["169.254.20.10/32"]'
 # Egress to the public internet (to work with other vendors): 0.0.0.0/0 and
 # ::/0, each with the exceptions of its family (also those of
-# networkPolicy.clusterCidrs); the api, the webhook handler, consent and the
-# wallet roles reach any port by default. IPv6: no multicast, and in the
+# networkPolicy.clusterCidrs); the api, the webhook handler and the wallet
+# roles reach any port by default. IPv6: no multicast, and in the
 # NAT64 prefix 64:ff9b::/96 only the images of IPv4 ranges that are never
 # public are closed: a public IPv4 vendor through NAT64 (an IPv6-only
 # cluster with DNS64) stays open, the NAT64 images of private, loopback or
 # metadata addresses are closed. No IPv4-mapped address (the API server
 # refuses it).
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
     --set-json 'networkPolicy.clusterCidrs=["10.0.0.0/8","fd00:10::/56"]' 2>&1 | python3 -c '
 import sys, yaml
 import ipaddress
@@ -1299,10 +1227,10 @@ for doc in yaml.safe_load_all(sys.stdin):
         roles.add(labels["netpol.igrant.io/role"])
 if seen.get("t-netpol-egress-profile-internet-any-port") is not None:
     print("internet-any-port has ports", seen.get("t-netpol-egress-profile-internet-any-port"))
-if sorted(roles) != ["api", "consent", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
+if sorted(roles) != ["api", "wallet-config", "wallet-service", "wallet-worker", "webhook"]:
     print("roles with any port", sorted(roles))
 ' 2>&1)" && [ -z "$problems" ]; then
-  ok "internet profiles: IPv4 and IPv6 with the exceptions of each family (NAT64: only the never-public images closed); any port for the api, webhook handler, consent and wallet roles"
+  ok "internet profiles: IPv4 and IPv6 with the exceptions of each family (NAT64: only the never-public images closed); any port for the api, webhook handler and wallet roles"
 else
   bad "internet profiles: $(printf '%s' "$problems" | head -c 400)"
 fi
@@ -1312,7 +1240,7 @@ fi
 platform_profile() {
   local name="$1" expect="$2"; shift 2
   local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
+  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
       "$@" 2>&1 | python3 -c '
 import json, sys, yaml
 expect = json.loads(sys.argv[1])
@@ -1359,7 +1287,7 @@ guard "no platform profile for the clock" 'the egress profile "platform" is not 
 matrix_refuses() {
   local name="$1" expect="$2"; shift 2
   local result
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" "$@" > "$out/matrix-mutant.yaml" 2>&1; then
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" "$@" > "$out/matrix-mutant.yaml" 2>&1; then
     bad "network matrix refuses $name: helm template: $(head -c 200 "$out/matrix-mutant.yaml")"
   elif result="$(network_matrix "$out/matrix-mutant.yaml" defaults)"; then
     bad "network matrix refuses $name: the check passed"
@@ -1418,12 +1346,12 @@ guard "worker threads above the largest wallet pool" "organisationWallet.workers
 # Connection budget (docs/database.md, "Connection budget"): the release's
 # pools, at the most pods of each Deployment, plus the hooks must fit in the
 # bundled server's max_connections less its reserved connections.
-renders "connection budget at the limit of the bundled server" "max_connections=233" --set database.postgresql.parameters.max_connections=233
-guard "connection budget one over the limit" "can open 225 connections to the bundled database server" --set database.postgresql.parameters.max_connections=232
+renders "connection budget at the limit of the bundled server" "max_connections=191" --set database.postgresql.parameters.max_connections=191
+guard "connection budget one over the limit" "can open 183 connections to the bundled database server" --set database.postgresql.parameters.max_connections=190
 guard "connection budget counts the reserved connections" "less the 13 reserved connections" \
-  --set database.postgresql.parameters.max_connections=233 --set-string database.postgresql.parameters.reserved_connections=10
-guard "connection budget counts the replicas" "wallet config 3 x 36" --set organisationWallet.config.replicas=3 \
-  --set database.postgresql.parameters.max_connections=233
+  --set database.postgresql.parameters.max_connections=191 --set-string database.postgresql.parameters.reserved_connections=10
+guard "connection budget counts the replicas" "wallet config 3 x 26" --set organisationWallet.config.replicas=3 \
+  --set database.postgresql.parameters.max_connections=191
 renders "no connection budget check with an external server" "kind: StatefulSet" -f "$profiles/database-external.yaml" --set api.replicas=20
 # Connection pooler (database.pooler): the wallet files of processes with
 # sessions name it, and the budget counts its server connections instead of
@@ -1431,7 +1359,7 @@ renders "no connection budget check with an external server" "kind: StatefulSet"
 pooler=(--set database.pooler.host=pgbouncer.ow.svc --set database.pooler.serverConnections=40)
 renders "pooler in the wallet files" "host: pgbouncer.ow.svc" "${pooler[@]}" --show-only templates/wallet/configmap.yaml
 lacks "no pooler without its host" "pooler" --show-only templates/wallet/configmap.yaml
-if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "${pooler[@]}" \
+if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "${pooler[@]}" \
     --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
 import sys, yaml
 data = yaml.safe_load(sys.stdin)["data"]
@@ -1456,7 +1384,7 @@ renders "api reader pool" "maxConns: 9" --set database.pools.apiReadAccess.maxCo
 redis_sts() {
   local name="$1" expect="$2"; shift 2
   local text
-  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" "$@" --show-only templates/redis/statefulset.yaml 2>&1)"; then
+  if ! text="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" --show-only templates/redis/statefulset.yaml 2>&1)"; then
     bad "Valkey pods $name: $(printf '%s' "$text" | head -c 200)"
   elif grep -q -F -- "$expect" <<< "$text"; then
     ok "Valkey pods $name"
@@ -1485,7 +1413,8 @@ guard "redis replica wait" "redis.client.replicaWaitMilliseconds" --set redis.cl
 # whose float product is not exact (2.01 x 1000 / 2 = 1004.9999999999999):
 # each renders, and 1 ms more stops the render. A timeout with more than 3
 # decimals stops the render (the schema, and the template without it).
-# Without the wallet there is no check (only the wallet reads the wait).
+# With the wallet of another release there is no check (only the wallet of
+# this release reads the wait).
 replica_wait() {
   local seconds="$1" wait="$2" limit="$3"
   renders "redis replica wait $wait ms with $seconds s" "replica_wait_milliseconds: $wait" --set-json "redis.client.timeoutSeconds=$seconds" --set "redis.client.replicaWaitMilliseconds=$wait" --show-only templates/wallet/configmap.yaml
@@ -1502,7 +1431,7 @@ replica_wait 0.003 1 3
 guard "redis replica wait of 10000 ms with 19 s" "redis.client.replicaWaitMilliseconds (10000) must be at most half of redis.client.timeoutSeconds (19 s = 19000 ms), that is at most 9500 ms" --set redis.client.timeoutSeconds=19 --set redis.client.replicaWaitMilliseconds=10000
 guard "redis timeout with 4 decimals" "redis.client.timeoutSeconds" --set-json redis.client.timeoutSeconds=2.0005
 guard "redis timeout with 4 decimals without the schema" "redis.client.timeoutSeconds (2.0005) has more than 3 decimals" --skip-schema-validation --set-json redis.client.timeoutSeconds=2.0005
-renders "redis replica wait without the wallet" "kind: Deployment" --set organisationWallet.enabled=false --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
+renders "redis replica wait with the wallet of another release" "kind: Deployment" "${wallet_elsewhere[@]}" --set redis.client.timeoutSeconds=2 --set redis.client.replicaWaitMilliseconds=1001
 external_redis=(-f "$profiles/redis-external.yaml")
 guard "external redis without sentinels or address" "redis.external" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]'
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
@@ -1565,7 +1494,7 @@ guard "redis state with network policies without addresses" "networkPolicy.exter
 groups=(--set redis.state.enabled=true --set-json 'redis.state.sentinels=["state-1.example.org:26379","state-2.example.org:26379"]'
   --set redis.state.masterName=state --set redis.state.caSecret=state-ca
   --set redis.cache.enabled=true --set redis.cache.address=cache.example.org:6380 --set redis.cache.sentinelAuth=false)
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/network-policies.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
     --set-json 'networkPolicy.externalRedis=[{"cidrs":["198.51.100.0/24"]}]' "${groups[@]}" > "$out/redis-groups.yaml" 2> "$out/redis-groups.err"; then
   bad "Valkey groups: $(head -c 200 "$out/redis-groups.err")"
 elif problems="$(python3 - "$out/redis-groups.yaml" <<'PY' 2>&1
@@ -1630,41 +1559,26 @@ renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" --set gateway.proxy
 renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" --set gateway.proxy.maxBodyBytes.file=33554432 \
   --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
 # api uploads (api.extraConfig Uploads and ImageUpload): the gateway file
-# class must take the largest CSV import + 64 KiB, and the memory request +
-# Uploads.maxInProgress x the largest file must fit below the api memory
+# class must take the largest image + 64 KiB, and the memory request +
+# Uploads.maxInProgress x the largest image must fit below the api memory
 # limit.
-guard "gateway file class below the api CSV import limit" "must be at least the api Uploads.individualImportMaxFileBytes (20971520) + 65536" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}'
-renders "CSV import of 20 MiB with the file class for it" "kind: Deployment" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":20971520}}' --set gateway.proxy.maxBodyBytes.file=21037056
 guard "gateway file class below the api image upload limit" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest upload file (104791040 bytes" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest upload file (5242880 bytes" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
-# CSV import limits in the dashboard config.json: the values of
-# api.extraConfig.Uploads, as whole numbers, only when set; the render stops
-# for a value that the api refuses at start; a change restarts the dashboard
-# pods (config.json checksum).
-lacks "no import limits in the dashboard config.json by default" "individualImport" --show-only templates/dashboard/configmap.yaml
-renders "api import file limit in the dashboard config.json" '"individualImportMaxFileBytes": 10485760' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":10485760,"individualImportMaxRows":9000}}' --set gateway.proxy.maxBodyBytes.file=11000000 --show-only templates/dashboard/configmap.yaml
-renders "api import row limit in the dashboard config.json" '"individualImportMaxRows": 9000' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9000}}' --show-only templates/dashboard/configmap.yaml
-lacks "api default 0 not in the dashboard config.json" "individualImport" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":0}}' --show-only templates/dashboard/configmap.yaml
-guard "import rows above 9000" "api.extraConfig.Uploads.individualImportMaxRows (9001) is not between 1 and 9000" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":9001}}'
-guard "import file below 64 KiB" "api.extraConfig.Uploads.individualImportMaxFileBytes (1000) is not between 65536 and 20971520" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":1000}}'
-guard "import rows not a whole number" "api.extraConfig.Uploads.individualImportMaxRows (50.5) must be a whole number" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":50.5}}'
-guard "import rows not a number" 'api.extraConfig.Uploads.individualImportMaxRows ("5k") is a text: give a number, not a text' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5k"}}'
-guard "import rows as a text of digits" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text: give a number, not a text' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":"5000"}}'
-guard "import file bytes as a text of digits" 'api.extraConfig.Uploads.individualImportMaxFileBytes ("5242880") is a text: give a number, not a text' --set-json 'api.extraConfig={"Uploads":{"individualImportMaxFileBytes":"5242880"}}'
-guard "import rows as a text in a values file" 'api.extraConfig.Uploads.individualImportMaxRows ("5000") is a text' -f "$here/fixtures/import-rows-text.yaml"
-if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
-     "$(helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" --set-json 'api.extraConfig={"Uploads":{"individualImportMaxRows":7000}}' --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
-  ok "a new import limit restarts the dashboard pods (config.json checksum)"
+guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest image (104791040 bytes" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest image (5242880 bytes" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+# The dashboard config.json: a change restarts the dashboard pods (the
+# config.json checksum).
+if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
+     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set enterpriseDashboard.configuration.appVersion=test-version --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+  ok "a new config.json restarts the dashboard pods (config.json checksum)"
 else
-  bad "a new import limit restarts the dashboard pods (config.json checksum)"
+  bad "a new config.json restarts the dashboard pods (config.json checksum)"
 fi
 renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 # Writable paths of the pods that run as non-root with a read-only root
 # file system: /tmp of each api, webhook, dashboard and wallet pod (64Mi, in
 # memory except for the dashboard), /tmp and the socket folder of the
 # bundled server, and the pid folder of NATS.
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" > "$out/writable.yaml" 2> "$out/writable.err"; then
   bad "writable paths: $(head -c 200 "$out/writable.err")"
 elif problems="$(python3 - "$out/writable.yaml" <<'PY' 2>&1
 import sys, yaml
@@ -1706,7 +1620,7 @@ fi
 
 # The bundled NATS JetStream store: user and group 65532, fsGroup and
 # OnRootMismatch, and no init container.
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
     --show-only templates/nats/statefulset.yaml > "$out/nats-store.yaml" 2> "$out/nats-store.err"; then
   bad "NATS store: $(head -c 200 "$out/nats-store.err")"
 elif problems="$(python3 - "$out/nats-store.yaml" <<'PY'
@@ -1734,7 +1648,7 @@ fi
 # component's value).
 global_security=(--set-json 'global.podSecurityContext={"seLinuxOptions":{"level":"s0:c123,c456"},"supplementalGroups":[4321],"runAsUser":4242}'
   --set-json 'global.containerSecurityContext={"seLinuxOptions":{"type":"container_t"}}')
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/operator-jobs-bootstrap.yaml" \
     --set redis.metrics.enabled=true "${global_security[@]}" > "$out/global-security.yaml" 2> "$out/global-security.err"; then
   bad "global security contexts: $(head -c 200 "$out/global-security.err")"
 elif problems="$(python3 - "$out/global-security.yaml" <<'PY'
@@ -1757,7 +1671,7 @@ for doc in yaml.safe_load_all(open(sys.argv[1])):
             print(f"{name}:{container['name']}: the container lacks global.containerSecurityContext")
         if container_context.get("readOnlyRootFilesystem") is not True:
             print(f"{name}:{container['name']}: the container lost readOnlyRootFilesystem")
-if pods < 25:
+if pods < 20:
     print(f"only {pods} pod templates")
 PY
 )" && [ -z "$problems" ]; then
@@ -1784,7 +1698,7 @@ for key, component in values.items():
 print(f"global.podSecurityContext.runAsUser does not apply to {', '.join(sorted(paths))}: the podSecurityContext of each sets runAsUser")
 PY
 )"
-if ! text="$(helm template t "$notes_chart" --namespace ow -f "$keys" "${all[@]}" "${global_security[@]}" \
+if ! text="$(helm template t "$notes_chart" --namespace ow -f "$keys" "${site[@]}" "${global_security[@]}" \
     --show-only templates/zz-test-notes.yaml 2>&1)"; then
   bad "global security contexts: notes: $(printf '%s' "$text" | head -c 200)"
 elif grep -q -F -- "$expected" <<< "$text" && ! grep -q -F "global.podSecurityContext.supplementalGroups" <<< "$text" \
@@ -1797,7 +1711,7 @@ fi
 # Image pull Secrets (global.imagePullSecrets) in every pod spec: the
 # Deployments, StatefulSets, Jobs and hooks, also the optional ones (the api
 # operator Job, the Valkey metrics exporter).
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$profiles/exposure-envoy-gateway.yaml" -f "$here/values/operator-jobs-bootstrap.yaml" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/exposure-envoy-gateway.yaml" -f "$here/values/operator-jobs-bootstrap.yaml" \
     --set redis.metrics.enabled=true --set-json 'global.imagePullSecrets=["igrant-registry-creds","mirror-creds"]' \
     > "$out/pull-secrets.yaml" 2> "$out/pull-secrets.err"; then
   bad "image pull Secrets: helm template: $(head -c 200 "$out/pull-secrets.err")"
@@ -1844,7 +1758,7 @@ fi
 install_order() {
   local name="$1" database="$2"; shift 2
   local case="$out/install-$database-${name// /-}"
-  local args=(-f "$keys" "${all[@]}" -f "$profiles/exposure-envoy-gateway.yaml")
+  local args=(-f "$keys" "${site[@]}" -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   if ! helm template t "$chart" --namespace ow "${args[@]}" "$@" > "$case.yaml" 2> "$case.err"; then
     bad "install $name ($database): helm template"
@@ -1859,7 +1773,7 @@ install_order() {
 # all components on.
 upgrade_order() {
   local name="$1" database="$2"; shift 2
-  local args=(-f "$keys" "${all[@]}"
+  local args=(-f "$keys" "${site[@]}"
     -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
@@ -1873,11 +1787,11 @@ upgrade_order() {
     bad "upgrade $name ($database)"
   fi
 }
-# An upgrade that turns a service off: from a release with all components
+# An upgrade that turns a component off: from a release with all components
 # on to a release with the values of each case.
 upgrade_removes() {
   local name="$1" database="$2"; shift 2
-  local args=(-f "$keys" "${all[@]}"
+  local args=(-f "$keys" "${site[@]}"
     -f "$profiles/exposure-envoy-gateway.yaml")
   [ "$database" = database-external ] && args+=(-f "$profiles/database-external.yaml")
   local case="$out/upgrade-$database-${name// /-}"
@@ -1892,37 +1806,30 @@ upgrade_removes() {
   fi
 }
 for database in database-bundled database-external; do
-  install_order "with consent off" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
   install_order "with the api off" "$database" --set api.enabled=false
   install_order "with the organisation wallet off" "$database" --set organisationWallet.enabled=false \
     --set gateway.upstreams.walletConfig.url=http://wallet.example.org
   upgrade_order "with the same values" "$database"
   upgrade_order "that turns the organisation wallet on" "$database" --set organisationWallet.enabled=false \
     --set gateway.upstreams.walletConfig.url=http://wallet.example.org
-  upgrade_order "that turns consent on" "$database" --set consent.enabled=false --set gateway.upstreams.consent.url=http://consent.example.org
   upgrade_order "that turns the api on" "$database" --set api.enabled=false
   upgrade_order "that turns the database TLS on" "$database" --set database.tls.enabled=false
-  # A service added later (the earlier release does not install it), and a
-  # service removed (the new release does not install it).
-  upgrade_order "that installs consent" "$database" "${no_consent[@]}"
-  upgrade_order "that installs the wallet" "$database" "${no_wallet[@]}"
-  upgrade_removes "that removes consent" "$database" "${no_consent[@]}"
-  upgrade_removes "that removes the wallet" "$database" "${no_wallet[@]}"
+  upgrade_removes "that turns the organisation wallet off" "$database" "${wallet_elsewhere[@]}"
 done
 
 # Hook Secrets (the database Secret, the read access Secret and the wallet
 # role Secret) keep the values of the earlier release's Secrets. "helm
 # template" has no cluster, so a copy of the chart reads the earlier Secrets
 # from earlier-secrets.json instead of lookup (ow.lookupSecretKey). The
-# earlier database Secret has no consent password (as in an upgrade that
-# turns consent on): the render must create a new one.
+# earlier database Secret has no wallet password (as in an upgrade that
+# turns the organisation wallet on): the render must create a new one.
 lookup_chart="$out/lookup-chart"
 rm -rf "$lookup_chart"
 mkdir -p "$lookup_chart"
 cp -R "$chart/Chart.yaml" "$chart/values.yaml" "$chart/values.schema.json" "$chart/templates" "$chart/files" "$chart/policies" "$lookup_chart/"
 lookup_line='{{- $secret := lookup "v1" "Secret" $root.Release.Namespace (index . 1) -}}'
 stub_line='{{- $secret := index ($root.Files.Get "earlier-secrets.json" | fromJson) (index . 1) -}}'
-lookup_args=(-f "$keys" "${all[@]}")
+lookup_args=(-f "$keys" "${site[@]}")
 if [ "$(grep -c -F -- "$lookup_line" "$lookup_chart/templates/_helpers.tpl")" != 1 ]; then
   bad "upgrade keeps the Secret values: ow.lookupSecretKey lacks the lookup line that the test replaces"
 elif ! helm template t "$chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/secrets-new.yaml" 2> "$out/secrets.err"; then
@@ -1930,7 +1837,7 @@ elif ! helm template t "$chart" --namespace ow "${lookup_args[@]}" --show-only t
 else
   LOOKUP_LINE="$lookup_line" STUB_LINE="$stub_line" perl -pi -e 's/\Q$ENV{LOOKUP_LINE}\E/$ENV{STUB_LINE}/' "$lookup_chart/templates/_helpers.tpl"
   # The earlier Secrets: the keys of a new render with known test values
-  # (not secrets), without the consent password.
+  # (not secrets), without the wallet password.
   python3 -c '
 import base64, json, sys, yaml
 earlier = {}
@@ -1938,7 +1845,7 @@ for doc in yaml.safe_load_all(open(sys.argv[1])):
     if doc and doc["metadata"]["name"] in ("t-postgres", "t-postgres-tls", "t-read-access", "t-wallet-database-roles"):
         name = doc["metadata"]["name"]
         earlier[name] = {"data": {key: base64.b64encode(f"earlier-{name}-{key}".encode()).decode()
-                                  for key in doc["data"] if (name, key) != ("t-postgres", "igrant_consent")}}
+                                  for key in doc["data"] if (name, key) != ("t-postgres", "igrant_wallet")}}
 json.dump(earlier, open(sys.argv[2], "w"))
 ' "$out/secrets-new.yaml" "$lookup_chart/earlier-secrets.json"
   if ! helm template t "$lookup_chart" --namespace ow "${lookup_args[@]}" --show-only templates/secrets.yaml > "$out/secrets-kept.yaml" 2> "$out/secrets.err"; then
@@ -1961,8 +1868,8 @@ for name, secret in sorted(earlier.items()):
     for key in sorted(set(doc["data"]) - set(secret["data"])):
         if not doc["data"][key] or doc["data"][key] in secret["data"].values():
             print(f"the Secret {name} has no new value for {key}")
-if "igrant_consent" not in rendered.get("t-postgres", {}).get("data", {}):
-    print("the Secret t-postgres has no consent password")
+if "igrant_wallet" not in rendered.get("t-postgres", {}).get("data", {}):
+    print("the Secret t-postgres has no wallet password")
 ' "$lookup_chart/earlier-secrets.json" "$out/secrets-kept.yaml" 2>&1)" && [ -z "$problems" ]; then
     ok "upgrade keeps the Secret values"
   else
@@ -2028,7 +1935,7 @@ fi
 # AppArmor Unconfined, SELinux spc_t, procMount Unmasked, hostProcess) and
 # each bad pod of tests/fixtures/pss-pods.yaml (also an ephemeral container
 # and an AppArmor annotation, which the chart does not render).
-if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" \
+if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
     -f "$here/values/operator-jobs-bootstrap.yaml" --set redis.metrics.enabled=true > "$out/security-options.yaml" 2> "$out/security-options.err"; then
   bad "security settings: helm template with the optional containers"
   sed 's/^/  /' "$out/security-options.err" | head -10
@@ -2063,7 +1970,7 @@ else
     done
   fi
   # The values mutant: both checks refuse it, each for all four fields.
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${all[@]}" -f "$here/values/pss-mutant.yaml" \
+  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$here/values/pss-mutant.yaml" \
       > "$out/mutants/pss-mutant.yaml" 2> "$out/mutants/pss-mutant.err"; then
     bad "both security checks refuse the mutant: helm template: $(head -c 200 "$out/mutants/pss-mutant.err")"
   else

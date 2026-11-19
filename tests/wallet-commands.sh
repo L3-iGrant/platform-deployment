@@ -31,19 +31,18 @@ bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
 # The wallet commands of the chart and of Compose, one JSON line each (where,
 # command, environment, configuration file and its path).
-values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$chart/profiles/consent.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
+values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
 for extra in hsm-signer-local.yaml hsm-signer-dpod.yaml; do
   [ -f "$chart/profiles/$extra" ] && values+=(-f "$chart/profiles/$extra")
 done
 helm template t "$chart" --namespace ow "${values[@]}" > "$work/render.yaml"
 # A copy of docker-compose/ with the example .env and the files that make
-# configs writes (the services read their configuration files from generated/),
-# with consent (CONSENT_ENABLED=true), so wallet-read-access-consent is there too.
+# configs writes (the services read their configuration files from generated/).
 compose="$work/docker-compose"
 cp -R "$chart/docker-compose" "$compose"
 rm -rf "$compose/generated" "$compose/secrets"
 cp "$compose/.env.example" "$compose/.env"
-(cd "$compose" && export CONSENT_ENABLED=true && python3 -I ./render-configs.py > /dev/null && HOST_UID=4242 HOST_GID=4243 docker compose config --format json) > "$work/compose.json"
+(cd "$compose" && python3 -I ./render-configs.py > /dev/null && HOST_UID=4242 HOST_GID=4243 docker compose config --format json) > "$work/compose.json"
 python3 - "$work/render.yaml" "$work/compose.json" "$work" > "$work/commands.jsonl" <<'PY'
 import json, os, sys, yaml
 render, compose, work = sys.argv[1:4]
