@@ -31,7 +31,7 @@ Then check out the release that iGrant.io gives you (a release tag or a commit),
 
 ```bash
 cd platform-deployment
-git checkout 2026.11.6
+git checkout 2026.11.7
 ```
 
 The image tag of the installation (`global.imageTag`) is the chart's `appVersion` in `Chart.yaml` of this checkout.
@@ -40,7 +40,7 @@ The examples of this page use this repository; with the enterprise chart, use `.
 
 ## Step 1: the namespace and the registry access
 
-The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.6`). You get a service account key file, `service-account-key.json`.
+The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.7`). You get a service account key file, `service-account-key.json`.
 
 On your workstation, check the access and let Docker pull the api image for step 2. Use one of the two ways.
 
