@@ -12,7 +12,7 @@ The keys of the platform and the Secrets that hold them: the Secrets of `scripts
 | `<release>-api-token-signing` | `jwks.json` | The keys that sign the API tokens |
 | `<release>-api-db-wrapping` | `db-wrapping-keys.json` | The keys that encrypt the OpenID provider's keys in the database |
 | `<release>-gateway-internal-token` | `internal-token-jwks.json` | The key that signs the gateway's internal token |
-| `<release>-api-service-key`, `<release>-consent-service-key`, `<release>-wallet-service-key` | `service-jwks.json` | The keys that sign each service's NATS messages |
+| `<release>-api-service-key`, `<release>-wallet-service-key` | `service-jwks.json` | The keys that sign each service's NATS messages |
 | `<release>-nats-<user>` | `seed` | The nkey seed of each NATS user |
 
 The script runs the `igrant-api keys` commands of the api image (`generate-hash-secret`, `generate-token-key`, `generate-wrapping-key`, `export-token-jwks`, `generate-nats-seed`). To change a key:

@@ -85,7 +85,7 @@ You set the release tag as `global.imageTag` in step 3; the render stops without
 kubectl apply -n ows -f ./ows-keys/secrets.yaml
 ```
 
-Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernetes.io/component=keys -o name | wc -l` shows `13` (3 API keys, the gateway key, 3 service keys and 6 NATS users).
+Check: `kubectl -n ows get secret -l app.kubernetes.io/instance=ows,app.kubernetes.io/component=keys -o name | wc -l` shows `11` (3 API keys, the gateway key, 2 service keys and 5 NATS users).
 
 `./ows-keys/values-keys.yaml` holds only public values (key ids, public keys and Secret names). You pass it to Helm in step 4. `./ows-keys/secrets.yaml` and `./ows-keys/files/` hold private keys: keep a copy in your password safe, then delete the folder. See [Keys](keys.md).
 
@@ -103,9 +103,8 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 | `redis-external.yaml` | Your own Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
 | `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
 | `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
-| `consent.yaml` | Consent management (data agreements and consent records). It is off by default. | [Components](components.md#the-services-of-the-installation) |
 
-By default, an installation has the organisation wallet and no consent management. To add consent, add `profiles/consent.yaml`. To leave the wallet out, set `organisationWallet.enabled: false` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Without the wallet, the chart runs no OpenBao: the OpenBao profiles have no effect, and you skip step 5.
+An installation has the organisation wallet. To use the organisation wallet of another release, set `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` in `my-site.yaml` (see [Components](components.md#the-services-of-the-installation)). Then the chart runs no OpenBao: the OpenBao profiles have no effect, and you skip step 5.
 
 To change a profile, copy it first (for example to `my-exposure.yaml` for other TLS Secret names or another Gateway). Each profile names the Secrets that you must create before the install, for example the database admin password. Create them now. For an HSM or a larger installation, see [Connect your on-premise HSM](on-premise-hsm.md) and [Scaled deployments](scaled-deployments.md).
 
@@ -145,7 +144,7 @@ When Helm has created the resources, the command waits for the database hooks (H
 - the init hook waits for the database server, then creates the databases and the users;
 - the roles hook creates the wallet's database roles;
 - the migration hook creates the schema of the wallet database;
-- the wallet's read access hooks create the read-only users with which the api, and consent when it is installed, read the wallet database.
+- the wallet's read access hook creates the read-only user with which the api reads the wallet database.
 
 See [Database](database.md#hooks-of-the-databases). This can take a few minutes; `--timeout 15m` gives each hook enough time.
 
@@ -155,7 +154,7 @@ If a hook fails, the install stops. Read the log of its Job (for example `kubect
 
 ## Step 5: initialise OpenBao (bundled OpenBao only)
 
-With an external OpenBao (`openbao-external.yaml`), or without the organisation wallet, go to step 6.
+With an external OpenBao (`openbao-external.yaml`), or with the organisation wallet of another release, go to step 6.
 
 1. Initialise OpenBao once. The unseal keys and the root token appear only in your terminal. Keep them outside the cluster, for example in a password safe, and give the keys to different people.
 
@@ -183,13 +182,13 @@ Check: `kubectl -n ows exec ows-openbao-0 -- bao status` shows `Initialized true
 kubectl -n ows get pods,jobs
 ```
 
-Check: after a few minutes, all pods are `Running` and `READY` (the Valkey pods `ows-redis-0`, `ows-redis-1` and `ows-redis-2` show `2/2`), and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-consent-read-access-*` (with consent), `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
+Check: after a few minutes, all pods are `Running` and `READY` (the Valkey pods `ows-redis-0`, `ows-redis-1` and `ows-redis-2` show `2/2`), and the Jobs `ows-db-init`, `ows-api-read-access-*`, `ows-wallet-database-roles`, `ows-wallet-migrate` and `ows-wallet-read-access-*` are `Complete`.
 
 A few restarts at the first start are normal (`RESTARTS` 3 to 5):
 
 - The Jobs retry while the database starts.
 - The wallet pods wait until the migration hook has created the schema of the wallet database.
-- A service that reads another service's views (the API, consent and the wallet config role) becomes ready only when its read-only database user exists.
+- A service that reads another service's views (the API and the wallet config role) becomes ready only when its read-only database user exists.
 
 Until then, a process exits when the database, its read-only user or the wallet's OpenBao login (step 5) is not ready yet, and its log says why. If a pod still restarts after 10 minutes, read its log (`kubectl -n ows logs <pod> --previous`).
 
@@ -263,7 +262,7 @@ The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`
 
    The output is one JSON line with `operatorOrganisationId` (the id of your organisation) and one entry in `platformAdmins`.
 
-4. Log in to `https://dashboard.example.org` with the e-mail address and the password. You must change the password at the first login: the dashboard opens the page for the new password (15 characters or more, with at least one special character). This step needs no e-mail service. After the login, you see the organisation's "Getting Started" page. The platform admin functions are in the dashboard group "Wallet Provider (Organisations)" ("Platform" without the wallet).
+4. Log in to `https://dashboard.example.org` with the e-mail address and the password. You must change the password at the first login: the dashboard opens the page for the new password (15 characters or more, with at least one special character). This step needs no e-mail service. After the login, you see the organisation's "Getting Started" page. The platform admin functions are in the dashboard group "Wallet Provider (Organisations)".
 
 5. Run `helm upgrade` again without `platform-operator.yaml` to turn the Job off. Then delete the password file and the Secret: the admin exists now, and only the Job of item 2 reads the Secret.
 
@@ -305,14 +304,14 @@ Check: within about a minute, `GET /v4/config/ows/holder/wallet-unit/status` (wi
 
 ## After the installation: the other organisations and admins
 
-A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Organisations)" ("Platform" without the wallet). You need no Job and no chart command.
+A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Organisations)". You need no Job and no chart command.
 
 | Task | Where | What an operator of the installation must know |
 | --- | --- | --- |
 | Add an organisation with its first admin | Page "Organisations", button "Add Organisation" | The first admin gets an e-mail invitation or a one-time password. An invitation needs the e-mail service (`api.smtp.host`); without it, use the one-time password. The API deploys the new organisation's wallet. |
-| Set the features of an organisation | Row menu, "Manage Features" | One switch for each feature of an installed service: Issuer & Verifier and Wallet Unit (Holder) with the wallet, Consent Management and Data Marketplace with consent (2 switches when consent is off). A feature of a service that is not installed has no switch. A new organisation has only Issuer & Verifier on: turn on each other area that the organisation needs. The platform operator organisation has each of them on. Getting Started, Account, Webhooks and Activity Logs have no switch and are always available. The gateway refuses the routes of a feature that is off for the organisation (`gateway.features.enforce`, see [Values reference](values-reference.md#api-and-gateway)). A change applies within one minute. |
+| Set the features of an organisation | Row menu, "Manage Features" | One switch for each feature: Issuer & Verifier and Wallet Unit (Holder). A new organisation has only Issuer & Verifier on: turn on each other area that the organisation needs. The platform operator organisation has each of them on. Getting Started, Account, Webhooks and Activity Logs have no switch and are always available. The gateway refuses the routes of a feature that is off for the organisation (`gateway.features.enforce`, see [Values reference](values-reference.md#api-and-gateway)). A change applies within one minute. |
 | Suspend and resume an organisation | Row menu | The gateway refuses every credential of a suspended organisation within 60 seconds. If the wallet did not get the new state, the page shows a warning: send the request again. |
-| Delete a suspended organisation | Row menu, "Delete Organisation" | You cannot undo a deletion. The API deletes its data of the organisation in steps, consent (when it is installed) purges its data, and the wallet deactivates the organisation's wallets and purges them after its retention period. No background job retries a failed API step: if the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
+| Delete a suspended organisation | Row menu, "Delete Organisation" | You cannot undo a deletion. The API deletes its data of the organisation in steps, and the wallet deactivates the organisation's wallets and purges them after its retention period. No background job retries a failed API step: if the page shows failed steps, use "Run Deletion Again" until none is left. Each failed step is one `ERROR` line in the log of the api pods. |
 | Give and remove the platform admin right | Page "Super Admins", row menu "Give Platform Admin Right" or "Remove Platform Admin Right" | Only an admin of the platform operator organisation can get the right. A platform admin whose password has fewer than 15 characters must set a new password at the next login. |
 
 Every other new password (an invitation, a one-time password change, a reset) needs 12 characters or more and at least one special character.

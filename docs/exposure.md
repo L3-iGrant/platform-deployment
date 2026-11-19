@@ -51,7 +51,7 @@ After that, the app uses issuers and verifiers on their own hosts.
 
 ### The limit of the API host
 
-The chart exposes the API host as one path (`api.exposure.path`, default `/`) to the gateway. So the API host is either public with all gateway routes, or internal with all of them. Some apps need a public gateway route, for example an individual's login, the consent `/service` routes, or the app link files `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`. Today the chart cannot expose only these routes of the API host. With `api.exposure.type: none` you create the API host routes yourself, and the chart does not know which paths they make public.
+The chart exposes the API host as one path (`api.exposure.path`, default `/`) to the gateway. So the API host is either public with all gateway routes, or internal with all of them. Some apps need a public gateway route, for example the app link files `/.well-known/apple-app-site-association` and `/.well-known/assetlinks.json`. Today the chart cannot expose only these routes of the API host. With `api.exposure.type: none` you create the API host routes yourself, and the chart does not know which paths they make public.
 
 ## What your proxy must do
 
