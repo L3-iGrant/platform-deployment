@@ -647,10 +647,9 @@ guard "api memory limit below the request and /tmp" "api.resources: the memory r
 guard "webhook memory limit below the request and /tmp" "api.webhook.resources: the memory request (32Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (90Mi)" \
   --set api.webhook.resources.limits.memory=90Mi
 guard "api /tmp sizeLimit not a quantity" "api.tmp.sizeLimit" --set api.tmp.sizeLimit=64MB
-# Stopping the HTTP pods (ow.checkStopBudget, the dashboard guard and the
-# schema): the grace period covers the preStop sleep and the server stop; a
-# preStop of 0 seconds or a strategy other than RollingUpdate stops the
-# render.
+# Stopping the HTTP pods (the schema and ow.preStopSleep): a preStop of 0
+# seconds or a strategy other than RollingUpdate stops the render. The chart
+# calculates the grace period (see the renders of section 5).
 guard "preStop of 0 seconds" "preStopSeconds" --set api.server.preStopSeconds=0
 guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreate
 # A plain secret in a values file stops the render (a Secret reference
