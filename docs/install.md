@@ -98,8 +98,8 @@ Then pick the profiles in `./platform-deployment/profiles/` that fit your cluste
 | Profile | Use it for | Read first |
 | --- | --- | --- |
 | `exposure-envoy-gateway.yaml` (the default of these docs), `exposure-kgateway.yaml`, `exposure-none.yaml`, `exposure-ingress-nginx.yaml`, `exposure-ingress-nginx-cert-manager.yaml`, `exposure-on-premise.yaml` | How traffic reaches the hosts (one is required). Envoy Gateway needs the Gateway `platform` of [Prerequisites](prerequisites.md#envoy-gateway). ingress-nginx (also in `exposure-on-premise.yaml`) was retired on 24 March 2026 and gets no security fixes. | [Exposure](exposure.md) |
+| `openbao-external.yaml`, `openbao-shamir.yaml` | The OpenBao (one is required, copy it to `my-openbao.yaml`): your own OpenBao with an HSM seal (`openbao-external.yaml`), or the bundled OpenBao with the seal `shamir`, for development and tests only (`openbao-shamir.yaml`). An HSM seal of the bundled OpenBao needs the enterprise chart. | [OpenBao](openbao.md) |
 | `database-external.yaml` | Your own PostgreSQL server. Without it, the chart runs one PostgreSQL 18 server. | [Database](database.md) |
-| `openbao-external.yaml` | Your own OpenBao. Without it, the chart runs OpenBao with the Shamir seal (manual unseal). | [OpenBao](openbao.md) |
 | `redis-external.yaml` | Your own Valkey or Redis. Without it, the chart runs Valkey with Sentinel. | [Redis](redis.md) |
 | `network-policies.yaml` | NetworkPolicies for every pod | [Network policies](network-policies.md) |
 | `minimal.yaml` | A test or development installation: one replica of each service | [Components](components.md) |
@@ -110,7 +110,7 @@ Check: the render has no error:
 
 ```bash
 helm template ows ./platform-deployment -n ows \
-  -f ./ows-keys/values-keys.yaml -f my-site.yaml \
+  -f ./ows-keys/values-keys.yaml -f my-site.yaml -f my-openbao.yaml \
   -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml > /tmp/ows.yaml
 ```
 
@@ -130,7 +130,7 @@ Every object must show `(server dry run)`. Fix each error before step 4.
 
 ```bash
 helm install ows ./platform-deployment -n ows \
-  -f ./ows-keys/values-keys.yaml -f my-site.yaml \
+  -f ./ows-keys/values-keys.yaml -f my-site.yaml -f my-openbao.yaml \
   -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml \
   --timeout 15m
 ```
@@ -152,7 +152,7 @@ If a hook fails, the install stops. Read the log of its Job (for example `kubect
 
 ## Step 5: initialise OpenBao (bundled OpenBao only)
 
-With an external OpenBao (`openbao-external.yaml`), go to step 6.
+With an external OpenBao (`openbao-external.yaml`), go to step 6. The bundled OpenBao of this chart has the seal `shamir`, for development and tests only (see [OpenBao](openbao.md)).
 
 1. Initialise OpenBao once. The unseal keys and the root token appear only in your terminal. Keep them outside the cluster, for example in a password safe, and give the keys to different people.
 
@@ -240,7 +240,7 @@ The chart's `bootstrapPlatform` Job runs `igrant-api onboard bootstrap-platform`
 
    ```bash
    helm upgrade ows ./platform-deployment -n ows \
-     -f ./ows-keys/values-keys.yaml -f my-site.yaml \
+     -f ./ows-keys/values-keys.yaml -f my-site.yaml -f my-openbao.yaml \
      -f ./platform-deployment/profiles/exposure-envoy-gateway.yaml -f platform-operator.yaml
    ```
 

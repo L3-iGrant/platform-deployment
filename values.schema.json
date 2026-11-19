@@ -2464,6 +2464,7 @@
         "seal": {
           "type": "string",
           "enum": [
+            "",
             "shamir"
           ]
         },

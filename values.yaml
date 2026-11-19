@@ -3,11 +3,12 @@
 # (each bundled, or your own server).
 # Install guide: docs/install.md. Every value: docs/values-reference.md.
 # profiles/ has ready values files: site.yaml (copy it for your own values),
-# one exposure-*.yaml (required) and optional ones (database, OpenBao, Redis,
-# network policies, minimal).
+# one exposure-*.yaml and one openbao-*.yaml (both required), and optional
+# ones (database, Redis, network policies, minimal).
 # Required: global.imageTag, api.host, organisationWallet.host,
-# enterpriseDashboard.host and the keys of scripts/make-keys.sh. The render
-# stops with a message while a required value is missing.
+# enterpriseDashboard.host, the keys of scripts/make-keys.sh and the OpenBao
+# (openbao.seal shamir or openbao.mode external). The render stops with a
+# message while a required value is missing.
 
 global:
   # -- Registry of the iGrant.io images. An image with its own registry ignores it.
@@ -876,8 +877,12 @@ openbao:
     # -- Secret with the CA of an https address. Empty: the system CAs.
     caSecret: ""
     caKey: ca.crt
-  # -- shamir: an operator unseals each pod after each start.
-  seal: shamir
+  # -- Required with the bundled OpenBao. The only seal of this chart is
+  # shamir: development and tests only, because the unseal keys are with
+  # people and each start needs a manual unseal (profiles/openbao-shamir.yaml).
+  # For real keys, use your own OpenBao with an HSM seal
+  # (profiles/openbao-external.yaml, docs/openbao.md).
+  seal: ""
   # -- OpenBao 2.7.2, linux/amd64, non-root. Empty registry and tag: the global values.
   image: {registry: "", repository: openbao, tag: "", digest: ""}
   # -- Raft nodes: 1, 3 or 5. 3 keeps the service when one node stops.

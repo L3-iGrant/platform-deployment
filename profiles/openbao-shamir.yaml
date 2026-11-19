@@ -1,0 +1,7 @@
+# Development and tests only: the bundled OpenBao with the seal shamir. After
+# every pod start, an operator unseals the pod with 3 of the 5 unseal keys
+# (docs/openbao.md). Do not use it for an installation that holds real keys:
+# use your own OpenBao with an HSM seal (profiles/openbao-external.yaml).
+openbao:
+  mode: bundled
+  seal: shamir

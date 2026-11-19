@@ -15,7 +15,7 @@ What your cluster, your network and your workstation need before you install the
 | Storage | A default StorageClass for ReadWriteOnce volumes, or the value `global.storageClass`. The database server, NATS, OpenBao and Valkey use volumes. The volumes must support `fsGroup` (the processes do not run as root). |
 | Pod security | Every pod runs as a non-root user with a read-only root file system and meets the Pod Security Standard `restricted`. The api, the webhook handler and the dashboard use the safe sysctl `net.ipv4.ip_unprivileged_port_start` (port 80). See [Security settings of the containers](security-context.md). |
 | Image registry | Read access to the iGrant.io registry `europe-docker.pkg.dev/jenkins-189019/igrant-customers` (a service account key file from iGrant.io) and the release tag of your version, or your own mirror. The Google Cloud CLI (`gcloud`) on your workstation is optional. |
-| OpenBao | Operators who unseal the bundled OpenBao after every restart (the Shamir seal), or your own OpenBao. See [OpenBao](openbao.md). |
+| OpenBao | Your own OpenBao with an HSM seal, in this order: your HSM on premises (Thales Luna Network HSM), a Thales Luna Cloud HSM partition (DPoD), or Google Cloud KMS with protection level HSM. The bundled OpenBao of this chart has only the seal `shamir`, for development and tests: operators unseal it after every restart. An HSM seal of the bundled OpenBao needs the enterprise chart. See [OpenBao](openbao.md). |
 | Workstation | `kubectl`, `helm`, `bash`, and `docker` to run `scripts/make-keys.sh` (it runs the api image). |
 
 ## Envoy Gateway
@@ -176,7 +176,7 @@ This chart is the community installation, for development and tests. Production 
 | Memory | 32 GB RAM | 6 GB RAM for each node | 64 GB RAM for each node |
 | Storage | 250 GB NVMe SSD | About 60 GB of volumes, with backups | 1 TB NVMe SSD for each node, with backups |
 | Network | 1 Gbit/s | 1 Gbit/s | 10 Gbit/s |
-| Key store | OpenBao, with the Shamir seal | OpenBao, with the Shamir seal, or your own OpenBao | OpenBao, unsealed by an HSM (PKCS#11) or Google Cloud KMS (see [Connect your on-premise HSM](on-premise-hsm.md)) |
+| Key store | OpenBao, with the seal `shamir` | Your own OpenBao, unsealed by an HSM or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) | OpenBao, unsealed by an HSM (PKCS#11) or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) |
 
 The extra small figures come from the measured use of an installation with about 9,000 wallet units, not from a load test: when the use grows, move to larger nodes (see `profiles/size-extra-small.yaml`).
 

@@ -31,7 +31,7 @@ bad() { fail=$((fail + 1)); echo "FAIL $1"; }
 
 # The wallet commands of the chart and of Compose, one JSON line each (where,
 # command, environment, configuration file and its path).
-values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
+values=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$chart/profiles/openbao-shamir.yaml" -f "$here/values/operator-jobs-bootstrap.yaml")
 for extra in hsm-signer-local.yaml hsm-signer-dpod.yaml; do
   [ -f "$chart/profiles/$extra" ] && values+=(-f "$chart/profiles/$extra")
 done

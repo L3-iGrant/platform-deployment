@@ -15,6 +15,11 @@ The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Releas
 WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
   Turn the guard back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: organisationWallet.ssrf.allowedPrivate).
 {{- end }}
+{{- if and (include "ow.openbao.bundled" .) (eq (include "ow.openbao.seal" .) "shamir") }}
+
+WARNING: the OpenBao seal is shamir. It is for development and tests only: the unseal keys are with people, and after each start an operator must unseal each OpenBao pod.
+  For an installation that holds real keys, use your own OpenBao with an HSM seal (profiles/openbao-external.yaml, docs/openbao.md).
+{{- end }}
 
 Public URLs (exposure {{ .Values.exposure.type }} by default; make sure your DNS names point to your ingress controller or Gateway):
   API:                 {{ include "ow.publicUrlOf" (list . "api") }}

@@ -119,7 +119,7 @@ nats-config: ## Maintainers: write config/nats/users.conf from the Helm chart's 
 	  echo ""; \
 	  helm template igrant $(CHART_DIR) --show-only templates/nats/configmap.yaml \
 	    -f $(CHART_DIR)/profiles/site.yaml -f $(CHART_DIR)/tests/values/release.yaml \
-	    -f $(CHART_DIR)/tests/values/keys.yaml \
+	    -f $(CHART_DIR)/tests/values/keys.yaml -f $(CHART_DIR)/profiles/openbao-shamir.yaml \
 	    --set nats.enabled=false,nats.external.url=nats://nats:4222 \
 	    $(foreach user,$(NATS_USERS),--set nats.auth.users.$(firstword $(subst :, ,$(user))).nkey=UNATS_NKEY_$(lastword $(subst :, ,$(user)))) \
 	  | awk '/^    authorization \{/ {on = 1} on {print} on && /^    \}$$/ {exit}' \

@@ -30,7 +30,7 @@ These docs are for the developers and operations teams who install and run the p
 - [Database](docs/database.md): PostgreSQL for the whole platform (bundled or external), the wallet's database roles and hooks, and the server logs.
 - [Audit log](docs/audit-log.md): the wallet's audit log, its write-once bucket, how to verify the log, and the retention purge of wallet data.
 - [Workers and clock](docs/workers.md): the wallet's background work: worker groups and queues, the clock, shutdowns, probes and metrics.
-- [OpenBao](docs/openbao.md): the bundled OpenBao with its Shamir seal, or your own OpenBao.
+- [OpenBao](docs/openbao.md): the recommended seals, your own OpenBao, and the bundled OpenBao with the seal `shamir` for development and tests.
 - [Redis](docs/redis.md): Valkey with Sentinel for the wallet's work queue, single-use values and caches, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.

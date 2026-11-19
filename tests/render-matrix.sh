@@ -18,7 +18,7 @@
 #    per group, with profiles/site.yaml, tests/values/release.yaml and
 #    tests/values/keys.yaml. A default choice has no file:
 #      database   database-bundled (default), database-external
-#      OpenBao    openbao-shamir (default), openbao-external
+#      OpenBao    openbao-shamir, openbao-external
 #      exposure   exposure-ingress-nginx, exposure-ingress-nginx-cert-manager,
 #                 exposure-envoy-gateway, exposure-kgateway, exposure-none,
 #                 exposure-on-premise
@@ -65,8 +65,12 @@ here="$(cd "$(dirname "$0")" && pwd)"
 chart="$(dirname "$here")"
 profiles="$chart/profiles"
 keys="$here/values/keys.yaml"
-# profiles/site.yaml with the release tag that the tests use.
-site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
+# profiles/site.yaml with the release tag that the tests use, for the
+# matrix (each render adds its OpenBao profile).
+matrix_site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
+# The tests after the matrix: also the bundled OpenBao with the seal shamir
+# (openbao.seal has no default).
+site=("${matrix_site[@]}" -f "$profiles/openbao-shamir.yaml")
 out=""
 if [ "${1:-}" = "--keep" ]; then
   out="${2:?--keep needs a folder}"
@@ -197,9 +201,8 @@ network_matrix() {
 }
 for database in database-bundled database-external; do
   for openbao in openbao-shamir openbao-external; do
-    base=(-f "$keys" "${site[@]}")
+    base=(-f "$keys" "${matrix_site[@]}" -f "$profiles/$openbao.yaml")
     [ "$database" = database-external ] && base+=(-f "$profiles/database-external.yaml")
-    [ "$openbao" = openbao-external ] && base+=(-f "$profiles/openbao-external.yaml")
     if helm lint "$chart" --quiet "${base[@]}" > "$out/lint.txt" 2>&1; then
       ok "lint $database $openbao"
     else
@@ -436,6 +439,13 @@ notes() {
   fi
 }
 notes "shamir" "bao operator unseal"
+notes "shamir warning" "WARNING: the OpenBao seal is shamir. It is for development and tests only"
+if helm template ows "$notes_chart" --namespace ows -f "$keys" "${matrix_site[@]}" -f "$profiles/openbao-external.yaml" \
+    --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the OpenBao seal"; then
+  bad "notes: a seal warning with an external OpenBao"
+else
+  ok "notes: no seal warning with an external OpenBao"
+fi
 notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$profiles/openbao-external.yaml"
 notes "URLs" "https://api.example.org"
 # An SSRF guard turned off in an extraConfig gives a warning in the notes
@@ -512,6 +522,7 @@ guard "external database without admin user" "database.external.admin.user is re
 # <prefix>_business_wallet_app has at most 63 characters.
 guard "wallet database name too long for the role prefix" "can have at most 43" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
 guard "seal" "openbao.seal" --set openbao.seal=transit
+guard "seal required" "openbao.seal is required with the bundled OpenBao. For an installation that holds real keys, use your own OpenBao with an HSM seal (profiles/openbao-external.yaml)" --set openbao.seal=
 guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.existingSecret=s
 guard "external OpenBao without password" "openbao.wallet.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
 guard "exposure type" "exposure.type" --set exposure.type=route
@@ -601,6 +612,8 @@ lacks() {
     ok "lacks $name"
   fi
 }
+# openbao.seal has no default; an external OpenBao needs no seal.
+renders "no seal with an external OpenBao" "kind: Deployment" -f "$profiles/openbao-external.yaml" --set openbao.seal=
 # With the shamir seal, a restarted pod stays sealed until an operator
 # unseals it, so the StatefulSet must not roll the pods by itself.
 renders "OpenBao OnDelete with shamir" "type: OnDelete"

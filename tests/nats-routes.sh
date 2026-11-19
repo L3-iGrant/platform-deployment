@@ -47,7 +47,7 @@ fi
 
 # The configuration and TLS files of a render with 3 servers.
 helm template t "$chart" --namespace ow -f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" \
-  --set nats.replicas=3 > "$work/render.yaml"
+  -f "$chart/profiles/openbao-shamir.yaml" --set nats.replicas=3 > "$work/render.yaml"
 python3 "$here/write_nats_conf.py" "$work/render.yaml" "$work/conf" --container
 chmod 0644 "$work/conf"/*
 docker network create "$net" > /dev/null

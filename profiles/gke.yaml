@@ -20,9 +20,9 @@
 #    repository). Then the platform needs no pull Secret (imagePullSecrets:
 #    [] below). Test one pull on the new pool before the install.
 #
-# 3. OpenBao: the bundled OpenBao uses the Shamir seal, so an operator
-#    unseals each pod after each start (docs/openbao.md); or use your own
-#    OpenBao (profiles/openbao-external.yaml).
+# 3. OpenBao: use your own OpenBao with an HSM seal
+#    (profiles/openbao-external.yaml, docs/openbao.md). The bundled OpenBao
+#    of this chart has only the seal shamir, for development and tests.
 #
 # 4. A dry run on the API server before helm install: it shows conflicts that
 #    helm template cannot see, for example an Ingress of another release for

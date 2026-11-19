@@ -67,11 +67,11 @@ This page lists every value of the chart, what it does and its default.
 
 | Value | Description | Default |
 | --- | --- | --- |
-| `openbao.mode` | `bundled` (the chart runs OpenBao with raft storage and the Shamir seal; after the install, `bao operator init` and the bootstrap script, see [Install](install.md#step-5-initialise-openbao-bundled-openbao-only)) or `external` (your OpenBao) | `bundled` |
+| `openbao.mode` | `bundled` (the chart runs OpenBao with raft storage and the seal of `openbao.seal`; after the install, `bao operator init` and the bootstrap script, see [Install](install.md#step-5-initialise-openbao-bundled-openbao-only)) or `external` (your OpenBao) | `bundled` |
 | `openbao.transitMount` | Mount path of the Transit engine (the bootstrap script enables it on the bundled OpenBao) | `transit` |
 | `openbao.wallet.user`, `.existingSecret`, `.passwordKey` | The userpass login of the wallet. An existing Secret with the password is required for external. Empty (bundled): the chart makes `<fullname>-openbao-wallet` (random, kept across upgrades), and the bootstrap script gives it to the user | `wallet`, `""`, `password` |
 | `openbao.external.address`, `.namespace`, `.caSecret`, `.caKey` | Your OpenBao: the address (required, for example `https://openbao.example.org:8200`), the OpenBao namespace (empty: the root namespace) and the CA of an https address (empty: the system CAs). It needs the Transit engine at `transitMount`, the userpass method and a user with the wallet policy (see [OpenBao](openbao.md#external-openbao)) | `""`, `""`, `""`, `ca.crt` |
-| `openbao.seal` | `shamir` (an operator unseals each pod after each start: `bao operator unseal`) | `shamir` |
+| `openbao.seal` | Required with the bundled OpenBao. The only seal of this chart is `shamir`, for development and tests only: an operator unseals each pod after each start (`bao operator unseal`). For real keys, use your own OpenBao with an HSM seal (`openbao.mode: external`). See [OpenBao](openbao.md) | `""` |
 | `openbao.image` | The iGrant.io image: OpenBao 2.7.2, linux/amd64, non-root (`openbao`, tag `global.imageTag`) | see values |
 | `openbao.replicas`, `.persistence.*` | The raft nodes of the bundled OpenBao (an odd number: 1, 3 or 5; 3 keeps the service when one node stops) and their volumes | `3`, `10Gi` |
 | `openbao.tls.existingSecret` | An existing Secret with `tls.crt`, `tls.key` and `ca.crt` of the listener; the certificate must have the names `<fullname>-openbao.<namespace>.svc`, `*.<fullname>-openbao-headless.<namespace>.svc` and `127.0.0.1`. Empty: the chart makes a CA and a certificate (10 years, kept across upgrades) | `""` |
