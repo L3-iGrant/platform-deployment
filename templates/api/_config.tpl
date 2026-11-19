@@ -55,17 +55,12 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" $api.logLevel)
 -}}
-{{- /* Services of the installation (ow.installation.config): the section
-is only set when a service is not installed. */ -}}
-{{- with include "ow.installation.config" $root | fromJson -}}
-{{- $_ := set $config "Installation" . -}}
-{{- end -}}
-{{- /* Public URL of the wallet, only with the wallet (without it the api
-has no wallet routes and the chart needs no wallet host). */ -}}
-{{- if include "ow.installation.has" (list $root "wallet") -}}
+{{- /* The installation (ow.installation.config): its services and its
+optional features. */ -}}
+{{- $_ := set $config "Installation" (include "ow.installation.config" $root | fromJson) -}}
+{{- /* Public URL of the wallet. */ -}}
 {{- $_ := set $config "OpenIdDeployment" (dict
     "OpenIdServiceEndpoint" (include "ow.publicUrlOf" (list $root "organisationWallet"))) -}}
-{{- end -}}
 {{- if $api.smtp.host -}}
 {{- $smtp := dict
     "host" $api.smtp.host
@@ -86,8 +81,8 @@ has no wallet routes and the chart needs no wallet host). */ -}}
     "authTokenFile" (include "ow.api.secretFile" (list $root "twilio-auth-token"))) -}}
 {{- end -}}
 {{- /* The api signs and verifies NATS envelopes (issuer igrant-api). It
-trusts its own internal events and the installed services, consent and the
-wallet (ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
+trusts its own internal events and the wallet (ow.api.trustedIssuers). Both
+processes sign with the api key. */ -}}
 {{- $_ := set $config "ServiceEnvelope" (dict
     "signingJwksFile" (printf "%s/service-envelope-jwks.json" (include "ow.api.secretDir" $root))
     "activeKid" $signing.activeKid
@@ -98,9 +93,7 @@ wallet (ow.api.trustedIssuers). Both processes sign with the api key. */ -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
 {{- end -}}
 {{- /* Every api process reads the wallet database views with the api's
-read-only user (ReadAccess.wallet, same shape as DataBase). Without the
-wallet the file has no ReadAccess. */ -}}
-{{- if include "ow.installation.has" (list $root "wallet") -}}
+read-only user (ReadAccess.wallet, same shape as DataBase). */ -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $walletRead := include "ow.db.go" (dict
     "root" $root
@@ -112,7 +105,6 @@ wallet the file has no ReadAccess. */ -}}
     "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))
     "pool" $v.database.pools.apiReadAccess) | fromJson -}}
 {{- $_ := set $config "ReadAccess" (dict "wallet" $walletRead) -}}
-{{- end -}}
 {{- /* The api core verifies the gateway's internal token on every request
 (start-api needs GatewayToken.jwksFile; start-webhook-api does not read the
 section). */ -}}
@@ -162,70 +154,24 @@ it cannot read the release's new ConfigMaps.
 {{- end }}
 
 {{/*
-Limits for the CSV import of individuals that the api reads from
-api.extraConfig.Uploads: individualImportMaxFileBytes (65536 to 20971520)
-and individualImportMaxRows (1 to 9000); absent or 0 means the api default
-(5 MiB, 5000). The dashboard gets the same values in its config.json, but
-the dashboard of this release does not check them yet: the api refuses a
-larger file. The render fails on any
-value that the api would refuse at start: a string (even a string of
-digits, because the api decodes its file without type conversion), a
-non-integer, or a value out of range. Call with the root context. Output:
-JSON with the keys that are set (as integers).
-*/}}
-{{- define "ow.api.importLimits" -}}
-{{- $uploads := dig "Uploads" dict (.Values.api.extraConfig | default dict) -}}
-{{- $out := dict -}}
-{{- range $key, $range := dict "individualImportMaxFileBytes" (list 65536 20971520) "individualImportMaxRows" (list 1 9000) -}}
-{{- if hasKey ($uploads | default dict) $key -}}
-{{- $value := get $uploads $key -}}
-{{- if kindIs "string" $value -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%q) is a text: give a number, not a text (the api reads a whole number and stops at its start with a text)" $key $value) -}}
-{{- end -}}
-{{- $text := toString $value -}}
-{{- if or (kindIs "float64" $value) (kindIs "float32" $value) -}}
-{{- if ne (floor $value) ($value | float64) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number: the api reads it in whole units" $key $value) -}}
-{{- end -}}
-{{- $text = printf "%.0f" ($value | float64) -}}
-{{- end -}}
-{{- if not (regexMatch "^[0-9]+$" $text) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%v) must be a whole number of 0 or more: the api reads it in whole units" $key $value) -}}
-{{- end -}}
-{{- $number := $text | int64 -}}
-{{- if ne $number 0 -}}
-{{- if or (lt $number (index $range 0 | int64)) (gt $number (index $range 1 | int64)) -}}
-{{- fail (printf "api.extraConfig.Uploads.%s (%s) is not between %v and %v (or 0, the default): the api refuses it at its start" $key $text (index $range 0) (index $range 1)) -}}
-{{- end -}}
-{{- $_ := set $out $key $number -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-{{- toJson $out -}}
-{{- end }}
-
-{{/*
 Render guard for the upload memory of the api core (api.extraConfig Uploads
-and ImageUpload). Each upload in progress (an image or a CSV import of
-individuals) holds its file in memory, with at most Uploads.maxInProgress
-of them (default 8). The container's memory request (the process memory
-without uploads) plus maxInProgress x the largest file must fit below the
-memory limit. Call with the root context. Output: nothing.
+and ImageUpload). Each image upload in progress holds its file in memory,
+with at most Uploads.maxInProgress of them (default 8). The container's
+memory request (the process memory without uploads) plus maxInProgress x
+the largest image must fit below the memory limit. Call with the root
+context. Output: nothing.
 */}}
 {{- define "ow.api.checkUploads" -}}
-{{- $_ := include "ow.api.importLimits" . -}}
 {{- $api := .Values.api -}}
 {{- $config := $api.extraConfig | default dict -}}
 {{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}
 {{- $image := (dig "ImageUpload" "maxBytes" 0 $config) | int64 | default 5242880 -}}
-{{- $import := (dig "Uploads" "individualImportMaxFileBytes" 0 $config) | int64 | default 5242880 -}}
-{{- $largest := max $image $import -}}
 {{- $limit := (($api.resources | default dict).limits | default dict).memory -}}
 {{- if $limit -}}
 {{- $request := (($api.resources | default dict).requests | default dict).memory | default "0" -}}
-{{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $largest) -}}
+{{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $image) -}}
 {{- if gt $need (include "ow.quantityBytes" $limit | int64) -}}
-{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest upload file (%d bytes: the larger of ImageUpload.maxBytes and Uploads.individualImportMaxFileBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or the file limits of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $largest $need $limit) -}}
+{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest image (%d bytes, ImageUpload.maxBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or ImageUpload.maxBytes of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $image $need $limit) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

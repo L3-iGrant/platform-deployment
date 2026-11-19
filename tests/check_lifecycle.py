@@ -5,9 +5,9 @@ Usage: check_lifecycle.py <render.yaml>...
 
 For each container of each workload:
 - no exec probe and no exec hook in an image without a shell (the
-  iGrant.io images api, gateway, consent-management-backend and eudi-wallet
-  are distroless: they have no /bin/sh and no /bin/sleep). There, a hook or
-  probe must be an HTTP or TCP action, the Kubernetes sleep action, or the
+  iGrant.io images api, gateway and eudi-wallet are distroless: they have
+  no /bin/sh and no /bin/sleep). There, a hook or probe must be an HTTP or
+  TCP action, the Kubernetes sleep action, or the
   program itself (only images that contain the program may exec it:
   nats-server in NATS, the Valkey scripts, pg_isready in PostgreSQL);
 - no preStop exec of /bin/sleep in any image (the Kubernetes sleep action
@@ -16,7 +16,7 @@ For each container of each workload:
   container has a startup probe (they start after it).
 
 For each Deployment of an HTTP component (the api, the webhook handler,
-the gateway, consent, the dashboard, the wallet service and config roles):
+the gateway, the dashboard, the wallet service and config roles):
 - RollingUpdate with maxUnavailable 0 and maxSurge 25%, and
   minReadySeconds 30 or more;
 - a preStop sleep action of 1 second or more;
@@ -37,9 +37,9 @@ import sys
 
 import yaml
 
-NO_SHELL = ("/api:", "/gateway:", "/consent-management-backend:", "/eudi-wallet:")
+NO_SHELL = ("/api:", "/gateway:", "/eudi-wallet:")
 HTTP = {
-    "api": "go", "webhook": "go", "gateway": "go", "consent": "go",
+    "api": "go", "webhook": "go", "gateway": "go",
     "dashboard": "nginx", "wallet-service": "wallet", "wallet-config": "wallet",
 }
 GO_DEFAULTS = (5, 20)
@@ -73,9 +73,9 @@ def server_stop(docs, component):
         for key, text in (doc.get("data") or {}).items():
             if not key.endswith(".yaml"):
                 continue
-            wanted = {"api": "api.yaml", "webhook": "webhook.yaml", "gateway": "config.yaml", "consent": "config.yaml",
+            wanted = {"api": "api.yaml", "webhook": "webhook.yaml", "gateway": "config.yaml",
                       "wallet-service": "service.yaml", "wallet-config": "config.yaml"}[component]
-            owner = {"api": "-api", "webhook": "-api", "gateway": "-gateway", "consent": "-consent",
+            owner = {"api": "-api", "webhook": "-api", "gateway": "-gateway",
                      "wallet-service": "-wallet", "wallet-config": "-wallet"}[component]
             if key != wanted or not doc["metadata"]["name"].endswith(owner):
                 continue

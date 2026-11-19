@@ -34,4 +34,4 @@ kubectl -n ows delete secret -l app.kubernetes.io/instance=ows,app.kubernetes.io
 
 Check: `kubectl -n ows get pvc,job,configmap -l app.kubernetes.io/instance=ows` shows `No resources found`. Then install again from install step 3 (from install step 2 if you created new keys).
 
-With an external database server (`database.mode: external`), these commands do not change your server. The databases `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet`, their owner users, the wallet's database roles (`igrant_wallet_*`) and the read-only users stay. For a start without data, your DBA drops them before the new install. Otherwise, the new installation uses the old databases.
+With an external database server (`database.mode: external`), these commands do not change your server. The databases `igrant_api`, `igrant_oidc` and `igrant_wallet`, their owner users, the wallet's database roles (`igrant_wallet_*`) and the read-only users stay. For a start without data, your DBA drops them before the new install. Otherwise, the new installation uses the old databases.

@@ -1,0 +1,73 @@
+# The size "Development and tests" (docs/sizing.md): up to 10,000 wallet
+# units with little traffic, on 1 node with 8 vCPU and 32 GB RAM (GKE
+# allocatable about 7.9 vCPU and 28 GiB). One replica of each service; the
+# bundled PostgreSQL, NATS and OpenBao with 1 pod; Valkey keeps 3 pods
+# (Sentinel needs a majority) with a preferred placement.
+# Requests on the node: about 4.2 vCPU and 14 GiB (53 % of the CPU and 50 % of
+# the memory of the allocatable).
+#
+# Not for production: one node does not test updates or failover, and a node
+# failure stops the platform. Use it with profiles/openbao-shamir.yaml
+# (development and tests only) or your own OpenBao.
+#
+# Note: organisationWallet.workers.groups is a list, and Helm replaces a list
+# as a whole. This file therefore repeats every field of the two groups of
+# values.yaml; when you change a group, copy all its fields.
+api:
+  replicas: 1
+  resources: {requests: {cpu: 250m, memory: 384Mi}, limits: {memory: 1Gi}}
+  webhook:
+    replicas: 1
+    resources: {requests: {cpu: 100m, memory: 128Mi}, limits: {memory: 512Mi}}
+gateway:
+  replicas: 1
+  resources: {requests: {cpu: 200m, memory: 192Mi}, limits: {memory: 512Mi}}
+organisationWallet:
+  service:
+    replicas: 1
+    resources: {requests: {cpu: "1", memory: 1Gi}, limits: {memory: 2Gi}}
+  config:
+    replicas: 1
+    resources: {requests: {cpu: 500m, memory: 768Mi}, limits: {memory: 1536Mi}}
+  clock:
+    replicas: 1
+    resources: {requests: {cpu: 20m, memory: 192Mi}, limits: {memory: 384Mi}}
+  workers:
+    groups:
+      - name: main
+        queues: [realtime, attestation, status, kms]
+        replicas: 1
+        processes: 1
+        threads: 8
+        shutdownTimeoutSeconds: 600
+        terminationGracePeriodSeconds: 630
+        resources: {requests: {cpu: 500m, memory: 768Mi}, limits: {memory: 1536Mi}}
+      - name: maintenance
+        queues: [maintenance]
+        replicas: 1
+        processes: 1
+        threads: 2
+        shutdownTimeoutSeconds: 14400
+        terminationGracePeriodSeconds: 14430
+        resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1536Mi}}
+enterpriseDashboard:
+  replicas: 1
+database:
+  # The bundled PostgreSQL: shared_buffers about 25 % of its memory.
+  resources: {requests: {cpu: "1", memory: 8Gi}, limits: {cpu: "2", memory: 8Gi}}
+  postgresql:
+    parameters:
+      shared_buffers: 2GB
+      effective_cache_size: 6GB
+      work_mem: 4MB
+      maintenance_work_mem: 256MB
+  persistence: {size: 50Gi}
+nats:
+  replicas: 1
+  resources: {requests: {cpu: 100m, memory: 256Mi}}
+openbao:
+  replicas: 1
+  resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1536Mi}}
+redis:
+  podAntiAffinity: preferred
+  resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1Gi}}

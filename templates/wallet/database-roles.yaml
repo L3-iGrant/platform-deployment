@@ -18,7 +18,6 @@ owner user, on a new installation and on an upgrade. A failed run stops the
 install or upgrade, like a failed migration hook; its pod log shows the
 database-roles message.
 */}}
-{{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $admin := include "ow.db.admin" . | fromJson }}
 {{- $name := include "ow.name" (list . "wallet-database-roles") }}
@@ -129,4 +128,3 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-{{- end }}

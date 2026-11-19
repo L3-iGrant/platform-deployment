@@ -6,7 +6,6 @@ processes of --threads threads each. It connects as the jobs role, with the
 NATS user walletWorker and the Valkey user walletWorker, and reads the
 config key worker-<group>.yaml.
 */}}
-{{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- include "ow.wallet.checkWorkers" . }}
 {{- $port := include "ow.wallet.workerHealthPort" . | int }}
@@ -143,5 +142,4 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-{{- end }}
 {{- end }}

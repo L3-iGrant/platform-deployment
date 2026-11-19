@@ -1,5 +1,4 @@
 {{- $keys := .Values.gateway.publicKeys }}
-{{- if .Values.api.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -19,12 +18,11 @@ data:
     {{- $keys.tokenVerificationJwks | nindent 4 }}
   {{- end }}
 ---
-{{- end }}
 {{- /*
 The shared ConfigMap <fullname>-igrant-gateway-jwks (no secrets): the
-gateway public keys that the api core, consent and the wallet config role
-mount. The chart builds it from the values when
-gateway.publicKeys.existingConfigMap is empty.
+gateway public keys that the api core and the wallet config role mount. The
+chart builds it from the values when gateway.publicKeys.existingConfigMap is
+empty.
 */}}
 {{- if and (not $keys.existingConfigMap) $keys.gatewayJwks }}
 apiVersion: v1

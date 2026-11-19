@@ -38,8 +38,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 chart="$(dirname "$here")"
 profiles="$chart/profiles"
 keys="$here/values/keys.yaml"
-# profiles/site.yaml plus the release tag of the tests.
-site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml")
+# profiles/site.yaml, the release tag of the tests and the seal shamir.
+site=(-f "$profiles/site.yaml" -f "$here/values/release.yaml" -f "$profiles/openbao-shamir.yaml")
 work="$(mktemp -d)"
 prefix="valkey-pods-test-$(openssl rand -hex 4)"
 domain=t-redis-headless.ow.svc

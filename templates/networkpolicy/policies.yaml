@@ -87,8 +87,8 @@ spec:
 (all its users), and the separate groups redis.state and redis.cache (the
 wallet roles). One rule per entry, for the data port and the Sentinel
 port. */}}
-{{- $separateGroups := and $root.Values.organisationWallet.enabled (or $root.Values.redis.state.enabled $root.Values.redis.cache.enabled) }}
-{{- if and (eq $c.to "redis") (eq $c.port "redis") (include "ow.redis.enabled" $root) (or (not (include "ow.redis.bundled" $root)) (and $separateGroups (hasPrefix "wallet-" $role))) }}
+{{- $separateGroups := or $root.Values.redis.state.enabled $root.Values.redis.cache.enabled }}
+{{- if and (eq $c.to "redis") (eq $c.port "redis") (or (not (include "ow.redis.bundled" $root)) (and $separateGroups (hasPrefix "wallet-" $role))) }}
 {{- range $r := $np.externalRedis }}
 {{- $peers := list }}{{- range $cidr := $r.cidrs }}{{- $peers = append $peers (dict "ipBlock" (dict "cidr" $cidr)) }}{{- end }}
 {{- $ports := list }}{{- range $p := ($r.ports | default (list 6379 26379)) }}{{- $ports = append $ports (dict "port" $p "protocol" "TCP") }}{{- end }}

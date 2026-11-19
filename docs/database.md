@@ -4,14 +4,14 @@ The database options of the platform: PostgreSQL for all components, on a bundle
 
 [Back to the contents](../README.md#contents)
 
-The whole platform uses one database engine. `database.engine` is `postgresql`, the only supported engine: the api, consent and the organisation wallet accept only PostgreSQL, so any other value (for example `mysql`) stops the render with a message. The engine applies to every component, to the migration and read access Jobs, and to the network policies.
+The whole platform uses one database engine. `database.engine` is `postgresql`, the only supported engine: the api and the organisation wallet accept only PostgreSQL, so any other value (for example `mysql`) stops the render with a message. The engine applies to every component, to the migration and read access Jobs, and to the network policies.
 
-Each component has its own database and owner user: `igrant_api`, `igrant_oidc`, `igrant_consent` and `igrant_wallet`. The wallet's processes do not connect as its owner user: each one has its own database role (see [Database roles of the wallet](#database-roles-of-the-wallet)).
+Each component has its own database and owner user: `igrant_api`, `igrant_oidc` and `igrant_wallet`. The wallet's processes do not connect as its owner user: each one has its own database role (see [Database roles of the wallet](#database-roles-of-the-wallet)).
 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |
 | `bundled` (default) | Runs one PostgreSQL 18.7 server (`<release>-postgres`). Creates the databases and the users (init hook), the wallet's database roles (roles hook) and a TLS certificate. | The size of the volume and the resources |
-| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. Without the organisation wallet, it can also use your own databases and users. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`, required with the organisation wallet) or the passwords of your users (`database.auth.existingSecret`, one key for each database name) |
+| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`) |
 
 ## TLS
 
@@ -41,9 +41,8 @@ The pools of each process:
 | api core | `maxConns` of `DataBase`, of the OIDC database and of the wallet views reader, plus 1 health connection (outside the pools: a database check every 2 s) | `database.pools.api`, `.oidc`, `.apiReadAccess` |
 | webhook handler | the same (also the health connection) | `database.pools.webhook`, `.oidc`, `.apiReadAccess` |
 | gateway | `maxConns`, plus 1 health connection | `database.pools.gateway` |
-| consent | `maxConns`, plus 5 for each of its two readers (api and wallet views); no health connection (its readiness check uses the pool) | `database.pools.consent` |
 | wallet service | `poolSize` + `maxOverflow` (the sessions) + `allocationPoolSize` (the status list allocations) + 1 (the start and the schema check) | `database.pools.walletService` |
-| wallet config | the same, plus 10 for each of its two readers (api and consent views), plus 1 for a WIA pool mint (see below) | `database.pools.walletConfig` |
+| wallet config | the same, plus 10 for its reader (api views), plus 1 for a WIA pool mint (see below) | `database.pools.walletConfig` |
 | wallet worker | for each worker process: `threads` + `maxOverflow` (the sessions) + `allocationPoolSize` + at most 2 for each thread (an actor's lock has its own connection) + 1; plus 1 for the pod's health server | `database.pools.walletWorker`, the `processes` and `threads` of the group |
 | wallet clock | 1 (the leader lock) + 1 (the health server) | none |
 
@@ -56,16 +55,15 @@ The default values give these maximums. They are starting values, not measuremen
 | api core | 1 | 10 + 5 (OIDC) + 5 (reader) + 1 (health) = 21 | 21 |
 | webhook handler | 1 | 5 + 5 (OIDC) + 5 (reader) + 1 (health) = 16 | 16 |
 | gateway | 2 | 10 + 1 (health) = 11 | 22 |
-| consent (with `profiles/consent.yaml`) | 2 | 6 + 5 + 5 (readers) = 16 | 0 (32) |
 | wallet service | 1 | 12 + 4 + 5 + 1 = 22 | 22 |
-| wallet config | 1 | 8 + 4 + 2 + 10 (readers; 20 with consent) + 1 + 1 (mint) = 26 (36) | 26 (36) |
+| wallet config | 1 | 8 + 4 + 2 + 10 (reader) + 1 + 1 (mint) = 26 | 26 |
 | workers `main` | 2 | 8 + 2 + 2 + 16 (locks) + 1 + 1 (health) = 30 | 60 |
 | workers `maintenance` | 1 | 2 + 2 + 2 + 4 (locks) + 1 + 1 (health) = 12 | 12 |
 | clock | 2 | 1 (leader) + 1 (health) = 2 | 4 |
-| **Total** | | | **183** (225 with consent) |
+| **Total** | | | **183** |
 | the hooks | | | 5 |
 | the superuser (`superuser_reserved_connections`) | | | 3 |
-| **`max_connections` of the bundled server** | | | **250** (59 free; 17 with consent) |
+| **`max_connections` of the bundled server** | | | **250** (59 free) |
 
 ## Connection pooler
 
@@ -80,13 +78,13 @@ With a pooler, the configuration of the service, config and worker processes has
 
 - the locks of the WIA pool mints and of the clock;
 - the status list allocations;
-- the readers of the api and consent views;
+- the reader of the api views;
 - the readiness checks of the workers and the clock;
 - the hooks (the migration lock and `SET ROLE` need one server session).
 
-A connection through the pooler gives the server no timeout at its start. So the roles step sets the timeouts of each database role as its defaults (`ALTER ROLE ... SET`), and a process sets other timeouts in each transaction. The other components (the api, consent, the gateway) connect to the server.
+A connection through the pooler gives the server no timeout at its start. So the roles step sets the timeouts of each database role as its defaults (`ALTER ROLE ... SET`), and a process sets other timeouts in each transaction. The other components (the api, the gateway) connect to the server.
 
-The connection budget then counts, for the wallet, only the direct connections (the allocation pools, 20 for the readers and 1 mint for each config pod, 2 lock connections for each worker thread, the health checks, the clock) and `serverConnections`. With network policies, add the address of the pooler to `networkPolicy.externalDatabases`.
+The connection budget then counts, for the wallet, only the direct connections (the allocation pools, 10 for the reader and 1 mint for each config pod, 2 lock connections for each worker thread, the health checks, the clock) and `serverConnections`. With network policies, add the address of the pooler to `networkPolicy.externalDatabases`.
 
 ## External PostgreSQL
 
@@ -116,7 +114,7 @@ These logs show the changes to the schemas and the rights, and the sessions of e
 
 `database.postgresql.logDdlAndConnections` (default `true`) sets the three parameters. A parameter with the same name in `database.postgresql.parameters` wins, for example `log_statement: mod` to also log the data changes. With `false`, the chart sets none of the three. A change to these values restarts the server pod: the components lose their connections for a short time and connect again.
 
-The log holds the text of each DDL statement. So never put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init hook sets the passwords of the owner users this way. The wallet's database roles hook (`database-roles apply`) and the read access Jobs of the wallet, the api and consent (`read-access apply`) also send only the SCRAM-SHA-256 verifier of each password, never the password.
+The log holds the text of each DDL statement. So never put a password in the text of a statement on this server: `ALTER ROLE ... PASSWORD '...'` writes the password to the log. Use `\password` of psql, which sends a SCRAM-SHA-256 verifier, not the password. The init hook sets the passwords of the owner users this way. The wallet's database roles hook (`database-roles apply`) and the read access Jobs of the wallet and the api (`read-access apply`) also send only the SCRAM-SHA-256 verifier of each password, never the password.
 
 On an external server, set the same three parameters yourself, for example as the database flags of your managed service.
 
@@ -145,14 +143,14 @@ The database hooks run in this order:
 | Order | Hook | Connects as | What it does |
 | --- | --- | --- | --- |
 | 1 | The Secrets `<release>-postgres` (the database user passwords), `<release>-read-access` (the read-only user passwords), `<release>-wallet-database-roles` (the passwords of the wallet's database roles) and, with the bundled server, `<release>-postgres-tls` (its certificate and CA) | | Created before the other hooks; at a `helm upgrade` they keep their passwords and their certificate |
-| 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each enabled component and sets the owner users' passwords |
+| 2 | `<release>-db-init` | The admin user | Waits until the database server is ready (up to 300 seconds), then creates the database and the owner user of each component and sets the owner users' passwords |
 | 3 | `<release>-wallet-database-roles` | The admin user | `database-roles apply`: creates the database roles and sets their passwords, makes the owner role the owner of the wallet database objects, creates the missing data scope schemas and gives the grants |
-| 4 | `<release>-wallet-migrate`; at a `helm upgrade` also `<release>-api-migrate` and `<release>-consent-migrate` (with consent) | `<prefix>_migrator`; the owner users of the api and consent | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api and consent migrate their databases |
-| 5 | `<release>-wallet-read-access-api`, `<release>-wallet-read-access-consent` (with consent) | The admin user | `read-access apply`: the read-only users that the api and consent use to read the wallet database (see [Read access](read-access.md)) |
+| 4 | `<release>-wallet-migrate`; at a `helm upgrade` also `<release>-api-migrate` | `<prefix>_migrator`; the owner user of the api | `migrate-database`: migrates the schema to the head of the release, gives the grants on the new objects, then creates the monthly audit log partitions and drops the months older than the retention (see [Audit log](audit-log.md#partitions)). The api migrates its databases |
+| 5 | `<release>-wallet-read-access-api` | The admin user | `read-access apply`: the read-only user that the api uses to read the wallet database (see [Read access](read-access.md)) |
 
-On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api and consent migrate their databases when their pods start: the api in an init container, consent before it serves. At a `helm upgrade`, the hooks run before any pod changes (Helm `pre-upgrade`). If a hook fails, the `helm upgrade` stops and the pods keep running. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`.
+On a new installation, Helm creates the Secrets first (Helm `pre-install`) and runs the Jobs after the resources of the release exist (Helm `post-install`). So the init hook waits for the bundled server that starts with the release. The api migrates its databases when its pods start, in an init container. At a `helm upgrade`, the hooks run before any pod changes (Helm `pre-upgrade`). If a hook fails, the `helm upgrade` stops and the pods keep running. Read the log of its Job, for example `kubectl -n ows logs job/ows-wallet-migrate`.
 
-A `helm upgrade` can turn a component on (the organisation wallet, the api or consent): the hooks create its passwords and its database before its migration hook connects. With `database.auth.existingSecret`, add the password of the new database to your Secret before that `helm upgrade`. The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
+The wallet pods (except the clock) start work only when the database schema is at the head of their release: they wait up to 600 seconds, then exit, and Kubernetes starts them again.
 
 The exit codes of the wallet migration hook (`migrate-database`). After you fix the cause, run the hook again: do install step 4 again after a failed install, else run the same `helm upgrade` again.
 
@@ -170,6 +168,3 @@ The wallet keeps its tables in data scopes: `platform`, `kms`, `trust`, `issuer`
 
 The read views stay in the schemas `read_v1` and `read_v2`, with the same names and columns (see [Read access](read-access.md)).
 
-## Without an admin user
-
-Only without the organisation wallet (`organisationWallet.enabled: false`): create the databases and the users yourself, so that each user owns its database. Then set `readAccess.jobs.enabled: false`, and have a DBA create the read-only users (see [Read access](read-access.md)). The organisation wallet always needs the admin user, because the chart creates its database roles.

@@ -1,9 +1,9 @@
 {{/*
 config.yaml of the auth gateway: its own file, not the api config.
 - Sections shared with the api have the same keys and values as api.yaml:
-  ClientAddress comes from clientAddress, and IndividualAuth, Cors and
-  OutboundHttp come from api.extraConfig, so the gateway and the api core
-  apply the same rules.
+  ClientAddress comes from clientAddress, and Cors and OutboundHttp come
+  from api.extraConfig, so the gateway and the api core apply the same
+  rules.
 - An unknown key stops the gateway, and the gateway reads every <Name>File
   at start, so the file names only the gateway's secrets
   (ow.gateway.secretFiles), never the api token signing keys. The file
@@ -13,11 +13,9 @@ config.yaml of the auth gateway: its own file, not the api config.
   it in the token (claim cip).
 - Features (the feature gate, gateway.features.enforce) is only in this
   file.
-- Routing: consent routes go to the consent service, wallet config routes
-  to the wallet config role, and all other routes to the api core.
-- Installation is in this file and in the api file (ow.installation.config)
-  only when a service is not installed; the file then has no upstream for
-  that service, and the gateway answers 404 on its routes.
+- Routing: wallet config routes go to the wallet config role, and all
+  other routes to the api core.
+- Installation is in this file and in the api file (ow.installation.config).
 */}}
 {{- define "ow.gateway.config" -}}
 {{- $root := . -}}
@@ -26,18 +24,9 @@ config.yaml of the auth gateway: its own file, not the api config.
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
 {{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
-{{- /* Upstreams for consent and the wallet config role: the service URL of
-another release, else the Service in this release. A service that is not
-installed (enabled false and no URL) has no upstream. */ -}}
+{{- /* Upstream for the wallet config role: its Service in this release. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
-{{- $consentUrl := $g.upstreams.consent.url -}}
-{{- if and (not $consentUrl) $v.consent.enabled -}}
-{{- $consentUrl = printf "http://%s.%s.svc:80" (include "ow.name" (list $root "consent")) $root.Release.Namespace -}}
-{{- end -}}
-{{- $walletConfigUrl := $g.upstreams.walletConfig.url -}}
-{{- if and (not $walletConfigUrl) $v.organisationWallet.enabled -}}
-{{- $walletConfigUrl = printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
-{{- end -}}
+{{- $walletConfigUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- /* The gateway's file body limit must not refuse an image that the api
 accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), or the client
 gets the gateway's 413 with a different text. 0 = the defaults (5 MiB +
@@ -46,12 +35,6 @@ gets the gateway's 413 with a different text. 0 = the defaults (5 MiB +
 {{- $fileLimit := $g.proxy.maxBodyBytes.file | int64 | default (add 5242880 65536) -}}
 {{- if lt $fileLimit (add $imageMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api ImageUpload.maxBytes (%v) + 65536: the gateway would refuse an image that the api accepts" $fileLimit $imageMax) -}}
-{{- end -}}
-{{- /* Same for the CSV import of individuals (the api's Uploads.
-individualImportMaxFileBytes, default 5 MiB, at most 20 MiB). */ -}}
-{{- $importMax := (dig "Uploads" "individualImportMaxFileBytes" 0 ($api.extraConfig | default dict)) | int64 | default 5242880 -}}
-{{- if lt $fileLimit (add $importMax 65536) -}}
-{{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api Uploads.individualImportMaxFileBytes (%v) + 65536: the gateway would refuse a CSV import that the api accepts" $fileLimit $importMax) -}}
 {{- end -}}
 {{- /* Feature gate: on unless gateway.features.enforce is false (a values
 file without the key keeps the gateway default). */ -}}
@@ -73,7 +56,11 @@ file without the key keeps the gateway default). */ -}}
     "listenPort" ($g.listenPort | int)
     "drainSeconds" ($g.drainSeconds | int)
     "gracefulShutdownSeconds" ($g.gracefulShutdownSeconds | int)
-    "upstreams" (dict "core" (dict "url" $coreUrl))
+    "upstreams" (dict
+      "core" (dict "url" $coreUrl)
+      "walletConfig" (dict
+        "url" $walletConfigUrl
+        "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)))
     "internalToken" (dict
       "issuer" $g.internalToken.issuer
       "signingJwksFile" (printf "%s/internal-token-jwks.json" $dir)
@@ -91,20 +78,8 @@ file without the key keeps the gateway default). */ -}}
         "file" ($g.proxy.maxBodyBytes.file | int64)
         "large" ($g.proxy.maxBodyBytes.large | int64))))
 -}}
-{{- if $consentUrl -}}
-{{- $_ := set $config.Gateway.upstreams "consent" (dict
-    "url" $consentUrl
-    "requestTimeoutSeconds" ($g.upstreams.consent.requestTimeoutSeconds | int)) -}}
-{{- end -}}
-{{- if $walletConfigUrl -}}
-{{- $_ := set $config.Gateway.upstreams "walletConfig" (dict
-    "url" $walletConfigUrl
-    "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)) -}}
-{{- end -}}
-{{- with $installation -}}
-{{- $_ := set $config "Installation" . -}}
-{{- end -}}
-{{- $shared := pick ($api.extraConfig | default dict) "IndividualAuth" "Cors" "OutboundHttp" -}}
+{{- $_ := set $config "Installation" $installation -}}
+{{- $shared := pick ($api.extraConfig | default dict) "Cors" "OutboundHttp" -}}
 {{- $config = mustMergeOverwrite $config (deepCopy $shared) -}}
 {{- /* gateway.extraConfig cannot set Installation (ow.installation.config). */ -}}
 {{- $extra := deepCopy ($g.extraConfig | default dict) -}}

@@ -7,18 +7,13 @@ with a data container and a Sentinel container). redis.mode external: your
 own Valkey or Redis (requirements in docs/redis.md).
 */}}
 
-{{/* "true" when a process of the release uses Valkey (the organisation wallet or the gateway), else "". */}}
-{{- define "ow.redis.enabled" -}}
-{{- if or .Values.organisationWallet.enabled .Values.api.enabled -}}true{{- end -}}
-{{- end }}
-
-{{/* "true" when the chart runs Valkey (redis.mode bundled and a process uses it), else "". */}}
+{{/* "true" when the chart runs Valkey (redis.mode bundled), else "". */}}
 {{- define "ow.redis.bundled" -}}
 {{- $mode := .Values.redis.mode | default "bundled" -}}
 {{- if not (has $mode (list "bundled" "external")) -}}
 {{- fail (printf "redis.mode %q is not supported: use \"bundled\" (the chart runs Valkey) or \"external\" (your Valkey or Redis)" $mode) -}}
 {{- end -}}
-{{- if and (eq $mode "bundled") (include "ow.redis.enabled" .) -}}true{{- end -}}
+{{- if eq $mode "bundled" -}}true{{- end -}}
 {{- end }}
 
 {{/* Name of the StatefulSet (and of its pods: <name>-<ordinal>). */}}
@@ -62,12 +57,12 @@ own Valkey or Redis (requirements in docs/redis.md).
 
 {{/*
 ACL users of the processes (values keys of redis.users): one per wallet
-process kind (when the wallet is installed) and one for the gateway. The
-bundled Valkey also has the users replication (replicas), sentinel
-(Sentinels) and probe (probes), with passwords from the chart's Secret.
+process kind and one for the gateway. The bundled Valkey also has the users
+replication (replicas), sentinel (Sentinels) and probe (probes), with
+passwords from the chart's Secret.
 */}}
 {{- define "ow.redis.processUsers" -}}
-{{- if include "ow.installation.has" (list . "wallet") -}}walletService,walletConfig,walletWorker,walletClock,{{- end -}}gateway
+walletService,walletConfig,walletWorker,walletClock,gateway
 {{- end }}
 
 {{/*
@@ -276,7 +271,7 @@ Output: nothing.
 {{- if and $r.metrics.serviceMonitor.enabled (not $r.metrics.enabled) -}}
 {{- fail "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled: the ServiceMonitor scrapes the exporters of the pods" -}}
 {{- end -}}
-{{- else if include "ow.redis.enabled" . -}}
+{{- else -}}
 {{- $external := $r.external -}}
 {{- if and (not $external.sentinels) (not $external.address) -}}
 {{- fail "redis.external.sentinels or redis.external.address is required with redis.mode external: the Sentinels (host:port) of your Valkey or Redis, or the address of the primary of a server without Sentinel" -}}
@@ -297,7 +292,6 @@ Output: nothing.
 {{- end -}}
 {{- end -}}
 {{- /* The wallet's separate groups (redis.state, redis.cache). */ -}}
-{{- if $v.organisationWallet.enabled -}}
 {{- /* The wallet refuses a replica wait above half of the state endpoint's
 timeout_seconds. A longer WAIT ends in a socket timeout, the client drops
 the connection, and while a replica stalls every request with a proof or a
@@ -335,7 +329,6 @@ timeout_ms. */ -}}
 {{- end -}}
 {{- if and $v.networkPolicy.enabled (not $v.networkPolicy.externalRedis) -}}
 {{- fail (printf "networkPolicy.externalRedis needs the addresses of the group %s (cidrs, and ports such as [6379, 26379]) when networkPolicy.enabled and %s.enabled: else the default deny blocks it" $key $key) -}}
-{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -96,14 +96,14 @@ igrant_api keys generate-token-key "$gateway_kid" --file internal-token-jwks.jso
 igrant_api keys export-token-jwks --file internal-token-jwks.json --out gateway-jwks.json > /dev/null
 
 echo "make-keys: the keys of the signed NATS envelopes"
-for service in api consent wallet; do
+for service in api wallet; do
   igrant_api keys generate-token-key "${service}-service-${stamp}" --purpose service --file "${service}-service-jwks.json" > /dev/null 2>&1
   igrant_api keys export-token-jwks --purpose service --file "${service}-service-jwks.json" --out "${service}-service-public.json" > /dev/null 2>&1
 done
 
 echo "make-keys: the NATS users"
 # walletWorker: the wallet workers (the clock does not use NATS).
-nats_users="api:api apiWebhook:api-webhook consent:consent walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
+nats_users="api:api apiWebhook:api-webhook walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
 for entry in $nats_users; do
   name="${entry#*:}"
   igrant_api keys generate-nats-seed --file "nats-${name}.seed" > "$files/nats-${name}.nkey"
@@ -130,7 +130,6 @@ secret() {
   secret "${release}-api-db-wrapping" db-wrapping-keys.json=db-wrapping-keys.json
   secret "${release}-gateway-internal-token" internal-token-jwks.json=internal-token-jwks.json
   secret "${release}-api-service-key" service-jwks.json=api-service-jwks.json
-  secret "${release}-consent-service-key" service-jwks.json=consent-service-jwks.json
   secret "${release}-wallet-service-key" service-jwks.json=wallet-service-jwks.json
   for entry in $nats_users; do
     name="${entry#*:}"
@@ -152,9 +151,6 @@ block() {
   echo "      activeKid: ${token_kid}"
   echo "  serviceEnvelope:"
   echo "    activeKid: api-service-${stamp}"
-  echo "consent:"
-  echo "  serviceEnvelope:"
-  echo "    activeKid: consent-service-${stamp}"
   echo "organisationWallet:"
   echo "  serviceEnvelope:"
   echo "    activeKid: wallet-service-${stamp}"
@@ -170,8 +166,6 @@ block() {
   echo "  publicJwks:"
   echo "    igrant-api: |"
   block "      " api-service-public.json
-  echo "    igrant-consent-management: |"
-  block "      " consent-service-public.json
   echo "    eudi-wallet: |"
   block "      " wallet-service-public.json
   echo "nats:"

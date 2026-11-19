@@ -1,12 +1,11 @@
 {{- /*
 Auth gateway (its own igrant-gateway image: a static binary on a distroless
 base, port 8070). It authenticates every request to the api host and
-forwards it to the owner service (api core, consent, wallet-config) with a
+forwards it to the owner service (api core, wallet-config) with a
 signed internal token. Every installation with the api has it. It runs no
 migrations, NATS, cron or OIDC provider, and writes no files, so it runs as
 a non-root user with a read-only root file system.
 */}}
-{{- if .Values.api.enabled }}
 {{- $g := .Values.gateway }}
 {{- /* The gateway's own image: an empty registry, tag or pull policy takes
 the value from api.image (one release train). */}}
@@ -117,4 +116,3 @@ spec:
                     - key: {{ $file.key }}
                       path: {{ $path }}
               {{- end }}
-{{- end }}

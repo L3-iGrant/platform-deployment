@@ -1,21 +1,25 @@
 # OpenBao
 
-The bundled OpenBao and its Shamir seal, and how to prepare your own OpenBao instead.
+The recommended OpenBao seals, your own OpenBao, and the bundled OpenBao with the seal `shamir` for development and tests.
 
 [Back to the contents](../README.md#contents)
 
-OpenBao keeps the organisation wallet's signing keys in its Transit engine. You have two options:
+OpenBao keeps the organisation wallet's signing keys in its Transit engine. The seal protects the root key of OpenBao. With an HSM seal, OpenBao unseals itself after each start, and no person holds unseal keys. Choose the seal in this order:
 
-| `openbao.mode` | OpenBao | Profile |
-| --- | --- | --- |
-| `bundled` (default) | The chart runs OpenBao with 3 raft nodes, TLS and the Shamir seal. | none (the default) |
-| `external` | The wallet uses your OpenBao (see [External OpenBao](#external-openbao)). | `openbao-external.yaml` |
+| | Seal | When to use it | How |
+| --- | --- | --- | --- |
+| 1 | Your local HSM on premises: Thales Luna Network HSM | You run the installation in your data centre and have a Luna Network HSM. | The enterprise chart, or your own OpenBao with this seal (`openbao-external.yaml`). See [Connect your on-premise HSM](on-premise-hsm.md). |
+| 2 | A cloud HSM: Thales Luna Cloud HSM (DPoD) | You have no HSM of your own and want an HSM partition as a service. | The enterprise chart, or your own OpenBao with this seal (`openbao-external.yaml`). See [Thales Luna Cloud HSM (DPoD)](dpod.md). |
+| 3 | A cloud key management service with HSM protection: Google Cloud KMS with protection level HSM | You run the installation on Google Cloud and have no HSM partition. | The enterprise chart, or your own OpenBao with this seal (`openbao-external.yaml`). |
+| 4 | Your own OpenBao that already uses one of these seals | You already run OpenBao with an HSM seal. | `openbao-external.yaml` (`openbao.mode: external`, see [External OpenBao](#external-openbao)). |
 
-For automatic unseal through an HSM or a Google Cloud KMS key, see [Connect your on-premise HSM](on-premise-hsm.md), [Thales Luna Cloud HSM (DPoD)](dpod.md) and [Scaled deployments](scaled-deployments.md). A production installation must use automatic unseal through an HSM or Google Cloud KMS. The Shamir seal is for development and tests.
+The bundled OpenBao of this chart has only the seal `shamir` (`openbao-shamir.yaml`): an HSM seal needs the enterprise chart or your own OpenBao with an HSM seal. The seal `shamir` is not for an installation that holds real keys. Use it only for development and tests, because the unseal keys are with people, and after each restart an operator must unseal each pod by hand.
+
+`openbao.seal` has no default: give one of the two profiles, `openbao-external.yaml` or `openbao-shamir.yaml`, or the render stops.
 
 ## The Shamir seal
 
-The seal protects the root key of OpenBao. With the Shamir seal, each pod is sealed and not ready after every start, until an operator unseals it with 3 of the 5 unseal keys ([install step 5](install.md#step-5-initialise-openbao-bundled-openbao-only)). Plan for this at every node restart and every change of the OpenBao pods.
+For development and tests only. With the Shamir seal, each pod is sealed and not ready after every start, until an operator unseals it with 3 of the 5 unseal keys ([install step 5](install.md#step-5-initialise-openbao-bundled-openbao-only)). Plan for this at every node restart and every change of the OpenBao pods.
 
 ### Restart the pods
 

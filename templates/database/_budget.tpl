@@ -13,31 +13,18 @@ pooler counts database.pooler.serverConnections. Output: JSON {processes:
 {{- $v := .Values -}}
 {{- $p := $v.database.pools -}}
 {{- $processes := list -}}
-{{- /* Readers of the views of a service that is not installed open no
-connections (ow.installation.has). */ -}}
-{{- $walletViews := include "ow.installation.has" (list . "wallet") -}}
-{{- $consentViews := include "ow.installation.has" (list . "consent") -}}
 {{- /* The api core, the webhook handler and the gateway: plus one health
-connection per pod outside the pools (it checks the database every 2 s). */ -}}
-{{- if $v.api.enabled -}}
-{{- $apiReader := ternary ($p.apiReadAccess.maxConns | int) 0 (eq $walletViews "true") -}}
+connection per pod outside the pools (it checks the database every 2 s).
+The api core and the webhook handler also read the wallet views. */ -}}
+{{- $apiReader := $p.apiReadAccess.maxConns | int -}}
 {{- $processes = append $processes (dict "name" "api core" "pods" ($v.api.replicas | int) "each" (add $p.api.maxConns $p.oidc.maxConns $apiReader 1)) -}}
 {{- $processes = append $processes (dict "name" "webhook handler" "pods" ($v.api.webhook.replicas | int) "each" (add $p.webhook.maxConns $p.oidc.maxConns $apiReader 1)) -}}
 {{- $processes = append $processes (dict "name" "gateway" "pods" ($v.gateway.replicas | int) "each" (add $p.gateway.maxConns 1)) -}}
-{{- end -}}
-{{- if $v.consent.enabled -}}
-{{- /* consent: its pool plus its readers of 5 each (the api views, and the
-wallet views when the wallet is installed). No health connection: its
-readiness check uses the pool. */ -}}
-{{- $processes = append $processes (dict "name" "consent" "pods" ($v.consent.replicas | int) "each" (add $p.consent.maxConns (ternary 10 5 (eq $walletViews "true")))) -}}
-{{- end -}}
-{{- if $v.organisationWallet.enabled -}}
 {{- $w := $v.organisationWallet -}}
 {{- $pooled := not (empty $v.database.pooler.host) -}}
 {{- /* service and config: the session pool, the allocation pool and the
-synchronous engine (one at a time). config also has its readers of 10 each
-(the api views, and the consent views when consent is installed) and one
-WIA pool mint (the wallet unit attestation route holds its lock on its own
+synchronous engine (one at a time). config also has its reader of 10 (the
+api views) and one WIA pool mint (the wallet unit attestation route holds its lock on its own
 connection). */ -}}
 {{- $s := $p.walletService -}}
 {{- $servicePods := $w.service.replicas | int -}}
@@ -46,7 +33,7 @@ connection). */ -}}
 {{- $processes = append $processes (dict "name" "wallet service" "pods" $servicePods "each" (add $sessions $s.allocationPoolSize)) -}}
 {{- $c := $p.walletConfig -}}
 {{- $sessions = ternary 0 (add $c.poolSize $c.maxOverflow 1) $pooled -}}
-{{- $processes = append $processes (dict "name" "wallet config" "pods" ($w.config.replicas | int) "each" (add $sessions $c.allocationPoolSize (ternary 20 10 (eq $consentViews "true")) 1)) -}}
+{{- $processes = append $processes (dict "name" "wallet config" "pods" ($w.config.replicas | int) "each" (add $sessions $c.allocationPoolSize 10 1)) -}}
 {{- /* A worker process: one session per thread, maxOverflow, the allocation
 pool, at most 2 lock connections per thread and the synchronous engine. A
 pod: its processes plus its health server. */ -}}
@@ -64,7 +51,6 @@ pod: its processes plus its health server. */ -}}
 {{- $processes = append $processes (dict "name" "clock" "pods" ($w.clock.replicas | int) "each" 2) -}}
 {{- if $pooled -}}
 {{- $processes = append $processes (dict "name" "connection pooler" "pods" 1 "each" ($v.database.pooler.serverConnections | int)) -}}
-{{- end -}}
 {{- end -}}
 {{- $total := 0 -}}
 {{- range $process := $processes -}}

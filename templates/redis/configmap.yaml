@@ -1,6 +1,4 @@
-{{- if include "ow.redis.enabled" . }}
 {{- include "ow.redis.check" . }}
-{{- end }}
 {{- if include "ow.redis.bundled" . }}
 apiVersion: v1
 kind: ConfigMap

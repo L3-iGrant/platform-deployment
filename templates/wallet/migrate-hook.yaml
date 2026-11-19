@@ -12,7 +12,6 @@ EUDI_WALLET_CONFIG). After the grant step, the partition step creates the
 monthly audit event partitions and drops the months older than the
 retention. It mounts only the migrator key of the role Secret.
 */}}
-{{- if .Values.organisationWallet.enabled }}
 {{- $password := dict "secret" (include "ow.wallet.databaseRolesSecretName" .) "key" "migrator" }}
 {{- include "ow.migrateHook" (dict
   "root" .
@@ -26,4 +25,3 @@ retention. It mounts only the migrator key of the role Secret.
   "steps" (list (dict "name" "migrate" "command" (list "/app/.venv/bin/migrate-database")))
   "secrets" (include "ow.migrateHook.secrets" (include "ow.wallet.databaseFiles" (list . "database-password" $password) | fromJson) | fromJsonArray)
   "secretDir" (include "ow.wallet.secretDir" .)) }}
-{{- end }}

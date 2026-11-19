@@ -14,8 +14,9 @@ These docs are for the developers and operations teams who install and run the p
 
 ### Get started
 
-- [Components](docs/components.md): what the chart installs, how your values files describe an installation, and how to add consent or leave out the organisation wallet.
+- [Components](docs/components.md): what the chart installs, how your values files describe an installation, where the organisation wallet runs, and the optional features.
 - [Prerequisites](docs/prerequisites.md): what your cluster, network and workstation need, and the Envoy Gateway setup of the default exposure (`manifests/envoy-gateway/`).
+- [Sizing](docs/sizing.md): the size profiles, from development and tests to 250,000 wallet units.
 - [Get the charts](docs/install.md#get-the-charts): clone this repository, or the enterprise repository with your access token, and check out your release.
 - [Install](docs/install.md): seven steps, each with a check.
 
@@ -30,7 +31,7 @@ These docs are for the developers and operations teams who install and run the p
 - [Database](docs/database.md): PostgreSQL for the whole platform (bundled or external), the wallet's database roles and hooks, and the server logs.
 - [Audit log](docs/audit-log.md): the wallet's audit log, its write-once bucket, how to verify the log, and the retention purge of wallet data.
 - [Workers and clock](docs/workers.md): the wallet's background work: worker groups and queues, the clock, shutdowns, probes and metrics.
-- [OpenBao](docs/openbao.md): the bundled OpenBao with its Shamir seal, or your own OpenBao.
+- [OpenBao](docs/openbao.md): the recommended seals, your own OpenBao, and the bundled OpenBao with the seal `shamir` for development and tests.
 - [Redis](docs/redis.md): Valkey with Sentinel for the wallet's work queue, single-use values and caches, or your own Valkey or Redis.
 - [Key stores](docs/key-stores.md): the local key store, and the key stores that organisations can add.
 - [Network policies](docs/network-policies.md): limit the traffic between the components.
@@ -49,7 +50,6 @@ These docs are for the developers and operations teams who install and run the p
 - [Chart objects](docs/chart-objects.md): the objects that the chart creates for OpenBao, Valkey, NATS and the wallet's workers and clock.
 - [NATS users](docs/nats-users.md): the NATS user of each process, and how to use an external NATS server.
 - [Read access](docs/read-access.md): the read-only database users of the services.
-- [Privacy dashboard](docs/privacy-dashboard.md): the status of this feature in the chart.
 - [Tests](docs/tests.md): the chart tests, which run without a cluster.
 - [Images](docs/images.md): the chart's images, for your own mirror.
 

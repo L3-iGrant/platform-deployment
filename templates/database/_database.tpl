@@ -21,8 +21,8 @@ and ow.db.wallet. Output: JSON.
 {{- end }}
 
 {{/*
-The engine of all components, validated. The api, consent and the
-organisation wallet only accept the engines in ow.db.engines, so any other
+The engine of all components, validated. The api and the organisation
+wallet only accept the engines in ow.db.engines, so any other
 value (for example mysql) fails the render with a message that names them.
 values.schema.json has no enum for database.engine, because a schema error
 cannot name the components.
@@ -31,7 +31,7 @@ cannot name the components.
 {{- $engine := .Values.database.engine | default "postgresql" -}}
 {{- $engines := include "ow.db.engines" . | fromJson -}}
 {{- if not (hasKey $engines $engine) -}}
-{{- fail (printf "database.engine %q is not supported: the api, consent and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
+{{- fail (printf "database.engine %q is not supported: the api and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
 {{- end -}}
 {{ $engine }}
 {{- end }}
@@ -149,7 +149,7 @@ database-ca.crt
 {{- end }}
 
 {{/*
-Client sslmode (api, gateway, consent, wallet, init hook):
+Client sslmode (api, gateway, wallet, init hook):
 database.tls.sslMode, else verify-full with a CA, require with TLS but no
 CA, and disable without TLS.
 */}}
@@ -165,13 +165,9 @@ require
 {{- end -}}
 {{- end }}
 
-{{/* The keys of database.databases that the enabled components use, comma-separated. */}}
-{{- define "ow.db.enabledDatabases" -}}
-{{- $keys := list -}}
-{{- if .Values.api.enabled -}}{{- $keys = concat $keys (list "api" "oidc") -}}{{- end -}}
-{{- if .Values.consent.enabled -}}{{- $keys = append $keys "consent" -}}{{- end -}}
-{{- if .Values.organisationWallet.enabled -}}{{- $keys = append $keys "wallet" -}}{{- end -}}
-{{ join "," $keys }}
+{{/* The keys of database.databases (api, oidc, wallet), comma-separated. */}}
+{{- define "ow.db.keys" -}}
+api,oidc,wallet
 {{- end }}
 
 {{/*
@@ -182,7 +178,7 @@ database connection calls this (through ow.db.go and ow.db.wallet).
 {{- $db := .Values.database -}}
 {{- $bundled := include "ow.db.bundled" . -}}
 {{- $names := list -}}
-{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
+{{- range $key := include "ow.db.keys" . | splitList "," | compact -}}
 {{- $name := (index $db.databases $key).name | default "" -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $name) -}}
 {{- fail (printf "database.databases.%s.name %q is not a database name: a lower-case letter, then lower-case letters, digits or _" $key $name) -}}
@@ -194,15 +190,8 @@ database connection calls this (through ow.db.go and ow.db.wallet).
 {{- end -}}
 {{- /* The roles hook creates the wallet database roles as the admin user,
 so the chart cannot create them without one. */ -}}
-{{- if and .Values.organisationWallet.enabled (not $bundled) (not $db.external.admin.user) -}}
-{{- fail "database.external.admin.user is required with database.mode external and the organisation wallet: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
-{{- end -}}
-{{- if and (not $bundled) (not $db.external.admin.user) (not $db.auth.existingSecret) -}}
-{{- range $key := include "ow.db.enabledDatabases" . | splitList "," | compact -}}
-{{- if not (index $db.databases $key).password -}}
-{{- fail (printf "database.mode external without database.external.admin.user: the databases and the users exist, so give their passwords in database.auth.existingSecret (or database.databases.%s.password); the chart cannot make them" $key) -}}
-{{- end -}}
-{{- end -}}
+{{- if and (not $bundled) (not $db.external.admin.user) -}}
+{{- fail "database.external.admin.user is required with database.mode external: the hook wallet-database-roles makes the database roles of the wallet with the admin user of the server (see docs/database.md)" -}}
 {{- end -}}
 {{- with $db.tls.sslMode -}}
 {{- if not (has . (list "disable" "require" "verify-ca" "verify-full")) -}}
@@ -216,8 +205,8 @@ so the chart cannot create them without one. */ -}}
 
 {{/*
 The DataBase section of the Go components (one struct with exact keys, for
-api DataBase, Extensions.oidc.database and ReadAccess.*, gateway DataBase,
-and consent DataBase and ReadAccess.*): tls.sslMode (plus tls.caFile when
+api DataBase, Extensions.oidc.database and ReadAccess.*, and gateway
+DataBase): tls.sslMode (plus tls.caFile when
 there is a CA) and the pool. Call with (dict "root" $ "host" "<host>"
 "port" <port> "name" "<database>" "username" "<user>" "passwordFile"
 "<path>" "caFile" "<path>" "pool" <{maxConns, minConns} or nil>).

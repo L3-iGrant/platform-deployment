@@ -1,7 +1,0 @@
-# The api's import row limit as a quoted string. The api reads a whole number
-# and fails at startup on a string, so the render must stop (a check in
-# tests/render-matrix.sh).
-api:
-  extraConfig:
-    Uploads:
-      individualImportMaxRows: "5000"

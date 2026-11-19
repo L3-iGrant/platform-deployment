@@ -1,36 +1,22 @@
 #!/usr/bin/env python3
-"""Checks the installed services in one "helm template" output.
+"""Checks the services of the installation in one "helm template" output.
 
-Usage: check_installation.py <render.yaml> <case>
+Usage: check_installation.py <render.yaml> [<optional feature> ...]
 
-The cases:
-  all              all services in this release: no Installation section,
-                   and the upstreams, read users, trusts, NATS users and
-                   Valkey users of consent and the wallet
-  consent-elsewhere
-                   consent in another release (gateway.upstreams.consent.url):
-                   as all, but the consent upstream is the URL and there is
-                   no consent object
-  wallet-elsewhere the wallet in another release
-                   (gateway.upstreams.walletConfig.url): as all, but the
-                   wallet config upstream is the URL and there is no wallet
-                   object
-  no-consent       consent is not installed
-  no-wallet        the wallet is not installed
+The optional features are the expected installation.optionalFeatures (none:
+the default, an empty list). The api, webhook and gateway files have them as
+Installation.optionalFeatures, and each file of the wallet as
+installation.optional_features.
 
-When a service is not installed: Installation.services in the api, webhook
-and gateway files (and in no other object) names the other service; the
-gateway file has no upstream for the service; the release has no object of
-the service; no process reads its views (ReadAccess, read_access, the read
-access Secret, the mounted password files); no process trusts its keys
-(trusted issuers and service keys volumes); nats.conf has no user for the
-service; the bundled Valkey has no wallet user. Without the wallet, the
-consent file has no ReadAccess.wallet key, the consent NATS user has no
-rights on the wallet event consumers (consent-dda-present-proof,
-consent-dda-presentation), consent has no read access Job for the reader
-wallet (and without consent, the wallet has no read access Job for the
-reader consent), the api file has no OpenIdDeployment, and the dashboard
-has no walletUrl.
+The checks: Installation.services is [wallet] in the api, webhook and
+gateway files (and in no other object); the gateway file has the upstreams
+core and walletConfig (the Service of the wallet config role); the api reads
+the wallet views (ReadAccess.wallet, the read access Secret, the mounted
+password file) and trusts the keys of the wallet (trusted issuers and
+service keys volume); the api file has OpenIdDeployment; the wallet config
+role reads only the api views (read_access, its mounted password file and
+its read access Job); nats.conf has the users of the api and the wallet; the
+bundled Valkey has the wallet users; and the dashboard has walletUrl.
 """
 
 import json
@@ -39,21 +25,12 @@ import sys
 import yaml
 
 RELEASE = "t"
-CONSENT_ISSUER = "igrant-consent-management"
 WALLET_ISSUER = "eudi-wallet"
-
-CASES = {
-    "all": {"consent": "here", "wallet": "here"},
-    "consent-elsewhere": {"consent": "http://consent.example.org", "wallet": "here"},
-    "wallet-elsewhere": {"consent": "here", "wallet": "http://wallet.example.org"},
-    "no-consent": {"consent": None, "wallet": "here"},
-    "no-wallet": {"consent": "here", "wallet": None},
-}
 
 
 def main() -> int:
-    path, case = sys.argv[1:3]
-    expected = CASES[case]
+    path = sys.argv[1]
+    optional = sys.argv[2:]
     with open(path, encoding="utf-8") as handle:
         docs = [doc for doc in yaml.safe_load_all(handle) if doc]
     problems = []
@@ -69,9 +46,7 @@ def main() -> int:
         doc = find("ConfigMap", name)
         return (doc or {}).get("data") or {}
 
-    consent, wallet = expected["consent"], expected["wallet"]
-    services = [name for name, where in (("wallet", wallet), ("consent", consent)) if where]
-    want = None if len(services) == 2 else {"services": services}
+    want = {"optionalFeatures": optional, "services": ["wallet"]}
 
     # Installation: in the api, webhook and gateway files only.
     files = {
@@ -88,54 +63,30 @@ def main() -> int:
             if (name, key) not in files and "Installation:" in str(text):
                 problems.append(f"{doc['kind']} {name} {key} has Installation")
 
-    # Gateway upstreams.
+    # The optional features in each file of the wallet (installation.optional_features).
+    wallet_files = config_map(f"{RELEASE}-wallet")
+    check(bool(wallet_files), "the wallet has no ConfigMap")
+    for key, text in wallet_files.items():
+        if key.endswith(".yaml"):
+            data = yaml.safe_load(text) or {}
+            got = (data.get("installation") or {}).get("optional_features")
+            check(got == optional, f"{RELEASE}-wallet {key}: installation.optional_features is {got!r}, not {optional!r}")
+
+    # Gateway upstreams: the api core and the wallet config role.
     upstreams = files[(f"{RELEASE}-gateway", "config.yaml")]["Gateway"]["upstreams"]
-    for service, upstream, where, own in (("consent", "consent", consent, f"http://{RELEASE}-consent.ow.svc:80"),
-                                          ("wallet", "walletConfig", wallet, f"http://{RELEASE}-wallet-config.ow.svc:80")):
-        url = (upstreams.get(upstream) or {}).get("url")
-        if where is None:
-            check(upstream not in upstreams, f"the gateway has the upstream {upstream} without {service}")
-        else:
-            check(url == (own if where == "here" else where), f"the gateway upstream {upstream} is {url!r}")
+    check(sorted(upstreams) == ["core", "walletConfig"], f"the gateway upstreams are {sorted(upstreams)}")
+    url = (upstreams.get("walletConfig") or {}).get("url")
+    check(url == f"http://{RELEASE}-wallet-config.ow.svc:80", f"the gateway upstream walletConfig is {url!r}")
 
-    # The objects of a service that this release does not run.
-    def objects(prefixes: tuple) -> list:
-        return sorted(f"{d['kind']} {d['metadata']['name']}" for d in docs
-                      if d["metadata"]["name"].startswith(prefixes))
-    if consent != "here":
-        check(not objects((f"{RELEASE}-consent",)), f"objects of consent: {objects((f'{RELEASE}-consent',))}")
-    if wallet != "here":
-        prefixes = (f"{RELEASE}-wallet", f"{RELEASE}-openbao")
-        check(not objects(prefixes), f"wallet objects: {objects(prefixes)}")
-
-    # Views: ReadAccess in the api and consent files, read_access of the
-    # wallet config role, the read access Secret, and the mounted password
-    # files.
+    # Views: ReadAccess in the api files, read_access of the wallet config
+    # role, the read access Secret, and the mounted password files.
     for key in ("api.yaml", "webhook.yaml"):
         owners = sorted((files[(f"{RELEASE}-api", key)].get("ReadAccess") or {}))
-        check(owners == (["wallet"] if wallet else []), f"{key} ReadAccess is {owners}")
-    consent_file = config_map(f"{RELEASE}-consent").get("config.yaml")
-    if consent == "here":
-        read_access = yaml.safe_load(consent_file)["ReadAccess"]
-        owners = sorted(read_access)
-        check(owners == (["api", "wallet"] if wallet else ["api"]), f"consent ReadAccess is {owners}")
-        # Without the wallet there must be no ReadAccess.wallet key at all:
-        # consent refuses a key without a value.
-        check(("wallet" in read_access) == bool(wallet), f"consent ReadAccess.wallet: {'wallet' in read_access}")
-        check(wallet is None or read_access.get("wallet"), "consent ReadAccess.wallet has no value")
-    wallet_file = config_map(f"{RELEASE}-wallet").get("config.yaml")
-    if wallet == "here":
-        owners = sorted(yaml.safe_load(wallet_file)["read_access"])
-        check(owners == (["api", "consent"] if consent else ["api"]), f"wallet read_access is {owners}")
+        check(owners == ["wallet"], f"{key} ReadAccess is {owners}")
+    owners = sorted((yaml.safe_load(config_map(f"{RELEASE}-wallet").get("config.yaml") or "") or {}).get("read_access") or {})
+    check(owners == ["api"], f"wallet read_access is {owners}")
     readers = sorted((find("Secret", f"{RELEASE}-read-access") or {}).get("data") or {})
-    pairs = []
-    if wallet:
-        pairs.append("api-wallet")
-    if consent == "here":
-        pairs += ["consent-api"] + (["consent-wallet"] if wallet else [])
-    if wallet == "here":
-        pairs += ["wallet-api"] + (["wallet-consent"] if consent else [])
-    check(readers == sorted(pairs), f"the read access Secret has {readers}, not {sorted(pairs)}")
+    check(readers == ["api-wallet", "wallet-api"], f"the read access Secret has {readers}, not ['api-wallet', 'wallet-api']")
 
     def mounted(doc: dict) -> list:
         spec = doc["spec"]["template"]["spec"]
@@ -151,75 +102,40 @@ def main() -> int:
     for name in (f"{RELEASE}-api", f"{RELEASE}-webhook"):
         doc = find("Deployment", name)
         files_of = [path for path in mounted(doc) if path.startswith("read-access-")]
-        check(files_of == (["read-access-wallet-password"] if wallet else []), f"{name} mounts {files_of}")
-        issuers = sorted(["igrant-api.json"] + ([f"{CONSENT_ISSUER}.json"] if consent else [])
-                         + ([f"{WALLET_ISSUER}.json"] if wallet else []))
-        check(service_keys(doc) == issuers, f"{name} mounts the service keys {service_keys(doc)}")
-    if consent == "here":
-        doc = find("Deployment", f"{RELEASE}-consent")
-        files_of = [path for path in mounted(doc) if path.startswith("read-access-")]
-        want_files = ["read-access-api-password"] + (["read-access-wallet-password"] if wallet else [])
-        check(files_of == want_files, f"consent mounts {files_of}")
-        keys = sorted(["igrant-api.json"] + ([f"{WALLET_ISSUER}.json"] if wallet else []))
-        check(service_keys(doc) == keys, f"consent mounts the service keys {service_keys(doc)}")
-        trusted = sorted(item["issuer"] for item in yaml.safe_load(consent_file)["ServiceEnvelope"]["trustedIssuers"])
-        check(trusted == sorted(["igrant-api"] + ([WALLET_ISSUER] if wallet else [])), f"consent trusts {trusted}")
-    if wallet == "here":
-        doc = find("Deployment", f"{RELEASE}-wallet-config")
-        files_of = [path for path in mounted(doc) if path.startswith("read-access-")]
-        want_files = ["read-access-api-password"] + (["read-access-consent-password"] if consent else [])
-        check(files_of == want_files, f"the wallet config role mounts {files_of}")
+        check(files_of == ["read-access-wallet-password"], f"{name} mounts {files_of}")
+        check(service_keys(doc) == ["eudi-wallet.json", "igrant-api.json"], f"{name} mounts the service keys {service_keys(doc)}")
+    doc = find("Deployment", f"{RELEASE}-wallet-config")
+    files_of = [path for path in mounted(doc) if path.startswith("read-access-")] if doc else []
+    check(files_of == ["read-access-api-password"], f"the wallet config role mounts {files_of}")
 
-    # The api trusts igrant-api and the installed services.
+    # The api trusts igrant-api and the wallet, and has the URL of the wallet.
     for key in ("api.yaml", "webhook.yaml"):
         trusted = [item["issuer"] for item in files[(f"{RELEASE}-api", key)]["ServiceEnvelope"]["trustedIssuers"]]
-        want_trusted = ["igrant-api"] + ([CONSENT_ISSUER] if consent else []) + ([WALLET_ISSUER] if wallet else [])
-        check(trusted == want_trusted, f"{key} trusts {trusted}")
-        has_wallet_url = "OpenIdDeployment" in files[(f"{RELEASE}-api", key)]
-        check(has_wallet_url == bool(wallet), f"{key} OpenIdDeployment: {has_wallet_url}")
+        check(trusted == ["igrant-api", WALLET_ISSUER], f"{key} trusts {trusted}")
+        check("OpenIdDeployment" in files[(f"{RELEASE}-api", key)], f"{key} has no OpenIdDeployment")
 
-    # nats.conf: no user for a service that is not installed.
+    # nats.conf: the users of the api and of the wallet.
     nats = config_map(f"{RELEASE}-nats").get("nats.conf", "")
-    for user, where in (("# consent", consent), ("# wallet-config", wallet), ("# wallet-service", wallet),
-                        ("# wallet-worker", wallet)):
-        check((user in nats) == bool(where), f"nats.conf: the user {user[2:]} is {'missing' if where else 'there'}")
-    # The consent user has rights on the wallet event consumers
-    # (consent-dda-present-proof, consent-dda-presentation) only with the
-    # wallet.
     lines = nats.split("\n")
-    consent_rights = next((lines[i + 1] for i, line in enumerate(lines) if line.strip() == "# consent"), "")
-    if consent:
-        check(bool(consent_rights), "nats.conf: the user consent has no rights")
-        for durable in ("consent-dda-present-proof", "consent-dda-presentation"):
-            check((f"OWS_MICROSERVICE.{durable}" in consent_rights) == bool(wallet),
-                  f"nats.conf: the user consent {'has no' if wallet else 'has the'} rights on {durable}")
-        check("API_EVENTS.consent-api-organisation" in consent_rights, "nats.conf: the user consent cannot read API_EVENTS")
+    users = sorted(line.strip()[2:] for i, line in enumerate(lines)
+                   if line.strip().startswith("# ") and i + 1 < len(lines) and lines[i + 1].strip().startswith("{ nkey:"))
+    want_users = ["api", "api-webhook", "wallet-config", "wallet-service", "wallet-worker"]
+    check(sorted(set(users) - {"wallet-signer-manager"}) == want_users, f"nats.conf has the users {users}")
 
-    # Consent's read access Job for the reader wallet (consent read-access
-    # apply --reader wallet): only when this release runs both consent and
-    # the wallet.
+    # The wallet's read access hook: only for the reader api.
     jobs = sorted(d["metadata"]["name"] for d in docs if d["kind"] == "Job")
-    reader_jobs = [name for name in jobs if name.startswith(f"{RELEASE}-consent-read-access-wallet")]
-    check(bool(reader_jobs) == (consent == "here" and wallet == "here"),
-          f"consent's read access Jobs for the wallet are {reader_jobs}")
-    # The wallet's read access hook for the reader consent (wallet
-    # read-access apply --reader consent): only when this release runs both
-    # the wallet and consent.
-    reader_jobs = [name for name in jobs if name == f"{RELEASE}-wallet-read-access-consent"]
-    check(bool(reader_jobs) == (consent == "here" and wallet == "here"),
-          f"the wallet's read access Jobs for consent are {reader_jobs}")
+    reader_jobs = [name for name in jobs if name.startswith(f"{RELEASE}-wallet-read-access-")]
+    check(reader_jobs == [f"{RELEASE}-wallet-read-access-api"], f"the wallet's read access Jobs are {reader_jobs}")
 
-    # Bundled Valkey: wallet users only with the wallet.
-    users = sorted((find("Secret", f"{RELEASE}-redis-users") or {}).get("data") or {})
-    wallet_users = [user for user in users if user.startswith("wallet")]
-    check(bool(wallet_users) == bool(wallet), f"the Valkey users are {users}")
+    # Bundled Valkey: the wallet users.
+    valkey = sorted((find("Secret", f"{RELEASE}-redis-users") or {}).get("data") or {})
+    check(any(user.startswith("wallet") for user in valkey), f"the Valkey users are {valkey}")
     acl = config_map(f"{RELEASE}-redis").get("users.acl", "")
-    check(("~ows:*" in acl) == bool(wallet), "the ACL file of Valkey has the rights of the wallet" if not wallet
-          else "the ACL file of Valkey has no rights of the wallet")
+    check("~ows:*" in acl, "the ACL file of Valkey has no rights of the wallet")
 
-    # Dashboard: walletUrl only with the wallet.
+    # Dashboard: walletUrl.
     dashboard = json.loads(config_map(f"{RELEASE}-dashboard").get("config.json", "{}"))
-    check(("walletUrl" in dashboard) == bool(wallet), f"the dashboard config.json is {dashboard}")
+    check("walletUrl" in dashboard, f"the dashboard config.json is {dashboard}")
 
     for problem in problems:
         print(problem)

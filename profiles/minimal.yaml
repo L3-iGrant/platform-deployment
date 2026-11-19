@@ -5,8 +5,6 @@
 # until its pod runs on another node.
 gateway:
   replicas: 1
-consent:
-  replicas: 1
 nats:
   replicas: 1
 openbao:

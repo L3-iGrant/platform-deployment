@@ -5,18 +5,26 @@ with raft storage and the Shamir seal) or an external OpenBao (openbao.mode
 external). See docs/openbao.md.
 */}}
 
-{{/* "true" when the chart runs OpenBao (openbao.mode bundled and the wallet is enabled), else "". */}}
+{{/* "true" when the chart runs OpenBao (openbao.mode bundled), else "". */}}
 {{- define "ow.openbao.bundled" -}}
 {{- $mode := .Values.openbao.mode | default "bundled" -}}
 {{- if not (has $mode (list "bundled" "external")) -}}
 {{- fail (printf "openbao.mode %q is not supported: use \"bundled\" or \"external\"" $mode) -}}
 {{- end -}}
-{{- if and (eq $mode "bundled") .Values.organisationWallet.enabled -}}true{{- end -}}
+{{- if eq $mode "bundled" -}}true{{- end -}}
 {{- end }}
 
-{{/* Seal of the bundled OpenBao, validated. */}}
+{{/*
+Seal of the bundled OpenBao, validated. The value is required. The only
+seal of this chart is shamir, for development and tests: the unseal keys
+are with people, and each start needs a manual unseal. For real keys, the
+wallet uses your own OpenBao with an HSM seal (openbao.mode external).
+*/}}
 {{- define "ow.openbao.seal" -}}
-{{- $seal := .Values.openbao.seal | default "shamir" -}}
+{{- $seal := .Values.openbao.seal | default "" -}}
+{{- if not $seal -}}
+{{- fail "openbao.seal is required with the bundled OpenBao. For an installation that holds real keys, use your own OpenBao with an HSM seal (profiles/openbao-external.yaml): in this order, your HSM on premises (Thales Luna Network HSM), a Thales Luna Cloud HSM partition (DPoD), or Google Cloud KMS with protection level HSM. The bundled OpenBao with an HSM seal needs the enterprise chart. For development and tests only: profiles/openbao-shamir.yaml (the seal shamir, a manual unseal after each start). See docs/openbao.md" -}}
+{{- end -}}
 {{- if ne $seal "shamir" -}}
 {{- fail (printf "openbao.seal %q is not supported: use \"shamir\" (an operator unseals each pod after each start), or set openbao.mode external" $seal) -}}
 {{- end -}}

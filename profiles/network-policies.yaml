@@ -1,6 +1,5 @@
 # NetworkPolicy (only when your cluster enforces it). Fill in the addresses
-# of the services outside the cluster. kubeApi: only with the privacy
-# dashboards.
+# of the services outside the cluster.
 networkPolicy:
   enabled: true
   clusterCidrs: [10.0.0.0/8]                # the pod and Service CIDRs of your cluster
@@ -15,6 +14,3 @@ networkPolicy:
       kms:                                 # only with openbao.mode external
         cidrs: [192.0.2.30/32]
         ports: [8200]
-      kubeApi:                             # the Kubernetes API server
-        cidrs: [192.0.2.40/32]
-        ports: [443, 6443]

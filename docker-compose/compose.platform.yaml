@@ -16,14 +16,6 @@
 # the public wallet routes and the dashboard. Your TLS reverse proxy sends
 # the traffic of your public host names to these ports. All other services
 # are only on the Compose network.
-#
-# Consent is off by default, as in the Helm chart (README.md, "Consent"):
-# its five services (consent, consent-migrate, consent-read-access,
-# api-read-access-consent, wallet-read-access-consent) are in the profile
-# consent, which the derived COMPOSE_PROFILES of .env turns on with
-# CONSENT_ENABLED=true. The other services mount the consent files also
-# without consent (make secrets always writes them); their configuration
-# files then do not use them.
 
 x-server: &server
   restart: unless-stopped
@@ -80,9 +72,9 @@ services:
     # DROP, GRANT, REVOKE and the role statements), every connection and
     # every disconnection to the container log (docker compose logs
     # postgres). max_connections: at peak, the default pools of the
-    # services open about 290 connections (the wallet about 190, the api,
-    # webhook, gateway and consent about 100), and the server keeps 3 for
-    # the superuser.
+    # services open about 265 connections (the wallet about 180, the api,
+    # webhook and gateway about 85), and the server keeps 3 for the
+    # superuser.
     command: ["postgres", "-c", "max_connections=400", "-c", "password_encryption=scram-sha-256",
               "-c", "log_statement=ddl", "-c", "log_connections=on", "-c", "log_disconnections=on"]
     environment:
@@ -110,12 +102,11 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # Creates the databases igrant_api, igrant_oidc, igrant_consent (only with
-  # consent) and igrant_wallet and their owner users (the user name is the
-  # database name), then exits. Idempotent: it sets the passwords on every
-  # run. The wallet's data scopes are schemas in igrant_wallet, which
-  # wallet-database-roles creates; no wallet process logs in as the owner
-  # user igrant_wallet.
+  # Creates the databases igrant_api, igrant_oidc and igrant_wallet and their
+  # owner users (the user name is the database name), then exits.
+  # Idempotent: it sets the passwords on every run. The wallet's data scopes
+  # are schemas in igrant_wallet, which wallet-database-roles creates; no
+  # wallet process logs in as the owner user igrant_wallet.
   database-init:
     <<: [*job, *hardened]
     image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
@@ -127,7 +118,6 @@ services:
       DB_ENGINE: ${DB_ENGINE}
       DB_PORT: ${DB_PORT}
       DB_ADMIN_USER: ${DB_ADMIN_USER}
-      CONSENT_ENABLED: ${CONSENT_ENABLED:-}
     configs:
       - source: database-init-script
         target: /scripts/create-databases.sh
@@ -135,7 +125,6 @@ services:
       - {source: database-admin-password, target: /run/secrets/database/admin-password}
       - {source: db-igrant-api-password, target: /run/secrets/database/igrant_api-password}
       - {source: db-igrant-oidc-password, target: /run/secrets/database/igrant_oidc-password}
-      - {source: db-igrant-consent-password, target: /run/secrets/database/igrant_consent-password}
       - {source: db-igrant-wallet-password, target: /run/secrets/database/igrant_wallet-password}
     depends_on:
       postgres: {condition: service_healthy, required: false}
@@ -168,10 +157,6 @@ services:
     # chart's NATS.
     user: "65532:65532"
     command: ["--config", "/etc/nats/nats.conf"]
-    # The users come from generated/ (make configs): without consent, the
-    # file has no user consent.
-    labels:
-      io.igrant.config-sha256.nats-users: ${CONFIG_SHA256_NATS_USERS:?run make configs}
     configs:
       - {source: nats-conf, target: /etc/nats/nats.conf}
       - {source: nats-users, target: /etc/nats/users.conf}
@@ -334,24 +319,6 @@ services:
     depends_on:
       database-init: {condition: service_completed_successfully}
 
-  # Only with consent (the profile consent).
-  consent-migrate:
-    <<: [*job, *hardened]
-    image: ${IMAGE_REGISTRY:?set IMAGE_REGISTRY in .env}/consent-management-backend:${PLATFORM_TAG:?set PLATFORM_TAG in .env}
-    profiles: [consent]
-    user: "65532:65532"
-    command: ["migrate", "schema", "--config", "/etc/consent/migrate.yaml"]
-    tmpfs:
-      - /tmp:size=16m
-    labels:
-      io.igrant.config-sha256.consent-migrate-config: ${CONFIG_SHA256_CONSENT_MIGRATE_CONFIG:?run make configs}
-    configs:
-      - {source: consent-migrate-config, target: /etc/consent/migrate.yaml}
-    secrets:
-      - {source: db-igrant-consent-password, target: /run/secrets/consent/database-password}
-    depends_on:
-      database-init: {condition: service_completed_successfully}
-
   # The wallet's database roles (database-roles apply, as the admin user):
   # the owner role igrant_wallet_owner, the login database roles
   # igrant_wallet_<name> with their passwords (one file each in
@@ -420,8 +387,7 @@ services:
   # Each database owner creates the other services' read-only users on its
   # views (named <reader>_<owner>_reader) with its read-access command, as
   # the admin user (DB_ADMIN_USER). The api image has no shell, so there is
-  # one service per reader of the api database. The services of the readers
-  # and owners of consent are only in the profile consent.
+  # one service per reader of the api database.
   api-read-access-wallet:
     <<: [*job, *hardened]
     image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
@@ -442,61 +408,6 @@ services:
       - {source: reader-wallet-api-password, target: /run/secrets/read-access/wallet_api_reader}
     depends_on:
       api-migrate: {condition: service_completed_successfully}
-
-  api-read-access-consent:
-    <<: [*job, *hardened]
-    image: ${IMAGE_REGISTRY}/api:${PLATFORM_TAG}
-    profiles: [consent]
-    user: "65532:65532"
-    command: ["/app/bin/igrant-api", "read-access", "apply", "--config", "/etc/igrant-api/database-jobs.yaml",
-              "--reader", "consent", "--user", "consent_api_reader", "--password-file", "/run/secrets/read-access/consent_api_reader",
-              "--admin-user", "${DB_ADMIN_USER}", "--admin-password-file", "/run/secrets/database/admin-password"]
-    tmpfs:
-      - /tmp:size=16m
-    labels:
-      io.igrant.config-sha256.api-database-jobs-config: ${CONFIG_SHA256_API_DATABASE_JOBS_CONFIG:?run make configs}
-    configs:
-      - {source: api-database-jobs-config, target: /etc/igrant-api/database-jobs.yaml}
-    secrets:
-      - {source: db-igrant-api-password, target: /run/secrets/igrant-api/db-password}
-      - {source: db-igrant-oidc-password, target: /run/secrets/igrant-api/oidc-db-password}
-      - {source: database-admin-password, target: /run/secrets/database/admin-password}
-      - {source: reader-consent-api-password, target: /run/secrets/read-access/consent_api_reader}
-    depends_on:
-      api-migrate: {condition: service_completed_successfully}
-
-  consent-read-access:
-    <<: [*job, *hardened]
-    image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
-    profiles: [consent]
-    user: "65532:65532"
-    tmpfs:
-      - /tmp:size=16m
-    command:
-      - read-access
-      - apply
-      - --config
-      - /etc/consent/migrate.yaml
-      - --reader
-      - wallet
-      - --user
-      - wallet_consent_reader
-      - --password-file
-      - /run/secrets/read-access/wallet_consent_reader
-      - --admin-user
-      - ${DB_ADMIN_USER}
-      - --admin-password-file
-      - /run/secrets/database/admin-password
-    labels:
-      io.igrant.config-sha256.consent-migrate-config: ${CONFIG_SHA256_CONSENT_MIGRATE_CONFIG:?run make configs}
-    configs:
-      - {source: consent-migrate-config, target: /etc/consent/migrate.yaml}
-    secrets:
-      - {source: db-igrant-consent-password, target: /run/secrets/consent/database-password}
-      - {source: database-admin-password, target: /run/secrets/database/admin-password}
-      - {source: reader-wallet-consent-password, target: /run/secrets/read-access/wallet_consent_reader}
-    depends_on:
-      consent-migrate: {condition: service_completed_successfully}
 
   wallet-read-access-api:
     <<: [*job, *hardened]
@@ -531,44 +442,11 @@ services:
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
 
-  wallet-read-access-consent:
-    <<: [*job, *hardened]
-    image: ${IMAGE_REGISTRY}/eudi-wallet:${PLATFORM_TAG}
-    profiles: [consent]
-    user: "65532:65532"
-    tmpfs:
-      - /tmp:size=64m
-    # The wallet image has no shell, so there is one service per reader, and
-    # each runs the read-access program directly.
-    entrypoint: ["/app/.venv/bin/read-access"]
-    command:
-      - apply
-      - --reader
-      - consent
-      - --user
-      - consent_wallet_reader
-      - --password-file
-      - /run/secrets/read-access/consent_wallet_reader
-      - --admin-user
-      - ${DB_ADMIN_USER}
-      - --admin-password-file
-      - /run/secrets/database/admin-password
-    environment:
-      EUDI_WALLET_CONFIG: /etc/eudi-wallet/database-admin.yaml
-    labels:
-      io.igrant.config-sha256.wallet-database-admin-config: ${CONFIG_SHA256_WALLET_DATABASE_ADMIN_CONFIG:?run make configs}
-    configs:
-      - {source: wallet-database-admin-config, target: /etc/eudi-wallet/database-admin.yaml}
-    secrets:
-      - {source: database-admin-password, target: /run/secrets/database/admin-password}
-      - {source: reader-consent-wallet-password, target: /run/secrets/read-access/consent_wallet_reader}
-    depends_on:
-      wallet-migrate: {condition: service_completed_successfully}
   # --- api core, webhook handler and auth gateway ------------------------------
 
   # The auth gateway: the only public entry point of the API. It checks
   # every request and forwards it to the component that owns the route: the
-  # api core, consent or the wallet's config role.
+  # api core or the wallet's config role.
   gateway:
     <<: [*server, *hardened]
     image: ${IMAGE_REGISTRY}/gateway:${PLATFORM_TAG}
@@ -612,7 +490,6 @@ services:
       - {source: api-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
       - {source: service-jwks-api, target: /etc/igrant-service-keys/igrant-api.json}
-      - {source: service-jwks-consent, target: /etc/igrant-service-keys/igrant-consent-management.json}
       - {source: service-jwks-wallet, target: /etc/igrant-service-keys/eudi-wallet.json}
     secrets:
       - {source: api-secret-key, target: /run/secrets/igrant-api/api-secret-key}
@@ -650,7 +527,6 @@ services:
       - {source: webhook-config, target: /etc/igrant-api/config.yaml}
       - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
       - {source: service-jwks-api, target: /etc/igrant-service-keys/igrant-api.json}
-      - {source: service-jwks-consent, target: /etc/igrant-service-keys/igrant-consent-management.json}
       - {source: service-jwks-wallet, target: /etc/igrant-service-keys/eudi-wallet.json}
     secrets:
       - {source: api-secret-key, target: /run/secrets/igrant-api/api-secret-key}
@@ -666,38 +542,6 @@ services:
     depends_on:
       api-migrate: {condition: service_completed_successfully}
       wallet-read-access-api: {condition: service_completed_successfully}
-      nats: {condition: service_healthy}
-
-  # --- Consent (only with CONSENT_ENABLED=true: the profile consent) -------------
-
-  consent:
-    <<: [*server, *hardened]
-    image: ${IMAGE_REGISTRY}/consent-management-backend:${PLATFORM_TAG}
-    profiles: [consent]
-    # The image's nonroot user. It listens on port 80 (see api).
-    user: "65532:65532"
-    sysctls:
-      net.ipv4.ip_unprivileged_port_start: 0
-    command: ["serve", "--config", "/etc/consent/config.yaml"]
-    tmpfs:
-      - /tmp:size=64m
-    labels:
-      io.igrant.config-sha256.consent-config: ${CONFIG_SHA256_CONSENT_CONFIG:?run make configs}
-    configs:
-      - {source: consent-config, target: /etc/consent/config.yaml}
-      - {source: gateway-jwks, target: /etc/igrant-gateway-keys/gateway-jwks.json}
-      - {source: service-jwks-api, target: /etc/igrant-service-keys/igrant-api.json}
-      - {source: service-jwks-wallet, target: /etc/igrant-service-keys/eudi-wallet.json}
-    secrets:
-      - {source: db-igrant-consent-password, target: /run/secrets/consent/database-password}
-      - {source: consent-service-key, target: /run/secrets/consent/service-envelope-jwks.json}
-      - {source: nats-seed-consent, target: /run/secrets/consent/nats-seed}
-      - {source: reader-consent-api-password, target: /run/secrets/consent/read-access-api-password}
-      - {source: reader-consent-wallet-password, target: /run/secrets/consent/read-access-wallet-password}
-    depends_on:
-      consent-migrate: {condition: service_completed_successfully}
-      api-read-access-consent: {condition: service_completed_successfully}
-      wallet-read-access-consent: {condition: service_completed_successfully}
       nats: {condition: service_healthy}
 
   # --- Organisation wallet: config, service, worker and clock roles, one image
@@ -724,21 +568,15 @@ services:
       - {source: valkey-wallet-config-password, target: /run/secrets/eudi-wallet/redis-password}
       - {source: openbao-wallet-password, target: /run/secrets/eudi-wallet/openbao-password}
       - {source: reader-wallet-api-password, target: /run/secrets/eudi-wallet/read-access-api-password}
-      - {source: reader-wallet-consent-password, target: /run/secrets/eudi-wallet/read-access-consent-password}
     healthcheck: &wallet-healthcheck
       test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/readyz', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 30s
-    # consent-read-access is only in the profile consent, so the dependency
-    # is optional (required: false): with consent, Compose waits for it; if
-    # it fails, Compose only warns, and wallet-config stays unhealthy (its
-    # /readyz checks the consent views).
     depends_on:
       wallet-migrate: {condition: service_completed_successfully}
       api-read-access-wallet: {condition: service_completed_successfully}
-      consent-read-access: {condition: service_completed_successfully, required: false}
       nats: {condition: service_healthy}
       openbao-init: {condition: service_completed_successfully}
       valkey-sentinel: {condition: service_started}
@@ -861,7 +699,6 @@ secrets:
   database-admin-password: {file: ./secrets/database/admin-password}
   db-igrant-api-password: {file: ./secrets/database/igrant_api-password}
   db-igrant-oidc-password: {file: ./secrets/database/igrant_oidc-password}
-  db-igrant-consent-password: {file: ./secrets/database/igrant_consent-password}
   db-igrant-wallet-password: {file: ./secrets/database/igrant_wallet-password}
   # The wallet's login database roles (wallet-database-roles).
   db-igrant-wallet-migrator-password: {file: ./secrets/database/igrant_wallet_migrator-password}
@@ -876,10 +713,7 @@ secrets:
   db-igrant-wallet-business-wp-app-password: {file: ./secrets/database/igrant_wallet_business_wp_app-password}
   db-igrant-wallet-admin-app-password: {file: ./secrets/database/igrant_wallet_admin_app-password}
   reader-api-wallet-password: {file: ./secrets/database/api_wallet_reader-password}
-  reader-consent-api-password: {file: ./secrets/database/consent_api_reader-password}
-  reader-consent-wallet-password: {file: ./secrets/database/consent_wallet_reader-password}
   reader-wallet-api-password: {file: ./secrets/database/wallet_api_reader-password}
-  reader-wallet-consent-password: {file: ./secrets/database/wallet_consent_reader-password}
   api-secret-key: {file: ./secrets/api/api-secret-key}
   api-token-hash-secret: {file: ./secrets/api/token-hash-secret.json}
   api-token-signing-jwks: {file: ./secrets/api/token-signing-jwks.json}
@@ -891,8 +725,6 @@ secrets:
   # SMTP_USERNAME is empty (no SMTP authentication).
   smtp-password: {file: ./secrets/api/smtp-password}
   gateway-internal-token-jwks: {file: ./secrets/gateway/internal-token-jwks.json}
-  consent-service-key: {file: ./secrets/consent/service-envelope-jwks.json}
-  nats-seed-consent: {file: ./secrets/consent/nats-consent.nk}
   wallet-service-key: {file: ./secrets/wallet/service-envelope-jwks.json}
   nats-seed-wallet-config: {file: ./secrets/wallet/nats-wallet-config.nk}
   nats-seed-wallet-service: {file: ./secrets/wallet/nats-wallet-service.nk}
@@ -914,6 +746,7 @@ configs:
   # --- Files in this folder, and public keys from make secrets -----------------
   database-init-script: {file: ./config/database/create-databases.sh}
   nats-conf: {file: ./config/nats/nats.conf}
+  nats-users: {file: ./config/nats/users.conf}
   openbao-config: {file: ./config/openbao/openbao.hcl}
   openbao-bootstrap: {file: ./config/openbao/bootstrap.sh}
   valkey-start: {file: ./config/valkey/start.sh}
@@ -922,14 +755,12 @@ configs:
   valkey-sentinel-conf: {file: ./config/valkey/sentinel.conf}
   # The public nkeys of the NATS users (make secrets derives them from the seeds).
   nats-nkeys: {file: ./secrets/public/nats-nkeys.conf}
-  # Public keys: the gateway's (the api, consent and the wallet verify the
-  # internal token with them), the api token keys (the gateway verifies the
-  # admin and individual tokens with them) and the service keys (for the
-  # signed NATS envelopes).
+  # Public keys: the gateway's (the api and the wallet verify the internal
+  # token with them), the api token keys (the gateway verifies the admin
+  # tokens with them) and the service keys (for the signed NATS envelopes).
   gateway-jwks: {file: ./secrets/public/gateway-jwks.json}
   token-verification-jwks: {file: ./secrets/public/token-verification-jwks.json}
   service-jwks-api: {file: ./secrets/public/service-jwks/igrant-api.json}
-  service-jwks-consent: {file: ./secrets/public/service-jwks/igrant-consent-management.json}
   service-jwks-wallet: {file: ./secrets/public/service-jwks/eudi-wallet.json}
 
   # --- Configuration files of the components ----------------------------------
@@ -941,8 +772,6 @@ configs:
   webhook-config: {file: ./generated/webhook-config.yaml}
   api-database-jobs-config: {file: ./generated/api-database-jobs-config.yaml}
   gateway-config: {file: ./generated/gateway-config.yaml}
-  consent-config: {file: ./generated/consent-config.yaml}
-  consent-migrate-config: {file: ./generated/consent-migrate-config.yaml}
   wallet-config-config: {file: ./generated/wallet-config-config.yaml}
   wallet-service-config: {file: ./generated/wallet-service-config.yaml}
   wallet-worker-config: {file: ./generated/wallet-worker-config.yaml}
@@ -950,6 +779,3 @@ configs:
   wallet-migrate-config: {file: ./generated/wallet-migrate-config.yaml}
   wallet-database-admin-config: {file: ./generated/wallet-database-admin-config.yaml}
   dashboard-config: {file: ./generated/dashboard-config.json}
-  # The NATS users of config/nats/users.conf, without the user consent when
-  # consent is off (make configs).
-  nats-users: {file: ./generated/nats-users.conf}

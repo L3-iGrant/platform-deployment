@@ -7,7 +7,7 @@ The NetworkPolicy objects of the chart and their values.
 `networkPolicy.enabled: true` (default `false`) creates NetworkPolicy objects. Use them only if your cluster enforces NetworkPolicy (for example Calico, Cilium, OVN-Kubernetes, or the k3s network policy controller). The rules come from `policies/network-matrix.yaml`:
 
 - only your ingress controller or Gateway reaches the gateway, the wallet service and the dashboard;
-- only the gateway reaches the API core, consent and the wallet config role;
+- only the gateway reaches the API core and the wallet config role;
 - the database (port 5432), NATS and Valkey (ports 6379 and 26379: only the wallet roles, the gateway and the other Valkey pods) accept only their clients;
 - the wallet clock reaches only the database and Valkey;
 - only `networkPolicy.monitoring` reaches the metrics port 9190 of the service and config pods, the health ports of the workers and the clock (the scrape of `/metrics`, see [Workers and clock](workers.md#probes-and-metrics)), and the exporter port 9121 of the Valkey pods (see [Redis](redis.md#metrics));
@@ -18,7 +18,7 @@ The NetworkPolicy objects of the chart and their values.
 | `networkPolicy.ingressController` | The pods of your ingress controller or Gateway (namespace and pod selectors) |
 | `networkPolicy.dns` | The DNS pods and ports; `cidrs`: DNS servers that are not pods of the cluster network |
 | `networkPolicy.externalDatabases`, `.externalNats`, `.externalRedis` | The addresses (CIDR) of an external database, NATS, or Valkey or Redis (`redis.mode: external`, or the wallet's separate groups `redis.state` and `redis.cache`; required then; default ports 6379 and 26379) |
-| `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `platform` (the public hosts of this platform), `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `auditBucket` (the S3 store of the audit bucket on a private address; the workers only), `smtp`, `kubeApi` (required with the privacy dashboards) |
+| `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `platform` (the public hosts of this platform), `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `auditBucket` (the S3 store of the audit bucket on a private address; the workers only), `smtp` |
 | `networkPolicy.egress.roles` | The profiles of each component (`wallet-worker`: all worker groups; `wallet-clock` has none) |
 | `networkPolicy.monitoring` | The monitoring namespace: it reaches the NATS monitor port, the metrics ports of the servers, the health ports of the workers and the clock, and the exporter port of the Valkey pods |
 
@@ -42,7 +42,6 @@ Helm merges your values with the defaults key by key: a selector in your file ke
 | A cloud KMS on a private address | `networkPolicy.egress.profiles.cloudKms` | A key store `gcp-kms`, `aws-kms` or `azure-key-vault` through a private endpoint | The CIDR of the private endpoint (port 443). The public endpoints go through the profile `internet`. |
 | An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.enabled: false` | The namespace and pod selectors, or the CIDR and port (default 4222). |
 | An external Valkey or Redis | `networkPolicy.externalRedis` | `redis.mode: external`, or `redis.state` or `redis.cache` | Required then. The CIDR and ports (default 6379 and 26379). |
-| The Kubernetes API | `networkPolicy.egress.profiles.kubeApi` | `privacyDashboard.enabled` | The addresses and port of the API server endpoints, not the address of the Service `kubernetes` (`kubectl -n default get endpointslices -l kubernetes.io/service-name=kubernetes`; often port 6443). The policy sees the address after the Service translation. |
 | Monitoring | `networkPolicy.monitoring` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
 
 ## The public hosts of this platform
@@ -79,11 +78,10 @@ A role that calls URLs that an organisation or another vendor configures has `in
 | `wallet-service`, `wallet-config`, `wallet-worker` | `internet-any-port` | The issuers, verifiers, trust lists, status lists, JWKS and metadata of other vendors (any URL that the specifications allow), the cloud key stores, the audit bucket. |
 | `api` | `internet-any-port`, `smtp` | The webhook receivers (`payloadUrl`, often with a port such as 8443), the OIDC providers of the admins and of the organisations (discovery, JWKS, token), the extensions (for example the OpenID conformance suite), the SMS service. |
 | `webhook` | `internet-any-port` | The webhook receivers (`payloadUrl`). |
-| `consent` | `internet-any-port` | The Data Space of an organisation: the base URL that the organisation configures (discovery, the metadata of its authorisation server, token, `notification_endpoint`). |
 | `gateway` | `internet` | Only the upstreams of `gateway.upstreams` (the chart's services in the cluster; an upstream outside the cluster on port 443 or 80). No URL of an organisation. |
 | `dashboard`, `wallet-clock`, `db`, `nats`, `redis`, `job` | none | No call outside the cluster. |
 
-The network policy is not the only protection, because a cluster can run without network policies. Each of these callers also has an SSRF guard in its code that refuses private, loopback, link-local and metadata addresses: the wallet (`ssrf_protection`), the api and the webhook handler (`OutboundHttp.ssrfProtectionDisabled: false`, the default) and consent (`OutboundHttp.ssrfProtectionDisabled: false`, the default).
+The network policy is not the only protection, because a cluster can run without network policies. Each of these callers also has an SSRF guard in its code that refuses private, loopback, link-local and metadata addresses: the wallet (`ssrf_protection`), and the api and the webhook handler (`OutboundHttp.ssrfProtectionDisabled: false`, the default).
 
 ### Receivers behind the ingress controller of this cluster
 
@@ -123,7 +121,7 @@ A network policy controller applies the rules to a new pod after a short delay (
 
 ## Objects outside the release
 
-The policies select only the pods of this release (the label `app.kubernetes.io/instance` and a network role). The privacy dashboards that the api creates in `privacyDashboard.namespace` are not pods of the release: write their policies yourself. The chart creates no policies for the namespaces of your ingress controller, your DNS or your monitoring.
+The policies select only the pods of this release (the label `app.kubernetes.io/instance` and a network role). The chart creates no policies for the namespaces of your ingress controller, your DNS or your monitoring.
 
 ## Checks
 

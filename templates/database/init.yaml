@@ -1,5 +1,5 @@
 {{- /*
-Init hook for the databases: one database and one owner user per enabled
+Init hook for the databases: one database and one owner user per
 component (the user name is the database name), with the password from the
 database Secret, on the bundled server or on an external server with
 database.external.admin.
@@ -8,9 +8,7 @@ It is a hook (helm post-install and pre-upgrade) that runs before every
 hook that connects to a component database (the wallet roles hook, weights
 -25 and -20; the migration hooks, -10 and -5). On a new installation it
 runs after the release's resources exist (the bundled server too); on an
-upgrade it runs before any resource changes. So an upgrade that turns a
-component on creates its database and owner user before the component's
-hooks connect. It reads only the database Secret (a hook, weight -30) and
+upgrade it runs before any resource changes. It reads only the database Secret (a hook, weight -30) and
 the server CA.
 
 The script is idempotent: it creates a user or a database only when it is
@@ -22,8 +20,7 @@ the password). The wallet's data scopes are schemas in the wallet
 database, created by its owner.
 */}}
 {{- $admin := include "ow.db.admin" . | fromJson }}
-{{- $keys := include "ow.db.enabledDatabases" . | splitList "," | compact }}
-{{- if and $admin.user $keys }}
+{{- $keys := include "ow.db.keys" . | splitList "," | compact }}
 {{- include "ow.db.check" . }}
 {{- $db := .Values.database }}
 {{- $image := $db.postgresql.image }}
@@ -186,4 +183,3 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 16Mi
-{{- end }}

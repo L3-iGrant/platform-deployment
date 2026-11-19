@@ -7,7 +7,6 @@ two replicas are safe, and the second takes over within seconds. It
 connects as the clock role (CONNECT only) and as the Valkey user
 walletClock; it does not connect to NATS or to any key store.
 */}}
-{{- if .Values.organisationWallet.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $component := "wallet-clock" }}
 apiVersion: apps/v1
@@ -102,4 +101,3 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 64Mi
-{{- end }}

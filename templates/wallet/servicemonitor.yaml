@@ -9,7 +9,7 @@ Service's metrics.igrant.io/job label sets the job of its targets:
 wallet-server, wallet-worker, wallet-clock (the job names that the
 alert rules of the wallet use).
 */}}
-{{- if and .Values.organisationWallet.enabled .Values.organisationWallet.serviceMonitor.enabled }}
+{{- if .Values.organisationWallet.serviceMonitor.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $metrics := include "ow.wallet.serverMetricsPort" . | int }}
 {{- $targets := list

@@ -10,9 +10,6 @@ api:
 organisationWallet:
   serviceEnvelope:
     activeKid: test-wallet-envelope-kid
-consent:
-  serviceEnvelope:
-    activeKid: test-consent-envelope-kid
 gateway:
   internalToken:
     activeKid: test-gateway-kid
@@ -22,14 +19,12 @@ gateway:
 serviceKeys:
   publicJwks:
     igrant-api: '{"keys":[]}'
-    igrant-consent-management: '{"keys":[]}'
     eudi-wallet: '{"keys":[]}'
 nats:
   auth:
     users:
       api: {nkey: UTESTAPI, seedSecret: t-nats-api}
       apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
-      consent: {nkey: UTESTCONSENT, seedSecret: t-nats-consent}
       walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
       walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
       walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}
