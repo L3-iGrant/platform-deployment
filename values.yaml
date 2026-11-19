@@ -1,6 +1,6 @@
-# iGrant.io platform: the auth gateway, the api, consent management, the
-# organisation wallet and the enterprise dashboard, with PostgreSQL, NATS,
-# OpenBao and Valkey (each bundled, or your own server).
+# iGrant.io platform: the auth gateway, the api, the organisation wallet
+# and the enterprise dashboard, with PostgreSQL, NATS, OpenBao and Valkey
+# (each bundled, or your own server).
 # Install guide: docs/install.md. Every value: docs/values-reference.md.
 # profiles/ has ready values files: site.yaml (copy it for your own values),
 # one exposure-*.yaml (required) and optional ones (database, OpenBao, Redis,
@@ -64,17 +64,17 @@ clientAddress:
   # -- Header in which the trusted proxies send the client address.
   trustedProxyHeader: ""
 
-# The api core and the webhook handler (one image). The OIDC provider runs in the api.
-# -- The installation.
+# The installation.
 installation:
   # -- The optional features of the installation. An optional feature is off
   # when it is not in the list. The only optional feature is protocol1: the
   # old protocol of the individual wallet provider (GET /nonce), for the wallet
-  # apps that do not sign their requests (protocol 2 signs them). It needs the
-  # wallet. A new installation does not need it. The api, the gateway and the
-  # wallet get the same list (docs/components.md, "Optional features").
+  # apps that do not sign their requests (protocol 2 signs them). A new
+  # installation does not need it. The api, the gateway and the wallet get the
+  # same list (docs/components.md, "Optional features").
   optionalFeatures: []
 
+# The api core and the webhook handler (one image). The OIDC provider runs in the api.
 api:
   # -- Run the api and the webhook handler. false: no gateway either (docs/components.md).
   enabled: true
@@ -309,11 +309,6 @@ gateway:
     core:
       # -- Base URL of the api core. Empty: the api Service of the chart.
       url: ""
-    consent:
-      # -- Consent of another release. Empty: the consent Service of the chart.
-      url: ""
-      # -- Time limit of a consent request; then the client gets 504. 0: 30 s.
-      requestTimeoutSeconds: 30
     walletConfig:
       # -- Wallet config role of another release. Empty: the Service of the chart.
       url: ""
@@ -329,7 +324,6 @@ gateway:
     # -- aud of the internal tokens for each upstream.
     audiences:
       core: igrant-api-core
-      consent: consent
       walletConfig: wallet-config
     # -- Existing Secret with the ES256 private JWKS. Empty: <fullname>-gateway-internal-token.
     signingKey: {existingSecret: "", key: internal-token-jwks.json}
@@ -394,93 +388,9 @@ gateway:
   affinity: {}
   imagePullSecrets: []
 
-# Consent management: data agreements, consent records and data sharing.
-consent:
-  # -- Off by default (profiles/consent.yaml). Consent of another release: gateway.upstreams.consent.url.
-  enabled: false
-  # -- Empty registry and tag: global.imageRegistry and global.imageTag.
-  image: {registry: "", repository: consent-management-backend, tag: ""}
-  replicas: 2
-  # -- Rollout: new pods first (docs/security-context.md).
-  strategy:
-    type: RollingUpdate
-    rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
-  minReadySeconds: 30
-  logLevel: info
-  nats: {rpcTimeoutSeconds: 15, readRpcTimeoutSeconds: 5}
-  maxRequestBodyBytes: 5242880
-  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
-  server:
-    preStopSeconds: 10
-    drainSeconds: 5
-    gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 40
-  # -- Probes on the admin port 8081 (docs/security-context.md, "The stop of a pod").
-  startupProbe:
-    httpGet: {path: /healthz, port: admin}
-    periodSeconds: 2
-    timeoutSeconds: 3
-    failureThreshold: 90
-  readinessProbe:
-    httpGet: {path: /readyz, port: admin}
-    periodSeconds: 2
-    timeoutSeconds: 2
-    failureThreshold: 2
-  livenessProbe:
-    httpGet: {path: /healthz, port: admin}
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
-  gatewayToken:
-    # -- Clock skew that exp and nbf of the gateway token accept: 1 to 300 seconds.
-    clockSkewSeconds: 60
-  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
-  serviceEnvelope:
-    activeKid: ""
-    signingKey: {existingSecret: "", key: service-jwks.json}
-    lifetimeSeconds: 60
-    clockSkewSeconds: 60
-  # -- The read access Job and the migration hooks. Empty contexts: the values of the pods.
-  jobs:
-    ttlSecondsAfterFinished: 86400
-    resources:
-      requests: {cpu: 50m, memory: 64Mi}
-      limits: {memory: 256Mi}
-    podSecurityContext: {}
-    containerSecurityContext: {}
-  # -- Extra consent configuration keys, deep-merged. Not for secrets or Log.file.
-  extraConfig: {}
-  extraEnv: []
-  resources:
-    requests: {cpu: 100m, memory: 256Mi}
-    limits: {memory: 256Mi}
-  # -- UID 65532. The sysctl lets the pod listen on port 80 without a capability.
-  podSecurityContext:
-    runAsUser: 65532
-    runAsGroup: 65532
-    fsGroup: 65532
-    runAsNonRoot: true
-    seccompProfile: {type: RuntimeDefault}
-    sysctls: [{name: net.ipv4.ip_unprivileged_port_start, value: "0"}]
-  containerSecurityContext:
-    allowPrivilegeEscalation: false
-    readOnlyRootFilesystem: true
-    capabilities: {drop: ["ALL"]}
-  priorityClassName: ""
-  nodeSelector: {}
-  tolerations: []
-  affinity: {}
-  imagePullSecrets: []
-
-# Privacy dashboards: keep them off, this api cannot deploy them (docs/privacy-dashboard.md).
-privacyDashboard:
-  enabled: false
-  # -- Namespace of the privacy dashboards. It must exist.
-  namespace: ""
-
 # Organisation wallet: service (public routes), config (behind the gateway), workers and clock.
 organisationWallet:
-  # -- false: the wallet of another release (gateway.upstreams.walletConfig.url), or no wallet.
+  # -- false: the wallet of another release (gateway.upstreams.walletConfig.url).
   enabled: true
   # -- Empty registry and tag: global.imageRegistry and global.imageTag.
   image: {registry: "", repository: eudi-wallet, tag: ""}
@@ -816,7 +726,6 @@ database:
   databases:
     api: {name: igrant_api, password: ""}
     oidc: {name: igrant_oidc, password: ""}
-    consent: {name: igrant_consent, password: ""}
     wallet: {name: igrant_wallet, password: ""}
   auth:
     # -- Password of the admin user postgres of the bundled server. Empty: random.
@@ -836,7 +745,6 @@ database:
     webhook: {maxConns: 5, minConns: 1}
     oidc: {maxConns: 5, minConns: 1}
     gateway: {maxConns: 10, minConns: 2}
-    consent: {maxConns: 6, minConns: 2}
     apiReadAccess: {maxConns: 5, minConns: 1}
     walletService: {poolSize: 12, maxOverflow: 4, allocationPoolSize: 5}
     walletConfig: {poolSize: 8, maxOverflow: 4, allocationPoolSize: 2}
@@ -911,7 +819,6 @@ nats:
     users:
       api: {nkey: "", seedSecret: "", seedKey: seed}
       apiWebhook: {nkey: "", seedSecret: "", seedKey: seed}
-      consent: {nkey: "", seedSecret: "", seedKey: seed}
       walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
       walletService: {nkey: "", seedSecret: "", seedKey: seed}
       walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
@@ -1186,14 +1093,11 @@ networkPolicy:
       # -- The public hosts of this platform: the ingressController pods (Envoy: 10080, 10443) or the load balancer.
       platform: {cidrs: [], ports: [80, 443, 10080, 10443]}
       smtp: {cidrs: [], ports: [587]}
-      # -- The Kubernetes API server (the privacy dashboards).
-      kubeApi: {cidrs: [], ports: [443, 6443]}
     # -- Egress profiles of each role. A list in your values replaces the default list.
     roles:
       api: [internet-any-port, smtp]
       webhook: [internet-any-port]
       gateway: [internet]
-      consent: [internet-any-port]
       wallet-service: [internet-any-port, platform, kms, cloudKms]
       wallet-config: [internet-any-port, platform, kms, cloudKms]
       wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
@@ -1212,23 +1116,6 @@ readAccess:
       host: ""
       port: ""
       name: ""
-  consent:
-    # -- Consent reads the contact views of the api.
-    api:
-      username: consent_api_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-    # -- Consent reads the record events of the wallet.
-    wallet:
-      username: consent_wallet_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
   wallet:
     # -- The wallet reads the api views.
     api:
@@ -1238,19 +1125,10 @@ readAccess:
       host: ""
       port: ""
       name: ""
-    # -- The wallet reads the data agreement view of consent.
-    consent:
-      username: wallet_consent_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
   # -- Jobs that make the read-only users. Empty admin values: the admin user of database.
   jobs:
     enabled: true
     api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
-    consent: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
     wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
     ttlSecondsAfterFinished: 86400
 
@@ -1259,5 +1137,4 @@ serviceKeys:
   existingConfigMap: ""
   publicJwks:
     igrant-api: ""
-    igrant-consent-management: ""
     eudi-wallet: ""

@@ -52,7 +52,6 @@ Roles that run in this release (the chart's pods). Output: JSON list.
 {{- $v := .Values -}}
 {{- $roles := list "job" -}}
 {{- if $v.api.enabled -}}{{- $roles = concat $roles (list "gateway" "api" "webhook") -}}{{- end -}}
-{{- if $v.consent.enabled -}}{{- $roles = append $roles "consent" -}}{{- end -}}
 {{- if $v.organisationWallet.enabled -}}{{- $roles = concat $roles (list "wallet-service" "wallet-config" "wallet-worker" "wallet-clock") -}}{{- end -}}
 {{- if $v.enterpriseDashboard.enabled -}}{{- $roles = append $roles "dashboard" -}}{{- end -}}
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}

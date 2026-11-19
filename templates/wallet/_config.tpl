@@ -172,7 +172,6 @@ trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
   "service_envelope" (dict
     "service_name" "eudi-wallet"
     "api_service_name" "igrant-api"
-    "consent_service_name" "igrant-consent-management"
     "signing_jwks_file" (printf "%s/service-envelope-jwks.json" $dir)
     "active_kid" $signing.activeKid
     "lifetime_seconds" ($w.serviceEnvelope.lifetimeSeconds | int)
@@ -274,21 +273,17 @@ role keeps the protocol routes public and direct. */ -}}
 {{- $trusted = append $trusted (dict "issuer" $item.issuer "jwks_file" $item.jwksFile) -}}
 {{- end -}}
 {{- $_ := set $config.service_envelope "trusted_issuers" $trusted -}}
-{{- /* The config role reads the api and consent database views with the
-wallet's read-only users (read_access, same shape as database). */ -}}
-{{- $readAccess := dict -}}
-{{- range $owner := include "ow.wallet.readAccessOwners" $root | splitList "," -}}
-{{- $reader := include "ow.readAccess.reader" (list $root "wallet" $owner) | fromJson -}}
-{{- $_ := set $readAccess $owner (include "ow.db.wallet" (dict
+{{- /* The config role reads the api database views with the wallet's
+read-only user (read_access, same shape as database). */ -}}
+{{- $reader := include "ow.readAccess.reader" (list $root "wallet" "api") | fromJson -}}
+{{- $_ := set $config "read_access" (dict "api" (include "ow.db.wallet" (dict
     "root" $root
     "host" $reader.host
     "port" $reader.port
     "name" $reader.name
     "user" $reader.username
-    "passwordFile" (printf "%s/read-access-%s-password" $dir $owner)
-    "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) | fromJson) -}}
-{{- end -}}
-{{- $_ := set $config "read_access" $readAccess -}}
+    "passwordFile" (printf "%s/read-access-api-password" $dir)
+    "caFile" (printf "%s/%s" $dir (include "ow.db.caFileName" $root))) | fromJson)) -}}
 {{- /* Lifetime of a stored command reply. It must be the same in every
 config pod, because each one sets the reply bucket's TTL at start. */ -}}
 {{- $_ := set $config.nats "command_reply_seconds" ($w.nats.commandReplySeconds | int) -}}

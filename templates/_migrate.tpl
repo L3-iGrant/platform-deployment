@@ -7,8 +7,8 @@ the upgrade and the old pods stay. The hook runs on every upgrade; the
 commands are idempotent.
 
 A new installation has no pre-install hook, because the bundled database
-server does not exist yet when a pre-install hook runs. The api and consent
-migrate when their pods start, and each reader's /readyz checks that the
+server does not exist yet when a pre-install hook runs. The api migrates
+when its pods start, and each reader's /readyz checks that the
 views it reads exist, so a reader gets no traffic before the owner has
 migrated. The wallet pods never migrate: the wallet hook is also
 post-install (it runs after the release's resources exist), and the wallet
@@ -18,13 +18,9 @@ The hook has its own config file with only the database settings and
 passwords, because a pre-upgrade hook cannot read the release's new
 ConfigMaps.
 
-A service can also run the same command after the upgrade (hook
-"post-upgrade"): consent uses it to write the read model of the revisions
-that pods of the earlier release wrote during the rolling update.
-
 Call with (dict
   "root" $
-  "hook" "pre-upgrade"|"post-upgrade"|"post-install,pre-upgrade"
+  "hook" "pre-upgrade"|"post-install,pre-upgrade"
                                          optional; default pre-upgrade
   "component" "<name suffix>"            the ConfigMap and the Job
   "values" <service values>              image, podSecurityContext, containerSecurityContext, ...
@@ -48,8 +44,8 @@ Call with (dict
 {{- $hook := . -}}
 {{- $when := .hook | default "pre-upgrade" -}}
 {{- range $event := splitList "," $when -}}
-{{- if not (has $event (list "post-install" "pre-upgrade" "post-upgrade")) -}}
-{{- fail (printf "ow.migrateHook: hook %q must be post-install, pre-upgrade or post-upgrade (comma-separated)" $when) -}}
+{{- if not (has $event (list "post-install" "pre-upgrade")) -}}
+{{- fail (printf "ow.migrateHook: hook %q must be post-install or pre-upgrade (comma-separated)" $when) -}}
 {{- end -}}
 {{- end -}}
 apiVersion: v1

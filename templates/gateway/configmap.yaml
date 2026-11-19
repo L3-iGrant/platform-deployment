@@ -22,9 +22,9 @@ data:
 {{- end }}
 {{- /*
 The shared ConfigMap <fullname>-igrant-gateway-jwks (no secrets): the
-gateway public keys that the api core, consent and the wallet config role
-mount. The chart builds it from the values when
-gateway.publicKeys.existingConfigMap is empty.
+gateway public keys that the api core and the wallet config role mount. The
+chart builds it from the values when gateway.publicKeys.existingConfigMap is
+empty.
 */}}
 {{- if and (not $keys.existingConfigMap) $keys.gatewayJwks }}
 apiVersion: v1

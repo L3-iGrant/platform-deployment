@@ -296,10 +296,10 @@ Output: JSON.
 {{- define "ow.securityContextsOfComponents" -}}
 {{- $v := .Values -}}
 {{- $out := dict -}}
-{{- range $path, $values := dict "api" $v.api "consent" $v.consent "gateway" $v.gateway "enterpriseDashboard" $v.enterpriseDashboard "organisationWallet" $v.organisationWallet "database" $v.database "nats" $v.nats "openbao" $v.openbao "redis" $v.redis -}}
+{{- range $path, $values := dict "api" $v.api "gateway" $v.gateway "enterpriseDashboard" $v.enterpriseDashboard "organisationWallet" $v.organisationWallet "database" $v.database "nats" $v.nats "openbao" $v.openbao "redis" $v.redis -}}
 {{- $_ := set $out $path (dict "pod" ($values.podSecurityContext | default dict) "container" ($values.containerSecurityContext | default dict)) -}}
 {{- end -}}
-{{- range $path, $values := dict "api" $v.api "consent" $v.consent "organisationWallet" $v.organisationWallet -}}
+{{- range $path, $values := dict "api" $v.api "organisationWallet" $v.organisationWallet -}}
 {{- $jobs := $values.jobs | default dict -}}
 {{- $_ := set $out (printf "%s.jobs" $path) (dict "pod" ($jobs.podSecurityContext | default $values.podSecurityContext | default dict) "container" ($jobs.containerSecurityContext | default $values.containerSecurityContext | default dict)) -}}
 {{- end -}}

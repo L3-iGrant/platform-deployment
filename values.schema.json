@@ -210,19 +210,6 @@
                 }
               }
             },
-            "consent": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "pattern": "^[a-z][a-z0-9_]{0,62}$"
-                },
-                "password": {
-                  "type": "string"
-                }
-              }
-            },
             "wallet": {
               "type": "object",
               "additionalProperties": false,
@@ -321,18 +308,6 @@
               }
             },
             "gateway": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "maxConns": {
-                  "type": "integer"
-                },
-                "minConns": {
-                  "type": "integer"
-                }
-              }
-            },
-            "consent": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
@@ -659,22 +634,6 @@
                   }
                 },
                 "apiWebhook": {
-                  "type": "object",
-                  "additionalProperties": false,
-                  "properties": {
-                    "nkey": {
-                      "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
-                    },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "consent": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
@@ -1881,18 +1840,6 @@
         }
       }
     },
-    "privacyDashboard": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "namespace": {
-          "type": "string"
-        }
-      }
-    },
     "gateway": {
       "type": "object",
       "additionalProperties": false,
@@ -2014,18 +1961,6 @@
                 }
               }
             },
-            "consent": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "url": {
-                  "type": "string"
-                },
-                "requestTimeoutSeconds": {
-                  "type": "integer"
-                }
-              }
-            },
             "walletConfig": {
               "type": "object",
               "additionalProperties": false,
@@ -2058,9 +1993,6 @@
               "additionalProperties": false,
               "properties": {
                 "core": {
-                  "type": "string"
-                },
-                "consent": {
                   "type": "string"
                 },
                 "walletConfig": {
@@ -2206,9 +2138,6 @@
           },
           "properties": {
             "igrant-api": {
-              "type": "string"
-            },
-            "igrant-consent-management": {
               "type": "string"
             },
             "eudi-wallet": {
@@ -2426,98 +2355,11 @@
             }
           }
         },
-        "consent": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "api": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "port": {
-                  "type": [
-                    "string",
-                    "integer"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
-            },
-            "wallet": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "port": {
-                  "type": [
-                    "string",
-                    "integer"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        },
         "wallet": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
             "api": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "username": {
-                  "type": "string"
-                },
-                "passwordSecret": {
-                  "type": "string"
-                },
-                "passwordKey": {
-                  "type": "string"
-                },
-                "host": {
-                  "type": "string"
-                },
-                "port": {
-                  "type": [
-                    "string",
-                    "integer"
-                  ]
-                },
-                "name": {
-                  "type": "string"
-                }
-              }
-            },
-            "consent": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
@@ -2568,21 +2410,6 @@
                 }
               }
             },
-            "consent": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "adminUser": {
-                  "type": "string"
-                },
-                "adminPasswordSecret": {
-                  "type": "string"
-                },
-                "adminPasswordKey": {
-                  "type": "string"
-                }
-              }
-            },
             "wallet": {
               "type": "object",
               "additionalProperties": false,
@@ -2602,220 +2429,6 @@
               "type": "integer"
             }
           }
-        }
-      }
-    },
-    "consent": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "image": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "registry": {
-              "type": "string"
-            },
-            "repository": {
-              "type": "string",
-              "minLength": 1
-            },
-            "tag": {
-              "type": [
-                "string",
-                "integer",
-                "number"
-              ]
-            },
-            "digest": {
-              "type": "string",
-              "pattern": "^(sha256:[0-9a-f]{64})?$"
-            },
-            "pullPolicy": {
-              "type": "string",
-              "enum": [
-                "",
-                "Always",
-                "IfNotPresent",
-                "Never"
-              ]
-            }
-          }
-        },
-        "replicas": {
-          "type": "integer"
-        },
-        "strategy": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "type": {
-              "type": "string",
-              "enum": [
-                "RollingUpdate"
-              ]
-            },
-            "rollingUpdate": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "maxSurge": {
-                  "type": [
-                    "integer",
-                    "string"
-                  ],
-                  "pattern": "^[0-9]+%$"
-                },
-                "maxUnavailable": {
-                  "type": [
-                    "integer",
-                    "string"
-                  ],
-                  "pattern": "^[0-9]+%$"
-                }
-              }
-            }
-          },
-          "required": [
-            "type"
-          ]
-        },
-        "minReadySeconds": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "logLevel": {
-          "type": "string"
-        },
-        "nats": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "rpcTimeoutSeconds": {
-              "type": "integer"
-            },
-            "readRpcTimeoutSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "maxRequestBodyBytes": {
-          "type": "integer"
-        },
-        "server": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "preStopSeconds": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "drainSeconds": {
-              "type": "integer"
-            },
-            "gracefulShutdownSeconds": {
-              "type": "integer"
-            },
-            "terminationGracePeriodSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "startupProbe": {
-          "type": "object"
-        },
-        "readinessProbe": {
-          "type": "object"
-        },
-        "livenessProbe": {
-          "type": "object"
-        },
-        "gatewayToken": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "clockSkewSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "serviceEnvelope": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "activeKid": {
-              "type": "string"
-            },
-            "signingKey": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "key": {
-                  "type": "string"
-                }
-              }
-            },
-            "lifetimeSeconds": {
-              "type": "integer"
-            },
-            "clockSkewSeconds": {
-              "type": "integer"
-            }
-          }
-        },
-        "jobs": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "ttlSecondsAfterFinished": {
-              "type": "integer"
-            },
-            "resources": {
-              "type": "object"
-            },
-            "podSecurityContext": {
-              "type": "object"
-            },
-            "containerSecurityContext": {
-              "type": "object"
-            }
-          }
-        },
-        "extraConfig": {
-          "type": "object"
-        },
-        "extraEnv": {
-          "type": "array"
-        },
-        "resources": {
-          "type": "object"
-        },
-        "podSecurityContext": {
-          "type": "object"
-        },
-        "containerSecurityContext": {
-          "type": "object"
-        },
-        "priorityClassName": {
-          "type": "string"
-        },
-        "nodeSelector": {
-          "type": "object"
-        },
-        "tolerations": {
-          "type": "array"
-        },
-        "affinity": {
-          "type": "object"
-        },
-        "imagePullSecrets": {
-          "type": "array"
         }
       }
     },

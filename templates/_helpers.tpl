@@ -138,10 +138,8 @@ Output: JSON object "<file name>" -> {secret, key}.
   "token-hash-secret.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenHash" "api-token-hash")) "key" $ks.tokenHash.key)
   "token-signing-jwks.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenSigning" "api-token-signing")) "key" $ks.tokenSigning.key)
   "db-wrapping-keys.json" (dict "secret" (include "ow.api.keySecretName" (list $root "dbWrapping" "api-db-wrapping")) "key" $ks.dbWrapping.key)) -}}
-{{- if include "ow.installation.has" (list $root "wallet") -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $_ := set $files "read-access-wallet-password" (dict "secret" $reader.secret "key" $reader.key) -}}
-{{- end -}}
 {{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- with include "ow.nats.ca" $root | fromJson -}}
@@ -239,117 +237,15 @@ operator Jobs use "api") and the secret files (mode 0440). Call with
 
 {{/*
 Issuers of signed NATS envelopes that the api trusts: itself (internal
-events) and the installed services (consent, the wallet). Output: JSON list.
+events) and the wallet. Output: JSON list.
 */}}
 {{- define "ow.api.trustedIssuers" -}}
-{{- include "ow.installation.issuers" (list . "igrant-api" "igrant-consent-management" "eudi-wallet") -}}
-{{- end }}
-
-{{/*
-Issuers of signed NATS envelopes that consent trusts: the api, and the
-wallet when it is installed. Output: JSON list.
-*/}}
-{{- define "ow.consent.trustedIssuers" -}}
-{{- include "ow.installation.issuers" (list . "igrant-api" "eudi-wallet") -}}
-{{- end }}
-
-{{/* Folder of the consent secret files (one projected volume). */}}
-{{- define "ow.consent.secretDir" -}}
-/run/secrets/consent
-{{- end }}
-
-{{/*
-Owner databases that consent reads with its own read-only users
-(ReadAccess): the api, and the wallet when it is installed.
-*/}}
-{{- define "ow.consent.readAccessOwners" -}}
-api{{- if include "ow.installation.has" (list . "wallet") -}},wallet{{- end -}}
-{{- end }}
-
-{{/*
-Volume mounts of consent (the service and its Jobs): the config, the secret
-files, and the public keys of the gateway and of the trusted services.
-Output: a list at column 0.
-*/}}
-{{- define "ow.consent.volumeMounts" -}}
-- name: config
-  mountPath: /etc/consent
-  readOnly: true
-- name: secrets
-  mountPath: {{ include "ow.consent.secretDir" . }}
-  readOnly: true
-- name: gateway-keys
-  mountPath: {{ include "ow.gateway.keysDir" . }}
-  readOnly: true
-- name: service-keys
-  mountPath: {{ include "ow.serviceKeys.dir" . }}
-  readOnly: true
-{{- end }}
-
-{{/*
-Volumes of consent (the service and its Jobs). The secret volume (mode 0440)
-holds the database password and CA, the read-only user passwords
-(ReadAccess), the NATS nkey seed, the private JWKS for signed NATS envelopes
-and the NATS CA when there is one. Output: a list at column 0.
-*/}}
-{{- define "ow.consent.volumes" -}}
-{{- $root := . -}}
-{{- $client := include "ow.nats.client" (list $root "consent") | fromJson -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $root.Values.consent "consent" "consent-service-key") | fromJson -}}
-- name: config
-  configMap:
-    name: {{ include "ow.name" (list $root "consent") }}
-- name: secrets
-  projected:
-    defaultMode: 0440
-    sources:
-      {{- range $path, $file := include "ow.db.secretFiles" (list $root "consent" "database-password") | fromJson }}
-      - secret:
-          name: {{ $file.secret }}
-          items:
-            - key: {{ $file.key }}
-              path: {{ $path }}
-      {{- end }}
-      {{- range $owner := include "ow.consent.readAccessOwners" $root | splitList "," }}
-      {{- $reader := include "ow.readAccess.reader" (list $root "consent" $owner) | fromJson }}
-      - secret:
-          name: {{ $reader.secret }}
-          items:
-            - key: {{ $reader.key }}
-              path: read-access-{{ $owner }}-password
-      {{- end }}
-      - secret:
-          name: {{ $client.seed.secret }}
-          items:
-            - key: {{ $client.seed.key }}
-              path: nats-seed
-      - secret:
-          name: {{ $signing.secret }}
-          items:
-            - key: {{ $signing.key }}
-              path: service-envelope-jwks.json
-      {{- with include "ow.nats.ca" $root | fromJson }}
-      - secret:
-          name: {{ .secret }}
-          items:
-            - key: {{ .key }}
-              path: nats-ca.crt
-      {{- end }}
-{{ include "ow.gateway.keysVolume" $root }}
-{{ include "ow.serviceKeys.volume" (prepend (include "ow.consent.trustedIssuers" $root | fromJsonArray) $root) }}
+{{- toJson (list "igrant-api" "eudi-wallet") -}}
 {{- end }}
 
 {{/* NATS user (values key) of an api role: api or webhook. */}}
 {{- define "ow.api.natsUser" -}}
 {{- get (dict "api" "api" "webhook" "apiWebhook") . -}}
-{{- end }}
-
-{{/*
-Owner databases that the wallet config role reads with its own read-only
-users (read_access): the api, and consent when it is installed.
-*/}}
-{{- define "ow.wallet.readAccessOwners" -}}
-api{{- if include "ow.installation.has" (list . "consent") -}},consent{{- end -}}
 {{- end }}
 
 {{/* NATS user (values key) of a wallet role; "" for the clock, which does not use NATS. */}}
@@ -494,13 +390,11 @@ bucket (actors audit.anchor and audit.export), with the wallet's access key
 {{- $_ := set $files "audit-bucket-service-account.json" (dict "secret" $b.credentials.existingSecret "key" $b.credentials.key) -}}
 {{- end -}}
 {{- end -}}
-{{- /* The config role reads the api and consent database views with the
-wallet's read-only users (read_access). */ -}}
+{{- /* The config role reads the api database views with the wallet's
+read-only user (read_access). */ -}}
 {{- if eq $role "config" -}}
-{{- range $owner := include "ow.wallet.readAccessOwners" $root | splitList "," -}}
-{{- $reader := include "ow.readAccess.reader" (list $root "wallet" $owner) | fromJson -}}
-{{- $_ := set $files (printf "read-access-%s-password" $owner) (dict "secret" $reader.secret "key" $reader.key) -}}
-{{- end -}}
+{{- $reader := include "ow.readAccess.reader" (list $root "wallet" "api") | fromJson -}}
+{{- $_ := set $files "read-access-api-password" (dict "secret" $reader.secret "key" $reader.key) -}}
 {{- end -}}
 {{- /* Every wallet process signs its NATS events with the wallet's private
 JWKS. */ -}}
@@ -608,8 +502,8 @@ Output: a list at column 0, or nothing.
 
 {{/*
 Name of the shared ConfigMap with the gateway public keys
-(gateway-jwks.json). The api core, consent and the wallet config role check
-the internal token with them. gateway.publicKeys.existingConfigMap, else the
+(gateway-jwks.json). The api core and the wallet config role check the
+internal token with them. gateway.publicKeys.existingConfigMap, else the
 chart's ConfigMap <fullname>-igrant-gateway-jwks (same name for all
 services).
 */}}
@@ -648,7 +542,7 @@ Output: JSON object "<file name>" -> {secret, key}.
 {{- toJson $files -}}
 {{- end }}
 
-{{/* Folder of the public keys of the gateway in the consent and wallet config pods. */}}
+{{/* Folder of the public keys of the gateway in the wallet config pods. */}}
 {{- define "ow.gateway.keysDir" -}}
 /etc/igrant-gateway-keys
 {{- end }}
@@ -668,34 +562,14 @@ ow.gateway.keysDir). Output: a list at column 0.
 
 {{/*
 Fails when the gateway public keys (gateway-jwks.json) are missing: the api
-core, consent and the wallet config role verify the internal token of every
-request with them. Output: nothing.
+core and the wallet config role verify the internal token of every request
+with them. Output: nothing.
 */}}
 {{- define "ow.gateway.checkGatewayJwks" -}}
 {{- $keys := .Values.gateway.publicKeys -}}
 {{- if and (not $keys.existingConfigMap) (not $keys.gatewayJwks) -}}
-{{- fail "gateway.publicKeys.gatewayJwks (or gateway.publicKeys.existingConfigMap) is required: the public keys of the gateway, which the api core, consent and the wallet use to verify the internal token (igrant-api keys export-token-jwks; see docs/keys.md)" -}}
+{{- fail "gateway.publicKeys.gatewayJwks (or gateway.publicKeys.existingConfigMap) is required: the public keys of the gateway, which the api core and the wallet use to verify the internal token (igrant-api keys export-token-jwks; see docs/keys.md)" -}}
 {{- end -}}
-{{- end }}
-
-{{/*
-The api requests that consent sends (from the subject contract of the
-services). Each subject is listed by name, so a new consent request needs a
-chart change. Consent also publishes its events by name (stream
-CONSENT_EVENTS). Output: JSON list.
-*/}}
-{{- define "ow.nats.consentApiRequests" -}}
-{{- toJson (list
-  "api.v1.rpc.organisation.get"
-  "api.v1.rpc.individual.get"
-  "api.v1.rpc.wallet.definition.check"
-  "api.v1.rpc.wallet.jwt.create"
-  "api.v1.rpc.wallet.jwt.verify"
-  "api.v1.rpc.wallet.software_statement.present"
-  "api.v1.rpc.wallet.software_statement.validate"
-  "api.v1.rpc.wallet.dda_signature.create"
-  "api.v1.rpc.wallet.verification_request.send"
-  "api.v1.rpc.wallet.verification_request.receive") -}}
 {{- end }}
 
 {{/*
@@ -718,13 +592,7 @@ the user's values key. Output: JSON list.
     "extra" (list "$JS.API.INFO"))
   "apiWebhook" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
-    "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested" "CONSENT_EVENTS/api-consent-webhooks" "CONSENT_EVENTS/api-consent-policy"))
-  "consent" (dict
-    "streams" (list "CONSENT_EVENTS")
-    "pull" (list "API_EVENTS/consent-api-organisation" "OWS_MICROSERVICE/consent-dda-present-proof" "OWS_MICROSERVICE/consent-dda-presentation"))
-  "consentWithoutWallet" (dict
-    "streams" (list "CONSENT_EVENTS")
-    "pull" (list "API_EVENTS/consent-api-organisation"))
+    "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested"))
   "walletConfig" (dict
     "streams" (list "OWS_MICROSERVICE")
     "pull" (list "API_EVENTS/eudi-wallet-api-triggers")
@@ -801,10 +669,6 @@ consumers of another. Output: JSON list.
 {{- $users := $v.nats.auth.users -}}
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
-{{- /* Without the wallet, consent has no consumers for wallet events
-(consent-dda-present-proof, consent-dda-presentation). */ -}}
-{{- $consent := include "ow.installation.has" (list . "consent") -}}
-{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "enabled" $v.api.enabled "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
@@ -815,9 +679,6 @@ consumers of another. Output: JSON list.
   (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "enabled" $v.api.enabled "allowResponses" false
     "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
     "subscribe" (list))
-  (dict "name" "consent" "key" "consent" "inbox" "_INBOX_consent" "enabled" $v.consent.enabled "allowResponses" false
-    "publish" (concat (include "ow.nats.consentApiRequests" . | fromJsonArray) (list "consent.v1.evt.webhook.requested" "consent.v1.evt.policy.updated") (include "ow.nats.jetStreamRights" (ternary "consent" "consentWithoutWallet" (eq $wallet "true")) | fromJsonArray))
-    "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
     "subscribe" (concat (list "ows.cmd.*.>" "ows.*.notification" "ows.*.webhook.present_proof") $cacheClears))
@@ -827,9 +688,6 @@ consumers of another. Output: JSON list.
   (dict "name" "wallet-worker" "key" "walletWorker" "inbox" "_INBOX_wallet" "enabled" $v.organisationWallet.enabled "allowResponses" false
     "publish" (concat $walletEvents (include "ow.nats.jetStreamRights" "walletWorker" | fromJsonArray))
     "subscribe" (list)) -}}
-{{- /* installed: the user's service is installed (ow.installation.has).
-nats.conf lists no user for a service that is not installed. */ -}}
-{{- $installed := dict "consent" $consent "walletConfig" $wallet "walletService" $wallet "walletWorker" $wallet -}}
 {{- $out := list -}}
 {{- range $user := $table -}}
 {{- $values := index $users $user.key | default dict -}}
@@ -838,7 +696,6 @@ nats.conf lists no user for a service that is not installed. */ -}}
 {{- $out = append $out (dict
     "name" $user.name "key" $user.key "nkey" ($values.nkey | default "") "seed" $seed "inbox" $user.inbox
     "enabled" $user.enabled "allowResponses" $user.allowResponses
-    "installed" (or (not (hasKey $installed $user.key)) (eq (get $installed $user.key) "true"))
     "publish" $user.publish
     "subscribe" (concat $user.subscribe (list (printf "%s.>" $user.inbox)))) -}}
 {{- end -}}
@@ -867,15 +724,14 @@ without credentials. Output: nothing.
 
 {{/*
 The authorization block of nats.conf: users for the chart's processes and
-the installed services, and no user without credentials. Output: text at
-column 0.
+the wallet, and no user without credentials. Output: text at column 0.
 */}}
 {{- define "ow.nats.authorization" -}}
 {{- include "ow.nats.checkUsers" . -}}
 authorization {
   users = [
     {{- range $user := include "ow.nats.users" . | fromJsonArray }}
-    {{- if and $user.nkey $user.installed }}
+    {{- if $user.nkey }}
     # {{ $user.name }}
     {{- /* In nats.conf an empty allow list means no restriction, so a process
     with no publish subjects gets deny [">"]. */}}
@@ -1000,7 +856,7 @@ this chart. The engine and TLS settings always come from database.*
 {{- fail (printf "%s.username is required: %s reads the views of the %s database with its own read-only user (see docs/read-access.md)" $key $reader $owner) -}}
 {{- end -}}
 {{- /* Only names that the read-access command of every owner accepts (the
-wallet allows ^[a-z][a-z0-9_]{0,62}$; the api and consent allow more). */ -}}
+wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $entry.username) -}}
 {{- fail (printf "%s.username %q is not a database user name: a lower-case letter, then lower-case letters, digits or _ (at most 63)" $key $entry.username) -}}
 {{- end -}}
@@ -1019,7 +875,7 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api and consent allow more). */ -}}
 {{- end }}
 
 {{/*
-The readers in a list (keys of database.databases: api, consent, wallet)
+The readers in a list (keys of database.databases: api, wallet)
 that are on in this chart. Only these get a read access Job on an owner
 database: the read access Secret has a reader's password only when the
 reader is on, and a reader that is off reads nothing. Call with (list $
@@ -1064,20 +920,14 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 
 {{/*
 The chart's read-only users as (reader, owner) pairs: the readers that this
-release runs, on the owners that are installed (an owner in another release
-counts too: ow.installation.has). api -> wallet; consent -> api, wallet;
-wallet -> api, consent. Output: JSON list of [reader, owner].
+release runs. api -> wallet (also the wallet of another release); wallet ->
+api. Output: JSON list of [reader, owner].
 */}}
 {{- define "ow.readAccess.pairs" -}}
 {{- $v := .Values -}}
-{{- $wallet := include "ow.installation.has" (list . "wallet") -}}
-{{- $consent := include "ow.installation.has" (list . "consent") -}}
 {{- $pairs := list -}}
-{{- if and $v.api.enabled $wallet -}}{{- $pairs = append $pairs (list "api" "wallet") -}}{{- end -}}
-{{- if $v.consent.enabled -}}{{- $pairs = append $pairs (list "consent" "api") -}}{{- end -}}
-{{- if and $v.consent.enabled $wallet -}}{{- $pairs = append $pairs (list "consent" "wallet") -}}{{- end -}}
+{{- if $v.api.enabled -}}{{- $pairs = append $pairs (list "api" "wallet") -}}{{- end -}}
 {{- if $v.organisationWallet.enabled -}}{{- $pairs = append $pairs (list "wallet" "api") -}}{{- end -}}
-{{- if and $v.organisationWallet.enabled $consent -}}{{- $pairs = append $pairs (list "wallet" "consent") -}}{{- end -}}
 {{- toJson $pairs -}}
 {{- end }}
 
@@ -1109,7 +959,7 @@ password and one read connection would fail. Output: nothing.
 {{- end }}
 
 {{/*
-Stop budget of a Go server (api, webhook handler, gateway, consent). The
+Stop budget of a Go server (api, webhook handler, gateway). The
 preStop hook first sleeps preStopSeconds, so the pod keeps serving while
 Kubernetes removes it from the endpoints. Then, on SIGTERM, the server
 drains for drainSeconds and waits at most gracefulShutdownSeconds.

@@ -21,8 +21,8 @@ and ow.db.wallet. Output: JSON.
 {{- end }}
 
 {{/*
-The engine of all components, validated. The api, consent and the
-organisation wallet only accept the engines in ow.db.engines, so any other
+The engine of all components, validated. The api and the organisation
+wallet only accept the engines in ow.db.engines, so any other
 value (for example mysql) fails the render with a message that names them.
 values.schema.json has no enum for database.engine, because a schema error
 cannot name the components.
@@ -31,7 +31,7 @@ cannot name the components.
 {{- $engine := .Values.database.engine | default "postgresql" -}}
 {{- $engines := include "ow.db.engines" . | fromJson -}}
 {{- if not (hasKey $engines $engine) -}}
-{{- fail (printf "database.engine %q is not supported: the api, consent and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
+{{- fail (printf "database.engine %q is not supported: the api and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
 {{- end -}}
 {{ $engine }}
 {{- end }}
@@ -149,7 +149,7 @@ database-ca.crt
 {{- end }}
 
 {{/*
-Client sslmode (api, gateway, consent, wallet, init hook):
+Client sslmode (api, gateway, wallet, init hook):
 database.tls.sslMode, else verify-full with a CA, require with TLS but no
 CA, and disable without TLS.
 */}}
@@ -169,7 +169,6 @@ require
 {{- define "ow.db.enabledDatabases" -}}
 {{- $keys := list -}}
 {{- if .Values.api.enabled -}}{{- $keys = concat $keys (list "api" "oidc") -}}{{- end -}}
-{{- if .Values.consent.enabled -}}{{- $keys = append $keys "consent" -}}{{- end -}}
 {{- if .Values.organisationWallet.enabled -}}{{- $keys = append $keys "wallet" -}}{{- end -}}
 {{ join "," $keys }}
 {{- end }}
@@ -216,8 +215,8 @@ so the chart cannot create them without one. */ -}}
 
 {{/*
 The DataBase section of the Go components (one struct with exact keys, for
-api DataBase, Extensions.oidc.database and ReadAccess.*, gateway DataBase,
-and consent DataBase and ReadAccess.*): tls.sslMode (plus tls.caFile when
+api DataBase, Extensions.oidc.database and ReadAccess.*, and gateway
+DataBase): tls.sslMode (plus tls.caFile when
 there is a CA) and the pool. Call with (dict "root" $ "host" "<host>"
 "port" <port> "name" "<database>" "username" "<user>" "passwordFile"
 "<path>" "caFile" "<path>" "pool" <{maxConns, minConns} or nil>).

@@ -71,7 +71,7 @@ spec:
             failureThreshold: 130
           # Liveness: /healthz (the process is up; after start it never
           # waits for a dependency). Readiness: /readyz (the config role
-          # waits for the api and consent views).
+          # waits for the api views).
           readinessProbe:
             httpGet:
               path: /readyz
