@@ -12,7 +12,10 @@ name: Tests
 #   tests/nats-routes.sh (only the chart's NATS servers can open a route),
 #   tests/alert-rules.sh (the wallet's alert rules with promtool).
 on:
+  # Pull requests run CI only with the label run-ci (cost control). Adding the
+  # label starts a run. Later pushes run while the label stays on the pull request.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches: [main]
   push:
     branches: [main]
@@ -28,6 +31,7 @@ concurrency:
 jobs:
   chart:
     name: Chart (Helm ${{ matrix.helm }})
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -50,6 +54,7 @@ jobs:
 
   compose:
     name: Docker Compose files
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -61,6 +66,7 @@ jobs:
 
   containers:
     name: Valkey, NATS and TLS in containers
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
