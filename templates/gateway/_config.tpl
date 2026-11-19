@@ -1,9 +1,9 @@
 {{/*
 config.yaml of the auth gateway: its own file, not the api config.
 - Sections shared with the api have the same keys and values as api.yaml:
-  ClientAddress comes from clientAddress, and Cors and OutboundHttp come
-  from api.advanced.extraConfig, so the gateway and the api core apply the same
-  rules.
+  ClientAddress comes from clientAddress, OutboundHttp from outboundHttp,
+  and Cors and the other OutboundHttp keys from api.advanced.extraConfig,
+  so the gateway and the api core apply the same rules.
 - An unknown key stops the gateway, and the gateway reads every <Name>File
   at start, so the file names only the gateway's secrets
   (ow.gateway.secretFiles), never the api token signing keys. The file
@@ -80,6 +80,9 @@ file without the key keeps the gateway default). */ -}}
         "large" ($g.proxy.maxBodyBytes.large | int64))))
 -}}
 {{- $_ := set $config "Installation" $installation -}}
+{{- if (include "ow.outboundHttp" $root | fromJson).off -}}
+{{- $_ := set $config "OutboundHttp" (dict "ssrfProtectionDisabled" true) -}}
+{{- end -}}
 {{- $shared := pick ($api.advanced.extraConfig | default dict) "Cors" "OutboundHttp" -}}
 {{- $config = mustMergeOverwrite $config (deepCopy $shared) -}}
 {{- /* gateway.advanced.extraConfig cannot set Installation (ow.installation.config). */ -}}

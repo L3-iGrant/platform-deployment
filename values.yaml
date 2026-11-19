@@ -83,6 +83,13 @@ installation:
     # -- The most organisation wallet units of the wallet provider, 1 to 100.
     maxOrganisationWalletUnits: 100
 
+# The calls of the api, the gateway and the wallet to the URLs of organisations and other vendors.
+outboundHttp:
+  # -- The SSRF guards: refuse private, loopback, link-local and metadata addresses. Never false in production.
+  ssrfProtection: {enabled: true}
+  # -- Private hosts, addresses or CIDRs that the wallet may call (on premise). Empty: public only.
+  allowedPrivate: []
+
 # The monitoring of the platform with the Prometheus Operator (its CRDs must exist).
 monitoring:
   # -- The ServiceMonitors of the wallet and (with redis.metrics.enabled) of Valkey.
@@ -471,9 +478,6 @@ organisationWallet:
     staleGraceSeconds: 259200
     # -- Shortest time between two Refresh now of one source; earlier: 429 (at least 0).
     manualRefreshMinIntervalSeconds: 300
-  ssrf:
-    # -- Private hosts, addresses or CIDRs that the wallet may call. Empty: public only.
-    allowedPrivate: []
   # -- Organisation key stores (docs/key-stores.md).
   keyStores:
     # -- Types that admins may add. []: only the local key store of the installation.

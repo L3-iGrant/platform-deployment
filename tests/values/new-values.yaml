@@ -1,5 +1,7 @@
 # The values of tests/values/old-values.yaml in the shape of this release
 # (tests/check_renamed.py).
+outboundHttp:
+  allowedPrivate: [wallet.example.internal]
 monitoring:
   serviceMonitor: {enabled: true, interval: 15s}
   prometheusRule: {enabled: true}

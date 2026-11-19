@@ -312,19 +312,16 @@ the organisation image routes of the definition displays. */ -}}
 {{- if has $role (list "service" "config") -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
-{{- /* Private hosts that the wallet's SSRF guard allows
-(organisationWallet.ssrf.allowedPrivate), set only when there are entries.
-The wallet refuses an entry that covers loopback, link-local or cloud
-metadata addresses; the render fails on the plain cases. */ -}}
-{{- with $w.ssrf.allowedPrivate -}}
-{{- range $entry := . -}}
-{{- $text := lower (toString $entry) -}}
-{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
-{{- fail (printf "organisationWallet.ssrf.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
-{{- end -}}
-{{- end -}}
-{{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
-{{- end -}}
+{{- /* The SSRF guard of the wallet (outboundHttp, ow.outboundHttp): the
+private hosts that it allows (outboundHttp.allowedPrivate), and enabled
+false when the guard is off; no key with the defaults. The wallet refuses
+an entry that covers loopback, link-local or cloud metadata addresses; the
+render fails on the plain cases. */ -}}
+{{- $outbound := include "ow.outboundHttp" $root | fromJson -}}
+{{- $ssrf := dict -}}
+{{- with $outbound.allowedPrivate -}}{{- $_ := set $ssrf "allowed_private" . -}}{{- end -}}
+{{- if $outbound.off -}}{{- $_ := set $ssrf "enabled" false -}}{{- end -}}
+{{- with $ssrf -}}{{- $_ := set $config "ssrf_protection" . -}}{{- end -}}
 {{- /* The optional features of the installation: the same list as the api
 and the gateway (ow.installation.optionalFeatures). organisationWallet.advanced.extraConfig
 cannot set it. */ -}}

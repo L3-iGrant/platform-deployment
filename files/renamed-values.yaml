@@ -270,6 +270,17 @@
 - {old: networkPolicy.monitoring.namespaceSelector, after: 2026.11.7, new: monitoring.networkPolicy.namespaceSelector}
 - {old: networkPolicy.monitoring.podSelector, after: 2026.11.7, new: monitoring.networkPolicy.podSelector}
 
+# --- Outbound calls
+# One block `outboundHttp` for the SSRF guards of the api, the gateway and
+# the wallet: `ssrfProtection.enabled` (was a key in the extra configuration
+# of each service, with the opposite meaning in the api) and the private
+# hosts that the wallet may call (`allowedPrivate`). See [The SSRF
+# guards](security-context.md#the-ssrf-guards).
+- {old: organisationWallet.ssrf.allowedPrivate, after: 2026.11.7, new: outboundHttp.allowedPrivate}
+- {old: api.extraConfig.OutboundHttp.ssrfProtectionDisabled, after: 2026.11.7, new: outboundHttp.ssrfProtection.enabled, note: "one switch for the api and the wallet: false turns the guards off", convert: ssrfSwitch}
+- {old: organisationWallet.extraConfig.ssrf_protection.enabled, after: 2026.11.7, new: outboundHttp.ssrfProtection.enabled, note: "one switch for the api and the wallet: false turns the guards off", convert: ssrfSwitch}
+- {old: organisationWallet.extraConfig.ssrf_protection.allowed_private, after: 2026.11.7, new: outboundHttp.allowedPrivate}
+
 # --- Worker groups
 # `organisationWallet.workers.groups` is a map with the group name as key
 # (was a list). A value of yours changes one group and keeps the others

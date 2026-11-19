@@ -522,14 +522,12 @@ else
 fi
 notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$profiles/openbao-external.yaml"
 notes "URLs" "https://api.example.org"
-# An SSRF guard turned off in an extraConfig gives a warning in the notes
-# that names the role; no warning by default.
-notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
-  --set-json 'api.advanced.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
-notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.advanced.extraConfig.ssrf_protection.enabled is false). These pods call" \
-  --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":false}}'
+# The SSRF guards turned off (outboundHttp.ssrfProtection.enabled false)
+# give a warning in the notes; no warning by default.
+notes "SSRF guards off" "WARNING: the SSRF guards of the api core, the webhook handler, the gateway and the wallet are off (outboundHttp.ssrfProtection.enabled is false). These pods call" \
+  --set outboundHttp.ssrfProtection.enabled=false
 if helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" \
-    --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+    --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard"; then
   bad "notes: an SSRF warning with the guards on"
 else
   ok "notes: no SSRF warning with the guards on"
@@ -1222,15 +1220,20 @@ renders "one worker group: its configuration key" "worker-all.yaml: |" --set-jso
 lacks "one worker group: no default group Deployments" "name: t-wallet-worker-main" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
 renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" --set monitoring.serviceMonitor.enabled=true
-# The wallet's SSRF allow list (organisationWallet.ssrf.allowedPrivate): no
+# The SSRF guards (outboundHttp): the allow list of the wallet; no
 # key by default (an image without the setting gets no unknown key); the
 # entries in each wallet file; the render stops for a loopback or metadata
 # network and for an entry that is not a host name, address or CIDR.
 lacks "no SSRF allow list by default" "ssrf_protection" --show-only templates/wallet/configmap.yaml
-renders "the SSRF allow list in the wallet files" "allowed_private:" --set-json 'organisationWallet.ssrf.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
-guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
-guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
-guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
+renders "the SSRF allow list in the wallet files" "allowed_private:" --set-json 'outboundHttp.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
+guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'outboundHttp.allowedPrivate=["127.0.0.0/8"]'
+guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'outboundHttp.allowedPrivate=["169.254.169.254"]'
+guard "an SSRF allow entry is a host, an address or a CIDR" "outboundHttp.allowedPrivate.0" --set-json 'outboundHttp.allowedPrivate=["not a host"]'
+renders "SSRF guards off: the api file" "ssrfProtectionDisabled: true" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/api/configmap.yaml
+renders "SSRF guards off: the gateway file" "ssrfProtectionDisabled: true" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/gateway/configmap.yaml
+renders "SSRF guards off: the wallet files" "enabled: false" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/wallet/configmap.yaml
+guard "SSRF switch of the api in the extra configuration" "set outboundHttp.ssrfProtection.enabled instead" --set-json 'api.advanced.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+guard "SSRF switch of the wallet in the extra configuration" "set outboundHttp.ssrfProtection.enabled and outboundHttp.allowedPrivate instead" --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":false}}'
 # Alert rules (monitoring.prometheusRule; tests/alert-rules.sh runs
 # them with promtool): none by default, and only with the ServiceMonitor.
 lacks "no PrometheusRule by default" "kind: PrometheusRule" --set monitoring.serviceMonitor.enabled=true

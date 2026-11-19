@@ -56,6 +56,9 @@ def apply(schema, table, write):
     problems = []
     wanted = expected(table)
     for path, (old_type, old_values) in wanted.items():
+        if any(path.startswith(other + ".") for other in wanted if wanted[other] == (None, None)):
+            # An old value of any type accepts this path already.
+            continue
         parts = path.split(".")
         node = schema
         for depth, part in enumerate(parts):

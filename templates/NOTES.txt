@@ -1,19 +1,12 @@
 The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Release.Namespace }}.
 {{- $ns := .Release.Namespace }}
 
-{{- /* SSRF guards that an extraConfig turns off (docs/security-context.md,
-"The SSRF guards"). */}}
-{{- $ssrfOff := list }}
-{{- if eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.advanced.extraConfig | default dict))) "true" }}
-{{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
-{{- end }}
-{{- if eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.advanced.extraConfig | default dict))) "false" }}
-{{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.advanced.extraConfig.ssrf_protection.enabled is false") }}
-{{- end }}
-{{- range $ssrfOff }}
+{{- /* The SSRF guards (outboundHttp; docs/security-context.md, "The SSRF
+guards"). */}}
+{{- if (include "ow.outboundHttp" . | fromJson).off }}
 
-WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
-  Turn the guard back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: organisationWallet.ssrf.allowedPrivate).
+WARNING: the SSRF guards of the api core, the webhook handler, the gateway and the wallet are off (outboundHttp.ssrfProtection.enabled is false). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
+  Turn the guards back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: outboundHttp.allowedPrivate).
 {{- end }}
 {{- if and (include "ow.openbao.bundled" .) (eq (include "ow.openbao.seal" .) "shamir") }}
 

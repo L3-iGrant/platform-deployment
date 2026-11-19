@@ -186,7 +186,20 @@ def convert_limit(data, entry, value, report, defaults):
     report.change(f"{entry['old']} is now {entry['new']}")
 
 
+def convert_ssrf_switch(data, entry, value, report, defaults):
+    """The SSRF switch of the api (ssrfProtectionDisabled: true is off) or
+    of the wallet (ssrf_protection.enabled: false is off) is now one switch
+    for both: outboundHttp.ssrfProtection.enabled."""
+    off = (value is True) if entry["old"].endswith("ssrfProtectionDisabled") else (value is False)
+    if not off:
+        report.change(f"{entry['old']} removed (the guard is on: the default)")
+        return
+    put(data, "outboundHttp.ssrfProtection.enabled", False, report, entry["old"])
+    report.note(f"{entry['old']} is now outboundHttp.ssrfProtection.enabled: false, which turns off the SSRF guards of the api and of the wallet")
+
+
 CONVERSIONS = {
+    "ssrfSwitch": convert_ssrf_switch,
     "limit": convert_limit,
     "workerGroups": convert_worker_groups,
     "databaseSecret": convert_database_secret,
@@ -205,7 +218,9 @@ def matches(entry, value):
 
 
 def upgrade(data, table, defaults, report):
-    for entry in table:
+    # The deepest paths first: an old value below another old value (a key
+    # in the old extra configuration) changes before its parent moves.
+    for entry in sorted(table, key=lambda e: -e["old"].count(".")):
         old = entry["old"]
         value = get(data, old)
         if not matches(entry, value):

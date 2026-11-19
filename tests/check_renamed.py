@@ -122,7 +122,11 @@ def main(base):
         # 2. All old values in one file: one message.
         if table:
             values = {}
-            for entry in table:
+            olds = {e["old"] for e in table}
+            # An old value below another old value (a key of the old extra
+            # configuration) is only in the case "each old value alone".
+            together = [e for e in table if not any(e["old"].startswith(o + ".") for o in olds)]
+            for entry in together:
                 if not nest(values, entry["old"], sample(entry)):
                     fail(f"renamed values: {entry['old']} is below another old value of the table")
             path = os.path.join(tmp, "all-old.yaml")
@@ -136,11 +140,11 @@ def main(base):
             else:
                 lines = [line for line in message.splitlines() if line.startswith("- ")]
                 named = {line[2:].split(":", 1)[0] for line in lines}
-                absent = [e["old"] for e in table if e["old"] not in named]
-                if int(head.group(1)) != len(table) or absent:
-                    fail(f"renamed values: the message names {head.group(1)} of {len(table)} old values; missing: {', '.join(absent)}")
+                absent = [e["old"] for e in together if e["old"] not in named]
+                if int(head.group(1)) != len(together) or absent:
+                    fail(f"renamed values: the message names {head.group(1)} of {len(together)} old values; missing: {', '.join(absent)}")
                 else:
-                    ok(f"renamed values: one message names all {len(table)} old values")
+                    ok(f"renamed values: one message names all {len(together)} old values")
         # 3. Each old value alone.
         alone = 0
         for entry in table:

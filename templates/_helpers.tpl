@@ -24,6 +24,34 @@ the services use the TCP peer address. Output: JSON.
 {{- end }}
 
 {{/*
+The SSRF guards of the api core, the webhook handler, the gateway and the
+wallet (outboundHttp, docs/security-context.md, "The SSRF guards"). Each
+service has a guard on by default; outboundHttp.ssrfProtection.enabled
+false turns all of them off. The extra configuration keys of the services
+cannot turn a guard off or allow a private host: two sources for one
+setting. Call with the root context. Output: JSON {off: bool,
+allowedPrivate: [...]}.
+*/}}
+{{- define "ow.outboundHttp" -}}
+{{- $o := .Values.outboundHttp | default dict -}}
+{{- if hasKey ((.Values.api.advanced.extraConfig | default dict).OutboundHttp | default dict) "ssrfProtectionDisabled" -}}
+{{- fail "api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled: set outboundHttp.ssrfProtection.enabled instead (the same setting for the api and the wallet)" -}}
+{{- end -}}
+{{- $walletSsrf := (.Values.organisationWallet.advanced.extraConfig | default dict).ssrf_protection | default dict -}}
+{{- if or (hasKey $walletSsrf "enabled") (hasKey $walletSsrf "allowed_private") -}}
+{{- fail "organisationWallet.advanced.extraConfig.ssrf_protection: set outboundHttp.ssrfProtection.enabled and outboundHttp.allowedPrivate instead" -}}
+{{- end -}}
+{{- $allowed := $o.allowedPrivate | default list -}}
+{{- range $entry := $allowed -}}
+{{- $text := lower (toString $entry) -}}
+{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
+{{- fail (printf "outboundHttp.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
+{{- end -}}
+{{- end -}}
+{{- toJson (dict "off" (eq (toString (dig "ssrfProtection" "enabled" true $o)) "false") "allowedPrivate" $allowed) -}}
+{{- end }}
+
+{{/*
 Reads one key of an existing Secret in the release namespace (lookup).
 Returns "" when the Secret or the key is missing, and always under
 "helm template". Call with (list $ "<secret name>" "<key>").

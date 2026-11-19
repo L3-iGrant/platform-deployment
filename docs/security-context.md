@@ -54,16 +54,16 @@ Notes:
 
 ## The SSRF guards
 
-The api core, the webhook handler and the wallet call URLs that an organisation or another vendor gives: the webhooks (`payloadUrl`), the organisations' OIDC providers, and the issuers, verifiers, trust lists, status lists, JWKS and metadata of other vendors. Each of them has an SSRF guard in its code. The guard refuses a connection to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8, fc00::/7 or 169.254.169.254), also after a DNS answer or a redirect. The guards are on by default, and the chart does not turn them off. They also protect a cluster without network policies.
+The api core, the webhook handler and the wallet call URLs that an organisation or another vendor gives: the webhooks (`payloadUrl`), the organisations' OIDC providers, and the issuers, verifiers, trust lists, status lists, JWKS and metadata of other vendors. Each of them has an SSRF guard in its code. The guard refuses a connection to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8, fc00::/7 or 169.254.169.254), also after a DNS answer or a redirect. The guards are on by default (`outboundHttp.ssrfProtection.enabled: true`). They also protect a cluster without network policies.
 
-| Role | The guard | Off with |
+| Role | The guard in its file | Off with |
 | --- | --- | --- |
-| api core, webhook handler | `OutboundHttp.ssrfProtectionDisabled` of the api file (default `false`) | `api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled: true` |
-| wallet service, config, workers | `ssrf_protection.enabled` of the wallet files (default `true`) | `organisationWallet.advanced.extraConfig.ssrf_protection.enabled: false` |
+| api core, webhook handler, gateway | `OutboundHttp.ssrfProtectionDisabled` (default `false`) | `outboundHttp.ssrfProtection.enabled: false` |
+| wallet service, config, workers | `ssrf_protection.enabled` (default `true`) | `outboundHttp.ssrfProtection.enabled: false` |
 
-A guard that is off lets an organisation's URL reach every private, loopback and metadata address that the pod reaches: the services of your network, the services of the cluster, and the credentials on the metadata server of your cloud. The notes of `helm install` and `helm upgrade` then show a warning that names the role. Do not turn a guard off in production. If a host that the platform must call has a private address (on premise), allow only that host:
+`outboundHttp.ssrfProtection.enabled: false` turns off all guards. A guard that is off lets an organisation's URL reach every private, loopback and metadata address that the pod reaches: the services of your network, the services of the cluster, and the credentials on the metadata server of your cloud. The notes of `helm install` and `helm upgrade` then show a warning. Do not turn the guards off in production. The extra configuration of a service cannot turn its guard off: the render stops. If a host that the platform must call has a private address (on premise), allow only that host:
 
-- the wallet: `organisationWallet.ssrf.allowedPrivate` (host names, addresses or CIDRs; never loopback, link-local or the metadata addresses);
+- the wallet: `outboundHttp.allowedPrivate` (host names, addresses or CIDRs; never loopback, link-local or the metadata addresses);
 - the api core and the webhook handler: they have no allow list of private hosts. An OIDC provider of the admins in your network can use `allowPrivateNetwork` of its entry in `Iam.providers`.
 
 With network policies, also give the address to the egress profile `platform` (the public hosts of this platform) or to a profile of your own (see [Network policies](network-policies.md)).

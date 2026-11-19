@@ -260,6 +260,17 @@ One block `monitoring` for the ServiceMonitors of all components, the Prometheus
 | `networkPolicy.monitoring.namespaceSelector` | `monitoring.networkPolicy.namespaceSelector` |
 | `networkPolicy.monitoring.podSelector` | `monitoring.networkPolicy.podSelector` |
 
+### Outbound calls
+
+One block `outboundHttp` for the SSRF guards of the api, the gateway and the wallet: `ssrfProtection.enabled` (was a key in the extra configuration of each service, with the opposite meaning in the api) and the private hosts that the wallet may call (`allowedPrivate`). See [The SSRF guards](security-context.md#the-ssrf-guards).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `organisationWallet.ssrf.allowedPrivate` | `outboundHttp.allowedPrivate` |
+| `api.extraConfig.OutboundHttp.ssrfProtectionDisabled` | `outboundHttp.ssrfProtection.enabled` (one switch for the api and the wallet: false turns the guards off) |
+| `organisationWallet.extraConfig.ssrf_protection.enabled` | `outboundHttp.ssrfProtection.enabled` (one switch for the api and the wallet: false turns the guards off) |
+| `organisationWallet.extraConfig.ssrf_protection.allowed_private` | `outboundHttp.allowedPrivate` |
+
 ### Worker groups
 
 `organisationWallet.workers.groups` is a map with the group name as key (was a list). A value of yours changes one group and keeps the others (Helm merges maps but replaces lists); `null` removes a default group. The grace period of a group is `shutdownTimeoutSeconds` + 30 (the chart calculates it; see [Workers and clock](workers.md)).

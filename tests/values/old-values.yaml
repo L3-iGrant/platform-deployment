@@ -6,6 +6,7 @@ api:
   host: api.example.org
   extraConfig:
     Uploads: {maxInProgress: 4}
+    OutboundHttp: {ssrfProtectionDisabled: false}
   limits:
     maxOrganisations: 20
   smtp:
@@ -34,6 +35,8 @@ api:
 organisationWallet:
   host: wallet.example.org
   logLevel: WARNING
+  ssrf:
+    allowedPrivate: [wallet.example.internal]
   serviceMonitor: {enabled: true, interval: 15s, labels: {release: kp}}
   prometheusRule: {enabled: true, labels: {release: kp}}
   workers:

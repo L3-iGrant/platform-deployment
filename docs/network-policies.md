@@ -50,7 +50,7 @@ A wallet role reads URLs on the public hosts of this platform: the status list o
 
 In most clusters, traffic from a pod to the address of a cluster load balancer does not leave the cluster: kube-proxy and Cilium send it directly to the ingress controller pods. The `internet` profiles exclude pod addresses, so the profile `platform` allows these pods (the selectors of `networkPolicy.ingressController`) on its `ports`. If your load balancer has a public address and the traffic goes to it, the `internet` profiles also allow it.
 
-If the public hosts have private addresses (on premise, an internal load balancer), the wallet's SSRF guard refuses them too. List the host names or networks in `organisationWallet.ssrf.allowedPrivate`, and give the address of the load balancer to `networkPolicy.egress.profiles.platform.cidrs`.
+If the public hosts have private addresses (on premise, an internal load balancer), the wallet's SSRF guard refuses them too. List the host names or networks in `outboundHttp.allowedPrivate`, and give the address of the load balancer to `networkPolicy.egress.profiles.platform.cidrs`.
 
 ### Envoy Gateway
 

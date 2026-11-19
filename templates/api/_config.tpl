@@ -128,6 +128,11 @@ never has them, because the gateway refuses the section. */ -}}
 {{- /* api.advanced.extraConfig cannot set Installation: ow.installation.config
 fails the render when it names other services, and the chart writes its
 own section. */ -}}
+{{- /* The SSRF guard (outboundHttp.ssrfProtection): the key only when the
+guard is off; the api default is on. */ -}}
+{{- if (include "ow.outboundHttp" $root | fromJson).off -}}
+{{- $_ := set $config "OutboundHttp" (dict "ssrfProtectionDisabled" true) -}}
+{{- end -}}
 {{- $extra := deepCopy ($api.advanced.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
