@@ -73,7 +73,7 @@ configs:
         port: ${SMTP_PORT:-587}
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
+        fromEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
@@ -175,7 +175,7 @@ configs:
         port: ${SMTP_PORT:-587}
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
+        fromEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
