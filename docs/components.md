@@ -32,7 +32,7 @@ An installation has consent management, the organisation wallet, or both. Each s
 | `organisationWallet.enabled: false` and `gateway.upstreams.walletConfig.url` | Installed: the organisation wallet of another release |
 | `organisationWallet.enabled: false` and no `gateway.upstreams.walletConfig.url` | Not installed |
 
-The chart writes the list of services into the api file and the gateway file (`Installation.services`). You cannot set this list: the chart takes it from the values in the table. With all services, the files have no `Installation` key. At least one service must be installed, or the render stops.
+The chart writes the list of services into the api file and the gateway file (`Installation.services`). You cannot set this list: the chart takes it from the values in the table. With all services, the files have no `Installation.services` key. At least one service must be installed, or the render stops.
 
 When a service is not installed:
 
@@ -59,6 +59,17 @@ consent:
 ```
 
 Do not set `Installation` in `api.extraConfig` or `gateway.extraConfig`: the render stops when it names other services than the chart. A release without the api (`api.enabled: false`) has no gateway, so it cannot see which services the installation has: it keeps the reads and trusts of all services. To add or remove a service later, see [Add or remove a service](#add-or-remove-a-service).
+
+
+## Optional features
+
+An optional feature is a part of a service that an installation can leave out. Each optional feature is off when it is not in `installation.optionalFeatures`, and the default is the empty list:
+
+| Value | The optional feature |
+| --- | --- |
+| `protocol1` | Protocol 1 of the individual wallet provider: the protocol of the wallet apps that do not sign their requests. Protocol 2 signs each request. A new installation does not need protocol 1. It needs the organisation wallet. |
+
+The chart writes the same list into the api file and the gateway file (`Installation.optionalFeatures`) and into each file of the organisation wallet (`installation.optional_features`). You cannot set it in `api.extraConfig`, `gateway.extraConfig` or `organisationWallet.extraConfig`. When an optional feature is off, its routes do not exist, the wallet refuses its settings, and the dashboard does not show it.
 
 ## Add or remove a service
 

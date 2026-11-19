@@ -65,6 +65,16 @@ clientAddress:
   trustedProxyHeader: ""
 
 # The api core and the webhook handler (one image). The OIDC provider runs in the api.
+# -- The installation.
+installation:
+  # -- The optional features of the installation. An optional feature is off
+  # when it is not in the list. The only optional feature is protocol1: the
+  # old protocol of the individual wallet provider (GET /nonce), for the wallet
+  # apps that do not sign their requests (protocol 2 signs them). It needs the
+  # wallet. A new installation does not need it. The api, the gateway and the
+  # wallet get the same list (docs/components.md, "Optional features").
+  optionalFeatures: []
+
 api:
   # -- Run the api and the webhook handler. false: no gateway either (docs/components.md).
   enabled: true

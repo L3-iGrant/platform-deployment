@@ -51,7 +51,11 @@ The render fails when:
 - no service is installed (an installation needs consent or the wallet);
 - privacyDashboard.enabled is true and consent is not installed;
 - api.extraConfig.Installation or gateway.extraConfig.Installation names
-  other services than the chart does.
+  other services than the chart does;
+- installation.optionalFeatures has protocol1 and the wallet is not
+  installed.
+The section always has optionalFeatures (installation.optionalFeatures):
+without the key, the api and the gateway turn on all optional features.
 Output: JSON.
 */}}
 {{- define "ow.installation.config" -}}
@@ -76,11 +80,31 @@ Output: JSON.
 {{- end -}}
 {{- end -}}
 {{- end -}}
-{{- if eq (len $services) 2 -}}
-{{- toJson dict -}}
-{{- else -}}
-{{- toJson (dict "services" $services) -}}
+{{- $optional := include "ow.installation.optionalFeatures" . | fromJsonArray -}}
+{{- $section := dict "optionalFeatures" $optional -}}
+{{- if ne (len $services) 2 -}}
+{{- $_ := set $section "services" $services -}}
 {{- end -}}
+{{- toJson $section -}}
+{{- end }}
+
+{{/*
+The optional features of the installation (installation.optionalFeatures),
+in the order of the list protocol1. protocol1 needs the wallet (in this
+release or in another release). Output: JSON list.
+*/}}
+{{- define "ow.installation.optionalFeatures" -}}
+{{- $named := (.Values.installation | default dict).optionalFeatures | default list -}}
+{{- $optional := list -}}
+{{- range $feature := list "protocol1" -}}
+{{- if has $feature $named -}}
+{{- $optional = append $optional $feature -}}
+{{- end -}}
+{{- end -}}
+{{- if and (has "protocol1" $optional) (not (include "ow.installation.has" (list $ "wallet"))) -}}
+{{- fail "installation.optionalFeatures: protocol1 needs the wallet: set organisationWallet.enabled to true or gateway.upstreams.walletConfig.url, or remove protocol1" -}}
+{{- end -}}
+{{- toJson $optional -}}
 {{- end }}
 
 {{/*

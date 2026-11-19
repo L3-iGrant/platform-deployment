@@ -329,7 +329,7 @@ def main() -> int:
     # The wallet no longer has a scheduler: no Deployment and no config key.
     check(find("Deployment", f"{RELEASE}-wallet-scheduler") is None, "the scheduler Deployment is rendered")
     check("scheduler.yaml" not in ((find("ConfigMap", f"{RELEASE}-wallet") or {}).get("data") or {}), "the wallet ConfigMap has scheduler.yaml")
-    check(set(clock_file) == {"log_level", "database", "redis", "clock"}, f"the clock file has the keys {sorted(clock_file)}")
+    check(set(clock_file) == {"log_level", "database", "redis", "clock", "installation"}, f"the clock file has the keys {sorted(clock_file)}")
     check(clock_file.get("clock") == {"health_port": 9192}, f"the clock file has clock {clock_file.get('clock')!r}")
     if clock_file:
         wallet_section("wallet clock.yaml database", clock_file["database"])

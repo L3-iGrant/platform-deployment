@@ -331,6 +331,13 @@ metadata addresses; the render fails on the plain cases. */ -}}
 {{- end -}}
 {{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
 {{- end -}}
+{{- /* The optional features of the installation: the same list as the api
+and the gateway (ow.installation.optionalFeatures). organisationWallet.extraConfig
+cannot set it. */ -}}
+{{- if hasKey ($w.extraConfig | default dict) "installation" -}}
+{{- fail "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead (the api, the gateway and the wallet need the same list)" -}}
+{{- end -}}
+{{- $_ := set $config "installation" (dict "optional_features" (include "ow.installation.optionalFeatures" $root | fromJsonArray)) -}}
 {{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
 {{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
 {{- $config | toYaml -}}

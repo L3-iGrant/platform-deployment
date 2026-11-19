@@ -55,8 +55,8 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "ClientAddress" (include "ow.clientAddress" $root | fromJson)
   "Log" (dict "level" $api.logLevel)
 -}}
-{{- /* Services of the installation (ow.installation.config): the section
-is only set when a service is not installed. */ -}}
+{{- /* The installation (ow.installation.config): optionalFeatures always,
+services only when a service is not installed. */ -}}
 {{- with include "ow.installation.config" $root | fromJson -}}
 {{- $_ := set $config "Installation" . -}}
 {{- end -}}

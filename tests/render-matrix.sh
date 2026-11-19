@@ -1043,7 +1043,7 @@ installation() {
     bad "installation $name: $(printf '%s' "$result" | head -c 300)"
     return
   fi
-  if ! result="$(python3 "$here/check_installation.py" "$file" "$case" 2>&1)"; then
+  if ! result="$(python3 "$here/check_installation.py" "$file" "$case" ${optional:+$optional} 2>&1)"; then
     good=0
     printf '%s\n' "$result" | sed 's/^/  /' | head -20
   fi
@@ -1063,6 +1063,12 @@ installation "without consent" no-consent "${no_consent[@]}"
 installation "without consent, network policies" no-consent "${no_consent[@]}" -f "$profiles/network-policies.yaml"
 installation "without consent, external database" no-consent "${no_consent[@]}" -f "$profiles/database-external.yaml"
 installation "without the wallet" no-wallet "${no_wallet[@]}"
+# The optional features (installation.optionalFeatures): the same list in the
+# api, webhook, gateway and wallet files; protocol1 needs the wallet.
+optional=protocol1 installation "all services with protocol1" all --set 'installation.optionalFeatures={protocol1}'
+optional=protocol1 installation "the wallet of another release with protocol1" wallet-elsewhere --set organisationWallet.enabled=false --set gateway.upstreams.walletConfig.url=http://wallet.example.org --set 'installation.optionalFeatures={protocol1}'
+guard "protocol1 without the wallet" "installation.optionalFeatures: protocol1 needs the wallet" "${no_wallet[@]}" --set 'installation.optionalFeatures={protocol1}'
+guard "organisationWallet.extraConfig.installation" "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.extraConfig.installation={"optional_features":["protocol1"]}'
 installation "without the wallet, network policies" no-wallet "${no_wallet[@]}" -f "$profiles/network-policies.yaml"
 installation "without the wallet, external database" no-wallet "${no_wallet[@]}" -f "$profiles/database-external.yaml"
 # api.extraConfig and gateway.extraConfig cannot set a different list: the

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """Checks the installed services in one "helm template" output.
 
-Usage: check_installation.py <render.yaml> <case>
+Usage: check_installation.py <render.yaml> <case> [<optional feature> ...]
+
+The optional features after the case are the expected
+installation.optionalFeatures (none: the default, an empty list). The api,
+webhook and gateway files have them as Installation.optionalFeatures, and
+each file of the wallet as installation.optional_features.
 
 The cases:
-  all              all services in this release: no Installation section,
+  all              all services in this release: Installation has only
+                   optionalFeatures,
                    and the upstreams, read users, trusts, NATS users and
                    Valkey users of consent and the wallet
   consent-elsewhere
@@ -53,6 +59,7 @@ CASES = {
 
 def main() -> int:
     path, case = sys.argv[1:3]
+    optional = sys.argv[3:]
     expected = CASES[case]
     with open(path, encoding="utf-8") as handle:
         docs = [doc for doc in yaml.safe_load_all(handle) if doc]
@@ -71,7 +78,9 @@ def main() -> int:
 
     consent, wallet = expected["consent"], expected["wallet"]
     services = [name for name, where in (("wallet", wallet), ("consent", consent)) if where]
-    want = None if len(services) == 2 else {"services": services}
+    want = {"optionalFeatures": optional}
+    if len(services) != 2:
+        want["services"] = services
 
     # Installation: in the api, webhook and gateway files only.
     files = {
@@ -87,6 +96,16 @@ def main() -> int:
         for key, text in parts:
             if (name, key) not in files and "Installation:" in str(text):
                 problems.append(f"{doc['kind']} {name} {key} has Installation")
+
+    # The optional features in each file of the wallet (installation.optional_features).
+    if wallet == "here":
+        wallet_files = config_map(f"{RELEASE}-wallet")
+        check(bool(wallet_files), "the wallet has no ConfigMap")
+        for key, text in wallet_files.items():
+            if key.endswith(".yaml"):
+                data = yaml.safe_load(text) or {}
+                got = (data.get("installation") or {}).get("optional_features")
+                check(got == optional, f"{RELEASE}-wallet {key}: installation.optional_features is {got!r}, not {optional!r}")
 
     # Gateway upstreams.
     upstreams = files[(f"{RELEASE}-gateway", "config.yaml")]["Gateway"]["upstreams"]

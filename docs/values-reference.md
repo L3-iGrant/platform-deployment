@@ -33,6 +33,12 @@ This page lists every value of the chart, what it does and its default.
 | `clientAddress.header` | A request header that your entry proxy sets to the address of its TCP peer and that a client cannot set (the proxy replaces it), for example `X-Real-IP` with the Envoy Gateway policy of `manifests/envoy-gateway/` or with ingress-nginx. The gateway and the api use the client address for the IP allow-lists of the API keys and for the rate limits. Empty: the address of the TCP peer | `""` |
 | `clientAddress.trustedProxies`, `.trustedProxyHeader` | The address ranges (CIDR) of trusted proxies in front of the entry proxy (for example a CDN), and the header in which they send the client address. Set both or none (see [Exposure](exposure.md#proxies-in-front-of-the-cluster)) | `[]`, `""` |
 
+## Installation
+
+| Value | Description | Default |
+| --- | --- | --- |
+| `installation.optionalFeatures` | The optional features of the installation (see [Components](components.md#optional-features)). An optional feature is off when it is not in the list. The only value is `protocol1`; it needs the organisation wallet | `[]` |
+
 ## Database
 
 | Value | Description | Default |
