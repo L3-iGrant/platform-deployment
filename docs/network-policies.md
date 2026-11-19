@@ -10,7 +10,7 @@ The NetworkPolicy objects of the chart and their values.
 - only the gateway reaches the API core and the wallet config role;
 - the database (port 5432), NATS and Valkey (ports 6379 and 26379: only the wallet roles, the gateway and the other Valkey pods) accept only their clients;
 - the wallet clock reaches only the database and Valkey;
-- only `networkPolicy.monitoring` reaches the metrics port 9190 of the service and config pods, the health ports of the workers and the clock (the scrape of `/metrics`, see [Workers and clock](workers.md#probes-and-metrics)), and the exporter port 9121 of the Valkey pods (see [Redis](redis.md#metrics));
+- only `monitoring.networkPolicy` reaches the metrics port 9190 of the service and config pods, the health ports of the workers and the clock (the scrape of `/metrics`, see [Workers and clock](workers.md#probes-and-metrics)), and the exporter port 9121 of the Valkey pods (see [Redis](redis.md#metrics));
 - a default policy refuses all other traffic.
 
 | Value | Description |
@@ -20,7 +20,7 @@ The NetworkPolicy objects of the chart and their values.
 | `networkPolicy.externalDatabases`, `.externalNats`, `.externalRedis` | The addresses (CIDR) of an external database, NATS, or Valkey or Redis (`redis.mode: external`, or the wallet's separate groups `redis.state` and `redis.cache`; required then; default ports 6379 and 26379) |
 | `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `platform` (the public hosts of this platform), `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `auditBucket` (the S3 store of the audit bucket on a private address; the workers only), `smtp` |
 | `networkPolicy.egress.roles` | The profiles of each component (`wallet-worker`: all worker groups; `wallet-clock` has none) |
-| `networkPolicy.monitoring` | The monitoring namespace: it reaches the NATS monitor port, the metrics ports of the servers, the health ports of the workers and the clock, and the exporter port of the Valkey pods |
+| `monitoring.networkPolicy` | The monitoring namespace: it reaches the NATS monitor port, the metrics ports of the servers, the health ports of the workers and the clock, and the exporter port of the Valkey pods |
 
 ## The values that you must set
 
@@ -42,7 +42,7 @@ Helm merges your values with the defaults key by key: a selector in your file ke
 | A cloud KMS on a private address | `networkPolicy.egress.profiles.cloudKms` | A key store `gcp-kms`, `aws-kms` or `azure-key-vault` through a private endpoint | The CIDR of the private endpoint (port 443). The public endpoints go through the profile `internet`. |
 | An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.mode: external` | The namespace and pod selectors, or the CIDR and port (default 4222). |
 | An external Valkey or Redis | `networkPolicy.externalRedis` | `redis.mode: external`, or `redis.state` or `redis.cache` | Required then. The CIDR and ports (default 6379 and 26379). |
-| Monitoring | `networkPolicy.monitoring` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
+| Monitoring | `monitoring.networkPolicy` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
 
 ## The public hosts of this platform
 

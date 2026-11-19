@@ -21,7 +21,7 @@ The bundled NATS always uses TLS:
 - The clients (port 4222) verify the server with the chart's CA: each process mounts it as `nats-ca.crt`.
 - The routes between the servers (port 6222) use mutual TLS: a server accepts a route only from a server with a certificate of the same CA (`verify`), and the route checks the server name.
 
-The chart creates the CA and the certificate in the Secret `<release>-nats-tls` (10 years, kept across upgrades), or uses your Secret (`nats.tls.existingSecret`: `tls.crt`, `tls.key`, `ca.crt`; the names `<release>-nats.<namespace>.svc` and `*.<release>-nats-headless`, also with `.<namespace>.svc`; server and client use). With your own Secret, its CA must sign only the certificates of the NATS servers: every certificate of that CA can open a route. With `networkPolicy.enabled`, only the NATS pods reach the route port 6222. The monitor port 8222 (the probes, and the scrape from `networkPolicy.monitoring`) has no TLS.
+The chart creates the CA and the certificate in the Secret `<release>-nats-tls` (10 years, kept across upgrades), or uses your Secret (`nats.tls.existingSecret`: `tls.crt`, `tls.key`, `ca.crt`; the names `<release>-nats.<namespace>.svc` and `*.<release>-nats-headless`, also with `.<namespace>.svc`; server and client use). With your own Secret, its CA must sign only the certificates of the NATS servers: every certificate of that CA can open a route. With `networkPolicy.enabled`, only the NATS pods reach the route port 6222. The monitor port 8222 (the probes, and the scrape from `monitoring.networkPolicy`) has no TLS.
 
 ## The version of NATS
 

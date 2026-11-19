@@ -81,7 +81,7 @@ Each site has its own Valkey group: the chart does not replicate Valkey to the s
 
 The exporter does not read the Sentinels: the data servers show a failover in their role and their replication. The length of each queue is a worker metric (`ows_worker_queue_messages`, see [Workers and clock](workers.md#probes-and-metrics)).
 
-`redis.metrics.serviceMonitor.enabled: true` creates the headless Service `<release>-redis-metrics` of the exporters (it includes the pods that are not ready) and the ServiceMonitor `<release>-redis-metrics` (the Prometheus Operator CRD must exist). `interval` and `labels` go to the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches port 9121. With your own Valkey or Redis (`redis.mode: external`), use your own exporter: the chart then refuses `redis.metrics`.
+With `redis.metrics.enabled`, `monitoring.serviceMonitor.enabled: true` creates the headless Service `<release>-redis-metrics` of the exporters (it includes the pods that are not ready) and the ServiceMonitor `<release>-redis-metrics` (the Prometheus Operator CRD must exist). `monitoring.serviceMonitor.interval` and `monitoring.labels` go to the ServiceMonitor. With network policies, set `monitoring.networkPolicy` to your monitoring namespace: only it reaches port 9121. With your own Valkey or Redis (`redis.mode: external`), use your own exporter: the chart then refuses `redis.metrics`.
 
 The image `redis.metrics.image` is `docker.io/oliver006/redis_exporter` (MIT License, see [Images](images.md)). The exporter reads its password from the environment variable `REDIS_PASSWORD` (from the Secret `<release>-redis-users`, key `metrics`), because it reads a password only from a variable or a JSON file.
 

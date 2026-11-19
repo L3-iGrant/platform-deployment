@@ -83,6 +83,17 @@ installation:
     # -- The most organisation wallet units of the wallet provider, 1 to 100.
     maxOrganisationWalletUnits: 100
 
+# The monitoring of the platform with the Prometheus Operator (its CRDs must exist).
+monitoring:
+  # -- The ServiceMonitors of the wallet and (with redis.metrics.enabled) of Valkey.
+  serviceMonitor: {enabled: false, interval: 30s}
+  # -- The PrometheusRule with the alert rules of the wallet (needs serviceMonitor).
+  prometheusRule: {enabled: false}
+  # -- Labels of the ServiceMonitors and the PrometheusRule, for example for the selector of your Prometheus.
+  labels: {}
+  # -- With network policies: the scrape of the NATS monitor port and the metrics ports from your monitoring pods.
+  networkPolicy: {enabled: false, namespaceSelector: {}, podSelector: {}}
+
 # The keys of the platform (docs/keys.md). scripts/make-keys.sh makes the key
 # Secrets and writes this block in its values-keys.yaml: key ids, public JWKS
 # and no secret. An empty existingSecret: the Secret <fullname>-<name> of
@@ -580,15 +591,6 @@ organisationWallet:
         resources:
           requests: {cpu: 50m, memory: 384Mi}
           limits: {memory: 1536Mi}
-  # -- ServiceMonitor of /metrics of the servers, workers and clock (Prometheus Operator).
-  serviceMonitor:
-    enabled: false
-    interval: 15s
-    labels: {}
-  # -- PrometheusRule with the alert rules of the wallet; turn on serviceMonitor too.
-  prometheusRule:
-    enabled: false
-    labels: {}
   # -- The service, config, worker and clock pods (UID 65532). The hooks use jobs.
   podSecurityContext:
     runAsNonRoot: true
@@ -997,11 +999,6 @@ redis:
     resources:
       requests: {cpu: 10m, memory: 32Mi}
       limits: {memory: 128Mi}
-    # -- ServiceMonitor of the exporters (needs metrics.enabled and the Prometheus Operator).
-    serviceMonitor:
-      enabled: false
-      interval: 30s
-      labels: {}
   # -- Valkey runs as UID 999, GID 1000.
   podSecurityContext:
     runAsNonRoot: true
@@ -1082,5 +1079,3 @@ networkPolicy:
       wallet-config: [internet-any-port, platform, kms, cloudKms]
       wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
       wallet-clock: []
-  # -- Scrape of the NATS monitor port and the metrics ports from a monitoring namespace.
-  monitoring: {enabled: false, namespaceSelector: {}, podSelector: {}}

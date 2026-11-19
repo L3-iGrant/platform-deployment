@@ -1664,16 +1664,16 @@
             "serviceMonitor": {
               "type": "object",
               "additionalProperties": false,
+              "deprecated": true,
               "properties": {
                 "enabled": {
-                  "type": "boolean"
+                  "deprecated": true
                 },
                 "interval": {
-                  "type": "string",
-                  "pattern": "^[0-9]+(ms|s|m|h)$"
+                  "deprecated": true
                 },
                 "labels": {
-                  "type": "object"
+                  "deprecated": true
                 }
               }
             }
@@ -1730,6 +1730,52 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
+            }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h)$"
+            }
+          }
+        },
+        "prometheusRule": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "labels": {
+          "type": "object"
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "namespaceSelector": {
+              "type": "object"
+            },
+            "podSelector": {
+              "type": "object"
             }
           }
         }
@@ -2983,15 +3029,16 @@
         "monitoring": {
           "type": "object",
           "additionalProperties": false,
+          "deprecated": true,
           "properties": {
             "enabled": {
-              "type": "boolean"
+              "deprecated": true
             },
             "namespaceSelector": {
-              "type": "object"
+              "deprecated": true
             },
             "podSelector": {
-              "type": "object"
+              "deprecated": true
             }
           }
         }
@@ -4124,34 +4171,6 @@
             }
           }
         },
-        "serviceMonitor": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "interval": {
-              "type": "string",
-              "pattern": "^[0-9]+(ms|s|m|h)$"
-            },
-            "labels": {
-              "type": "object"
-            }
-          }
-        },
-        "prometheusRule": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "enabled": {
-              "type": "boolean"
-            },
-            "labels": {
-              "type": "object"
-            }
-          }
-        },
         "podSecurityContext": {
           "type": "object"
         },
@@ -4223,6 +4242,35 @@
         },
         "extraConfig": {
           "deprecated": true
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "enabled": {
+              "deprecated": true
+            },
+            "interval": {
+              "deprecated": true
+            },
+            "labels": {
+              "deprecated": true
+            }
+          }
+        },
+        "prometheusRule": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "enabled": {
+              "deprecated": true
+            },
+            "labels": {
+              "deprecated": true
+            }
+          }
         }
       }
     },

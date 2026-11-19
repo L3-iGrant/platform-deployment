@@ -1,16 +1,15 @@
 {{- /*
 The wallet's alert rules as a Prometheus Operator PrometheusRule
-(organisationWallet.prometheusRule.enabled; the CRD must exist;
+(monitoring.prometheusRule.enabled; the CRD must exist;
 docs/workers.md, "Alerts"). The rules read the gauges that every worker pod
 reads from the database on each scrape (every pod reports the same value,
 hence max), from the targets of the chart's ServiceMonitor (job
 wallet-worker) in the release namespace. With other monitoring, take the
 rules from the docs.
 */}}
-{{- if .Values.organisationWallet.prometheusRule.enabled }}
-{{- $w := .Values.organisationWallet }}
-{{- if not $w.serviceMonitor.enabled }}
-{{- fail "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled: the rules read the targets of its job wallet-worker (with other monitoring, take the rules of docs/workers.md, \"Alerts\")" }}
+{{- if .Values.monitoring.prometheusRule.enabled }}
+{{- if not .Values.monitoring.serviceMonitor.enabled }}
+{{- fail "monitoring.prometheusRule.enabled needs monitoring.serviceMonitor.enabled: the rules read the targets of the job wallet-worker (with other monitoring, take the rules of docs/workers.md, \"Alerts\")" }}
 {{- end }}
 {{- $selector := printf "{job=\"wallet-worker\",namespace=\"%s\"}" .Release.Namespace }}
 apiVersion: monitoring.coreos.com/v1
@@ -20,7 +19,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ow.labels" (list . "wallet-alerts") | nindent 4 }}
-    {{- with $w.prometheusRule.labels }}
+    {{- with .Values.monitoring.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:

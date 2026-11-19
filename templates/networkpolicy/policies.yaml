@@ -40,8 +40,8 @@ spec:
     {{- $peers = append $peers (dict "podSelector" (dict "matchLabels" (merge (dict "netpol.igrant.io/role" $from) $instance))) }}
     {{- else if eq $from "ingressController" }}
     {{- $peers = append $peers (dict "namespaceSelector" ($np.ingressController.namespaceSelector | default dict) "podSelector" ($np.ingressController.podSelector | default dict)) }}
-    {{- else if and (eq $from "monitoring") $np.monitoring.enabled }}
-    {{- $peers = append $peers (dict "namespaceSelector" ($np.monitoring.namespaceSelector | default dict) "podSelector" ($np.monitoring.podSelector | default dict)) }}
+    {{- else if and (eq $from "monitoring") $root.Values.monitoring.networkPolicy.enabled }}
+    {{- $peers = append $peers (dict "namespaceSelector" ($root.Values.monitoring.networkPolicy.namespaceSelector | default dict) "podSelector" ($root.Values.monitoring.networkPolicy.podSelector | default dict)) }}
     {{- end }}
     {{- end }}
     {{- if $peers }}

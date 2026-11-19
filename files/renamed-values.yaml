@@ -252,6 +252,24 @@
 - {old: api.limits.maxOrganisations, after: 2026.11.7, new: installation.limits.maxOrganisations, note: "a number from 1 to 100; empty is now the default 100", convert: limit}
 - {old: organisationWallet.walletUnit.organisationWalletUnitsMax, after: 2026.11.7, new: installation.limits.maxOrganisationWalletUnits, note: "a number from 1 to 100; empty is now the default 100", convert: limit}
 
+# --- Monitoring
+# One block `monitoring` for the ServiceMonitors of all components, the
+# PrometheusRule of the wallet, their labels, and the network policy of the
+# scrape. One switch turns on the monitoring of the platform; the Valkey
+# exporters still need `redis.metrics.enabled`. The default interval is
+# 30s for all ServiceMonitors (the wallet had 15s).
+- {old: organisationWallet.serviceMonitor.enabled, after: 2026.11.7, new: monitoring.serviceMonitor.enabled}
+- {old: organisationWallet.serviceMonitor.interval, after: 2026.11.7, new: monitoring.serviceMonitor.interval}
+- {old: organisationWallet.serviceMonitor.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: organisationWallet.prometheusRule.enabled, after: 2026.11.7, new: monitoring.prometheusRule.enabled}
+- {old: organisationWallet.prometheusRule.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: redis.metrics.serviceMonitor.enabled, after: 2026.11.7, new: monitoring.serviceMonitor.enabled}
+- {old: redis.metrics.serviceMonitor.interval, after: 2026.11.7, new: monitoring.serviceMonitor.interval}
+- {old: redis.metrics.serviceMonitor.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: networkPolicy.monitoring.enabled, after: 2026.11.7, new: monitoring.networkPolicy.enabled}
+- {old: networkPolicy.monitoring.namespaceSelector, after: 2026.11.7, new: monitoring.networkPolicy.namespaceSelector}
+- {old: networkPolicy.monitoring.podSelector, after: 2026.11.7, new: monitoring.networkPolicy.podSelector}
+
 # --- Worker groups
 # `organisationWallet.workers.groups` is a map with the group name as key
 # (was a list). A value of yours changes one group and keeps the others

@@ -338,7 +338,7 @@ def main() -> int:
         reader = ((config_map_file(f"{RELEASE}-api", key) or {}).get("ReadAccess") or {}).get("wallet") or {}
         check((reader.get("maxConns"), reader.get("minConns")) == (5, 1), f"api {key} ReadAccess.wallet does not have the pool 5/1")
     check(not [d for d in docs if d.get("kind") == "ServiceMonitor" and d["metadata"]["name"] == f"{RELEASE}-wallet-metrics"],
-          "the wallet ServiceMonitor is rendered without organisationWallet.serviceMonitor.enabled")
+          "the wallet ServiceMonitor is rendered without monitoring.serviceMonitor.enabled")
 
     # The migration hooks and the other wallet hooks (each has its own
     # ConfigMap).

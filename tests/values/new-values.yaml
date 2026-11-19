@@ -1,5 +1,9 @@
 # The values of tests/values/old-values.yaml in the shape of this release
 # (tests/check_renamed.py).
+monitoring:
+  serviceMonitor: {enabled: true, interval: 15s}
+  prometheusRule: {enabled: true}
+  labels: {release: kp}
 installation:
   limits:
     maxOrganisations: 20

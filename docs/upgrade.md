@@ -242,6 +242,24 @@ The limits of the installation are in `installation.limits`, next to the optiona
 | `api.limits.maxOrganisations` | `installation.limits.maxOrganisations` (a number from 1 to 100; empty is now the default 100) |
 | `organisationWallet.walletUnit.organisationWalletUnitsMax` | `installation.limits.maxOrganisationWalletUnits` (a number from 1 to 100; empty is now the default 100) |
 
+### Monitoring
+
+One block `monitoring` for the ServiceMonitors of all components, the PrometheusRule of the wallet, their labels, and the network policy of the scrape. One switch turns on the monitoring of the platform; the Valkey exporters still need `redis.metrics.enabled`. The default interval is 30s for all ServiceMonitors (the wallet had 15s).
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `organisationWallet.serviceMonitor.enabled` | `monitoring.serviceMonitor.enabled` |
+| `organisationWallet.serviceMonitor.interval` | `monitoring.serviceMonitor.interval` |
+| `organisationWallet.serviceMonitor.labels` | `monitoring.labels` |
+| `organisationWallet.prometheusRule.enabled` | `monitoring.prometheusRule.enabled` |
+| `organisationWallet.prometheusRule.labels` | `monitoring.labels` |
+| `redis.metrics.serviceMonitor.enabled` | `monitoring.serviceMonitor.enabled` |
+| `redis.metrics.serviceMonitor.interval` | `monitoring.serviceMonitor.interval` |
+| `redis.metrics.serviceMonitor.labels` | `monitoring.labels` |
+| `networkPolicy.monitoring.enabled` | `monitoring.networkPolicy.enabled` |
+| `networkPolicy.monitoring.namespaceSelector` | `monitoring.networkPolicy.namespaceSelector` |
+| `networkPolicy.monitoring.podSelector` | `monitoring.networkPolicy.podSelector` |
+
 ### Worker groups
 
 `organisationWallet.workers.groups` is a map with the group name as key (was a list). A value of yours changes one group and keeps the others (Helm merges maps but replaces lists); `null` removes a default group. The grace period of a group is `shutdownTimeoutSeconds` + 30 (the chart calculates it; see [Workers and clock](workers.md)).

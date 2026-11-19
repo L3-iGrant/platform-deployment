@@ -269,9 +269,6 @@ Output: nothing.
 {{- if not (regexMatch "^[1-9][0-9]*([kKmMgG][bB]?)?$" ($r.maxmemory | toString)) -}}
 {{- fail (printf "redis.maxmemory %q is not a size: a number with an optional unit kb, mb or gb (for example 512mb)" ($r.maxmemory | toString)) -}}
 {{- end -}}
-{{- if and $r.metrics.serviceMonitor.enabled (not $r.metrics.enabled) -}}
-{{- fail "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled: the ServiceMonitor scrapes the exporters of the pods" -}}
-{{- end -}}
 {{- else -}}
 {{- $external := $r.external -}}
 {{- if and (not $external.sentinels) (not $external.address) -}}
@@ -288,7 +285,7 @@ Output: nothing.
 {{- if and $v.networkPolicy.enabled (not $v.networkPolicy.externalRedis) -}}
 {{- fail "networkPolicy.externalRedis needs the addresses of your Valkey or Redis (cidrs, and ports such as [6379, 26379]) when networkPolicy.enabled and redis.mode external: else the default deny blocks it" -}}
 {{- end -}}
-{{- if or $r.metrics.enabled $r.metrics.serviceMonitor.enabled -}}
+{{- if $r.metrics.enabled -}}
 {{- fail "redis.metrics is for the bundled Valkey (redis.mode bundled): monitor your own Valkey or Redis with your own exporter" -}}
 {{- end -}}
 {{- end -}}

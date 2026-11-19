@@ -1191,7 +1191,7 @@ lacks "no WIA pool refill event" "ows.wia_pool.refill_requested"
 renders "server parameter wins over a database log parameter" '"log_statement=all"' --set database.postgresql.parameters.log_statement=all
 lacks "database log parameter overridden by a server parameter" '"log_statement=ddl"' --set database.postgresql.parameters.log_statement=all
 
-# Workers and clock (organisationWallet.workers, .clock, .serviceMonitor;
+# Workers and clock (organisationWallet.workers, .clock, monitoring;
 # docs/workers.md). The groups are a map with the group name as key: a case
 # gives the groups that it changes, and null removes a default group.
 main_group='{"queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600}'
@@ -1221,7 +1221,7 @@ renders "a change of one worker group keeps the other group" "name: t-wallet-wor
 renders "one worker group: its configuration key" "worker-all.yaml: |" --set-json "$one_group"
 lacks "one worker group: no default group Deployments" "name: t-wallet-worker-main" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
-renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" --set organisationWallet.serviceMonitor.enabled=true
+renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" --set monitoring.serviceMonitor.enabled=true
 # The wallet's SSRF allow list (organisationWallet.ssrf.allowedPrivate): no
 # key by default (an image without the setting gets no unknown key); the
 # entries in each wallet file; the render stops for a loopback or metadata
@@ -1231,27 +1231,27 @@ renders "the SSRF allow list in the wallet files" "allowed_private:" --set-json 
 guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
 guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
 guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
-# Alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh runs
+# Alert rules (monitoring.prometheusRule; tests/alert-rules.sh runs
 # them with promtool): none by default, and only with the ServiceMonitor.
-lacks "no PrometheusRule by default" "kind: PrometheusRule" --set organisationWallet.serviceMonitor.enabled=true
-renders "wallet PrometheusRule: a missing partition of the month is critical" "alert: PartitionOfTheMonthMissing" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
-renders "wallet PrometheusRule: labels for the rule selector" "release: kube-prometheus" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
-guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" --set organisationWallet.prometheusRule.enabled=true
+lacks "no PrometheusRule by default" "kind: PrometheusRule" --set monitoring.serviceMonitor.enabled=true
+renders "wallet PrometheusRule: a missing partition of the month is critical" "alert: PartitionOfTheMonthMissing" --set monitoring.serviceMonitor.enabled=true --set monitoring.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
+renders "wallet PrometheusRule: labels for the rule selector" "release: kube-prometheus" --set monitoring.serviceMonitor.enabled=true --set monitoring.prometheusRule.enabled=true --set-json 'monitoring.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
+guard "PrometheusRule without the ServiceMonitor" "monitoring.prometheusRule.enabled needs monitoring.serviceMonitor.enabled" --set monitoring.prometheusRule.enabled=true
 # Servers (service and config): a headless Service for the metrics port
 # (9190) with the job wallet-server; the ServiceMonitor takes the job name
 # from the label metrics.igrant.io/job.
-renders "metrics Service of the service role" "name: t-wallet-service-metrics" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "metrics Service of the config role" "name: t-wallet-config-metrics" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "job label value of the server targets" "metrics.igrant.io/job: wallet-server" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "job label of the ServiceMonitor" "jobLabel: metrics.igrant.io/job" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "scrape interval of the servers" "interval: 15s" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "metrics Service of the service role" "name: t-wallet-service-metrics" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "metrics Service of the config role" "name: t-wallet-config-metrics" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job label value of the server targets" "metrics.igrant.io/job: wallet-server" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job label of the ServiceMonitor" "jobLabel: metrics.igrant.io/job" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "scrape interval of the servers" "interval: 30s" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
 lacks "no metrics port in the route Services" "9190" --show-only templates/wallet/svc.yaml
-renders "worker group metrics Service includes pods that are not ready" "publishNotReadyAddresses: true" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "worker group metrics Service includes pods that are not ready" "publishNotReadyAddresses: true" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
 # Scrape ports, open only to the monitoring namespace
-# (networkPolicy.monitoring): the health port of the workers and the clock
+# (monitoring.networkPolicy): the health port of the workers and the clock
 # (/metrics), and the metrics port of the servers.
 if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
-    --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+    --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
     --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import sys, yaml
 docs = {d["metadata"]["name"]: d for d in yaml.safe_load_all(sys.stdin) if d}
@@ -1267,7 +1267,7 @@ else
   bad "scrape of the servers with network policies: $(printf '%s' "$problems" | head -c 300)"
 fi
 renders "scrape of the workers and the clock with network policies" "port: health" -f "$profiles/network-policies.yaml" \
-  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
   --show-only templates/networkpolicy/policies.yaml
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" -f "$profiles/network-policies.yaml" \
   --show-only templates/networkpolicy/policies.yaml
@@ -1582,12 +1582,15 @@ renders "the password of the user metrics" "  metrics: " "${metrics[@]}" --show-
 lacks "no exporter by default" "redis_exporter"
 lacks "no ACL user metrics by default" "user metrics on"
 lacks "no password of the user metrics by default" "  metrics: " --show-only templates/secrets.yaml
-renders "Valkey ServiceMonitor" "name: t-redis-metrics" "${metrics[@]}" --set redis.metrics.serviceMonitor.enabled=true
+renders "Valkey ServiceMonitor" "name: t-redis-metrics" "${metrics[@]}" --set monitoring.serviceMonitor.enabled=true
 lacks "no Valkey ServiceMonitor without its value" "t-redis-metrics" "${metrics[@]}"
+lacks "no Valkey ServiceMonitor without the exporter" "t-redis-metrics" --set monitoring.serviceMonitor.enabled=true
+renders "one interval and the labels of all ServiceMonitors" "release: kube-prometheus" "${metrics[@]}" --set monitoring.serviceMonitor.enabled=true --set monitoring.serviceMonitor.interval=60s \
+  --set-json 'monitoring.labels={"release":"kube-prometheus"}' --show-only templates/redis/servicemonitor.yaml
+renders "monitoring of an external Valkey: no Valkey ServiceMonitor, no stop" "kind: ServiceMonitor" "${external_redis[@]}" --set monitoring.serviceMonitor.enabled=true
 renders "Valkey scrape with network policies" "port: metrics" -f "$profiles/network-policies.yaml" \
-  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
   --show-only templates/networkpolicy/policies.yaml
-guard "redis ServiceMonitor without the exporter" "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled" --set redis.metrics.serviceMonitor.enabled=true
 guard "redis metrics with an external Valkey" "redis.metrics is for the bundled Valkey" "${external_redis[@]}" "${metrics[@]}"
 guard "redis user name metrics" 'redis.users.gateway.username "metrics" is a user of the bundled Valkey' --set redis.users.gateway.username=metrics
 
