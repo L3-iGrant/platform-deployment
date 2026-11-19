@@ -68,7 +68,7 @@ optional features. */ -}}
     "host" $api.smtp.host
     "port" ($api.smtp.port | int)
     "username" $api.smtp.username
-    "adminEmail" $api.smtp.adminEmail -}}
+    "fromEmail" $api.smtp.from -}}
 {{- with $api.smtp.replyTo -}}
 {{- $_ := set $smtp "replyTo" . -}}
 {{- end -}}

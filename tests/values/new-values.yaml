@@ -2,6 +2,13 @@
 # (tests/check_renamed.py).
 api:
   host: api.example.org
+  smtp:
+    host: smtp.example.org
+    password: {existingSecret: mail, key: password}
+    from: noreply@example.org
+  twilio:
+    accountSid: {existingSecret: twilio}
+    authToken: {existingSecret: twilio}
 organisationWallet:
   host: wallet.example.org
 enterpriseDashboard:

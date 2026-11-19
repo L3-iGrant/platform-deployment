@@ -156,6 +156,29 @@ def main(base):
                 alone += 1
         if alone == len(table):
             ok(f"renamed values: each of {alone} old values alone stops the render")
+        # 4a. A plain secret: the upgrade script removes it and reports an
+        # action (exit code 1); an empty old value needs no action.
+        script = os.path.join(CHART, "scripts", "upgrade-values.py")
+        actions = 0
+        for entry in [e for e in table if e.get("secret") is True]:
+            values = {}
+            nest(values, entry["old"], "plain-secret-value")
+            path = os.path.join(tmp, "plain.yaml")
+            with open(path, "w") as handle:
+                yaml.safe_dump(values, handle)
+            run = subprocess.run([sys.executable, script, path], capture_output=True, text=True)
+            empty = {}
+            nest(empty, entry["old"], "")
+            with open(path, "w") as handle:
+                yaml.safe_dump(empty, handle)
+            quiet = subprocess.run([sys.executable, script, path], capture_output=True, text=True)
+            if run.returncode != 1 or f"ACTION:  {entry['old']}: a plain secret" not in run.stderr or "plain-secret-value" in run.stdout:
+                fail(f"renamed values: scripts/upgrade-values.py with a plain {entry['old']} gives no action, or keeps the secret:\n{run.stderr}")
+            elif quiet.returncode != 0:
+                fail(f"renamed values: scripts/upgrade-values.py with an empty {entry['old']} gives an action:\n{quiet.stderr}")
+            else:
+                actions += 1
+        ok(f"renamed values: scripts/upgrade-values.py removes each of {actions} plain secrets and reports an action")
         # 4. The upgrade script on the old values of the tests.
         old_file = os.path.join(HERE, "values", "old-values.yaml")
         if os.path.exists(old_file):
@@ -184,7 +207,7 @@ def main(base):
                             detail = "\n" + json.dumps(a[first], indent=1, sort_keys=True)[:1500] + "\n---\n" + json.dumps(b[first], indent=1, sort_keys=True)[:1500]
                         fail(f"renamed values: the upgraded old values render other objects than the new values: {', '.join(diff[:10])}{detail}")
                     else:
-                        ok(f"renamed values: scripts/upgrade-values.py writes a file with the same render as the new values ({expected_actions} actions for the plain secrets)")
+                        ok(f"renamed values: scripts/upgrade-values.py writes a file with the same render as the new values ({expected_actions} actions)")
     return 1 if failures else 0
 
 

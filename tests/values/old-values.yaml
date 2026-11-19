@@ -4,6 +4,14 @@
 # not change this file to the new shape.
 api:
   host: api.example.org
+  smtp:
+    host: smtp.example.org
+    existingSecret: mail
+    passwordKey: password
+    adminEmail: noreply@example.org
+    password: ""
+  twilio:
+    existingSecret: twilio
   keyStorage:
     tokenSigning:
       activeKid: test-token-kid

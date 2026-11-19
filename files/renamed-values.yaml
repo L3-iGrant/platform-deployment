@@ -61,3 +61,30 @@
 - {old: serviceKeys.existingConfigMap, after: 2026.11.7, new: keys.publicJwks.existingConfigMap, note: "one ConfigMap with gateway-jwks.json, token-verification-jwks.json, igrant-api.json and eudi-wallet.json", convert: publicJwksConfigMap}
 - {old: serviceKeys.publicJwks.igrant-api, after: 2026.11.7, new: keys.serviceEnvelope.api.publicJwks}
 - {old: serviceKeys.publicJwks.eudi-wallet, after: 2026.11.7, new: keys.serviceEnvelope.organisationWallet.publicJwks}
+
+# --- E-mail and SMS of the api
+# A secret is never a value: each secret is a reference to a Secret,
+# `{existingSecret, key}`. A plain password, account SID or auth token in a
+# values file stops the render: make a Secret first. The sender address of
+# the e-mails is `api.smtp.from`.
+- old: api.smtp.password
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the SMTP password and set api.smtp.password.existingSecret (and api.smtp.password.key; the default key is smtp-password)"
+  secret: true
+- {old: api.smtp.existingSecret, after: 2026.11.7, new: api.smtp.password.existingSecret}
+- {old: api.smtp.passwordKey, after: 2026.11.7, new: api.smtp.password.key}
+- {old: api.smtp.adminEmail, after: 2026.11.7, new: api.smtp.from}
+- old: api.twilio.accountSid
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the account SID and set api.twilio.accountSid.existingSecret (and .key; the default key is twilio-account-sid)"
+  secret: true
+- old: api.twilio.authToken
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the auth token and set api.twilio.authToken.existingSecret (and .key; the default key is twilio-auth-token)"
+  secret: true
+- {old: api.twilio.existingSecret, after: 2026.11.7, new: [api.twilio.accountSid.existingSecret, api.twilio.authToken.existingSecret]}
+- {old: api.twilio.accountSidKey, after: 2026.11.7, new: api.twilio.accountSid.key}
+- {old: api.twilio.authTokenKey, after: 2026.11.7, new: api.twilio.authToken.key}

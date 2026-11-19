@@ -658,6 +658,11 @@ guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gra
   --set organisationWallet.server.preStopSeconds=20
 guard "preStop of 0 seconds" "preStopSeconds" --set api.server.preStopSeconds=0
 guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreate
+# A plain secret in a values file stops the render (a Secret reference
+# {existingSecret, key} instead), also with the guard of the old values.
+guard "plain SMTP password" "api.smtp.password: make a Secret with the SMTP password and set api.smtp.password.existingSecret" --set api.smtp.password=not-a-value
+guard "plain Twilio auth token" "api.twilio.authToken: make a Secret with the auth token" --set api.twilio.authToken=not-a-value
+guard "Twilio account SID without auth token" "api.twilio.accountSid.existingSecret and api.twilio.authToken.existingSecret go together" --set api.twilio.accountSid.existingSecret=twilio
 # The values that changed (files/renamed-values.yaml): one message names
 # every old value with its new value, the schema keeps each old path, and
 # scripts/upgrade-values.py writes a file that renders as the new values
@@ -710,6 +715,11 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 # the platform operator of a new installation (onboard bootstrap-platform).
 # The password is a file of its own Secret, never an argument, a variable or
 # a ConfigMap value.
+# The api files: the SMTP password from its Secret, and the sender address.
+renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
+  --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml
+renders "SMTP sender address" "fromEmail: noreply@example.org" \
+  --set api.smtp.host=smtp.example.org --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result

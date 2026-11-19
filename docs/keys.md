@@ -31,9 +31,9 @@ The chart creates these Secrets itself (random values, kept across upgrades):
 | `<release>-postgres-tls` | `tls.crt`, `tls.key`, `ca.crt` of the bundled server |
 | `<release>-read-access` | the passwords of the read-only users (`<reader>-<owner>`); a Helm hook, like `<release>-postgres` |
 | `<release>-wallet-database-roles` | the passwords of the wallet's database roles, one key per role without the prefix (for example `launcher_app`, `jobs`, `clock`, `migrator`); a Helm hook that the chart creates before the other hooks (see [Database](database.md#database-roles-of-the-wallet)) |
-| `<release>-api` | `api-secret-key`, and the SMTP and Twilio values if you set them as values |
+| `<release>-api` | `api-secret-key`, without `keys.apiHmacKey.existingSecret` |
 | `<release>-openbao-wallet`, `<release>-openbao-tls` | see [OpenBao](openbao.md) |
 | `<release>-redis-users`, `<release>-redis-tls` | the passwords of the ACL users and the certificates of the bundled Valkey; see [Redis](redis.md#acl-users) |
 | `<release>-nats-tls` | `tls.crt`, `tls.key`, `ca.crt` of the bundled NATS; see [NATS users](nats-users.md#tls) |
 
-`helm template` cannot read the cluster, so it shows new random values. A tool that only renders the templates (for example a GitOps tool that renders) creates new values on every render. With such a tool, set the passwords as values or use the `existingSecret` values.
+`helm template` cannot read the cluster, so it shows new random values. A tool that only renders the templates (for example a GitOps tool that renders) creates new values on every render. With such a tool, make the Secrets yourself and set the `existingSecret` values. A values file never holds a secret: a plain password in a values file stops the render.

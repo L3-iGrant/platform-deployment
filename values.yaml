@@ -149,24 +149,16 @@ api:
     host: ""
     port: 587
     username: ""
-    # -- Do not use: set existingSecret. Empty password and Secret: no SMTP login.
-    password: ""
-    # -- Existing Secret with the SMTP password.
-    existingSecret: ""
-    passwordKey: smtp-password
+    # -- Secret with the SMTP password. Empty existingSecret: no SMTP login.
+    password: {existingSecret: "", key: smtp-password}
     # -- Sender address. The SMTP user must be allowed to send as it.
-    adminEmail: ""
+    from: ""
     # -- Reply-To address. Empty: none.
     replyTo: ""
-  # -- Twilio account for SMS. Empty accountSid and existingSecret: no SMS.
+  # -- Twilio account for SMS: the Secrets of the account SID and the auth token. Empty: no SMS.
   twilio:
-    # -- Do not use: set existingSecret.
-    accountSid: ""
-    authToken: ""
-    # -- Existing Secret with the account SID and the auth token.
-    existingSecret: ""
-    accountSidKey: twilio-account-sid
-    authTokenKey: twilio-auth-token
+    accountSid: {existingSecret: "", key: twilio-account-sid}
+    authToken: {existingSecret: "", key: twilio-auth-token}
   # -- App links of the Data Verifier app on the api host. Empty androidPackageName: none.
   verifierApp:
     androidPackageName: ""
