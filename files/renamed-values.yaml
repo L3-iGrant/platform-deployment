@@ -170,3 +170,28 @@
 - {old: nats.auth.users.walletWorker.nkey, after: 2026.11.7, new: nats.users.walletWorker.nkey}
 - {old: nats.auth.users.walletWorker.seedSecret, after: 2026.11.7, new: nats.users.walletWorker.seed.existingSecret}
 - {old: nats.auth.users.walletWorker.seedKey, after: 2026.11.7, new: nats.users.walletWorker.seed.key}
+
+# --- OpenBao, Redis and the audit bucket
+# The same Secret reference `{existingSecret, key}` for the password of the
+# OpenBao user of the wallet, for each Redis user, for the CA of an external
+# OpenBao or Redis (`external.ca`), and for the two parts of the access key
+# of the audit bucket.
+- {old: openbao.wallet.existingSecret, after: 2026.11.7, new: openbao.wallet.password.existingSecret}
+- {old: openbao.wallet.passwordKey, after: 2026.11.7, new: openbao.wallet.password.key}
+- {old: openbao.external.caSecret, after: 2026.11.7, new: openbao.external.ca.existingSecret}
+- {old: openbao.external.caKey, after: 2026.11.7, new: openbao.external.ca.key}
+- {old: redis.users.walletService.passwordSecret, after: 2026.11.7, new: redis.users.walletService.password.existingSecret}
+- {old: redis.users.walletService.passwordKey, after: 2026.11.7, new: redis.users.walletService.password.key}
+- {old: redis.users.walletConfig.passwordSecret, after: 2026.11.7, new: redis.users.walletConfig.password.existingSecret}
+- {old: redis.users.walletConfig.passwordKey, after: 2026.11.7, new: redis.users.walletConfig.password.key}
+- {old: redis.users.walletWorker.passwordSecret, after: 2026.11.7, new: redis.users.walletWorker.password.existingSecret}
+- {old: redis.users.walletWorker.passwordKey, after: 2026.11.7, new: redis.users.walletWorker.password.key}
+- {old: redis.users.walletClock.passwordSecret, after: 2026.11.7, new: redis.users.walletClock.password.existingSecret}
+- {old: redis.users.walletClock.passwordKey, after: 2026.11.7, new: redis.users.walletClock.password.key}
+- {old: redis.users.gateway.passwordSecret, after: 2026.11.7, new: redis.users.gateway.password.existingSecret}
+- {old: redis.users.gateway.passwordKey, after: 2026.11.7, new: redis.users.gateway.password.key}
+- {old: redis.external.caSecret, after: 2026.11.7, new: redis.external.ca.existingSecret}
+- {old: redis.external.caKey, after: 2026.11.7, new: redis.external.ca.key}
+- {old: organisationWallet.audit.bucket.accessKey.existingSecret, after: 2026.11.7, new: [organisationWallet.audit.bucket.accessKeyId.existingSecret, organisationWallet.audit.bucket.secretAccessKey.existingSecret]}
+- {old: organisationWallet.audit.bucket.accessKey.idKey, after: 2026.11.7, new: organisationWallet.audit.bucket.accessKeyId.key}
+- {old: organisationWallet.audit.bucket.accessKey.secretKey, after: 2026.11.7, new: organisationWallet.audit.bucket.secretAccessKey.key}

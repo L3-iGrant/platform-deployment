@@ -8,8 +8,7 @@ openbao:
   transitMount: transit
   wallet:
     user: wallet
-    existingSecret: openbao-wallet
-    passwordKey: password
+    password: {existingSecret: openbao-wallet, key: password}
   external:
     address: https://openbao.example.org:8200
-    caSecret: openbao-ca
+    ca: {existingSecret: openbao-ca}

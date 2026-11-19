@@ -46,7 +46,7 @@ For the objects that the chart creates for OpenBao, and how to renew its TLS cer
 
 ## External OpenBao
 
-With `openbao.mode: external`, the wallet uses your OpenBao: `openbao.external.address`, its CA in `openbao.external.caSecret`, and an optional namespace (see `profiles/openbao-external.yaml`).
+With `openbao.mode: external`, the wallet uses your OpenBao: `openbao.external.address`, its CA in `openbao.external.ca`, and an optional namespace (see `profiles/openbao-external.yaml`).
 
 In your OpenBao, enable the Transit engine and give the wallet a userpass user with this policy. It is the same policy that the bootstrap of the bundled OpenBao writes:
 
@@ -64,4 +64,4 @@ bao auth enable userpass
 bao write auth/userpass/users/wallet password=- token_policies=wallet-kms   # the password on stdin
 ```
 
-Then create the Secret with the same password (`openbao.wallet.existingSecret`, key `password`).
+Then create the Secret with the same password (`openbao.wallet.password.existingSecret`, key `password`).

@@ -427,8 +427,9 @@ organisationWallet:
       endpoint: ""
       # -- s3: the region of the signatures, for example eu-west-1 (required with a name).
       region: ""
-      # -- s3: Secret with the access key of the wallet (required with a name).
-      accessKey: {existingSecret: "", idKey: access-key-id, secretKey: secret-access-key}
+      # -- s3: Secrets with the access key ID and the secret access key of the wallet (required with a name).
+      accessKeyId: {existingSecret: "", key: access-key-id}
+      secretAccessKey: {existingSecret: "", key: secret-access-key}
       # -- s3: Secret with a PEM CA bundle of the store. Empty: the CA bundle of the client.
       ca: {existingSecret: "", key: ca.crt}
       # -- gcs: project of the bucket. Empty: the project of the credentials.
@@ -860,9 +861,8 @@ openbao:
   # -- The userpass login of the wallet.
   wallet:
     user: wallet
-    # -- Secret with the password (required for external). Empty: <fullname>-openbao-wallet.
-    existingSecret: ""
-    passwordKey: password
+    # -- Secret with the password (required for external). Empty: the chart makes <fullname>-openbao-wallet.
+    password: {existingSecret: "", key: password}
   # -- Your OpenBao (mode external).
   external:
     # -- Address, for example https://openbao.example.org:8200 (required).
@@ -870,8 +870,7 @@ openbao:
     # -- OpenBao namespace. Empty: the root namespace.
     namespace: ""
     # -- Secret with the CA of an https address. Empty: the system CAs.
-    caSecret: ""
-    caKey: ca.crt
+    ca: {existingSecret: "", key: ca.crt}
   # -- Required with the bundled OpenBao. The only seal of this chart is
   # shamir: development and tests only, because the unseal keys are with
   # people and each start needs a manual unseal (profiles/openbao-shamir.yaml).
@@ -925,12 +924,13 @@ redis:
   # -- Name of the primary that the Sentinels monitor (1 to 64 letters, digits, . _ -).
   masterName: ows
   # -- ACL user of each process and its password Secret (docs/redis.md, "ACL users").
+  # Empty existingSecret (bundled): the chart makes the password.
   users:
-    walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
-    walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
-    walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
-    walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
-    gateway: {username: gateway, passwordSecret: "", passwordKey: password}
+    walletService: {username: wallet-service, password: {existingSecret: "", key: password}}
+    walletConfig: {username: wallet-config, password: {existingSecret: "", key: password}}
+    walletWorker: {username: wallet-worker, password: {existingSecret: "", key: password}}
+    walletClock: {username: wallet-clock, password: {existingSecret: "", key: password}}
+    gateway: {username: gateway, password: {existingSecret: "", key: password}}
   # -- Client settings of the wallet.
   client:
     # -- Longest wait for a connection and for each answer, in seconds (above 0, at most 60).
@@ -948,8 +948,7 @@ redis:
     # -- true: the processes log in to the Sentinels with their ACL user.
     sentinelAuth: true
     # -- Secret with the CA of the servers and the Sentinels. Empty: the system CAs.
-    caSecret: ""
-    caKey: ca.crt
+    ca: {existingSecret: "", key: ca.crt}
   # -- Your own group for the single-use values of the wallet. Off: the queue group keeps them.
   state:
     enabled: false

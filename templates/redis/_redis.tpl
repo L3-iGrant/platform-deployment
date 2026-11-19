@@ -114,7 +114,7 @@ Output: JSON.
 {{/*
 ACL user of one process and the Secret with its password. Call with
 (list $ "<values key of redis.users>"). Output: JSON {username, secret,
-key}. The password comes from redis.users.<key>.passwordSecret, else
+key}. The password comes from redis.users.<key>.password, else
 (bundled) the chart's Secret <fullname>-redis-users (key: the values key).
 */}}
 {{- define "ow.redis.user" -}}
@@ -124,22 +124,23 @@ key}. The password comes from redis.users.<key>.passwordSecret, else
 {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" ($user.username | default "")) -}}
 {{- fail (printf "redis.users.%s.username %q is not an ACL user name: 1 to 64 letters, digits, . _ - (the first a letter or a digit)" $key ($user.username | default "")) -}}
 {{- end -}}
-{{- if $user.passwordSecret -}}
-{{- toJson (dict "username" $user.username "secret" $user.passwordSecret "key" ($user.passwordKey | default "password")) -}}
+{{- $password := $user.password | default dict -}}
+{{- if $password.existingSecret -}}
+{{- toJson (dict "username" $user.username "secret" $password.existingSecret "key" ($password.key | default "password")) -}}
 {{- else if include "ow.redis.bundled" $root -}}
 {{- toJson (dict "username" $user.username "secret" (include "ow.redis.usersSecretName" $root) "key" $key) -}}
 {{- else -}}
-{{- fail (printf "redis.users.%s.passwordSecret is required with redis.mode external: the Secret with the password of the ACL user %s on your server" $key $user.username) -}}
+{{- fail (printf "redis.users.%s.password.existingSecret is required with redis.mode external: the Secret with the password of the ACL user %s on your server" $key $user.username) -}}
 {{- end -}}
 {{- end }}
 
-{{/* Server CA: the TLS Secret of the bundled Valkey, or redis.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* Server CA: the TLS Secret of the bundled Valkey, or redis.external.ca. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.redis.ca" -}}
-{{- $external := .Values.redis.external -}}
+{{- $ca := .Values.redis.external.ca -}}
 {{- if include "ow.redis.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.redis.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if $external.caSecret -}}
-{{- toJson (dict "secret" $external.caSecret "key" ($external.caKey | default "ca.crt")) -}}
+{{- else if $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}

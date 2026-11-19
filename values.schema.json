@@ -1242,13 +1242,25 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
                 },
+                "password": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
                 "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
+                  "deprecated": true
                 }
               }
             },
@@ -1260,13 +1272,25 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
                 },
+                "password": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
                 "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
+                  "deprecated": true
                 }
               }
             },
@@ -1278,13 +1302,25 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
                 },
+                "password": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
                 "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
+                  "deprecated": true
                 }
               }
             },
@@ -1296,13 +1332,25 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
                 },
+                "password": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
                 "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
+                  "deprecated": true
                 }
               }
             },
@@ -1314,13 +1362,25 @@
                   "type": "string",
                   "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
                 },
+                "password": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
                 "passwordSecret": {
-                  "type": "string",
-                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                  "deprecated": true
                 },
                 "passwordKey": {
-                  "type": "string",
-                  "pattern": "^[-._a-zA-Z0-9]+$"
+                  "deprecated": true
                 }
               }
             }
@@ -1367,13 +1427,25 @@
             "sentinelAuth": {
               "type": "boolean"
             },
+            "ca": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
             "caSecret": {
-              "type": "string",
-              "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+              "deprecated": true
             },
             "caKey": {
-              "type": "string",
-              "pattern": "^[-._a-zA-Z0-9]+$"
+              "deprecated": true
             }
           }
         },
@@ -2875,11 +2947,25 @@
             "user": {
               "type": "string"
             },
+            "password": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
             "existingSecret": {
-              "type": "string"
+              "deprecated": true
             },
             "passwordKey": {
-              "type": "string"
+              "deprecated": true
             }
           }
         },
@@ -2894,11 +2980,25 @@
             "namespace": {
               "type": "string"
             },
+            "ca": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            },
             "caSecret": {
-              "type": "string"
+              "deprecated": true
             },
             "caKey": {
-              "type": "string"
+              "deprecated": true
             }
           }
         },
@@ -3313,20 +3413,31 @@
                   "type": "string",
                   "pattern": "^$|^[a-z0-9][a-z0-9-]{0,62}$"
                 },
-                "accessKey": {
+                "accessKeyId": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
                     "existingSecret": {
-                      "type": "string"
-                    },
-                    "idKey": {
                       "type": "string",
-                      "minLength": 1
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "secretKey": {
+                    "key": {
                       "type": "string",
-                      "minLength": 1
+                      "pattern": "^[-._a-zA-Z0-9]+$"
+                    }
+                  }
+                },
+                "secretAccessKey": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "existingSecret": {
+                      "type": "string",
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                    },
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
                 },
@@ -3356,6 +3467,22 @@
                     },
                     "key": {
                       "type": "string"
+                    }
+                  }
+                },
+                "accessKey": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "existingSecret": {
+                      "deprecated": true
+                    },
+                    "idKey": {
+                      "deprecated": true
+                    },
+                    "secretKey": {
+                      "deprecated": true
                     }
                   }
                 }
@@ -4432,10 +4559,20 @@
               },
               "wallet": {
                 "properties": {
-                  "existingSecret": {
-                    "minLength": 1
+                  "password": {
+                    "properties": {
+                      "existingSecret": {
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "existingSecret"
+                    ]
                   }
-                }
+                },
+                "required": [
+                  "password"
+                ]
               }
             }
           }
@@ -4498,32 +4635,53 @@
                 "properties": {
                   "walletService": {
                     "properties": {
-                      "passwordSecret": {
-                        "minLength": 1
+                      "password": {
+                        "properties": {
+                          "existingSecret": {
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "existingSecret"
+                        ]
                       }
                     },
                     "required": [
-                      "passwordSecret"
+                      "password"
                     ]
                   },
                   "walletConfig": {
                     "properties": {
-                      "passwordSecret": {
-                        "minLength": 1
+                      "password": {
+                        "properties": {
+                          "existingSecret": {
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "existingSecret"
+                        ]
                       }
                     },
                     "required": [
-                      "passwordSecret"
+                      "password"
                     ]
                   },
                   "gateway": {
                     "properties": {
-                      "passwordSecret": {
-                        "minLength": 1
+                      "password": {
+                        "properties": {
+                          "existingSecret": {
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "existingSecret"
+                        ]
                       }
                     },
                     "required": [
-                      "passwordSecret"
+                      "password"
                     ]
                   }
                 }

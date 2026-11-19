@@ -24,7 +24,7 @@ The workers create the anchor keys when they start: non-exportable Transit keys 
 | `organisationWallet.audit.bucket.type` | `audit.bucket.type`: `s3` (an S3 store with Object Lock) or `gcs` (Google Cloud Storage through the Google client) | `s3` |
 | `organisationWallet.audit.bucket.name`, `.prefix` | `audit.bucket.name`, `.prefix`: the audit bucket and the folder of the objects (for example `audit/production/`). Empty name: no bucket | `""` |
 | `organisationWallet.audit.bucket.endpoint`, `.region` | Type `s3`: `audit.bucket.endpoint`, `.region`: the S3 API of the store (`https://host` or `https://host:port`) and the signing region. Required with a name | `""` |
-| `organisationWallet.audit.bucket.accessKey.existingSecret`, `.idKey`, `.secretKey` | Type `s3`: `audit.bucket.access_key_id_file`, `.secret_access_key_file`: the Secret with the wallet's access key. Required with a name | `""`, `access-key-id`, `secret-access-key` |
+| `organisationWallet.audit.bucket.accessKeyId.*`, `.secretAccessKey.*` | Type `s3`: `audit.bucket.access_key_id_file`, `.secret_access_key_file`: the Secrets (`existingSecret`, `key`) with the access key ID and the secret access key of the wallet; one Secret can hold both. Required with a name | `""`, `access-key-id`; `""`, `secret-access-key` |
 | `organisationWallet.audit.bucket.ca.existingSecret`, `.key` | Type `s3`: `audit.bucket.ca_file`: the Secret with a PEM CA bundle for the TLS certificate of the store. Empty: the client's CA bundle | `""`, `ca.crt` |
 | `organisationWallet.audit.bucket.project` | Type `gcs`: `audit.bucket.project`: the project of the bucket. Empty: the project of the credentials | `""` |
 | `organisationWallet.audit.bucket.credentials.existingSecret`, `.key` | Type `gcs`: `audit.bucket.credentials_file`: the Secret with the service account JSON of the bucket. Empty: the Google default credentials | `""`, `service-account.json` |
@@ -71,8 +71,8 @@ organisationWallet:
       name: example-ows-audit
       endpoint: https://s3.example.org
       region: eu-west-1
-      accessKey:
-        existingSecret: ows-audit-bucket
+      accessKeyId: {existingSecret: ows-audit-bucket}
+      secretAccessKey: {existingSecret: ows-audit-bucket}
       # ca:
       #   existingSecret: ows-audit-bucket-ca   # the CA of a store with a private certificate
 ```

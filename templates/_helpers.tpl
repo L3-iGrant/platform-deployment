@@ -386,8 +386,8 @@ bucket (actors audit.anchor and audit.export), with the wallet's access key
 {{- if and (eq $role "worker") $b.name -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- if eq $b.type "s3" -}}
-{{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.idKey) -}}
-{{- $_ := set $files "audit-bucket-secret-access-key" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.secretKey) -}}
+{{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKeyId.existingSecret "key" $b.accessKeyId.key) -}}
+{{- $_ := set $files "audit-bucket-secret-access-key" (dict "secret" $b.secretAccessKey.existingSecret "key" $b.secretAccessKey.key) -}}
 {{- with $b.ca.existingSecret -}}
 {{- $_ := set $files "audit-bucket-ca.crt" (dict "secret" . "key" $b.ca.key) -}}
 {{- end -}}

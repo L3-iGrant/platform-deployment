@@ -472,7 +472,7 @@ Secret. Call with the root context.
 {{- $b := .Values.organisationWallet.audit.bucket -}}
 {{- $p := "organisationWallet.audit.bucket" -}}
 {{- if not $b.name -}}
-{{- range $value := list "credentials" "accessKey" "ca" -}}
+{{- range $value := list "credentials" "accessKeyId" "secretAccessKey" "ca" -}}
 {{- if (index $b $value).existingSecret -}}
 {{- fail (printf "%s.%s.existingSecret needs %s.name: the Secret is the one of the audit bucket" $p $value $p) -}}
 {{- end -}}
@@ -484,8 +484,8 @@ Secret. Call with the root context.
 {{- if not $b.region -}}
 {{- fail (printf "%s.region is required with type s3: the region of the signatures" $p) -}}
 {{- end -}}
-{{- if not $b.accessKey.existingSecret -}}
-{{- fail (printf "%s.accessKey.existingSecret is required with type s3: the Secret with the access key of the wallet" $p) -}}
+{{- if or (not $b.accessKeyId.existingSecret) (not $b.secretAccessKey.existingSecret) -}}
+{{- fail (printf "%s.accessKeyId.existingSecret and %s.secretAccessKey.existingSecret are required with type s3: the Secrets with the access key of the wallet" $p $p) -}}
 {{- end -}}
 {{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $b.name) -}}
 {{- fail (printf "%s.name %q is not an S3 bucket name (3 to 63 lower-case letters, digits, dots and hyphens)" $p $b.name) -}}
@@ -493,7 +493,7 @@ Secret. Call with the root context.
 {{- if or $b.project $b.credentials.existingSecret -}}
 {{- fail (printf "%s.project and .credentials are values of type gcs, not of type s3" $p) -}}
 {{- end -}}
-{{- else if or $b.endpoint $b.region $b.accessKey.existingSecret $b.ca.existingSecret -}}
-{{- fail (printf "%s.endpoint, .region, .accessKey and .ca are values of type s3, not of type gcs" $p) -}}
+{{- else if or $b.endpoint $b.region $b.accessKeyId.existingSecret $b.secretAccessKey.existingSecret $b.ca.existingSecret -}}
+{{- fail (printf "%s.endpoint, .region, .accessKeyId, .secretAccessKey and .ca are values of type s3, not of type gcs" $p) -}}
 {{- end -}}
 {{- end }}

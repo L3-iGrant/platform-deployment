@@ -11,8 +11,18 @@ api:
     authToken: {existingSecret: twilio}
 organisationWallet:
   host: wallet.example.org
+  audit:
+    bucket:
+      name: example-audit
+      endpoint: https://s3.example.org
+      region: eu-west-1
+      accessKeyId: {existingSecret: audit-bucket, key: id}
+      secretAccessKey: {existingSecret: audit-bucket}
 enterpriseDashboard:
   host: dashboard.example.org
+redis:
+  users:
+    gateway: {username: gateway, password: {existingSecret: my-redis-gateway, key: pw}}
 database:
   admin:
     password: {existingSecret: db-passwords, key: POSTGRES_PASSWORD}

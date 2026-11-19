@@ -154,3 +154,29 @@ NATS has `mode: bundled | external`, as the database, OpenBao and Redis. The CA 
 | `nats.auth.users.walletWorker.nkey` | `nats.users.walletWorker.nkey` |
 | `nats.auth.users.walletWorker.seedSecret` | `nats.users.walletWorker.seed.existingSecret` |
 | `nats.auth.users.walletWorker.seedKey` | `nats.users.walletWorker.seed.key` |
+
+### OpenBao, Redis and the audit bucket
+
+The same Secret reference `{existingSecret, key}` for the password of the OpenBao user of the wallet, for each Redis user, for the CA of an external OpenBao or Redis (`external.ca`), and for the two parts of the access key of the audit bucket.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `openbao.wallet.existingSecret` | `openbao.wallet.password.existingSecret` |
+| `openbao.wallet.passwordKey` | `openbao.wallet.password.key` |
+| `openbao.external.caSecret` | `openbao.external.ca.existingSecret` |
+| `openbao.external.caKey` | `openbao.external.ca.key` |
+| `redis.users.walletService.passwordSecret` | `redis.users.walletService.password.existingSecret` |
+| `redis.users.walletService.passwordKey` | `redis.users.walletService.password.key` |
+| `redis.users.walletConfig.passwordSecret` | `redis.users.walletConfig.password.existingSecret` |
+| `redis.users.walletConfig.passwordKey` | `redis.users.walletConfig.password.key` |
+| `redis.users.walletWorker.passwordSecret` | `redis.users.walletWorker.password.existingSecret` |
+| `redis.users.walletWorker.passwordKey` | `redis.users.walletWorker.password.key` |
+| `redis.users.walletClock.passwordSecret` | `redis.users.walletClock.password.existingSecret` |
+| `redis.users.walletClock.passwordKey` | `redis.users.walletClock.password.key` |
+| `redis.users.gateway.passwordSecret` | `redis.users.gateway.password.existingSecret` |
+| `redis.users.gateway.passwordKey` | `redis.users.gateway.password.key` |
+| `redis.external.caSecret` | `redis.external.ca.existingSecret` |
+| `redis.external.caKey` | `redis.external.ca.key` |
+| `organisationWallet.audit.bucket.accessKey.existingSecret` | `organisationWallet.audit.bucket.accessKeyId.existingSecret` and `organisationWallet.audit.bucket.secretAccessKey.existingSecret` |
+| `organisationWallet.audit.bucket.accessKey.idKey` | `organisationWallet.audit.bucket.accessKeyId.key` |
+| `organisationWallet.audit.bucket.accessKey.secretKey` | `organisationWallet.audit.bucket.secretAccessKey.key` |

@@ -19,10 +19,23 @@ api:
     activeKid: test-api-envelope-kid
 organisationWallet:
   host: wallet.example.org
+  audit:
+    bucket:
+      name: example-audit
+      endpoint: https://s3.example.org
+      region: eu-west-1
+      accessKey: {existingSecret: audit-bucket, idKey: id}
   serviceEnvelope:
     activeKid: test-wallet-envelope-kid
 enterpriseDashboard:
   host: dashboard.example.org
+openbao:
+  wallet:
+    existingSecret: ""
+    passwordKey: password
+redis:
+  users:
+    gateway: {username: gateway, passwordSecret: my-redis-gateway, passwordKey: pw}
 database:
   databases:
     oidc: {name: igrant_oidc, password: ""}

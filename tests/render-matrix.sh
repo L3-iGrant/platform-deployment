@@ -597,8 +597,8 @@ guard "external database without admin user" "database.admin.username is require
 guard "wallet database name too long for the role prefix" "can have at most 43" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
 guard "seal" "openbao.seal" --set openbao.seal=transit
 guard "seal required" "openbao.seal is required with the bundled OpenBao. For an installation that holds real keys, use your own OpenBao with an HSM seal (profiles/openbao-external.yaml)" --set openbao.seal=
-guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.existingSecret=s
-guard "external OpenBao without password" "openbao.wallet.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
+guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.password.existingSecret=s
+guard "external OpenBao without password" "openbao.wallet.password.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
 guard "exposure type" "exposure.type" --set exposure.type=route
 guard "gatewayAPI without parentRefs" "parentRefs" --set exposure.type=gatewayAPI
 guard "host" "api.host" --set api.host=
@@ -1124,15 +1124,15 @@ guard "api.extraConfig.Installation without services" "api.extraConfig.Installat
 guard "the public keys of the wallet" "keys.serviceEnvelope.organisationWallet.publicJwks" --set keys.serviceEnvelope.organisationWallet.publicJwks=
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}'
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
-    --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
+    --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKeyId.existingSecret=audit-bucket --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=audit-bucket)
 audit "s3 bucket with its access key" \
   '{"audit": {"retention_years": 7}, "bucket": {"type": "s3", "name": "example-audit", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "access-key-id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret-access-key"]}}' \
   "${s3[@]}"
 audit "s3 bucket with a prefix and the store's CA" \
   '{"audit": {"retention_years": 10, "scope_retention_years": {"kms": 12}}, "bucket": {"type": "s3", "name": "example-audit", "prefix": "audit/production/", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key", "ca_file": "/run/secrets/eudi-wallet/audit-bucket-ca.crt"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret"], "audit-bucket-ca.crt": ["store-ca", "ca.pem"]}}' \
   "${s3[@]}" --set organisationWallet.audit.retentionYears=10 --set organisationWallet.audit.scopeRetentionYears.kms=12 \
-  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.accessKey.idKey=id \
-  --set organisationWallet.audit.bucket.accessKey.secretKey=secret --set organisationWallet.audit.bucket.ca.existingSecret=store-ca \
+  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.accessKeyId.key=id \
+  --set organisationWallet.audit.bucket.secretAccessKey.key=secret --set organisationWallet.audit.bucket.ca.existingSecret=store-ca \
   --set organisationWallet.audit.bucket.ca.key=ca.pem
 audit "gcs bucket with its service account" \
   '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example_audit", "project": "example-project", "prefix": "audit/production/", "credentials_file": "/run/secrets/eudi-wallet/audit-bucket-service-account.json"}, "secrets": {"audit-bucket-service-account.json": ["audit-bucket", "sa.json"]}}' \
@@ -1142,7 +1142,7 @@ audit "gcs bucket with its service account" \
   --set organisationWallet.audit.bucket.credentials.key=sa.json
 audit "gcs bucket with the Google default credentials" '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example-audit"}, "secrets": {}}' \
   --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.name=example-audit
-for value in credentials accessKey ca; do
+for value in credentials accessKeyId secretAccessKey ca; do
   guard "audit bucket $value without bucket name" "organisationWallet.audit.bucket.$value.existingSecret needs organisationWallet.audit.bucket.name" \
     --set "organisationWallet.audit.bucket.$value.existingSecret=audit-bucket"
 done
@@ -1150,14 +1150,16 @@ guard "audit bucket of type s3 without endpoint" "set organisationWallet.audit.b
   --set organisationWallet.audit.bucket.name=example-audit
 guard "audit bucket of type s3 without region" "organisationWallet.audit.bucket.region is required" \
   "${s3[@]}" --set organisationWallet.audit.bucket.region=
-guard "audit bucket of type s3 without access key" "organisationWallet.audit.bucket.accessKey.existingSecret is required" \
-  "${s3[@]}" --set organisationWallet.audit.bucket.accessKey.existingSecret=
+guard "audit bucket of type s3 without access key" "organisationWallet.audit.bucket.accessKeyId.existingSecret and organisationWallet.audit.bucket.secretAccessKey.existingSecret are required" \
+  "${s3[@]}" --set organisationWallet.audit.bucket.accessKeyId.existingSecret=
+guard "audit bucket of type s3 without secret access key" "organisationWallet.audit.bucket.secretAccessKey.existingSecret are required" \
+  "${s3[@]}" --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=
 guard "audit bucket of type s3 with an invalid S3 bucket name" "is not an S3 bucket name" \
   "${s3[@]}" --set organisationWallet.audit.bucket.name=example_audit
 guard "audit bucket of type s3 with gcs values" "are values of type gcs" \
   "${s3[@]}" --set organisationWallet.audit.bucket.project=example-project
 guard "audit bucket of type gcs with s3 values" "are values of type s3" \
-  "${s3[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.accessKey.existingSecret=
+  "${s3[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.accessKeyId.existingSecret= --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=
 guard "audit bucket type" "organisationWallet.audit.bucket.type" --set organisationWallet.audit.bucket.type=minio
 guard "audit bucket endpoint" "organisationWallet.audit.bucket.endpoint" "${s3[@]}" --set organisationWallet.audit.bucket.endpoint=https://s3.example.org/audit
 guard "audit bucket name" "organisationWallet.audit.bucket.name" --set organisationWallet.audit.bucket.name=Audit_Bucket
@@ -1540,14 +1542,14 @@ guard "external redis without sentinels or address" "redis.external" "${external
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
 guard "external redis with sentinels and address" "redis.external" "${external_redis[@]}" --set redis.external.address=redis.example.org:6379
 guard "external redis with sentinels and address without the schema" "set redis.external.sentinels or redis.external.address, not both" "${external_redis[@]}" --skip-schema-validation --set redis.external.address=redis.example.org:6379
-guard "external redis user without password Secret" "redis.users.gateway" "${external_redis[@]}" --set redis.users.gateway.passwordSecret=
-guard "external redis user without password Secret without the schema" "redis.users.gateway.passwordSecret is required with redis.mode external" "${external_redis[@]}" --skip-schema-validation --set redis.users.gateway.passwordSecret=
+guard "external redis user without password Secret" "redis.users.gateway" "${external_redis[@]}" --set redis.users.gateway.password.existingSecret=
+guard "external redis user without password Secret without the schema" "redis.users.gateway.password.existingSecret is required with redis.mode external" "${external_redis[@]}" --skip-schema-validation --set redis.users.gateway.password.existingSecret=
 guard "external redis Sentinel without port" "redis.external.sentinels" "${external_redis[@]}" --set-json 'redis.external.sentinels=["redis-1.example.org"]'
 guard "external redis Sentinel without port without the schema" '"redis-1.example.org" is not host:port' "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=["redis-1.example.org"]'
 guard "external redis with network policies without addresses" "networkPolicy.externalRedis needs the addresses" "${external_redis[@]}" -f "$profiles/network-policies.yaml" --set-json 'networkPolicy.externalRedis=[]'
 redis_sts "with redis.affinity" "requiredDuringSchedulingIgnoredDuringExecution" \
   --set-json 'redis.affinity={"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"topologyKey":"kubernetes.io/hostname","labelSelector":{"matchLabels":{"app.kubernetes.io/component":"redis"}}}]}}'
-redis_sts "with a user's password Secret" "name: my-redis-wallet-service" --set redis.users.walletService.passwordSecret=my-redis-wallet-service
+redis_sts "with a user's password Secret" "name: my-redis-wallet-service" --set redis.users.walletService.password.existingSecret=my-redis-wallet-service
 redis_sts "with your own certificate" "secretName: my-redis-tls" --set redis.tls.existingSecret=my-redis-tls
 redis_sts "with 5 pods" "t-redis-4.t-redis-headless.ow.svc" --set redis.replicas=5 --set redis.sentinel.quorum=3
 lacks "chart Valkey TLS Secret with your own certificate" "name: t-redis-tls" --set redis.tls.existingSecret=my-redis-tls
@@ -1556,7 +1558,7 @@ renders "redis 5 Sentinels in the wallet file" "- t-redis-4.t-redis-headless.ow.
 renders "external redis address" "address: redis.example.org:6379" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
 lacks "external redis address without the Sentinel login" "sentinel_username" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
 lacks "external redis Sentinels without a login" "sentinel_username" "${external_redis[@]}" --set redis.external.sentinelAuth=false
-lacks "external redis without CA (uses the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.caSecret=
+lacks "external redis without CA (uses the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.ca.existingSecret=
 
 # Bundled Valkey metrics (redis.metrics): the exporter in each pod with the
 # ACL user metrics, its password, the ServiceMonitor, and the scrape port

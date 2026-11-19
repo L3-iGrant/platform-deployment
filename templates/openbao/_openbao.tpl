@@ -59,28 +59,28 @@ wallet uses your own OpenBao with an HSM seal (openbao.mode external).
 {{- end }}
 
 {{/*
-Secret with the wallet user's password: openbao.wallet.existingSecret
+Secret with the wallet user's password: openbao.wallet.password
 (required with an external OpenBao), else the chart's
 <fullname>-openbao-wallet. Output: JSON {secret, key}.
 */}}
 {{- define "ow.openbao.walletSecret" -}}
-{{- $w := .Values.openbao.wallet -}}
-{{- if $w.existingSecret -}}
-{{- toJson (dict "secret" $w.existingSecret "key" ($w.passwordKey | default "password")) -}}
+{{- $password := .Values.openbao.wallet.password -}}
+{{- if $password.existingSecret -}}
+{{- toJson (dict "secret" $password.existingSecret "key" ($password.key | default "password")) -}}
 {{- else if include "ow.openbao.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.name" (list . "openbao-wallet")) "key" "password") -}}
 {{- else -}}
-{{- fail "openbao.wallet.existingSecret is required with openbao.mode external: the Secret with the password of the OpenBao user of the wallet" -}}
+{{- fail "openbao.wallet.password.existingSecret is required with openbao.mode external: the Secret with the password of the OpenBao user of the wallet" -}}
 {{- end -}}
 {{- end }}
 
-{{/* CA for the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* CA for the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.ca. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.openbao.ca" -}}
-{{- $external := .Values.openbao.external -}}
+{{- $ca := .Values.openbao.external.ca -}}
 {{- if include "ow.openbao.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.openbao.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if and (eq (.Values.openbao.mode | default "bundled") "external") $external.caSecret -}}
-{{- toJson (dict "secret" $external.caSecret "key" ($external.caKey | default "ca.crt")) -}}
+{{- else if and (eq (.Values.openbao.mode | default "bundled") "external") $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
