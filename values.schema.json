@@ -790,8 +790,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": {
-          "type": "boolean"
+        "mode": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "external"
+          ]
         },
         "image": {
           "type": "object",
@@ -832,94 +836,142 @@
           "properties": {
             "url": {
               "type": "string"
-            }
-          }
-        },
-        "auth": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "users": {
+            },
+            "ca": {
               "type": "object",
               "additionalProperties": false,
               "properties": {
-                "api": {
+                "existingSecret": {
+                  "type": "string",
+                  "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[-._a-zA-Z0-9]+$"
+                }
+              }
+            }
+          }
+        },
+        "users": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "api": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nkey": {
+                  "type": "string",
+                  "pattern": "^(U[A-Z0-9_]+)?$"
+                },
+                "seed": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "nkey": {
+                    "existingSecret": {
                       "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
+                }
+              }
+            },
+            "webhook": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nkey": {
+                  "type": "string",
+                  "pattern": "^(U[A-Z0-9_]+)?$"
                 },
-                "apiWebhook": {
+                "seed": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "nkey": {
+                    "existingSecret": {
                       "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
+                }
+              }
+            },
+            "walletConfig": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nkey": {
+                  "type": "string",
+                  "pattern": "^(U[A-Z0-9_]+)?$"
                 },
-                "walletConfig": {
+                "seed": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "nkey": {
+                    "existingSecret": {
                       "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
+                }
+              }
+            },
+            "walletService": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nkey": {
+                  "type": "string",
+                  "pattern": "^(U[A-Z0-9_]+)?$"
                 },
-                "walletService": {
+                "seed": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "nkey": {
+                    "existingSecret": {
                       "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
+                }
+              }
+            },
+            "walletWorker": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "nkey": {
+                  "type": "string",
+                  "pattern": "^(U[A-Z0-9_]+)?$"
                 },
-                "walletWorker": {
+                "seed": {
                   "type": "object",
                   "additionalProperties": false,
                   "properties": {
-                    "nkey": {
+                    "existingSecret": {
                       "type": "string",
-                      "pattern": "^(U[A-Z0-9_]+)?$"
+                      "pattern": "^([a-z0-9]([-a-z0-9.]{0,251}[a-z0-9])?)?$"
                     },
-                    "seedSecret": {
-                      "type": "string"
-                    },
-                    "seedKey": {
-                      "type": "string"
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[-._a-zA-Z0-9]+$"
                     }
                   }
                 }
@@ -935,18 +987,6 @@
         },
         "maxPayload": {
           "type": "string"
-        },
-        "tlsCa": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "existingSecret": {
-              "type": "string"
-            },
-            "key": {
-              "type": "string"
-            }
-          }
         },
         "tls": {
           "type": "object",
@@ -1062,6 +1102,116 @@
         },
         "imagePullSecrets": {
           "type": "array"
+        },
+        "enabled": {
+          "deprecated": true
+        },
+        "tlsCa": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "existingSecret": {
+              "deprecated": true
+            },
+            "key": {
+              "deprecated": true
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "deprecated": true,
+          "properties": {
+            "users": {
+              "type": "object",
+              "additionalProperties": false,
+              "deprecated": true,
+              "properties": {
+                "api": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "nkey": {
+                      "deprecated": true
+                    },
+                    "seedSecret": {
+                      "deprecated": true
+                    },
+                    "seedKey": {
+                      "deprecated": true
+                    }
+                  }
+                },
+                "apiWebhook": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "nkey": {
+                      "deprecated": true
+                    },
+                    "seedSecret": {
+                      "deprecated": true
+                    },
+                    "seedKey": {
+                      "deprecated": true
+                    }
+                  }
+                },
+                "walletConfig": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "nkey": {
+                      "deprecated": true
+                    },
+                    "seedSecret": {
+                      "deprecated": true
+                    },
+                    "seedKey": {
+                      "deprecated": true
+                    }
+                  }
+                },
+                "walletService": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "nkey": {
+                      "deprecated": true
+                    },
+                    "seedSecret": {
+                      "deprecated": true
+                    },
+                    "seedKey": {
+                      "deprecated": true
+                    }
+                  }
+                },
+                "walletWorker": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "deprecated": true,
+                  "properties": {
+                    "nkey": {
+                      "deprecated": true
+                    },
+                    "seedSecret": {
+                      "deprecated": true
+                    },
+                    "seedKey": {
+                      "deprecated": true
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },

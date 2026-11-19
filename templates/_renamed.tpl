@@ -52,6 +52,9 @@ first with a general message. Call with the root context. Output: nothing.
 {{- else -}}
 {{- $text = $entry.shape -}}
 {{- end -}}
+{{- if $entry.values -}}
+{{- $text = printf "%s (%s is now %s)" $text (toString $node) (get $entry.values (toString $node)) -}}
+{{- end -}}
 {{- with $entry.note -}}
 {{- $text = printf "%s (%s)" $text . -}}
 {{- end -}}

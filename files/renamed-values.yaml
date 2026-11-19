@@ -145,3 +145,28 @@
 - {old: readAccess.jobs.wallet.adminPasswordSecret, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordSecret}
 - {old: readAccess.jobs.wallet.adminPasswordKey, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordKey}
 - {old: readAccess.jobs.ttlSecondsAfterFinished, after: 2026.11.7, new: database.readAccess.jobs.ttlSecondsAfterFinished}
+
+# --- NATS
+# NATS has `mode: bundled | external`, as the database, OpenBao and
+# Redis. The CA of an external NATS is `nats.external.ca`. The users are
+# `nats.users.<process>`, with the seed as a Secret reference; the user of
+# the webhook handler is `webhook`. `scripts/make-keys.sh` writes the new
+# block.
+- {old: nats.enabled, after: 2026.11.7, kind: bool, new: nats.mode, values: {"true": bundled, "false": external}}
+- {old: nats.tlsCa.existingSecret, after: 2026.11.7, new: nats.external.ca.existingSecret}
+- {old: nats.tlsCa.key, after: 2026.11.7, new: nats.external.ca.key}
+- {old: nats.auth.users.api.nkey, after: 2026.11.7, new: nats.users.api.nkey}
+- {old: nats.auth.users.api.seedSecret, after: 2026.11.7, new: nats.users.api.seed.existingSecret}
+- {old: nats.auth.users.api.seedKey, after: 2026.11.7, new: nats.users.api.seed.key}
+- {old: nats.auth.users.apiWebhook.nkey, after: 2026.11.7, new: nats.users.webhook.nkey}
+- {old: nats.auth.users.apiWebhook.seedSecret, after: 2026.11.7, new: nats.users.webhook.seed.existingSecret}
+- {old: nats.auth.users.apiWebhook.seedKey, after: 2026.11.7, new: nats.users.webhook.seed.key}
+- {old: nats.auth.users.walletConfig.nkey, after: 2026.11.7, new: nats.users.walletConfig.nkey}
+- {old: nats.auth.users.walletConfig.seedSecret, after: 2026.11.7, new: nats.users.walletConfig.seed.existingSecret}
+- {old: nats.auth.users.walletConfig.seedKey, after: 2026.11.7, new: nats.users.walletConfig.seed.key}
+- {old: nats.auth.users.walletService.nkey, after: 2026.11.7, new: nats.users.walletService.nkey}
+- {old: nats.auth.users.walletService.seedSecret, after: 2026.11.7, new: nats.users.walletService.seed.existingSecret}
+- {old: nats.auth.users.walletService.seedKey, after: 2026.11.7, new: nats.users.walletService.seed.key}
+- {old: nats.auth.users.walletWorker.nkey, after: 2026.11.7, new: nats.users.walletWorker.nkey}
+- {old: nats.auth.users.walletWorker.seedSecret, after: 2026.11.7, new: nats.users.walletWorker.seed.existingSecret}
+- {old: nats.auth.users.walletWorker.seedKey, after: 2026.11.7, new: nats.users.walletWorker.seed.key}

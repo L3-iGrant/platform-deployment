@@ -45,6 +45,8 @@ serviceKeys:
     igrant-api: '{"keys":[]}'
     eudi-wallet: '{"keys":[]}'
 nats:
+  enabled: true
+  tlsCa: {existingSecret: "", key: ca.crt}
   auth:
     users:
       api: {nkey: UTESTAPI, seedSecret: t-nats-api}

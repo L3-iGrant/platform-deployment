@@ -6,13 +6,13 @@ The NATS users of the processes, and what an external NATS server needs.
 
 Every process connects to NATS with its own nkey user, which can use only the subjects that it needs. The server has no user without credentials.
 
-| User (`nats.auth.users.<user>`) | Process |
+| User (`nats.users.<user>`) | Process |
 | --- | --- |
 | `api` | the API core and its operator Jobs |
-| `apiWebhook` | the webhook handler |
+| `webhook` | the webhook handler |
 | `walletConfig`, `walletService`, `walletWorker` | the wallet roles (`walletWorker`: all worker groups; the clock connects to no NATS, see [Workers and clock](workers.md)) |
 
-The values hold only the public nkey (`nkey`, it starts with `U`) and the name of the Secret with the seed (`seedSecret`). With an external NATS (`nats.enabled: false`), the chart writes the users and `max_payload` to the ConfigMap `<release>-nats-authorization`: add them to the configuration of your server (global account). Your server needs JetStream and NATS 2.10 or later. Set `nats.jetstreamReplicas` to its cluster size.
+The values hold only the public nkey (`nkey`, it starts with `U`) and the Secret with the seed (`seed.existingSecret`, key `seed.key`). With an external NATS (`nats.mode: external`), the chart writes the users and `max_payload` to the ConfigMap `<release>-nats-authorization`: add them to the configuration of your server (global account). Your server needs JetStream and NATS 2.10 or later. Set `nats.jetstreamReplicas` to its cluster size.
 
 ## TLS
 
@@ -25,9 +25,9 @@ The chart creates the CA and the certificate in the Secret `<release>-nats-tls` 
 
 ## The version of NATS
 
-The chart runs NATS 2.14 (`nats.image`, pinned by digest). The 2.12 line gets no more fixes. Do not use NATS 2.15 or later: 2.15 sends the JetStream acks on subjects in format v2 by default, but the user permissions allow acks only in format v1 (`$JS.ACK.<stream>.<consumer>.>`), so the consumers of the services could not ack. The render stops for a tag of 2.15 or later. An external NATS (`nats.enabled: false`) must also be 2.14 or earlier (2.10 or later), or send the acks in format v1.
+The chart runs NATS 2.14 (`nats.image`, pinned by digest). The 2.12 line gets no more fixes. Do not use NATS 2.15 or later: 2.15 sends the JetStream acks on subjects in format v2 by default, but the user permissions allow acks only in format v1 (`$JS.ACK.<stream>.<consumer>.>`), so the consumers of the services could not ack. The render stops for a tag of 2.15 or later. An external NATS (`nats.mode: external`) must also be 2.14 or earlier (2.10 or later), or send the acks in format v1.
 
-For an external NATS with TLS, set `nats.tlsCa.existingSecret` to a Secret with the CA of your server. `nats.tlsCa` with the bundled NATS stops the render.
+For an external NATS with TLS, set `nats.external.ca.existingSecret` to a Secret with the CA of your server. `nats.external.ca` with the bundled NATS stops the render.
 
 To renew the certificates: delete the Secret `<release>-nats-tls`, run `helm upgrade`, then restart the NATS pods and the pods of the services.
 

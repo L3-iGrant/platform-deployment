@@ -1,4 +1,4 @@
-{{- if .Values.nats.enabled }}
+{{- if include "ow.nats.bundled" . }}
 {{- $nats := .Values.nats }}
 {{- $name := include "ow.name" (list . "nats") }}
 {{- /* NATS 2.15 and later send JetStream acks on v2-format subjects by
@@ -65,7 +65,7 @@ data:
     {{- end }}
     {{- include "ow.nats.authorization" . | nindent 4 }}
 {{- end }}
-{{- if not .Values.nats.enabled }}
+{{- if not (include "ow.nats.bundled" .) }}
 {{- /*
 External NATS (nats.external.url): the chart does not run the server, so it
 renders the authorization block for the operator to add to the server

@@ -1420,13 +1420,14 @@ guard "NATS 2.15 (format v2 acks)" "NATS 2.15 and later send the JetStream acks 
 guard "NATS 3" "NATS 2.15 and later send the JetStream acks" --set nats.image.tag=3.0.0
 renders "NATS with a custom tag without a version" "nats.conf" --set nats.image.tag=mirror --set nats.image.digest=
 renders "NATS routes with mutual TLS" "verify: true" --set nats.replicas=3 --show-only templates/nats/configmap.yaml
-# NATS TLS (nats.tls, nats.tlsCa), bundled and external.
-guard "external NATS CA with the bundled NATS" "nats.tlsCa is the CA of an external NATS" --set nats.tlsCa.existingSecret=my-nats-ca
+# NATS TLS (nats.tls, nats.external.ca), bundled and external.
+guard "external NATS CA with the bundled NATS" "nats.external.ca is the CA of an external NATS" --set nats.external.ca.existingSecret=my-nats-ca
+guard "NATS mode" "nats.mode" --set nats.mode=cluster
 renders "NATS with your own certificate" "secretName: my-nats-tls" --set nats.tls.existingSecret=my-nats-tls --show-only templates/nats/statefulset.yaml
 lacks "chart NATS TLS Secret with your own certificate" "name: t-nats-tls" --set nats.tls.existingSecret=my-nats-tls
-external_nats=(--set nats.enabled=false --set nats.external.url=tls://nats.example.org:4222)
-renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
-lacks "external NATS: no chart TLS Secret" "t-nats-tls" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
+external_nats=(--set nats.mode=external --set nats.external.url=tls://nats.example.org:4222)
+renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --set nats.external.ca.existingSecret=my-nats-ca
+lacks "external NATS: no chart TLS Secret" "t-nats-tls" "${external_nats[@]}" --set nats.external.ca.existingSecret=my-nats-ca
 lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]}"
 
 # Lifetime of a stored command reply

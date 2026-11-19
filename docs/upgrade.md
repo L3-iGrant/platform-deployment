@@ -129,3 +129,28 @@ One admin block for both modes (`database.admin`; the bundled server has the use
 | `readAccess.jobs.wallet.adminPasswordSecret` | `database.readAccess.jobs.wallet.adminPasswordSecret` |
 | `readAccess.jobs.wallet.adminPasswordKey` | `database.readAccess.jobs.wallet.adminPasswordKey` |
 | `readAccess.jobs.ttlSecondsAfterFinished` | `database.readAccess.jobs.ttlSecondsAfterFinished` |
+
+### NATS
+
+NATS has `mode: bundled | external`, as the database, OpenBao and Redis. The CA of an external NATS is `nats.external.ca`. The users are `nats.users.<process>`, with the seed as a Secret reference; the user of the webhook handler is `webhook`. `scripts/make-keys.sh` writes the new block.
+
+| Old value | New value, or what to do |
+| --- | --- |
+| `nats.enabled` (true or false) | `nats.mode` (`true`: `bundled`, `false`: `external`) |
+| `nats.tlsCa.existingSecret` | `nats.external.ca.existingSecret` |
+| `nats.tlsCa.key` | `nats.external.ca.key` |
+| `nats.auth.users.api.nkey` | `nats.users.api.nkey` |
+| `nats.auth.users.api.seedSecret` | `nats.users.api.seed.existingSecret` |
+| `nats.auth.users.api.seedKey` | `nats.users.api.seed.key` |
+| `nats.auth.users.apiWebhook.nkey` | `nats.users.webhook.nkey` |
+| `nats.auth.users.apiWebhook.seedSecret` | `nats.users.webhook.seed.existingSecret` |
+| `nats.auth.users.apiWebhook.seedKey` | `nats.users.webhook.seed.key` |
+| `nats.auth.users.walletConfig.nkey` | `nats.users.walletConfig.nkey` |
+| `nats.auth.users.walletConfig.seedSecret` | `nats.users.walletConfig.seed.existingSecret` |
+| `nats.auth.users.walletConfig.seedKey` | `nats.users.walletConfig.seed.key` |
+| `nats.auth.users.walletService.nkey` | `nats.users.walletService.nkey` |
+| `nats.auth.users.walletService.seedSecret` | `nats.users.walletService.seed.existingSecret` |
+| `nats.auth.users.walletService.seedKey` | `nats.users.walletService.seed.key` |
+| `nats.auth.users.walletWorker.nkey` | `nats.users.walletWorker.nkey` |
+| `nats.auth.users.walletWorker.seedSecret` | `nats.users.walletWorker.seed.existingSecret` |
+| `nats.auth.users.walletWorker.seedKey` | `nats.users.walletWorker.seed.key` |

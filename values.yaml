@@ -795,29 +795,29 @@ database:
 
 # NATS with JetStream: the messages between the services (docs/nats-users.md).
 nats:
-  # -- false: your NATS with JetStream at nats.external.url.
-  enabled: true
+  # -- bundled (the chart runs NATS, <fullname>-nats) or external (your NATS with JetStream, nats.external).
+  mode: bundled
   image:
     registry: docker.io
     repository: library/nats
     # -- NATS 2.14. Not 2.15 or later: the render stops (docs/nats-users.md).
     tag: 2.14.10-alpine
     digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
-  external: {url: ""}
+  # -- Your NATS (mode external): its URL (required), and the Secret with the CA of a TLS server.
+  external:
+    url: ""
+    ca: {existingSecret: "", key: ca.crt}
   # -- One nkey user per process: its public nkey and the Secret with its seed (required).
-  auth:
-    users:
-      api: {nkey: "", seedSecret: "", seedKey: seed}
-      apiWebhook: {nkey: "", seedSecret: "", seedKey: seed}
-      walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
-      walletService: {nkey: "", seedSecret: "", seedKey: seed}
-      walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
+  users:
+    api: {nkey: "", seed: {existingSecret: "", key: seed}}
+    webhook: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletConfig: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletService: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletWorker: {nkey: "", seed: {existingSecret: "", key: seed}}
   # -- Replicas of the streams and buckets. Empty: nats.replicas, or 1 with an external NATS.
   jetstreamReplicas: ""
   # -- max_payload (bytes, or a size such as 4MB). An external NATS needs the same value.
   maxPayload: 4MB
-  # -- External NATS with TLS: Secret with the CA of the server. Empty: no TLS CA.
-  tlsCa: {existingSecret: "", key: ca.crt}
   tls:
     # -- Your TLS Secret of the bundled NATS. Empty: the chart makes a CA and a certificate.
     existingSecret: ""

@@ -103,7 +103,7 @@ done
 
 echo "make-keys: the NATS users"
 # walletWorker: the wallet workers (the clock does not use NATS).
-nats_users="api:api apiWebhook:api-webhook walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
+nats_users="api:api webhook:api-webhook walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
 for entry in $nats_users; do
   name="${entry#*:}"
   igrant_api keys generate-nats-seed --file "nats-${name}.seed" > "$files/nats-${name}.nkey"
@@ -165,12 +165,11 @@ block() {
   echo "    apiTokenVerification: |"
   block "      " token-verification-jwks.json
   echo "nats:"
-  echo "  auth:"
-  echo "    users:"
+  echo "  users:"
   for entry in $nats_users; do
     key="${entry%%:*}"
     name="${entry#*:}"
-    echo "      ${key}: {nkey: $(tr -d '\n' < "$files/nats-${name}.nkey"), seedSecret: ${release}-nats-${name}}"
+    echo "    ${key}: {nkey: $(tr -d '\n' < "$files/nats-${name}.nkey"), seed: {existingSecret: ${release}-nats-${name}}}"
   done
 } > "$out/values-keys.yaml"
 

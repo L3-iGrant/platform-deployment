@@ -52,6 +52,15 @@ the Secret from an earlier release, else a new random value. Call with
 {{- end -}}
 {{- end }}
 
+{{/* "true" when the chart runs NATS (nats.mode bundled), else "". */}}
+{{- define "ow.nats.bundled" -}}
+{{- $mode := .Values.nats.mode | default "bundled" -}}
+{{- if not (has $mode (list "bundled" "external")) -}}
+{{- fail (printf "nats.mode %q is not supported: use \"bundled\" or \"external\"" $mode) -}}
+{{- end -}}
+{{- if eq $mode "bundled" -}}true{{- end -}}
+{{- end }}
+
 {{/* TLS Secret of the bundled NATS (tls.crt, tls.key, ca.crt). */}}
 {{- define "ow.nats.tlsSecretName" -}}
 {{- .Values.nats.tls.existingSecret | default (include "ow.name" (list . "nats-tls")) -}}
@@ -59,18 +68,18 @@ the Secret from an earlier release, else a new random value. Call with
 
 {{/*
 The NATS CA that the services trust: ca.crt from the TLS Secret of the
-bundled NATS (which always runs TLS), or nats.tlsCa for an external NATS
-with TLS. Output: JSON {secret, key}, or {} when there is no CA.
+bundled NATS (which always runs TLS), or nats.external.ca for an external
+NATS with TLS. Output: JSON {secret, key}, or {} when there is no CA.
 */}}
 {{- define "ow.nats.ca" -}}
-{{- $nats := .Values.nats -}}
-{{- if $nats.enabled -}}
-{{- if $nats.tlsCa.existingSecret -}}
-{{- fail "nats.tlsCa is the CA of an external NATS (nats.enabled false): the bundled NATS has its own TLS (nats.tls)" -}}
+{{- $ca := .Values.nats.external.ca -}}
+{{- if include "ow.nats.bundled" . -}}
+{{- if $ca.existingSecret -}}
+{{- fail "nats.external.ca is the CA of an external NATS (nats.mode external): the bundled NATS has its own TLS (nats.tls)" -}}
 {{- end -}}
 {{- toJson (dict "secret" (include "ow.nats.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if $nats.tlsCa.existingSecret -}}
-{{- toJson (dict "secret" $nats.tlsCa.existingSecret "key" $nats.tlsCa.key) -}}
+{{- else if $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -78,10 +87,10 @@ with TLS. Output: JSON {secret, key}, or {} when there is no CA.
 
 {{/* The NATS URL that the services connect to. */}}
 {{- define "ow.nats.url" -}}
-{{- if .Values.nats.enabled -}}
+{{- if include "ow.nats.bundled" . -}}
 nats://{{ include "ow.name" (list . "nats") }}.{{ .Release.Namespace }}.svc:4222
 {{- else -}}
-{{ required "nats.external.url is required when nats.enabled is false" .Values.nats.external.url }}
+{{ required "nats.external.url is required with nats.mode external" .Values.nats.external.url }}
 {{- end -}}
 {{- end }}
 
@@ -241,7 +250,7 @@ events) and the wallet. Output: JSON list.
 
 {{/* NATS user (values key) of an api role: api or webhook. */}}
 {{- define "ow.api.natsUser" -}}
-{{- get (dict "api" "api" "webhook" "apiWebhook") . -}}
+{{- get (dict "api" "api" "webhook" "webhook") . -}}
 {{- end }}
 
 {{/* NATS user (values key) of a wallet role; "" for the clock, which does not use NATS. */}}
@@ -595,7 +604,7 @@ the user's values key. Output: JSON list.
     "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted")
     "kv" (list "OWS_ENVELOPE_JTI")
     "extra" (list "$JS.API.INFO"))
-  "apiWebhook" (dict
+  "webhook" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
     "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested"))
   "walletConfig" (dict
@@ -671,7 +680,7 @@ consumers of another. Output: JSON list.
 */}}
 {{- define "ow.nats.users" -}}
 {{- $v := .Values -}}
-{{- $users := $v.nats.auth.users -}}
+{{- $users := $v.nats.users -}}
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
 {{- $table := list
@@ -681,8 +690,8 @@ consumers of another. Output: JSON list.
       (list "ows.openidprovider.client.created" "ows.openidprovider.client.deleted" "ows.openidprovider.clients.deleted")
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))
-  (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "allowResponses" false
-    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
+  (dict "name" "api-webhook" "key" "webhook" "inbox" "_INBOX_apiwh" "allowResponses" false
+    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "webhook" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
@@ -697,7 +706,7 @@ consumers of another. Output: JSON list.
 {{- range $user := $table -}}
 {{- $values := index $users $user.key | default dict -}}
 {{- $seed := dict -}}
-{{- with $values.seedSecret -}}{{- $seed = dict "secret" . "key" ($values.seedKey | default "seed") -}}{{- end -}}
+{{- with ($values.seed | default dict).existingSecret -}}{{- $seed = dict "secret" . "key" ($values.seed.key | default "seed") -}}{{- end -}}
 {{- $out = append $out (dict
     "name" $user.name "key" $user.key "nkey" ($values.nkey | default "") "seed" $seed "inbox" $user.inbox
     "allowResponses" $user.allowResponses
@@ -716,14 +725,14 @@ without credentials. Output: nothing.
 {{- $missing := list -}}
 {{- range $user := include "ow.nats.users" . | fromJsonArray -}}
 {{- if and $user.nkey (not (hasPrefix "U" $user.nkey)) -}}
-{{- fail (printf "nats.auth.users.%s.nkey must be a public user nkey (it starts with U), never the seed" $user.key) -}}
+{{- fail (printf "nats.users.%s.nkey must be a public user nkey (it starts with U), never the seed" $user.key) -}}
 {{- end -}}
 {{- if or (not $user.nkey) (not $user.seed) -}}
-{{- $missing = append $missing (printf "nats.auth.users.%s (%s)" $user.key $user.name) -}}
+{{- $missing = append $missing (printf "nats.users.%s (%s)" $user.key $user.name) -}}
 {{- end -}}
 {{- end -}}
 {{- if $missing -}}
-{{- fail (printf "every process connects to NATS with its own nkey user: set nkey and seedSecret for %s (make a pair with \"nsc generate nkey --user\"; see docs/nats-users.md)" (join ", " $missing)) -}}
+{{- fail (printf "every process connects to NATS with its own nkey user: set nkey and seed.existingSecret for %s (make a pair with \"nsc generate nkey --user\"; see docs/nats-users.md)" (join ", " $missing)) -}}
 {{- end -}}
 {{- end }}
 
@@ -757,7 +766,7 @@ when the chart runs NATS, else 1. For an external NATS, set it to the
 cluster size. A production cluster uses 3.
 */}}
 {{- define "ow.nats.jetstreamReplicas" -}}
-{{- .Values.nats.jetstreamReplicas | default (ternary .Values.nats.replicas 1 .Values.nats.enabled) | int -}}
+{{- .Values.nats.jetstreamReplicas | default (ternary .Values.nats.replicas 1 (eq (include "ow.nats.bundled" .) "true")) | int -}}
 {{- end }}
 
 {{/* Folder of the public service keys (ConfigMap igrant-service-jwks) in the service pods. */}}

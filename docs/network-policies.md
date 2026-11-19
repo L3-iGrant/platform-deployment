@@ -40,7 +40,7 @@ Helm merges your values with the defaults key by key: a selector in your file ke
 | SMTP | `networkPolicy.egress.profiles.smtp` | The api sends e-mail | The CIDR and port of your mail relay (default port 587). |
 | An external OpenBao | `networkPolicy.egress.profiles.kms` | `openbao.mode: external` | The CIDR, or the namespace and pod selectors, of OpenBao (default port 8200). |
 | A cloud KMS on a private address | `networkPolicy.egress.profiles.cloudKms` | A key store `gcp-kms`, `aws-kms` or `azure-key-vault` through a private endpoint | The CIDR of the private endpoint (port 443). The public endpoints go through the profile `internet`. |
-| An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.enabled: false` | The namespace and pod selectors, or the CIDR and port (default 4222). |
+| An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.mode: external` | The namespace and pod selectors, or the CIDR and port (default 4222). |
 | An external Valkey or Redis | `networkPolicy.externalRedis` | `redis.mode: external`, or `redis.state` or `redis.cache` | Required then. The CIDR and ports (default 6379 and 26379). |
 | Monitoring | `networkPolicy.monitoring` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
 

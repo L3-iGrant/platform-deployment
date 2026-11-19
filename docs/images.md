@@ -14,7 +14,7 @@ The iGrant.io images come from the iGrant.io registry (`global.imageRegistry`) w
 | `enterpriseDashboard.image` | `dashboard` (iGrant.io) | `global.imageTag` | `enterpriseDashboard.enabled` |
 | `openbao.image` | `openbao` (iGrant.io) | `global.imageTag` | `openbao.mode: bundled` |
 | `database.postgresql.image` | `docker.io/library/postgres` | `18.7`, with its digest | `database.mode: bundled` |
-| `nats.image` | `docker.io/library/nats` | `2.14.10-alpine` (digest `sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e`) | `nats.enabled` |
+| `nats.image` | `docker.io/library/nats` | `2.14.10-alpine` (digest `sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e`) | `nats.mode: bundled` |
 | `nats.reloader.image` | `docker.io/natsio/nats-server-config-reloader` | `0.21.1` | `nats.reloader.enabled` |
 | `redis.image` | `docker.io/valkey/valkey` | `8.1.11-alpine`, with its digest | `redis.mode: bundled` |
 | `redis.metrics.image` | `docker.io/oliver006/redis_exporter` | `v1.94.0`, with its digest | `redis.metrics.enabled` |

@@ -42,10 +42,9 @@ keys:
     gatewayInternalToken: '{"keys":[]}'
     apiTokenVerification: '{"keys":[]}'
 nats:
-  auth:
-    users:
-      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
-      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
-      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
-      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
-      walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}
+  users:
+    api: {nkey: UTESTAPI, seed: {existingSecret: t-nats-api}}
+    webhook: {nkey: UTESTAPIWEBHOOK, seed: {existingSecret: t-nats-api-webhook}}
+    walletConfig: {nkey: UTESTWALLETCONFIG, seed: {existingSecret: t-nats-wallet-config}}
+    walletService: {nkey: UTESTWALLETSERVICE, seed: {existingSecret: t-nats-wallet-service}}
+    walletWorker: {nkey: UTESTWALLETWORKER, seed: {existingSecret: t-nats-wallet-worker}}
