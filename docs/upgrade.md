@@ -30,6 +30,15 @@ Run scripts/upgrade-values.py <your values file> to write the new file, or chang
 
 The chart never reads an old value in place of the new value. The message stays for two releases after the change. After that, the chart refuses the old value as an unknown value, with a general message of the schema.
 
+## Changed default values
+
+A changed default value does not stop the render: at the upgrade, your release gets the new default, unless one of your values files sets the value.
+
+| After release | Value | Before | Now |
+| --- | --- | --- | --- |
+| 2026.11.7 | The scrape interval of the wallet ServiceMonitor | `15s` | `30s`, the value `monitoring.serviceMonitor.interval` of all ServiceMonitors |
+| 2026.11.7 | An empty `gateway.logLevel` | the value of `api.logLevel` | the value of `global.logLevel` (`info`), as every component |
+
 <!-- The sections below: tests/upgrade_page.py --write (from files/renamed-values.yaml). -->
 
 ## From 2026.11.7
