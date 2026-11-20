@@ -11,4 +11,4 @@ include:
   - path: compose.configs.yaml
     env_file:
       - .env
-      - config/engine/${DB_ENGINE:-postgresql}.env
+      - config/database/postgresql.env

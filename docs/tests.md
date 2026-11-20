@@ -63,14 +63,14 @@ tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/rende
 
 `tests/compose-files.sh` checks the files of `docker-compose/` without a container:
 
-- `docker compose config` for the engine;
+- `docker compose config`, with the database server `postgres`;
 - the configuration files of the components, the DDL and connection logs of the database server, and the passwords of `database-init` (psql `\password`);
 - the scripts and the NATS configuration;
 - the Valkey services with their templates and ACL users, and the `redis` section of each wallet file;
 - the gateway feature gate (`FEATURES_ENFORCE`);
 - the installation limits (`MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS`: the keys are in the api, webhook and wallet files only with a value);
 - the webhooks of the api files (no `Webhooks.events`), and the services of the installation: `Installation.services` `[wallet]` in the api, webhook and gateway files, the gateway upstreams, the trusted issuers of the api files and the readers of the wallet config;
-- the derived lines of `.env.example`, the databases of `database-init`, and `make secrets` in a copy of the folder: a file for each secret of the Compose files, and a public nkey for each NATS user of `config/nats/users.conf`;
+- the refusal of the old setting `DB_ENGINE` by `make check`, the databases of `database-init`, and `make secrets` in a copy of the folder: a file for each secret of the Compose files, and a public nkey for each NATS user of `config/nats/users.conf`;
 - the platform operator targets of the Makefile (`make -n`: the api commands, and the password on standard input);
 - the configuration files (`make configs`, `render-configs.py`): the templates of `compose.configs.yaml` and one config of `file` of `generated/` for each, no config of `content`, the same values files for the render and the services, the hash label of each service and its file, only the variables of `.env.example` in the templates (so no secret), no secret value in a file, and the renderer in a copy of the folder (`$$`, `${VAR:+...}`, a missing value, the file modes, a stale file, `--check`, a second run);
 - the security settings of each service of all profiles (a service that the test does not know fails): a read-only root file system, a non-root user, no capability, no new privileges, the tmpfs and volumes of the writable paths, no host namespace, no device, only bind mounts of `secrets/`, the sysctl of the ports below 1024, no shell in the api image, and the one-shot services that run as root, such as `nats-data-owner`, with only their capabilities and no network;

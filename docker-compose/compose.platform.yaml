@@ -1,8 +1,8 @@
 # The services of the iGrant.io platform on Docker Compose (README.md).
 #
 # Do not start this file directly: docker-compose.yaml loads it with the
-# values of .env, config/engine/<DB_ENGINE>.env (DB_PORT, DB_ADMIN_USER,
-# DB_CLIENT_IMAGE) and generated/configs.env. The components' configuration
+# values of .env, config/database/postgresql.env (DB_PORT, DB_ADMIN_USER)
+# and generated/configs.env. The components' configuration
 # files are the "configs" at the end of this file: files in generated/, which
 # make configs writes from the compose.configs.yaml templates with the
 # values of .env. The secrets come from secrets/ (written by make secrets;
@@ -56,15 +56,13 @@ x-job: &job
   restart: "no"
 
 services:
-  # --- Database: one server of DB_ENGINE for all components ------------------
-  # COMPOSE_PROFILES (.env) picks the server: the profile of DB_ENGINE
-  # (postgresql). The server has the network alias "database", which every
-  # database configuration uses as its host.
+  # --- Database: one PostgreSQL server for all components --------------------
+  # The server has the network alias "database", which every database
+  # configuration uses as its host.
 
   postgres:
     <<: *hardened
     image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
-    profiles: [postgresql]
     # The image's postgres user. It owns the data folder (the image hands
     # the volume to it when Docker creates the volume).
     user: "999:999"
@@ -109,13 +107,12 @@ services:
   # wallet process logs in as the owner user igrant_wallet.
   database-init:
     <<: [*job, *hardened]
-    image: ${DB_CLIENT_IMAGE:?DB_ENGINE must be postgresql}
+    image: ${POSTGRES_IMAGE:?set POSTGRES_IMAGE in .env}
     user: "999:999"
     entrypoint: ["bash", "/scripts/create-databases.sh"]
     tmpfs:
       - /tmp:size=16m
     environment:
-      DB_ENGINE: ${DB_ENGINE}
       DB_PORT: ${DB_PORT}
       DB_ADMIN_USER: ${DB_ADMIN_USER}
     configs:

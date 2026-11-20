@@ -1,7 +1,7 @@
 # Templates of the components' configuration files (README.md,
 # "Configuration files"). Do not start this file: compose.render.yaml loads
 # it with the same values files as docker-compose.yaml (.env and
-# config/engine/<DB_ENGINE>.env), Compose fills in the values of .env, and
+# config/database/postgresql.env), Compose fills in the values of .env, and
 # "make configs" (render-configs.py) writes each template to
 # generated/<name>. The services in compose.platform.yaml read these files
 # as "file" configs, because a service with a read-only root file system can
@@ -10,7 +10,7 @@
 # The keys are the ones that each component reads; the values fit this
 # Compose network. A <name>File or <name>_file key names a secret file, so
 # no template holds a secret value. An unknown key stops the component. The
-# database "port" comes from config/engine/<DB_ENGINE>.env. "tls.sslMode" is
+# database "port" comes from config/database/postgresql.env. "tls.sslMode" is
 # disable because the Compose network has no database TLS.
 
 services:
@@ -53,7 +53,7 @@ configs:
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
       DataBase:
-        type: ${DB_ENGINE}
+        type: postgresql
         hosts: [database]
         port: ${DB_PORT}
         name: igrant_api
@@ -88,7 +88,7 @@ configs:
           issuer: ${API_PUBLIC_URL}
           qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
           database:
-            type: ${DB_ENGINE}
+            type: postgresql
             hosts: [database]
             port: ${DB_PORT}
             name: igrant_oidc
@@ -127,7 +127,7 @@ configs:
       # The api's read-only user on the wallet views.
       ReadAccess:
         wallet:
-          type: ${DB_ENGINE}
+          type: postgresql
           hosts: [database]
           port: ${DB_PORT}
           name: igrant_wallet
@@ -157,7 +157,7 @@ configs:
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
       DataBase:
-        type: ${DB_ENGINE}
+        type: postgresql
         hosts: [database]
         port: ${DB_PORT}
         name: igrant_api
@@ -190,7 +190,7 @@ configs:
           issuer: ${API_PUBLIC_URL}
           qrPollPrefix: ${API_PUBLIC_URL}/v4/service/platform/extension/oidc
           database:
-            type: ${DB_ENGINE}
+            type: postgresql
             hosts: [database]
             port: ${DB_PORT}
             name: igrant_oidc
@@ -226,7 +226,7 @@ configs:
             jwksFile: /etc/igrant-service-keys/eudi-wallet.json
       ReadAccess:
         wallet:
-          type: ${DB_ENGINE}
+          type: postgresql
           hosts: [database]
           port: ${DB_PORT}
           name: igrant_wallet
@@ -247,7 +247,7 @@ configs:
   api-database-jobs-config.yaml:
     content: |
       DataBase:
-        type: ${DB_ENGINE}
+        type: postgresql
         hosts: [database]
         port: ${DB_PORT}
         name: igrant_api
@@ -257,7 +257,7 @@ configs:
       Extensions:
         oidc:
           database:
-            type: ${DB_ENGINE}
+            type: postgresql
             hosts: [database]
             port: ${DB_PORT}
             name: igrant_oidc
@@ -279,7 +279,7 @@ configs:
       ClientAddress:
         header: "${CLIENT_ADDRESS_HEADER}"
       DataBase:
-        type: ${DB_ENGINE}
+        type: postgresql
         hosts: [database]
         port: ${DB_PORT}
         name: igrant_api
@@ -325,7 +325,7 @@ configs:
         route_group: config
         port: 8080
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
@@ -390,7 +390,7 @@ configs:
             jwks_file: /etc/igrant-gateway-keys/gateway-jwks.json
       read_access:
         api:
-          type: ${DB_ENGINE}
+          type: postgresql
           host: database
           port: ${DB_PORT}
           name: igrant_api
@@ -414,7 +414,7 @@ configs:
       client_address:
         header: "${CLIENT_ADDRESS_HEADER}"
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
@@ -479,7 +479,7 @@ configs:
       domain: ${WALLET_PUBLIC_URL}
       log_level: INFO
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
@@ -549,7 +549,7 @@ configs:
     content: |
       log_level: INFO
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
@@ -574,7 +574,7 @@ configs:
     content: |
       log_level: INFO
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet
@@ -593,7 +593,7 @@ configs:
     content: |
       log_level: INFO
       database:
-        type: ${DB_ENGINE}
+        type: postgresql
         host: database
         port: ${DB_PORT}
         name: igrant_wallet

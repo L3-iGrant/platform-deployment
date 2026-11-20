@@ -2,9 +2,9 @@
 # Checks the files of docker-compose/ for maintainers. No container starts
 # and no image is pulled: "docker compose config" needs no Docker daemon.
 # Checks:
-#   - docker compose config for each engine (postgresql): the engine's
-#     database server, the images, and the database type and port in each
-#     component config file;
+#   - docker compose config: the database server postgres, the images,
+#     and the database type (postgresql) and port in each component config
+#     file;
 #   - the wallet database roles: the service wallet-database-roles, the
 #     order of the one-shot services and the database user of each wallet
 #     config;
@@ -26,7 +26,7 @@
 #     of the installation: Installation.services [wallet] in the api,
 #     webhook and gateway files, the gateway upstreams, the trusted issuers
 #     of the api files and the readers of the wallet config;
-#   - the derived lines of .env.example, the databases of database-init,
+#   - make check refuses DB_ENGINE, the databases of database-init,
 #     and make secrets in a copy of this folder (with a stand-in for
 #     igrant-api): a file for each secret of the Compose files, and a
 #     public nkey for each NATS user of config/nats/users.conf;
@@ -114,39 +114,35 @@ check_files() {
     [ -z "$created_env" ] || rm -f .env
     finish ""
   fi
-  local engine json services server images
-  for engine in postgresql; do
-    if ! json="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" project_json 2>&1)"; then
-      bad "$engine: docker compose config: $json"
-      continue
-    fi
-    ok "$engine: docker compose config"
-    services="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --services)"
-    case "$engine" in postgresql) server=postgres ;; esac
-    if grep -qx "$server" <<< "$services"; then
-      ok "$engine: database server $server"
+  local json services images
+  if ! json="$(COMPOSE_PROFILES= project_json 2>&1)"; then
+    bad "docker compose config: $json"
+  else
+    ok "docker compose config"
+    services="$(COMPOSE_PROFILES= docker compose config --services)"
+    if grep -qx postgres <<< "$services"; then
+      ok "database server postgres"
     else
-      bad "$engine: no service $server"
+      bad "no service postgres"
     fi
-    images="$(DB_ENGINE="$engine" COMPOSE_PROFILES="$engine" docker compose config --images)"
+    images="$(COMPOSE_PROFILES= docker compose config --images)"
     if grep -Eiq 'hashicorp|(^|/)vault(:|@|$)|keycloak|facade|mongo' <<< "$images"; then
-      bad "$engine: a forbidden image"
+      bad "a forbidden image"
     else
-      ok "$engine: images"
+      ok "images"
     fi
     if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
       local project_file output
       project_file="$(mktemp)"
       printf '%s' "$json" > "$project_file"
-      if output="$(python3 - "$engine" "$project_file" 2>&1 <<'PY'
+      if output="$(python3 - "$project_file" 2>&1 <<'PY'
 import json
 import sys
 
 import yaml
 
-engine = sys.argv[1]
-port = {"postgresql": 5432}[engine]
-with open(sys.argv[2], encoding="utf-8") as project_file:
+database_type, port = "postgresql", 5432
+with open(sys.argv[1], encoding="utf-8") as project_file:
     project = json.load(project_file)
 problems = []
 count = 0
@@ -178,7 +174,7 @@ for name, config in sorted(project.get("configs", {}).items()):
         problems.append(f"{name}: not a mapping")
         continue
     for path, block in databases(document):
-        if block.get("type") != engine or block.get("port") != port:
+        if block.get("type") != database_type or block.get("port") != port:
             problems.append(f"{name}: {path} has type {block.get('type')!r}, port {block.get('port')!r}")
 if problems:
     print("\n".join(problems))
@@ -186,15 +182,15 @@ if problems:
 print(f"{count} configuration files")
 PY
 )"; then
-        ok "$engine: $output parse, database type $engine"
+        ok "$output parse, database type postgresql"
       else
-        bad "$engine: configuration files: $output"
+        bad "configuration files: $output"
       fi
       rm -f "$project_file"
     else
-      warn "$engine: configuration files not parsed (python3 with PyYAML is not installed)"
+      warn "configuration files not parsed (python3 with PyYAML is not installed)"
     fi
-  done
+  fi
 
   # Key stores in the wallet files: the local key store in OpenBao
   # (local_backend openbao) and the organisation key store types.
@@ -244,7 +240,7 @@ PY
   # user igrant_wallet.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local output project_file admin
-    admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/engine/postgresql.env)"
+    admin="$(sed -n 's/^DB_ADMIN_USER=//p' config/database/postgresql.env)"
     if ! json="$(project_json 2>&1)"; then
       bad "database roles: docker compose config: $json"
     else
@@ -585,20 +581,17 @@ PY
     fi
   fi
 
-  # The derived lines at the end of .env.example: each is the value that
-  # check.sh expects (make check refuses another value).
-  local name names expected line
-  names="$(sed -n "s/^ *\([A-Z_]*\)) expected='.*' ;;$/\1/p" check.sh)"
-  [ -n "$names" ] || bad "check.sh has no derived line"
-  for name in $names; do
-    expected="$(sed -n "s/^ *${name}) expected='\(.*\)' ;;$/\1/p" check.sh)"
-    line="$(sed -n "s/^${name}=//p" .env.example)"
-    if [ -n "$expected" ] && [ "$line" = "$expected" ]; then
-      ok "the derived line ${name} of .env.example"
-    else
-      bad "the derived line ${name} of .env.example (${line}) is not the value of check.sh (${expected})"
-    fi
-  done
+  # The setting DB_ENGINE of an earlier release: make check refuses it.
+  local engine_copy
+  engine_copy="$(mktemp -d)"
+  cp -R . "$engine_copy/docker-compose"
+  { echo 'DB_ENGINE=postgresql'; cat .env.example; } > "$engine_copy/docker-compose/.env"
+  if (cd "$engine_copy/docker-compose" && bash check.sh 2>&1 || true) | grep -q -F "DB_ENGINE is not a setting"; then
+    ok "make check refuses the old setting DB_ENGINE"
+  else
+    bad "make check does not refuse the old setting DB_ENGINE"
+  fi
+  rm -rf "$engine_copy"
 
   # database-init: the databases igrant_api, igrant_oidc and igrant_wallet,
   # each with the password file of its owner user (make secrets).
@@ -954,7 +947,7 @@ PY
   # same values files for the render as for the services (plus
   # generated/configs.env for the services only); the label of each
   # service that reads a generated/ file is the file's SHA-256; the
-  # templates use only the variables of .env.example and config/engine/
+  # templates use only the variables of .env.example and config/database/postgresql.env
   # (settings, no secrets), and each key with a password, a secret or a
   # seed names a file.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
@@ -1023,11 +1016,11 @@ for service_name, service in project["services"].items():
             problems.append(f"{service_name}: the label {label} has no config")
 # Template variables: settings only.
 settings = set()
-for path in (".env.example", "config/engine/postgresql.env"):
+for path in (".env.example", "config/database/postgresql.env"):
     settings |= set(re.findall(r"^([A-Z][A-Z0-9_]*)=", open(path, encoding="utf-8").read(), re.M))
 unknown = sorted(set(variables) - settings)
 if unknown:
-    problems.append(f"the templates use {unknown}, which are not settings in .env.example or config/engine/")
+    problems.append(f"the templates use {unknown}, which are not settings in .env.example or config/database/postgresql.env")
 # In each generated/ file, each key with a password, a secret or a seed
 # names a file (an absolute path).
 def keys(node, path=""):

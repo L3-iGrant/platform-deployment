@@ -5,7 +5,7 @@
 #   ./check.sh  (make check, which runs make configs first): the values of
 #               .env, the files in secrets/, the configuration files in
 #               generated/ (they must match the current .env) and docker
-#               compose config for DB_ENGINE.
+#               compose config.
 #
 # Starts no container and pulls no image ("docker compose config" needs no
 # Docker daemon). Prints no secret values.
@@ -70,26 +70,11 @@ check_port() {
 check_installation() {
   [ -f .env ] || { bad ".env does not exist: run make env"; finish ""; }
 
-  local engine profiles
-  engine="$(setting DB_ENGINE)"
-  case "$engine" in
-    postgresql) ok "DB_ENGINE ($engine)" ;;
-    *) bad "DB_ENGINE ($engine) must be postgresql" ;;
-  esac
-  # The derived lines at the end of .env (do not change them).
-  local name expected
-  for name in COMPOSE_PROFILES; do
-    case "$name" in
-      COMPOSE_PROFILES) expected='${DB_ENGINE}' ;;
-    esac
-    if [ -n "${!name+x}" ]; then
-      ok "$name (from your shell)"
-    elif [ "$(setting "$name")" = "$expected" ]; then
-      ok "$name"
-    else
-      bad "$name must be $expected (the line of .env.example; do not change it)"
-    fi
-  done
+  # The database is always PostgreSQL: DB_ENGINE and the line
+  # COMPOSE_PROFILES of an earlier release are not settings.
+  if grep -q '^DB_ENGINE=' .env; then
+    bad "DB_ENGINE is not a setting: the database of all components is always PostgreSQL. Remove the lines DB_ENGINE and COMPOSE_PROFILES from .env"
+  fi
 
   check_url API_PUBLIC_URL
   check_url WALLET_PUBLIC_URL
@@ -220,7 +205,7 @@ check_installation() {
     finish ""
   fi
 
-  # docker compose config for the installation's engine.
+  # docker compose config.
   local json
   if ! json="$(docker compose config --format json 2>&1)"; then
     bad "docker compose config: $json"
@@ -232,7 +217,7 @@ check_installation() {
   if grep -qx postgres <<< "$services"; then
     ok "database server: postgres"
   else
-    bad "the services must have postgres (COMPOSE_PROFILES)"
+    bad "the services must have postgres"
   fi
   # The DDL and connection logs of the database server (the postgres
   # command). A Compose override file can remove them, so this only warns.
@@ -261,7 +246,7 @@ check_installation() {
   done < <(grep -oE '"file": *"[^"]+"' <<< "$json" | sed -E 's/"file": *"([^"]+)"/\1/' | sort -u)
   if [ "$missing" -eq 0 ]; then ok "secrets and files"; else bad "run make secrets"; fi
 
-  finish "the configuration is valid (DB_ENGINE=${engine}, ${warnings} warning(s))"
+  finish "the configuration is valid (${warnings} warning(s))"
 }
 
 case "${1:-}" in

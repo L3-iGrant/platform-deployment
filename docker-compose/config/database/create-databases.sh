@@ -1,13 +1,13 @@
 #!/bin/bash
 # The database-init service: creates one database and one owner user per
-# component on the DB_ENGINE server (postgresql). The user name is the
+# component on the PostgreSQL server. The user name is the
 # database name. Idempotent: it creates a user or a database only when it is
 # missing, and sets every user's password on each run. The wallet's data
 # scopes are schemas in igrant_wallet, which the wallet-database-roles
 # service creates together with the wallet's database roles. No wallet
 # process logs in as the owner user igrant_wallet.
 #
-# Environment: DB_ENGINE, DB_PORT, DB_ADMIN_USER (config/engine/*.env).
+# Environment: DB_PORT, DB_ADMIN_USER (config/database/postgresql.env).
 # Secret files in /run/secrets/database/: admin-password (the admin user)
 # and <database>-password for each database. No password goes on a command
 # line or into a statement: psql \password sends the SCRAM-SHA-256
@@ -73,11 +73,5 @@ SQL
   done
 }
 
-case "${DB_ENGINE:-}" in
-  postgresql) postgresql ;;
-  *)
-    echo "DB_ENGINE must be postgresql, not '${DB_ENGINE:-}'" >&2
-    exit 1
-    ;;
-esac
+postgresql
 echo "All databases are configured"
