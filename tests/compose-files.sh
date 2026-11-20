@@ -546,7 +546,7 @@ def document(name):
 
 for name in ("api-config", "webhook-config"):
     webhooks = document(name).get("Webhooks")
-    if webhooks != {"DeliveryRetentionDays": 10}:
+    if webhooks != {"DeliveryRetentionDays": 30}:
         problems.append(f"{name}: Webhooks {webhooks!r}, not only DeliveryRetentionDays")
     issuers = [entry.get("issuer") for entry in document(name)["ServiceEnvelope"]["trustedIssuers"]]
     if issuers != ["igrant-api", "eudi-wallet"]:
