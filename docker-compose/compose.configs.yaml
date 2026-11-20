@@ -77,7 +77,7 @@ configs:
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
-        DeliveryRetentionDays: 30
+        DeliveryRetentionDays: 10
       ActionLogs:
         RetentionDays: 30
       OpenIdDeployment:
@@ -179,7 +179,7 @@ configs:
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
-        DeliveryRetentionDays: 30
+        DeliveryRetentionDays: 10
       ActionLogs:
         RetentionDays: 30
       OpenIdDeployment:

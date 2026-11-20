@@ -38,7 +38,6 @@ A changed default value does not stop the render: at the upgrade, your release g
 | --- | --- | --- | --- |
 | 2026.11.7 | The scrape interval of the wallet ServiceMonitor | `15s` | `30s`, the value `monitoring.serviceMonitor.interval` of all ServiceMonitors |
 | 2026.11.7 | An empty `gateway.logLevel` | the value of `api.logLevel` | the value of `global.logLevel` (`info`), as every component |
-| 2026.11.7 | The days that the api keeps the webhook delivery records (`api.webhooks.deliveryRetentionDays`) | `10` | `30`, the period of the API contract and the default of the api |
 
 <!-- The sections below: tests/upgrade_page.py --write (from files/renamed-values.yaml). -->
 

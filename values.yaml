@@ -182,7 +182,7 @@ api:
     appleAppIds: []
   webhooks:
     # -- Days that the api keeps the webhook delivery records.
-    deliveryRetentionDays: 30
+    deliveryRetentionDays: 10
   # -- Days that the api keeps the action logs of each organisation.
   actionLogRetentionDays: 30
   # -- NATS connect timeout (seconds) and the NATS requests that one process handles at once.
