@@ -802,7 +802,7 @@ lacks "feature gate off has no enforce true" "enforce: true" --set gateway.featu
 renders "feature gate off with extraConfig" "enforce: false" --set gateway.advanced.extraConfig.Features.enforce=false
 # Each organisation's effective features select its webhook event types, so
 # the api files have no Webhooks.events and the schema refuses the value.
-renders "webhook delivery retention in the api files" "DeliveryRetentionDays: 10" --show-only templates/api/configmap.yaml
+renders "webhook delivery retention in the api files" "DeliveryRetentionDays: 30" --show-only templates/api/configmap.yaml
 lacks "no webhook event types in the api files" "ows.issuer.issuance_history.credential_issued" --show-only templates/api/configmap.yaml
 guard "no api.webhooks.events" "api.webhooks" --set-json 'api.webhooks.events=["ows.issuer.issuance_history.credential_issued"]'
 # The API core publishes an event when an organisation is deleted.
