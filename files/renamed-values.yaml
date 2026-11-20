@@ -224,7 +224,8 @@
 # can calculate is not a value. The chart calculates the grace period of
 # the pods from their stop times (`terminationGracePeriodSeconds`), and
 # writes the public URLs of the dashboard file and of the api from the
-# host names.
+# host names. The database of all components is always PostgreSQL, so
+# `database.engine` is not a value.
 - {old: api.server.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: api.server.preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5"}
 - {old: gateway.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: gateway.preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5"}
 - {old: organisationWallet.server.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: organisationWallet.server.preStopSeconds + gracefulShutdownSeconds + backgroundShutdownSeconds + 5"}
@@ -236,6 +237,7 @@
 - {old: enterpriseDashboard.configuration.baseUrl, after: 2026.11.7, removed: "the chart writes the public URL of api.host"}
 - {old: enterpriseDashboard.configuration.walletUrl, after: 2026.11.7, removed: "the chart writes the public URL of organisationWallet.host"}
 - {old: enterpriseDashboard.configuration.appVersion, after: 2026.11.7, removed: "the chart writes the image tag of the dashboard"}
+- {old: database.engine, after: 2026.11.7, removed: "the database of all components is always PostgreSQL"}
 
 # --- Log level
 # One value `global.logLevel` with one vocabulary for all components:

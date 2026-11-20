@@ -919,7 +919,7 @@ The read-only database user of one reader on one owner database. Fails when
 it is not set. Call with (list $ "<reader>" "<owner>"); reader and owner are
 keys of database.databases. Output: JSON {host, port, name, username,
 secret, key}. An empty host, port or name defaults to the owner database in
-this chart. The engine and TLS settings always come from database.*
+this chart. The TLS settings always come from database.*
 (ow.db.go, ow.db.wallet).
 */}}
 {{- define "ow.readAccess.reader" -}}

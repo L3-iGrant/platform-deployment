@@ -1,44 +1,19 @@
 {{/*
-Database helpers. The whole platform uses ONE engine (database.engine) and
-one server (database.mode: bundled or external). Each component has its own
-database and owner user, and the user name is the database name. Every
-component config file, Job and NetworkPolicy takes the engine, host, port
-and TLS settings from these helpers only.
+Database helpers. All components use ONE PostgreSQL server (database.mode:
+bundled or external). Each component has its own database and owner user,
+and the user name is the database name. Every component config file, Job
+and NetworkPolicy takes the host, port and TLS settings from these helpers
+only.
 */}}
 
 {{/*
-Supported engines and their facts: the name suffix of the bundled server
+The facts of the PostgreSQL server: the name suffix of the bundled server
 objects, the port, the admin user of the bundled server and the key of its
-password in the database Secret. PostgreSQL is the only engine. The other
-helpers read the facts from here, so a new engine needs a new entry, a
-server template (templates/database/<engine>.yaml, with the values
-database.<engine>), an init script (init.yaml) and a section in ow.db.go
-and ow.db.wallet. Output: JSON.
+password in the database Secret (the variable of the server image).
+Output: JSON.
 */}}
-{{- define "ow.db.engines" -}}
-{{- toJson (dict
-  "postgresql" (dict "server" "postgres" "port" 5432 "adminUser" "postgres" "adminPasswordKey" "POSTGRES_PASSWORD")) -}}
-{{- end }}
-
-{{/*
-The engine of all components, validated. The api and the organisation
-wallet only accept the engines in ow.db.engines, so any other
-value (for example mysql) fails the render with a message that names them.
-values.schema.json has no enum for database.engine, because a schema error
-cannot name the components.
-*/}}
-{{- define "ow.db.engine" -}}
-{{- $engine := .Values.database.engine | default "postgresql" -}}
-{{- $engines := include "ow.db.engines" . | fromJson -}}
-{{- if not (hasKey $engines $engine) -}}
-{{- fail (printf "database.engine %q is not supported: the api and the organisation wallet accept only %s" $engine (keys $engines | sortAlpha | join " or ")) -}}
-{{- end -}}
-{{ $engine }}
-{{- end }}
-
-{{/* Facts of the engine (its entry in ow.db.engines). Output: JSON. */}}
-{{- define "ow.db.engineFacts" -}}
-{{- index (include "ow.db.engines" . | fromJson) (include "ow.db.engine" .) | toJson -}}
+{{- define "ow.db.facts" -}}
+{{- toJson (dict "server" "postgres" "port" 5432 "adminUser" "postgres" "adminPasswordKey" "POSTGRES_PASSWORD") -}}
 {{- end }}
 
 {{/* "true" when the chart runs the server (database.mode bundled), else "". */}}
@@ -52,12 +27,12 @@ cannot name the components.
 
 {{/* Name of the bundled server objects (StatefulSet, Service) and of the database Secret: <fullname>-postgres. */}}
 {{- define "ow.db.serverName" -}}
-{{ include "ow.name" (list . (include "ow.db.engineFacts" . | fromJson).server) }}
+{{ include "ow.name" (list . (include "ow.db.facts" . | fromJson).server) }}
 {{- end }}
 
-{{/* Default port of the engine. */}}
+{{/* Default port of the server. */}}
 {{- define "ow.db.defaultPort" -}}
-{{ (include "ow.db.engineFacts" . | fromJson).port | int }}
+{{ (include "ow.db.facts" . | fromJson).port | int }}
 {{- end }}
 
 {{/* Host name that the components use: the bundled Service, else database.external.host. */}}
@@ -106,14 +81,14 @@ database.databases>"). Output: JSON {secret, key}.
 
 {{/* Key of the bundled server's admin password in the database Secret (the server image's variable name). */}}
 {{- define "ow.db.adminPasswordKey" -}}
-{{ (include "ow.db.engineFacts" . | fromJson).adminPasswordKey }}
+{{ (include "ow.db.facts" . | fromJson).adminPasswordKey }}
 {{- end }}
 
 {{/*
 The server's admin user (database.admin). It creates the databases and
 owner users (init hook), the wallet database roles (roles hook) and the
 read-only users (read access Jobs).
-bundled: the engine's admin user ("postgres"); its password from
+bundled: the admin user of the server ("postgres"); its password from
 database.admin.password.existingSecret and .key, else the admin key of the
 chart's database Secret.
 external: database.admin.username and database.admin.password (an empty
@@ -124,7 +99,7 @@ Output: JSON {user, secret, key}, or {} when there is no admin user.
 {{- define "ow.db.admin" -}}
 {{- $admin := .Values.database.admin -}}
 {{- if include "ow.db.bundled" . -}}
-{{- $user := (include "ow.db.engineFacts" . | fromJson).adminUser -}}
+{{- $user := (include "ow.db.facts" . | fromJson).adminUser -}}
 {{- if and $admin.username (ne $admin.username $user) -}}
 {{- fail (printf "database.admin.username %q: the admin user of the bundled server is %s; leave database.admin.username empty with database.mode bundled" $admin.username $user) -}}
 {{- end -}}
@@ -248,7 +223,7 @@ Output: JSON.
 {{- $root := .root -}}
 {{- include "ow.db.check" $root -}}
 {{- $section := dict
-  "type" (include "ow.db.engine" $root)
+  "type" "postgresql"
   "hosts" (list .host)
   "port" (.port | int)
   "name" .name
@@ -300,7 +275,7 @@ Call with (dict "root" $ "host" "port" "name" "user" "passwordFile"
 {{- $root := .root -}}
 {{- include "ow.db.check" $root -}}
 {{- $section := dict
-  "type" (include "ow.db.engine" $root)
+  "type" "postgresql"
   "host" .host
   "port" (.port | int)
   "name" .name

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Checks the key facts of one "helm template" render of the chart.
 
-Usage: check_render.py <render.yaml> <engine> <mode> <openbao> <exposure> <networkpolicy> [<database-logs> [<redis>]]
-  engine: postgresql; mode: bundled | external;
+Usage: check_render.py <render.yaml> <mode> <openbao> <exposure> <networkpolicy> [<database-logs> [<redis>]]
+  mode: bundled | external;
   openbao: shamir | external;
   exposure: ingress | gatewayAPI | none | on-premise (only the wallet host
     on the public IngressClass); networkpolicy: off | on;
@@ -32,9 +32,9 @@ HOSTS = {"t-api": "api.example.org", "t-wallet-service": "wallet.example.org", "
 # (Extensions.oidc.apiPathBase and qrPollPrefix in the api config).
 OIDC_PROVIDER_PATH = "/v4/service/platform/extension/oidc"
 KEY_STORE_TYPES = ["vault", "csc", "gcp-kms", "aws-kms", "azure-key-vault"]
-# Per engine, as in the chart helper ow.db.engines: the bundled server's
-# name suffix, the port and the admin password key.
-ENGINES = {"postgresql": {"server": "postgres", "port": 5432, "admin_key": "POSTGRES_PASSWORD"}}
+# The PostgreSQL server, as in the chart helper ow.db.facts: the bundled
+# server's name suffix, the port and the admin password key.
+DATABASE = {"type": "postgresql", "server": "postgres", "port": 5432, "admin_key": "POSTGRES_PASSWORD"}
 # Server parameters for the bundled server's DDL and connection logs
 # (database.postgresql.logDdlAndConnections).
 DATABASE_LOGS = {"log_statement": "ddl", "log_connections": "on", "log_disconnections": "on"}
@@ -111,9 +111,9 @@ def nats_rights(nats_conf: str) -> dict:
 
 
 def main() -> int:
-    path, engine, mode, openbao, exposure, netpol = sys.argv[1:7]
-    database_logs = sys.argv[7] if len(sys.argv) > 7 else "on"
-    redis = sys.argv[8] if len(sys.argv) > 8 else "bundled"
+    path, mode, openbao, exposure, netpol = sys.argv[1:6]
+    database_logs = sys.argv[6] if len(sys.argv) > 6 else "on"
+    redis = sys.argv[7] if len(sys.argv) > 7 else "bundled"
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
     docs = [d for d in yaml.safe_load_all(text) if d]
@@ -139,14 +139,14 @@ def main() -> int:
             return {}
         return cm["data"][key] if raw else yaml.safe_load(cm["data"][key])
 
-    facts = ENGINES[engine]
+    facts = DATABASE
     port = facts["port"]
     server = f"{RELEASE}-{facts['server']}"
     host = f"{server}.{NAMESPACE}.svc" if mode == "bundled" else EXTERNAL_DB_HOST
 
-    # --- The engine in each config file ----------------------------------
+    # --- The database in each config file ----------------------------------
     def go_section(where: str, section: dict) -> None:
-        check(section.get("type") == engine, f"{where}.type is {section.get('type')!r}, not {engine}")
+        check(section.get("type") == facts["type"], f"{where}.type is {section.get('type')!r}, not {facts['type']}")
         check(section.get("port") == port, f"{where}.port is {section.get('port')!r}, not {port}")
         check(section.get("hosts") == [host], f"{where}.hosts is {section.get('hosts')!r}")
         tls = section.get("tls") or {}
@@ -154,7 +154,7 @@ def main() -> int:
         check(tls.get("sslMode") == "verify-full", f"{where}.tls.sslMode is {tls.get('sslMode')!r}, not verify-full")
 
     def wallet_section(where: str, section: dict) -> None:
-        check(section.get("type") == engine, f"{where}.type is {section.get('type')!r}, not {engine}")
+        check(section.get("type") == facts["type"], f"{where}.type is {section.get('type')!r}, not {facts['type']}")
         check(section.get("port") == port, f"{where}.port is {section.get('port')!r}, not {port}")
         check(section.get("host") == host, f"{where}.host is {section.get('host')!r}")
         check(bool(section.get("ssl_ca_file")), f"{where}.ssl_ca_file is missing")

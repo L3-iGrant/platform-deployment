@@ -209,7 +209,7 @@ Each component has a group `advanced` for the values that an operator seldom cha
 
 ### Values that the chart knows
 
-A constant of a protocol, a fact of an image or a value that the chart can calculate is not a value. The chart calculates the grace period of the pods from their stop times (`terminationGracePeriodSeconds`), and writes the public URLs of the dashboard file and of the api from the host names.
+A constant of a protocol, a fact of an image or a value that the chart can calculate is not a value. The chart calculates the grace period of the pods from their stop times (`terminationGracePeriodSeconds`), and writes the public URLs of the dashboard file and of the api from the host names. The database of all components is always PostgreSQL, so `database.engine` is not a value.
 
 | Old value | New value, or what to do |
 | --- | --- |
@@ -224,6 +224,7 @@ A constant of a protocol, a fact of an image or a value that the chart can calcu
 | `enterpriseDashboard.configuration.baseUrl` | Remove it: the chart writes the public URL of `api.host` |
 | `enterpriseDashboard.configuration.walletUrl` | Remove it: the chart writes the public URL of `organisationWallet.host` |
 | `enterpriseDashboard.configuration.appVersion` | Remove it: the chart writes the image tag of the dashboard |
+| `database.engine` | Remove it: the database of all components is always PostgreSQL |
 
 ### Log level
 

@@ -5,7 +5,6 @@
 #   kubectl -n ows create secret generic db-admin --from-file=password=./db-admin-password.txt
 #   kubectl -n ows create secret generic db-ca --from-file=ca.crt=./db-ca.crt
 database:
-  engine: postgresql
   mode: external
   admin:
     username: igrant_admin   # CREATEROLE and CREATEDB (see docs/database.md)

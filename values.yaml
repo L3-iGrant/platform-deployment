@@ -668,8 +668,6 @@ enterpriseDashboard:
 
 # One PostgreSQL server for all components, bundled or external (docs/database.md).
 database:
-  # -- postgresql, the only supported engine (another value stops the render).
-  engine: postgresql
   # -- bundled (the chart runs <fullname>-postgres) or external (database.external).
   mode: bundled
   # -- The admin user of the server, for the init hook, the roles hook and the read access Jobs.
