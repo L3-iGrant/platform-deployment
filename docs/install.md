@@ -31,7 +31,7 @@ Then check out the release that iGrant.io gives you (a release tag or a commit),
 
 ```bash
 cd platform-deployment
-git checkout 2026.11.9
+git checkout 2026.11.10
 ```
 
 The image tag of the installation (`global.imageTag`) is the chart's `appVersion` in `Chart.yaml` of this checkout.
