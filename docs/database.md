@@ -11,11 +11,11 @@ Each component has its own database and owner user: `igrant_api`, `igrant_oidc` 
 | `database.mode` | The chart | You give |
 | --- | --- | --- |
 | `bundled` (default) | Runs one PostgreSQL 18.7 server (`<release>-postgres`). Creates the databases and the users (init hook), the wallet's database roles (roles hook) and a TLS certificate. | The size of the volume and the resources |
-| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. | `database.external.host`, `.port`, the CA of the server (`database.tls.caSecret`), and an admin user (`database.external.admin`) |
+| `external` | Creates the databases and the users (init hook) and the wallet's database roles (roles hook) with your admin user. | `database.external.host`, `.port`, the CA of the server (`database.external.ca`), and an admin user (`database.admin`) |
 
 ## TLS
 
-All components verify the server with its CA (`sslmode=verify-full`). An external PostgreSQL without `database.tls.caSecret` gets `require` (encryption without verification). With `database.tls.enabled: false`, the connections are not encrypted.
+All components verify the server with its CA (`sslmode=verify-full`). An external PostgreSQL without `database.external.ca.existingSecret` gets `require` (encryption without verification). With `database.tls.enabled: false`, the connections are not encrypted.
 
 The bundled server always serves TLS, even with `database.tls.enabled: false`: that value only controls how the components connect. Its certificate is in the Secret `<release>-postgres-tls` (made by the chart, kept across upgrades) or in your Secret `database.tls.existingSecret`. The chart makes `<release>-postgres-tls` as a hook, before the other hooks. So an upgrade can turn `database.tls.enabled` on: the hooks get the CA, and the server already serves TLS.
 
@@ -88,7 +88,7 @@ The connection budget then counts, for the wallet, only the direct connections (
 
 ## External PostgreSQL
 
-The admin user needs `CREATEROLE` and `CREATEDB`, and must be able to `SET ROLE` to the users that it creates (a superuser, or PostgreSQL 16 or later with `createrole_self_grant = 'set, inherit'`). The organisation wallet needs this admin user: the roles hook creates the wallet's database roles with it, and the render stops without `database.external.admin.user`.
+The admin user needs `CREATEROLE` and `CREATEDB`, and must be able to `SET ROLE` to the users that it creates (a superuser, or PostgreSQL 16 or later with `createrole_self_grant = 'set, inherit'`). The organisation wallet needs this admin user: the roles hook creates the wallet's database roles with it, and the render stops without `database.admin.username`.
 
 Set the log parameters of [Logs of the database server](#logs-of-the-database-server) on your server too. The chart does not change the parameters of an external server.
 

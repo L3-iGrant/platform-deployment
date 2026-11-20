@@ -644,15 +644,13 @@ The API host and the wallet host need these proxy settings:
   (server-sent events, `text/event-stream`) stay open for up to 3900
   seconds.
 - No response buffering, so each event reaches the client at once.
-- The headers `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`. The wallet
-  uses the client address of `X-Forwarded-For` for the rate limit of the
-  nonce routes and in its logs (the DPoP checks use the published URL, not
-  the request scheme). It accepts these headers
-  only from the loopback address and the ranges 10.0.0.0/8, 172.16.0.0/12,
-  192.168.0.0/16, 100.64.0.0/10 and fc00::/7, so a reverse proxy on another
-  computer must connect from one of these addresses.
+- The header `Host`.
 - The header named in `CLIENT_ADDRESS_HEADER`, with the client address. The
-  proxy must always replace it.
+  proxy must always replace it. The gateway uses it for the rate limits and
+  the IP allow-lists of the API keys, and the wallet for the rate limit of
+  the nonce routes and in its logs. The services do not read
+  `X-Forwarded-For` (the DPoP checks use the published URL, not the request
+  scheme).
 
 Example for nginx (one `server` block per host):
 
@@ -662,8 +660,6 @@ proxy_read_timeout 3900s;
 proxy_buffering off;
 proxy_set_header Host $host;
 proxy_set_header X-Real-IP $remote_addr;
-proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-proxy_set_header X-Forwarded-Proto $scheme;
 ```
 
 The example caches no responses. The metadata routes and the issuers' JWKS

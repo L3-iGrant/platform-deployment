@@ -282,6 +282,33 @@ spec:
 {{- end }}
 {{- end }}
 
+{{/*
+The log level of one component: <component>.logLevel, else
+global.logLevel. One vocabulary for all components: debug, info, warn or
+error (OpenBao also trace). Call with (list $ "<values key>"). Output: the
+word of the chart; the wallet gets its own word from ow.logLevelUpper.
+*/}}
+{{- define "ow.logLevel" -}}
+{{- $root := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- $own := (index $root.Values $key).logLevel | default "" | toString -}}
+{{- $level := $own | default ($root.Values.global.logLevel | default "info" | toString) -}}
+{{- $words := list "debug" "info" "warn" "error" -}}
+{{- if eq $key "openbao" -}}{{- $words = prepend $words "trace" -}}{{- end -}}
+{{- if not (has $level $words) -}}
+{{- fail (printf "%s %q is not a log level: use %s" (ternary (printf "%s.logLevel" $key) "global.logLevel" (ne $own "")) $level (join ", " $words)) -}}
+{{- end -}}
+{{- $level -}}
+{{- end }}
+
+{{/*
+The log level of the wallet in its own words (Python): DEBUG, INFO,
+WARNING or ERROR. Call with (list $ "<values key>").
+*/}}
+{{- define "ow.logLevelUpper" -}}
+{{- get (dict "debug" "DEBUG" "info" "INFO" "warn" "WARNING" "error" "ERROR") (include "ow.logLevel" .) -}}
+{{- end }}
+
 {{/* Checksum annotation for a values block. Call with (list "<name>" <value>). */}}
 {{- define "ow.checksum" -}}
 checksum/{{ index . 0 }}: {{ index . 1 | toYaml | sha256sum }}

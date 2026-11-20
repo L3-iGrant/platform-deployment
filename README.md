@@ -1,4 +1,20 @@
-# iGrant.io platform deployment
+<h1 align="center">
+    iGrant.io Platform Deployment
+</h1>
+
+<p align="center">
+    <a href="/../../commits/" title="Last Commit"><img src="https://img.shields.io/github/last-commit/L3-iGrant/platform-deployment?style=flat"></a>
+    <a href="/../../issues" title="Open Issues"><img src="https://img.shields.io/github/issues/L3-iGrant/platform-deployment?style=flat"></a>
+    <a href="./LICENSE" title="Licence"><img src="https://img.shields.io/badge/License-Apache%202.0-yellowgreen?style=flat"></a>
+</p>
+
+<p align="center">
+  <a href="#about">About</a> •
+  <a href="#contents">Contents</a> •
+  <a href="#licensing">Licensing</a>
+</p>
+
+## About
 
 This repository holds the Helm chart and the Docker Compose files of the iGrant.io platform. Organisations use the platform to issue, hold and verify verifiable credentials under eIDAS 2.0 (OpenID4VCI, OpenID4VP and the EU Architecture and Reference Framework).
 
@@ -22,6 +38,7 @@ These docs are for the developers and operations teams who install and run the p
 
 ### Operate
 
+- [Upgrade](docs/upgrade.md): upgrade to a new release, and the values that changed in each release.
 - [Uninstall](docs/uninstall.md): remove the platform, see what stays, and install again with or without the data.
 - [Scaled deployments](docs/scaled-deployments.md): disruption budgets, pod spread, Google Cloud KMS auto-unseal and HSM signer groups for large installations.
 
@@ -53,7 +70,7 @@ These docs are for the developers and operations teams who install and run the p
 - [Tests](docs/tests.md): the chart tests, which run without a cluster.
 - [Images](docs/images.md): the chart's images, for your own mirror.
 
-## Licence
+## Licensing
 
 Copyright (c) 2026 iGrant Technologies AB (iGrant.io), Sweden
 

@@ -1,0 +1,86 @@
+# The values of tests/values/old-values.yaml in the shape of this release
+# (tests/check_renamed.py).
+outboundHttp:
+  allowedPrivate: [wallet.example.internal]
+monitoring:
+  serviceMonitor: {enabled: true, interval: 15s}
+  prometheusRule: {enabled: true}
+  labels: {release: kp}
+installation:
+  limits:
+    maxOrganisations: 20
+api:
+  host: api.example.org
+  exposure:
+    clientAddress: {header: X-Real-IP, trustedProxies: [173.245.48.0/20], trustedProxyHeader: CF-Connecting-IP}
+  advanced:
+    extraConfig:
+      Uploads: {maxInProgress: 4}
+  smtp:
+    host: smtp.example.org
+    password: {existingSecret: mail, key: password}
+    from: noreply@example.org
+  twilio:
+    accountSid: {existingSecret: twilio}
+    authToken: {existingSecret: twilio}
+  jobs:
+    provisionPlatformOperator:
+      enabled: true
+      organisation: {name: Example Wallet Provider, type: Technology, location: Stockholm, policyUrl: https://example.org/privacy}
+      firstAdmin: {email: admin@example.org, name: First Admin, password: {existingSecret: platform-admin}}
+organisationWallet:
+  host: wallet.example.org
+  exposure:
+    clientAddress: {header: X-Real-IP}
+  logLevel: warn
+  workers:
+    groups:
+      main:
+        replicas: 3
+  audit:
+    bucket:
+      name: example-audit
+      endpoint: https://s3.example.org
+      region: eu-west-1
+      accessKeyId: {existingSecret: audit-bucket, key: id}
+      secretAccessKey: {existingSecret: audit-bucket}
+enterpriseDashboard:
+  host: dashboard.example.org
+redis:
+  users:
+    gateway: {username: gateway, password: {existingSecret: my-redis-gateway, key: pw}}
+database:
+  admin:
+    password: {existingSecret: db-passwords, key: POSTGRES_PASSWORD}
+  databases:
+    api: {password: {existingSecret: db-passwords, key: igrant_api}}
+    oidc: {password: {existingSecret: db-passwords, key: igrant_oidc}}
+    wallet: {password: {existingSecret: db-passwords, key: igrant_wallet}}
+  readAccess:
+    api:
+      wallet:
+        password: {existingSecret: api-reader}
+    jobs:
+      ttlSecondsAfterFinished: 3600
+keys:
+  apiTokenSigning:
+    activeKid: test-token-kid
+  gatewayInternalToken:
+    activeKid: test-gateway-kid
+  serviceEnvelope:
+    api:
+      activeKid: test-api-envelope-kid
+      publicJwks: '{"keys":[]}'
+    organisationWallet:
+      activeKid: test-wallet-envelope-kid
+      publicJwks: '{"keys":[]}'
+  publicJwks:
+    gatewayInternalToken: '{"keys":[]}'
+    apiTokenVerification: '{"keys":[]}'
+nats:
+  users:
+    api: {nkey: UTESTAPI, seed: {existingSecret: t-nats-api}}
+    webhook: {nkey: UTESTAPIWEBHOOK, seed: {existingSecret: t-nats-api-webhook}}
+    walletConfig: {nkey: UTESTWALLETCONFIG, seed: {existingSecret: t-nats-wallet-config}}
+    walletService: {nkey: UTESTWALLETSERVICE, seed: {existingSecret: t-nats-wallet-service}}
+    walletWorker: {nkey: UTESTWALLETWORKER, seed: {existingSecret: t-nats-wallet-worker}}

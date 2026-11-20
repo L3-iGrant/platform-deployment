@@ -12,9 +12,8 @@
 # Grow it with the use: when the requests of a node pass about 70 %, or the
 # CPU is often throttled, raise the requests here or use larger nodes.
 #
-# Note: organisationWallet.workers.groups is a list, and Helm replaces a list
-# as a whole. This file therefore repeats every field of the two groups of
-# values.yaml; when you change a group, copy all its fields.
+# The worker groups are a map: this file changes the fields of the two
+# groups of values.yaml that it names.
 api:
   replicas: 2
   resources: {requests: {cpu: 50m, memory: 160Mi}, limits: {memory: 512Mi}}
@@ -36,21 +35,19 @@ organisationWallet:
     resources: {requests: {cpu: 10m, memory: 160Mi}, limits: {memory: 384Mi}}
   workers:
     groups:
-      - name: main
+      main:
         queues: [realtime, attestation, status, kms]
         replicas: 1
         processes: 1
         threads: 8
         shutdownTimeoutSeconds: 600
-        terminationGracePeriodSeconds: 630
         resources: {requests: {cpu: 100m, memory: 512Mi}, limits: {memory: 1536Mi}}
-      - name: maintenance
+      maintenance:
         queues: [maintenance]
         replicas: 1
         processes: 1
         threads: 2
         shutdownTimeoutSeconds: 14400
-        terminationGracePeriodSeconds: 14430
         resources: {requests: {cpu: 20m, memory: 256Mi}, limits: {memory: 1536Mi}}
 enterpriseDashboard:
   replicas: 2

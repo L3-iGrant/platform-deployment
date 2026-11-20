@@ -53,7 +53,7 @@ Roles that run in this release (the chart's pods). Output: JSON list.
 {{- $roles := list "job" "gateway" "api" "webhook" "wallet-service" "wallet-config" "wallet-worker" "wallet-clock" -}}
 {{- if $v.enterpriseDashboard.enabled -}}{{- $roles = append $roles "dashboard" -}}{{- end -}}
 {{- if include "ow.db.bundled" . -}}{{- $roles = append $roles "db" -}}{{- end -}}
-{{- if $v.nats.enabled -}}{{- $roles = append $roles "nats" -}}{{- end -}}
+{{- if include "ow.nats.bundled" . -}}{{- $roles = append $roles "nats" -}}{{- end -}}
 {{- if include "ow.openbao.bundled" . -}}{{- $roles = append $roles "openbao" -}}{{- end -}}
 {{- if include "ow.redis.bundled" . -}}{{- $roles = append $roles "redis" -}}{{- end -}}
 {{- toJson $roles -}}

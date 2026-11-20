@@ -81,15 +81,15 @@ Each site has its own Valkey group: the chart does not replicate Valkey to the s
 
 The exporter does not read the Sentinels: the data servers show a failover in their role and their replication. The length of each queue is a worker metric (`ows_worker_queue_messages`, see [Workers and clock](workers.md#probes-and-metrics)).
 
-`redis.metrics.serviceMonitor.enabled: true` creates the headless Service `<release>-redis-metrics` of the exporters (it includes the pods that are not ready) and the ServiceMonitor `<release>-redis-metrics` (the Prometheus Operator CRD must exist). `interval` and `labels` go to the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches port 9121. With your own Valkey or Redis (`redis.mode: external`), use your own exporter: the chart then refuses `redis.metrics`.
+With `redis.metrics.enabled`, `monitoring.serviceMonitor.enabled: true` creates the headless Service `<release>-redis-metrics` of the exporters (it includes the pods that are not ready) and the ServiceMonitor `<release>-redis-metrics` (the Prometheus Operator CRD must exist). `monitoring.serviceMonitor.interval` and `monitoring.labels` go to the ServiceMonitor. With network policies, set `monitoring.networkPolicy` to your monitoring namespace: only it reaches port 9121. With your own Valkey or Redis (`redis.mode: external`), use your own exporter: the chart then refuses `redis.metrics`.
 
 The image `redis.metrics.image` is `docker.io/oliver006/redis_exporter` (MIT License, see [Images](images.md)). The exporter reads its password from the environment variable `REDIS_PASSWORD` (from the Secret `<release>-redis-users`, key `metrics`), because it reads a password only from a variable or a JSON file.
 
 ## ACL users
 
-The wallet roles and the gateway each log in with their own user. `redis.users.<key>.username` sets the name. The password is in the chart's Secret `<release>-redis-users` (random, kept across upgrades), or in your own Secret (`redis.users.<key>.passwordSecret`, `.passwordKey`). A password contains only letters, digits and `. _ ~ + / = -`.
+The wallet roles and the gateway each log in with their own user. `redis.users.<key>.username` sets the name. The password is in the chart's Secret `<release>-redis-users` (random, kept across upgrades), or in your own Secret (`redis.users.<key>.password.existingSecret`, `.password.key`). A password contains only letters, digits and `. _ ~ + / = -`.
 
-The keys of the Secret `<release>-redis-users` are the values keys (`walletService`, `walletConfig`, `walletWorker`, `walletClock`, `gateway`), not the user names. If your own Secret uses the user names as keys (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`), give each user its key: for example `redis.users.walletWorker: {passwordSecret: <your Secret>, passwordKey: wallet-worker}`.
+The keys of the Secret `<release>-redis-users` are the values keys (`walletService`, `walletConfig`, `walletWorker`, `walletClock`, `gateway`), not the user names. If your own Secret uses the user names as keys (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`), give each user its key: for example `redis.users.walletWorker.password: {existingSecret: <your Secret>, key: wallet-worker}`.
 
 | User (`redis.users.<key>`) | Process | Rights on the data servers | Rights on the Sentinels |
 | --- | --- | --- | --- |
@@ -157,8 +157,8 @@ The values (see `profiles/redis-external.yaml`):
 | `redis.external.sentinels` | The Sentinels (`host:port`). They monitor the primary `redis.masterName`. |
 | `redis.external.address` | Without Sentinel: the address (`host:port`) of the primary, for a server that keeps its address across a failover. Set `sentinels` or `address`. |
 | `redis.external.sentinelAuth` | `true` (default): the processes log in to the Sentinels with their user. `false`: your Sentinels accept clients without a login. |
-| `redis.external.caSecret`, `.caKey` | The CA of your servers. Empty: the system CAs. The certificates must name the hosts that the clients connect to: the Sentinels, and the primary and replicas that the Sentinels give out. |
-| `redis.users.<key>.username`, `.passwordSecret`, `.passwordKey` | The users of the processes and the Secrets with their passwords (all required) |
+| `redis.external.ca.existingSecret`, `.ca.key` | The CA of your servers. Empty: the system CAs. The certificates must name the hosts that the clients connect to: the Sentinels, and the primary and replicas that the Sentinels give out. |
+| `redis.users.<key>.username`, `.password.existingSecret`, `.password.key` | The users of the processes and the Secrets with their passwords (all required) |
 | `networkPolicy.externalRedis` | With network policies: the CIDRs and ports of your servers and Sentinels (required) |
 
 When the wallet starts, it reads `INFO` of the primary. It refuses to start when the server is a Redis Cluster, when the version is too old, or when the eviction policy is not `noeviction`. It logs a warning when AOF is off or when the primary has no replica.
@@ -182,6 +182,6 @@ The values of each group:
 | `.sentinelAuth` | `true` (default): the processes log in to the Sentinels with their user |
 | `.caSecret`, `.caKey` | The CA of the group. Empty: the system CAs. |
 
-The wallet processes log in to each group with their ACL users of `redis.users` and the same passwords (from `redis.users.<key>.passwordSecret`, or from the Secret `<release>-redis-users` of the bundled Valkey). Create these users on the group with the rights of the wallet users (see [ACL users](#acl-users)): `walletService`, `walletConfig`, `walletWorker` and `walletClock`. The gateway and KEDA use only the queue group.
+The wallet processes log in to each group with their ACL users of `redis.users` and the same passwords (from `redis.users.<key>.password`, or from the Secret `<release>-redis-users` of the bundled Valkey). Create these users on the group with the rights of the wallet users (see [ACL users](#acl-users)): `walletService`, `walletConfig`, `walletWorker` and `walletClock`. The gateway and KEDA use only the queue group.
 
 Each wallet file then has the endpoints `state` and `cache` (see [The settings of the wallet](#the-settings-of-the-wallet)), and the wallet pods mount the CA of each group (`redis-state-ca.crt`, `redis-cache-ca.crt`). With network policies, add the addresses of the groups to `networkPolicy.externalRedis`: when Valkey is bundled, the chart gives them only to the wallet roles. The render stops when a group has neither `sentinels` nor `address`, or has both; when a Sentinel group has no `masterName`; or when network policies are on and `networkPolicy.externalRedis` is not set.

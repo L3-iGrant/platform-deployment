@@ -1,6 +1,6 @@
 {{- /*
 ServiceMonitor for /metrics of the servers, the workers and the clock
-(organisationWallet.serviceMonitor.enabled; the Prometheus Operator CRD
+(monitoring.serviceMonitor.enabled; the Prometheus Operator CRD
 must exist; docs/workers.md). Headless Services for the service and config
 roles (port metrics), each worker group and the clock (port health) expose
 the pods as targets, including pods that are not ready (a worker is not
@@ -9,14 +9,14 @@ Service's metrics.igrant.io/job label sets the job of its targets:
 wallet-server, wallet-worker, wallet-clock (the job names that the
 alert rules of the wallet use).
 */}}
-{{- if .Values.organisationWallet.serviceMonitor.enabled }}
+{{- if .Values.monitoring.serviceMonitor.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $metrics := include "ow.wallet.serverMetricsPort" . | int }}
 {{- $targets := list
   (dict "name" "wallet-service-metrics" "pods" "wallet-service" "port" $metrics "portName" "metrics" "job" "wallet-server")
   (dict "name" "wallet-config-metrics" "pods" "wallet-config" "port" $metrics "portName" "metrics" "job" "wallet-server")
   (dict "name" "wallet-clock" "pods" "wallet-clock" "port" (include "ow.wallet.clockHealthPort" . | int) "portName" "health" "job" "wallet-clock") }}
-{{- range $g := $w.workers.groups }}
+{{- range $g := include "ow.wallet.workerGroups" . | fromJsonArray }}
 {{- $component := include "ow.wallet.workerComponent" $g }}
 {{- $targets = append $targets (dict "name" $component "pods" $component "port" (include "ow.wallet.workerHealthPort" $ | int) "portName" "health" "job" "wallet-worker") }}
 {{- end }}
@@ -47,7 +47,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ow.labels" (list . "wallet-metrics") | nindent 4 }}
-    {{- with $w.serviceMonitor.labels }}
+    {{- with $.Values.monitoring.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
@@ -66,8 +66,8 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: {{ $w.serviceMonitor.interval }}
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
     - port: health
       path: /metrics
-      interval: {{ $w.serviceMonitor.interval }}
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
 {{- end }}

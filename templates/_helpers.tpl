@@ -4,23 +4,61 @@ helpers are in templates/database/_database.tpl.
 */}}
 
 {{/*
-The ClientAddress section of the api and gateway configs (the same in both):
-clientAddress.header, .trustedProxies and .trustedProxyHeader. When empty,
-the services use the TCP peer address. Output: JSON.
+The client address rule of one public host (<component>.exposure.clientAddress:
+header, trustedProxies and trustedProxyHeader). Each host has its own rule,
+because the hosts can be behind different proxies (for example a CDN in
+front of the api host, and a wallet host with DNS only). When empty, the
+services use the TCP peer address. Call with (list $ "api"|"organisationWallet").
+Output: JSON with the keys of the rule (camelCase).
+- api: ClientAddress of the gateway, api and webhook files.
+- organisationWallet: client_address of the wallet service file (snake_case
+  keys, in ow.wallet.config); the config role gets the client address
+  from the gateway.
 */}}
 {{- define "ow.clientAddress" -}}
-{{- $c := .Values.clientAddress | default dict -}}
+{{- $root := index . 0 -}}
+{{- $key := index . 1 -}}
+{{- $c := ((index $root.Values $key).exposure | default dict).clientAddress | default dict -}}
+{{- $path := printf "%s.exposure.clientAddress" $key -}}
 {{- if and $c.trustedProxies (not $c.trustedProxyHeader) -}}
-{{- fail "clientAddress.trustedProxies and clientAddress.trustedProxyHeader go together: set both or none" -}}
+{{- fail (printf "%s.trustedProxies and %s.trustedProxyHeader go together: set both or none" $path $path) -}}
 {{- end -}}
 {{- if and $c.trustedProxyHeader (not $c.trustedProxies) -}}
-{{- fail "clientAddress.trustedProxyHeader and clientAddress.trustedProxies go together: set both or none" -}}
+{{- fail (printf "%s.trustedProxyHeader and %s.trustedProxies go together: set both or none" $path $path) -}}
 {{- end -}}
 {{- $out := dict -}}
 {{- with $c.header -}}{{- $_ := set $out "header" . -}}{{- end -}}
 {{- with $c.trustedProxies -}}{{- $_ := set $out "trustedProxies" . -}}{{- end -}}
 {{- with $c.trustedProxyHeader -}}{{- $_ := set $out "trustedProxyHeader" . -}}{{- end -}}
 {{- toJson $out -}}
+{{- end }}
+
+{{/*
+The SSRF guards of the api core, the webhook handler, the gateway and the
+wallet (outboundHttp, docs/security-context.md, "The SSRF guards"). Each
+service has a guard on by default; outboundHttp.ssrfProtection.enabled
+false turns all of them off. The extra configuration keys of the services
+cannot turn a guard off or allow a private host: two sources for one
+setting. Call with the root context. Output: JSON {off: bool,
+allowedPrivate: [...]}.
+*/}}
+{{- define "ow.outboundHttp" -}}
+{{- $o := .Values.outboundHttp | default dict -}}
+{{- if hasKey ((.Values.api.advanced.extraConfig | default dict).OutboundHttp | default dict) "ssrfProtectionDisabled" -}}
+{{- fail "api.advanced.extraConfig.OutboundHttp.ssrfProtectionDisabled: set outboundHttp.ssrfProtection.enabled instead (the same setting for the api and the wallet)" -}}
+{{- end -}}
+{{- $walletSsrf := (.Values.organisationWallet.advanced.extraConfig | default dict).ssrf_protection | default dict -}}
+{{- if or (hasKey $walletSsrf "enabled") (hasKey $walletSsrf "allowed_private") -}}
+{{- fail "organisationWallet.advanced.extraConfig.ssrf_protection: set outboundHttp.ssrfProtection.enabled and outboundHttp.allowedPrivate instead" -}}
+{{- end -}}
+{{- $allowed := $o.allowedPrivate | default list -}}
+{{- range $entry := $allowed -}}
+{{- $text := lower (toString $entry) -}}
+{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
+{{- fail (printf "outboundHttp.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
+{{- end -}}
+{{- end -}}
+{{- toJson (dict "off" (eq (toString (dig "ssrfProtection" "enabled" true $o)) "false") "allowedPrivate" $allowed) -}}
 {{- end }}
 
 {{/*
@@ -52,6 +90,15 @@ the Secret from an earlier release, else a new random value. Call with
 {{- end -}}
 {{- end }}
 
+{{/* "true" when the chart runs NATS (nats.mode bundled), else "". */}}
+{{- define "ow.nats.bundled" -}}
+{{- $mode := .Values.nats.mode | default "bundled" -}}
+{{- if not (has $mode (list "bundled" "external")) -}}
+{{- fail (printf "nats.mode %q is not supported: use \"bundled\" or \"external\"" $mode) -}}
+{{- end -}}
+{{- if eq $mode "bundled" -}}true{{- end -}}
+{{- end }}
+
 {{/* TLS Secret of the bundled NATS (tls.crt, tls.key, ca.crt). */}}
 {{- define "ow.nats.tlsSecretName" -}}
 {{- .Values.nats.tls.existingSecret | default (include "ow.name" (list . "nats-tls")) -}}
@@ -59,18 +106,18 @@ the Secret from an earlier release, else a new random value. Call with
 
 {{/*
 The NATS CA that the services trust: ca.crt from the TLS Secret of the
-bundled NATS (which always runs TLS), or nats.tlsCa for an external NATS
-with TLS. Output: JSON {secret, key}, or {} when there is no CA.
+bundled NATS (which always runs TLS), or nats.external.ca for an external
+NATS with TLS. Output: JSON {secret, key}, or {} when there is no CA.
 */}}
 {{- define "ow.nats.ca" -}}
-{{- $nats := .Values.nats -}}
-{{- if $nats.enabled -}}
-{{- if $nats.tlsCa.existingSecret -}}
-{{- fail "nats.tlsCa is the CA of an external NATS (nats.enabled false): the bundled NATS has its own TLS (nats.tls)" -}}
+{{- $ca := .Values.nats.external.ca -}}
+{{- if include "ow.nats.bundled" . -}}
+{{- if $ca.existingSecret -}}
+{{- fail "nats.external.ca is the CA of an external NATS (nats.mode external): the bundled NATS has its own TLS (nats.tls)" -}}
 {{- end -}}
 {{- toJson (dict "secret" (include "ow.nats.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if $nats.tlsCa.existingSecret -}}
-{{- toJson (dict "secret" $nats.tlsCa.existingSecret "key" $nats.tlsCa.key) -}}
+{{- else if $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -78,20 +125,21 @@ with TLS. Output: JSON {secret, key}, or {} when there is no CA.
 
 {{/* The NATS URL that the services connect to. */}}
 {{- define "ow.nats.url" -}}
-{{- if .Values.nats.enabled -}}
+{{- if include "ow.nats.bundled" . -}}
 nats://{{ include "ow.name" (list . "nats") }}.{{ .Release.Namespace }}.svc:4222
 {{- else -}}
-{{ required "nats.external.url is required when nats.enabled is false" .Values.nats.external.url }}
+{{ required "nats.external.url is required with nats.mode external" .Values.nats.external.url }}
 {{- end -}}
 {{- end }}
 
 {{/*
-Name of one api key Secret: api.keyStorage.<item>.existingSecret, else
-"<fullname>-<default>". Call with (list $ "<item>" "<default>").
+Name of one key Secret: keys.<item>.existingSecret, else
+"<fullname>-<default>" (the Secret of scripts/make-keys.sh). Call with
+(list $ "<item>" "<default>").
 */}}
-{{- define "ow.api.keySecretName" -}}
+{{- define "ow.keys.secretName" -}}
 {{- $root := index . 0 -}}
-{{- (index $root.Values.api.keyStorage (index . 1)).existingSecret | default (include "ow.name" (list $root (index . 2))) -}}
+{{- (index $root.Values.keys (index . 1)).existingSecret | default (include "ow.name" (list $root (index . 2))) -}}
 {{- end }}
 
 {{/* Folder of the api secret files (one projected volume). */}}
@@ -105,16 +153,13 @@ Name of one api key Secret: api.keyStorage.<item>.existingSecret, else
 {{- end }}
 
 {{/*
-Keys that the chart writes to the Secret "<fullname>-api": values set in
-values.yaml or generated by the chart, when no existing Secret holds them.
-Output: JSON list.
+Keys that the chart writes to the Secret "<fullname>-api": the HMAC key of
+the api (keys.apiHmacKey), random and kept, when no existing Secret holds
+it. The values file has no secret. Output: JSON list.
 */}}
 {{- define "ow.api.chartSecretKeys" -}}
-{{- $api := .Values.api -}}
 {{- $keys := list -}}
-{{- if not $api.existingSecret -}}{{- $keys = append $keys "api-secret-key" -}}{{- end -}}
-{{- if and $api.smtp.host (not $api.smtp.existingSecret) $api.smtp.password -}}{{- $keys = append $keys "smtp-password" -}}{{- end -}}
-{{- if and (not $api.twilio.existingSecret) $api.twilio.accountSid -}}{{- $keys = concat $keys (list "twilio-account-sid" "twilio-auth-token") -}}{{- end -}}
+{{- if not .Values.keys.apiHmacKey.existingSecret -}}{{- $keys = append $keys .Values.keys.apiHmacKey.key -}}{{- end -}}
 {{- toJson $keys -}}
 {{- end }}
 
@@ -127,37 +172,35 @@ Output: JSON object "<file name>" -> {secret, key}.
 {{- define "ow.api.secretFiles" -}}
 {{- $root := . -}}
 {{- $api := .Values.api -}}
-{{- $ks := $api.keyStorage -}}
+{{- $k := .Values.keys -}}
 {{- $chartSecret := include "ow.name" (list $root "api") -}}
-{{- $chartKeys := include "ow.api.chartSecretKeys" $root | fromJsonArray -}}
 {{- $files := merge
   (include "ow.db.secretFiles" (list $root "api" "db-password") | fromJson)
   (include "ow.db.secretFiles" (list $root "oidc" "oidc-db-password") | fromJson) -}}
 {{- $files = merge $files (dict
-  "api-secret-key" (dict "secret" ($api.existingSecret | default $chartSecret) "key" "api-secret-key")
-  "token-hash-secret.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenHash" "api-token-hash")) "key" $ks.tokenHash.key)
-  "token-signing-jwks.json" (dict "secret" (include "ow.api.keySecretName" (list $root "tokenSigning" "api-token-signing")) "key" $ks.tokenSigning.key)
-  "db-wrapping-keys.json" (dict "secret" (include "ow.api.keySecretName" (list $root "dbWrapping" "api-db-wrapping")) "key" $ks.dbWrapping.key)) -}}
+  "api-secret-key" (dict "secret" ($k.apiHmacKey.existingSecret | default $chartSecret) "key" $k.apiHmacKey.key)
+  "token-hash-secret.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiTokenHash" "api-token-hash")) "key" $k.apiTokenHash.key)
+  "token-signing-jwks.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiTokenSigning" "api-token-signing")) "key" $k.apiTokenSigning.key)
+  "db-wrapping-keys.json" (dict "secret" (include "ow.keys.secretName" (list $root "apiDatabaseWrapping" "api-db-wrapping")) "key" $k.apiDatabaseWrapping.key)) -}}
 {{- $reader := include "ow.readAccess.reader" (list $root "api" "wallet") | fromJson -}}
 {{- $_ := set $files "read-access-wallet-password" (dict "secret" $reader.secret "key" $reader.key) -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "api") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- with include "ow.nats.ca" $root | fromJson -}}
 {{- $_ := set $files "nats-ca.crt" . -}}
 {{- end -}}
+{{- with $api.smtp.password.existingSecret -}}
 {{- if $api.smtp.host -}}
-{{- if $api.smtp.existingSecret -}}
-{{- $_ := set $files "smtp-password" (dict "secret" $api.smtp.existingSecret "key" $api.smtp.passwordKey) -}}
-{{- else if has "smtp-password" $chartKeys -}}
-{{- $_ := set $files "smtp-password" (dict "secret" $chartSecret "key" "smtp-password") -}}
+{{- $_ := set $files "smtp-password" (dict "secret" . "key" $api.smtp.password.key) -}}
 {{- end -}}
 {{- end -}}
-{{- if $api.twilio.existingSecret -}}
-{{- $_ := set $files "twilio-account-sid" (dict "secret" $api.twilio.existingSecret "key" $api.twilio.accountSidKey) -}}
-{{- $_ := set $files "twilio-auth-token" (dict "secret" $api.twilio.existingSecret "key" $api.twilio.authTokenKey) -}}
-{{- else if has "twilio-account-sid" $chartKeys -}}
-{{- $_ := set $files "twilio-account-sid" (dict "secret" $chartSecret "key" "twilio-account-sid") -}}
-{{- $_ := set $files "twilio-auth-token" (dict "secret" $chartSecret "key" "twilio-auth-token") -}}
+{{- $twilio := $api.twilio -}}
+{{- if ne (empty $twilio.accountSid.existingSecret) (empty $twilio.authToken.existingSecret) -}}
+{{- fail "api.twilio.accountSid.existingSecret and api.twilio.authToken.existingSecret go together: set both (SMS with Twilio) or none" -}}
+{{- end -}}
+{{- if $twilio.accountSid.existingSecret -}}
+{{- $_ := set $files "twilio-account-sid" (dict "secret" $twilio.accountSid.existingSecret "key" $twilio.accountSid.key) -}}
+{{- $_ := set $files "twilio-auth-token" (dict "secret" $twilio.authToken.existingSecret "key" $twilio.authToken.key) -}}
 {{- end -}}
 {{- toJson $files -}}
 {{- end }}
@@ -209,7 +252,7 @@ operator Jobs use "api") and the secret files (mode 0440). Call with
       - configMap:
           name: {{ include "ow.gateway.publicKeysConfigMap" $root }}
           items:
-            - key: {{ $root.Values.gateway.publicKeys.gatewayJwksKey }}
+            - key: gateway-jwks.json
               path: gateway-jwks.json
 - name: secrets
   projected:
@@ -245,7 +288,7 @@ events) and the wallet. Output: JSON list.
 
 {{/* NATS user (values key) of an api role: api or webhook. */}}
 {{- define "ow.api.natsUser" -}}
-{{- get (dict "api" "api" "webhook" "apiWebhook") . -}}
+{{- get (dict "api" "api" "webhook" "webhook") . -}}
 {{- end }}
 
 {{/* NATS user (values key) of a wallet role; "" for the clock, which does not use NATS. */}}
@@ -381,8 +424,8 @@ bucket (actors audit.anchor and audit.export), with the wallet's access key
 {{- if and (eq $role "worker") $b.name -}}
 {{- include "ow.wallet.checkAudit" $root -}}
 {{- if eq $b.type "s3" -}}
-{{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.idKey) -}}
-{{- $_ := set $files "audit-bucket-secret-access-key" (dict "secret" $b.accessKey.existingSecret "key" $b.accessKey.secretKey) -}}
+{{- $_ := set $files "audit-bucket-access-key-id" (dict "secret" $b.accessKeyId.existingSecret "key" $b.accessKeyId.key) -}}
+{{- $_ := set $files "audit-bucket-secret-access-key" (dict "secret" $b.secretAccessKey.existingSecret "key" $b.secretAccessKey.key) -}}
 {{- with $b.ca.existingSecret -}}
 {{- $_ := set $files "audit-bucket-ca.crt" (dict "secret" . "key" $b.ca.key) -}}
 {{- end -}}
@@ -398,7 +441,7 @@ read-only user (read_access). */ -}}
 {{- end -}}
 {{- /* Every wallet process signs its NATS events with the wallet's private
 JWKS. */ -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "organisationWallet") | fromJson -}}
 {{- $_ := set $files "service-envelope-jwks.json" (dict "secret" $signing.secret "key" $signing.key) -}}
 {{- end -}}
 {{- toJson $files -}}
@@ -495,6 +538,11 @@ Output: a list at column 0, or nothing.
 /run/secrets/igrant-gateway
 {{- end }}
 
+{{/* The port of the gateway process: a constant of the chart (1024 or more, the gateway runs as non-root). */}}
+{{- define "ow.gateway.listenPort" -}}
+8070
+{{- end }}
+
 {{/* Path of the gateway configuration file (--config). */}}
 {{- define "ow.gateway.configPath" -}}
 /etc/igrant-gateway/config.yaml
@@ -503,22 +551,31 @@ Output: a list at column 0, or nothing.
 {{/*
 Name of the shared ConfigMap with the gateway public keys
 (gateway-jwks.json). The api core and the wallet config role check the
-internal token with them. gateway.publicKeys.existingConfigMap, else the
+internal token with them. keys.publicJwks.existingConfigMap, else the
 chart's ConfigMap <fullname>-igrant-gateway-jwks (same name for all
 services).
 */}}
 {{- define "ow.gateway.publicKeysConfigMap" -}}
-{{- .Values.gateway.publicKeys.existingConfigMap | default (include "ow.name" (list . "igrant-gateway-jwks")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "igrant-gateway-jwks")) -}}
 {{- end }}
 
 {{/*
 Name of the ConfigMap with the public keys for api tokens
 (token-verification-jwks.json; only the gateway reads it):
-gateway.publicKeys.existingTokenVerificationConfigMap, else the chart's
-gateway ConfigMap (next to config.yaml).
+keys.publicJwks.existingConfigMap, else the chart's gateway ConfigMap (next
+to config.yaml).
 */}}
 {{- define "ow.gateway.tokenVerificationConfigMap" -}}
-{{- .Values.gateway.publicKeys.existingTokenVerificationConfigMap | default (include "ow.name" (list . "gateway")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "gateway")) -}}
+{{- end }}
+
+{{/*
+The internal token of the gateway: constants of the protocol, the same in
+the gateway, the api core and the wallet config role. issuer: its iss.
+audiences: its aud for each upstream. Output: JSON.
+*/}}
+{{- define "ow.gateway.internalToken" -}}
+{{- toJson (dict "issuer" "igrant-gateway" "audiences" (dict "core" "igrant-api-core" "walletConfig" "wallet-config")) -}}
 {{- end }}
 
 {{/*
@@ -532,7 +589,7 @@ Output: JSON object "<file name>" -> {secret, key}.
 */}}
 {{- define "ow.gateway.secretFiles" -}}
 {{- $api := include "ow.api.secretFiles" . | fromJson -}}
-{{- $signing := .Values.gateway.internalToken.signingKey -}}
+{{- $signing := .Values.keys.gatewayInternalToken -}}
 {{- $files := include "ow.db.secretFiles" (list . "api" "db-password") | fromJson -}}
 {{- $files = merge $files (dict
   "api-secret-key" (get $api "api-secret-key")
@@ -556,7 +613,7 @@ ow.gateway.keysDir). Output: a list at column 0.
   configMap:
     name: {{ include "ow.gateway.publicKeysConfigMap" . }}
     items:
-      - key: {{ .Values.gateway.publicKeys.gatewayJwksKey }}
+      - key: gateway-jwks.json
         path: gateway-jwks.json
 {{- end }}
 
@@ -566,9 +623,9 @@ core and the wallet config role verify the internal token of every request
 with them. Output: nothing.
 */}}
 {{- define "ow.gateway.checkGatewayJwks" -}}
-{{- $keys := .Values.gateway.publicKeys -}}
-{{- if and (not $keys.existingConfigMap) (not $keys.gatewayJwks) -}}
-{{- fail "gateway.publicKeys.gatewayJwks (or gateway.publicKeys.existingConfigMap) is required: the public keys of the gateway, which the api core and the wallet use to verify the internal token (igrant-api keys export-token-jwks; see docs/keys.md)" -}}
+{{- $keys := .Values.keys.publicJwks -}}
+{{- if and (not $keys.existingConfigMap) (not $keys.gatewayInternalToken) -}}
+{{- fail "keys.publicJwks.gatewayInternalToken (or keys.publicJwks.existingConfigMap) is required: the public keys of the gateway, which the api core and the wallet use to verify the internal token (scripts/make-keys.sh; see docs/keys.md)" -}}
 {{- end -}}
 {{- end }}
 
@@ -590,7 +647,7 @@ the user's values key. Output: JSON list.
     "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted")
     "kv" (list "OWS_ENVELOPE_JTI")
     "extra" (list "$JS.API.INFO"))
-  "apiWebhook" (dict
+  "webhook" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
     "durables" (list "OWS_MICROSERVICE/api-webhook-event" "OWS_MICROSERVICE/api-push-requested"))
   "walletConfig" (dict
@@ -666,7 +723,7 @@ consumers of another. Output: JSON list.
 */}}
 {{- define "ow.nats.users" -}}
 {{- $v := .Values -}}
-{{- $users := $v.nats.auth.users -}}
+{{- $users := $v.nats.users -}}
 {{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
 {{- $table := list
@@ -676,8 +733,8 @@ consumers of another. Output: JSON list.
       (list "ows.openidprovider.client.created" "ows.openidprovider.client.deleted" "ows.openidprovider.clients.deleted")
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))
-  (dict "name" "api-webhook" "key" "apiWebhook" "inbox" "_INBOX_apiwh" "allowResponses" false
-    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "apiWebhook" | fromJsonArray))
+  (dict "name" "api-webhook" "key" "webhook" "inbox" "_INBOX_apiwh" "allowResponses" false
+    "publish" (concat (list "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted" "ows.cmd.*.issuance.revoke") (include "ow.nats.jetStreamRights" "webhook" | fromJsonArray))
     "subscribe" (list))
   (dict "name" "wallet-config" "key" "walletConfig" "inbox" "_INBOX_wallet" "allowResponses" true
     "publish" (concat $walletEvents $cacheClears (include "ow.nats.jetStreamRights" "walletConfig" | fromJsonArray))
@@ -692,7 +749,7 @@ consumers of another. Output: JSON list.
 {{- range $user := $table -}}
 {{- $values := index $users $user.key | default dict -}}
 {{- $seed := dict -}}
-{{- with $values.seedSecret -}}{{- $seed = dict "secret" . "key" ($values.seedKey | default "seed") -}}{{- end -}}
+{{- with ($values.seed | default dict).existingSecret -}}{{- $seed = dict "secret" . "key" ($values.seed.key | default "seed") -}}{{- end -}}
 {{- $out = append $out (dict
     "name" $user.name "key" $user.key "nkey" ($values.nkey | default "") "seed" $seed "inbox" $user.inbox
     "allowResponses" $user.allowResponses
@@ -711,14 +768,14 @@ without credentials. Output: nothing.
 {{- $missing := list -}}
 {{- range $user := include "ow.nats.users" . | fromJsonArray -}}
 {{- if and $user.nkey (not (hasPrefix "U" $user.nkey)) -}}
-{{- fail (printf "nats.auth.users.%s.nkey must be a public user nkey (it starts with U), never the seed" $user.key) -}}
+{{- fail (printf "nats.users.%s.nkey must be a public user nkey (it starts with U), never the seed" $user.key) -}}
 {{- end -}}
 {{- if or (not $user.nkey) (not $user.seed) -}}
-{{- $missing = append $missing (printf "nats.auth.users.%s (%s)" $user.key $user.name) -}}
+{{- $missing = append $missing (printf "nats.users.%s (%s)" $user.key $user.name) -}}
 {{- end -}}
 {{- end -}}
 {{- if $missing -}}
-{{- fail (printf "every process connects to NATS with its own nkey user: set nkey and seedSecret for %s (make a pair with \"nsc generate nkey --user\"; see docs/nats-users.md)" (join ", " $missing)) -}}
+{{- fail (printf "every process connects to NATS with its own nkey user: set nkey and seed.existingSecret for %s (make a pair with \"nsc generate nkey --user\"; see docs/nats-users.md)" (join ", " $missing)) -}}
 {{- end -}}
 {{- end }}
 
@@ -752,7 +809,7 @@ when the chart runs NATS, else 1. For an external NATS, set it to the
 cluster size. A production cluster uses 3.
 */}}
 {{- define "ow.nats.jetstreamReplicas" -}}
-{{- .Values.nats.jetstreamReplicas | default (ternary .Values.nats.replicas 1 .Values.nats.enabled) | int -}}
+{{- .Values.nats.jetstreamReplicas | default (ternary .Values.nats.replicas 1 (eq (include "ow.nats.bundled" .) "true")) | int -}}
 {{- end }}
 
 {{/* Folder of the public service keys (ConfigMap igrant-service-jwks) in the service pods. */}}
@@ -762,25 +819,39 @@ cluster size. A production cluster uses 3.
 
 {{/*
 Name of the shared ConfigMap with the public JWKS of the services
-(<issuer>.json): serviceKeys.existingConfigMap, else the chart's ConfigMap
-<fullname>-igrant-service-jwks (same name for all services).
+(<issuer>.json): keys.publicJwks.existingConfigMap, else the chart's
+ConfigMap <fullname>-igrant-service-jwks (same name for all services).
 */}}
 {{- define "ow.serviceKeys.configMap" -}}
-{{- .Values.serviceKeys.existingConfigMap | default (include "ow.name" (list . "igrant-service-jwks")) -}}
+{{- .Values.keys.publicJwks.existingConfigMap | default (include "ow.name" (list . "igrant-service-jwks")) -}}
+{{- end }}
+
+{{/*
+The issuer name of the signed NATS envelopes of each component
+(keys.serviceEnvelope.<component>): a constant of the services. Output:
+JSON component -> issuer.
+*/}}
+{{- define "ow.serviceKeys.issuers" -}}
+{{- toJson (dict "api" "igrant-api" "organisationWallet" "eudi-wallet") -}}
 {{- end }}
 
 {{/*
 The issuers of signed NATS envelopes that one service trusts. Fails when the
-public JWKS of an issuer is missing (serviceKeys.publicJwks, or an existing
-ConfigMap). Call with (list $ "<issuer>" ...). Output: JSON list of
-{issuer, jwksFile}.
+public JWKS of an issuer is missing (keys.serviceEnvelope.<component>.publicJwks,
+or keys.publicJwks.existingConfigMap). Call with (list $ "<issuer>" ...).
+Output: JSON list of {issuer, jwksFile}.
 */}}
 {{- define "ow.serviceKeys.trusted" -}}
 {{- $root := index . 0 -}}
 {{- $out := list -}}
+{{- $components := dict -}}
+{{- range $component, $issuer := include "ow.serviceKeys.issuers" $root | fromJson -}}
+{{- $_ := set $components $issuer $component -}}
+{{- end -}}
 {{- range $issuer := rest . -}}
-{{- if and (not $root.Values.serviceKeys.existingConfigMap) (not (index $root.Values.serviceKeys.publicJwks $issuer)) -}}
-{{- fail (printf "serviceKeys.publicJwks.%s (or serviceKeys.existingConfigMap) is required: the public keys of the signed NATS envelopes of %s (igrant-api keys export-token-jwks; see docs/keys.md)" $issuer $issuer) -}}
+{{- $component := get $components $issuer -}}
+{{- if and (not $root.Values.keys.publicJwks.existingConfigMap) (not (index $root.Values.keys.serviceEnvelope $component).publicJwks) -}}
+{{- fail (printf "keys.serviceEnvelope.%s.publicJwks (or keys.publicJwks.existingConfigMap) is required: the public keys of the signed NATS messages of %s (scripts/make-keys.sh; see docs/keys.md)" $component $issuer) -}}
 {{- end -}}
 {{- $out = append $out (dict "issuer" $issuer "jwksFile" (printf "%s/%s.json" (include "ow.serviceKeys.dir" $root) $issuer)) -}}
 {{- end -}}
@@ -804,20 +875,28 @@ Call with (list $ "<issuer>" ...). Output: a list at column 0.
 {{- end }}
 
 {{/*
-The private JWKS Secret that one service signs its NATS envelopes with.
-Fails when the active kid is not set. Call with (list $ <service values>
-"<values key>" "<default secret suffix>"). Output: JSON {secret, key,
+The private JWKS Secret that one service signs its NATS envelopes with
+(keys.serviceEnvelope.<component>). Fails when the active kid is not set.
+Call with (list $ "api"|"organisationWallet"). Output: JSON {secret, key,
 activeKid}.
 */}}
 {{- define "ow.serviceKeys.signing" -}}
 {{- $root := index . 0 -}}
-{{- $envelope := (index . 1).serviceEnvelope -}}
-{{- $key := index . 2 -}}
-{{- $kid := required (printf "%s.serviceEnvelope.activeKid is required: the kid of the active key in the private JWKS of the signed NATS envelopes (igrant-api keys generate-token-key; see docs/keys.md)" $key) $envelope.activeKid -}}
+{{- $component := index . 1 -}}
+{{- $envelope := index $root.Values.keys.serviceEnvelope $component -}}
+{{- $kid := required (printf "keys.serviceEnvelope.%s.activeKid is required: the kid of the active key in the private JWKS of the signed NATS messages (scripts/make-keys.sh; see docs/keys.md)" $component) $envelope.activeKid -}}
 {{- toJson (dict
-  "secret" ($envelope.signingKey.existingSecret | default (include "ow.name" (list $root (index . 3))))
-  "key" $envelope.signingKey.key
+  "secret" ($envelope.existingSecret | default (include "ow.name" (list $root (get (dict "api" "api-service-key" "organisationWallet" "wallet-service-key") $component))))
+  "key" $envelope.key
   "activeKid" ($kid | toString)) -}}
+{{- end }}
+
+{{/*
+Lifetime and clock skew of the signed NATS envelopes, in seconds: constants
+of the protocol, the same in every service. Output: JSON.
+*/}}
+{{- define "ow.serviceKeys.timing" -}}
+{{- toJson (dict "lifetimeSeconds" 60 "clockSkewSeconds" 60) -}}
 {{- end }}
 
 {{/*
@@ -848,8 +927,8 @@ this chart. The engine and TLS settings always come from database.*
 {{- $reader := index . 1 -}}
 {{- $owner := index . 2 -}}
 {{- include "ow.readAccess.checkNames" $root -}}
-{{- $entry := index (index $root.Values.readAccess $reader | default dict) $owner | default dict -}}
-{{- $key := printf "readAccess.%s.%s" $reader $owner -}}
+{{- $entry := index (index $root.Values.database.readAccess $reader | default dict) $owner | default dict -}}
+{{- $key := printf "database.readAccess.%s.%s" $reader $owner -}}
 {{- if not $entry.username -}}
 {{- fail (printf "%s.username is required: %s reads the views of the %s database with its own read-only user (see docs/read-access.md)" $key $reader $owner) -}}
 {{- end -}}
@@ -858,13 +937,14 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 {{- if not (regexMatch "^[a-z][a-z0-9_]{0,62}$" $entry.username) -}}
 {{- fail (printf "%s.username %q is not a database user name: a lower-case letter, then lower-case letters, digits or _ (at most 63)" $key $entry.username) -}}
 {{- end -}}
+{{- $password := $entry.password | default dict -}}
 {{- toJson (dict
   "host" ($entry.host | default (include "ow.db.host" $root))
   "port" ($entry.port | default (include "ow.db.port" $root) | int)
   "name" ($entry.name | default (index $root.Values.database.databases $owner).name)
   "username" $entry.username
-  "secret" ($entry.passwordSecret | default (include "ow.readAccess.secretName" $root))
-  "key" (ternary ($entry.passwordKey | default "password") (printf "%s-%s" $reader $owner) (not (empty $entry.passwordSecret)))) -}}
+  "secret" ($password.existingSecret | default (include "ow.readAccess.secretName" $root))
+  "key" (ternary ($password.key | default "password") (printf "%s-%s" $reader $owner) (not (empty $password.existingSecret)))) -}}
 {{- end }}
 
 {{/* Name of the chart's Secret with the read-only user passwords (key <reader>-<owner>). */}}
@@ -874,17 +954,17 @@ wallet allows ^[a-z][a-z0-9_]{0,62}$; the api allows more). */ -}}
 
 {{/*
 Admin user of the read access Job for one owner database
-(readAccess.jobs.<owner>; "read-access apply --admin-user
+(database.readAccess.jobs.<owner>; "read-access apply --admin-user
 --admin-password-file"). It creates the read-only users and grants SELECT
-on the views. Empty values fall back to the admin of database.*
+on the views. Empty values fall back to the admin of the server
 (ow.db.admin: the "postgres" user of the bundled server, or
-database.external.admin). Call with (list $ "<owner>"). Output: JSON
-{user, secret, key}.
+database.admin). Call with (list $ "<owner>"). Output: JSON {user, secret,
+key}.
 */}}
 {{- define "ow.readAccess.admin" -}}
 {{- $root := index . 0 -}}
 {{- $owner := index . 1 -}}
-{{- $access := index $root.Values.readAccess.jobs $owner -}}
+{{- $access := index $root.Values.database.readAccess.jobs $owner -}}
 {{- $admin := include "ow.db.admin" $root | fromJson -}}
 {{- $user := $access.adminUser | default $admin.user -}}
 {{- $secret := $access.adminPasswordSecret -}}
@@ -893,10 +973,10 @@ database.external.admin). Call with (list $ "<owner>"). Output: JSON
 {{- $secret = $admin.secret -}}
 {{- $key = $key | default $admin.key -}}
 {{- end -}}
-{{- $prefix := printf "readAccess.jobs.%s" $owner -}}
+{{- $prefix := printf "database.readAccess.jobs.%s" $owner -}}
 {{- toJson (dict
-  "user" (required (printf "%s.adminUser (or database.external.admin.user) is required: the admin user that makes the read-only users" $prefix) $user)
-  "secret" (required (printf "%s.adminPasswordSecret (or database.external.admin.passwordSecret) is required: the Secret with the password of the admin user" $prefix) $secret)
+  "user" (required (printf "%s.adminUser (or database.admin.username) is required: the admin user that makes the read-only users" $prefix) $user)
+  "secret" (required (printf "%s.adminPasswordSecret (or database.admin.password.existingSecret) is required: the Secret with the password of the admin user" $prefix) $secret)
   "key" (required (printf "%s.adminPasswordKey is required with adminPasswordSecret" $prefix) $key)) -}}
 {{- end }}
 
@@ -922,13 +1002,13 @@ password and one read connection would fail. Output: nothing.
 {{- range $pair := $pairs -}}
 {{- $reader := index $pair 0 -}}
 {{- $owner := index $pair 1 -}}
-{{- $entry := index (index $v.readAccess $reader | default dict) $owner | default dict -}}
+{{- $entry := index (index $v.database.readAccess $reader | default dict) $owner | default dict -}}
 {{- if $entry.username -}}
 {{- $host := $entry.host | default (include "ow.db.host" $root) -}}
 {{- $port := $entry.port | default (include "ow.db.port" $root) | toString -}}
 {{- $key := printf "%s|%s|%s" $host $port $entry.username -}}
 {{- with get $seen $key -}}
-{{- fail (printf "readAccess.%s.username and readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
+{{- fail (printf "database.readAccess.%s.username and database.readAccess.%s.%s.username are both %q on the database server %s:%s: a PostgreSQL role belongs to the whole server, so the second read-access apply changes the password of the first. Use one name per reader and owner, for example the default <reader>_<owner>_reader" . $reader $owner $entry.username $host $port) -}}
 {{- end -}}
 {{- $_ := set $seen $key (printf "%s.%s" $reader $owner) -}}
 {{- end -}}
@@ -936,25 +1016,20 @@ password and one read connection would fail. Output: nothing.
 {{- end }}
 
 {{/*
-Stop budget of a Go server (api, webhook handler, gateway). The
-preStop hook first sleeps preStopSeconds, so the pod keeps serving while
-Kubernetes removes it from the endpoints. Then, on SIGTERM, the server
-drains for drainSeconds and waits at most gracefulShutdownSeconds.
-Kubernetes counts terminationGracePeriodSeconds from the start of the
-preStop, so it must be at least preStop + drain + graceful + a 5 s margin.
-A drain or graceful value of 0 means the service's own default. Call with
-(list "<values path>" <values with preStopSeconds, drainSeconds,
-gracefulShutdownSeconds, terminationGracePeriodSeconds> <default drain>
-<default graceful>).
+terminationGracePeriodSeconds of a Go server (api, webhook handler,
+gateway): the chart calculates it. The preStop hook first sleeps
+preStopSeconds, so the pod keeps serving while Kubernetes removes it from
+the endpoints. Then, on SIGTERM, the server drains for drainSeconds and
+waits at most gracefulShutdownSeconds. Kubernetes counts the grace period
+from the start of the preStop, so it is preStop + drain + graceful + a 5 s
+margin. A drain or graceful value of 0 means the service's own default.
+Call with (list <values with preStopSeconds, drainSeconds,
+gracefulShutdownSeconds> <default drain> <default graceful>). Output: the
+number of seconds.
 */}}
-{{- define "ow.checkStopBudget" -}}
-{{- $path := index . 0 -}}
-{{- $v := index . 1 -}}
-{{- $preStop := $v.preStopSeconds | int -}}
-{{- $drain := $v.drainSeconds | int | default (index . 2) -}}
-{{- $graceful := $v.gracefulShutdownSeconds | int | default (index . 3) -}}
-{{- $need := add $preStop $drain $graceful 5 -}}
-{{- if lt ($v.terminationGracePeriodSeconds | int) $need -}}
-{{- fail (printf "%s.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + drainSeconds (%v) + gracefulShutdownSeconds (%v) + 5 = %v: Kubernetes would kill the process before it stops" $path $v.terminationGracePeriodSeconds $preStop $drain $graceful $need) -}}
-{{- end -}}
+{{- define "ow.goGracePeriod" -}}
+{{- $v := index . 0 -}}
+{{- $drain := $v.drainSeconds | int | default (index . 1) -}}
+{{- $graceful := $v.gracefulShutdownSeconds | int | default (index . 2) -}}
+{{- add ($v.preStopSeconds | int) $drain $graceful 5 -}}
 {{- end }}

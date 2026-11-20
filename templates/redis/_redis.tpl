@@ -114,7 +114,7 @@ Output: JSON.
 {{/*
 ACL user of one process and the Secret with its password. Call with
 (list $ "<values key of redis.users>"). Output: JSON {username, secret,
-key}. The password comes from redis.users.<key>.passwordSecret, else
+key}. The password comes from redis.users.<key>.password, else
 (bundled) the chart's Secret <fullname>-redis-users (key: the values key).
 */}}
 {{- define "ow.redis.user" -}}
@@ -124,22 +124,23 @@ key}. The password comes from redis.users.<key>.passwordSecret, else
 {{- if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$" ($user.username | default "")) -}}
 {{- fail (printf "redis.users.%s.username %q is not an ACL user name: 1 to 64 letters, digits, . _ - (the first a letter or a digit)" $key ($user.username | default "")) -}}
 {{- end -}}
-{{- if $user.passwordSecret -}}
-{{- toJson (dict "username" $user.username "secret" $user.passwordSecret "key" ($user.passwordKey | default "password")) -}}
+{{- $password := $user.password | default dict -}}
+{{- if $password.existingSecret -}}
+{{- toJson (dict "username" $user.username "secret" $password.existingSecret "key" ($password.key | default "password")) -}}
 {{- else if include "ow.redis.bundled" $root -}}
 {{- toJson (dict "username" $user.username "secret" (include "ow.redis.usersSecretName" $root) "key" $key) -}}
 {{- else -}}
-{{- fail (printf "redis.users.%s.passwordSecret is required with redis.mode external: the Secret with the password of the ACL user %s on your server" $key $user.username) -}}
+{{- fail (printf "redis.users.%s.password.existingSecret is required with redis.mode external: the Secret with the password of the ACL user %s on your server" $key $user.username) -}}
 {{- end -}}
 {{- end }}
 
-{{/* Server CA: the TLS Secret of the bundled Valkey, or redis.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* Server CA: the TLS Secret of the bundled Valkey, or redis.external.ca. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.redis.ca" -}}
-{{- $external := .Values.redis.external -}}
+{{- $ca := .Values.redis.external.ca -}}
 {{- if include "ow.redis.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.redis.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if $external.caSecret -}}
-{{- toJson (dict "secret" $external.caSecret "key" ($external.caKey | default "ca.crt")) -}}
+{{- else if $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -268,9 +269,6 @@ Output: nothing.
 {{- if not (regexMatch "^[1-9][0-9]*([kKmMgG][bB]?)?$" ($r.maxmemory | toString)) -}}
 {{- fail (printf "redis.maxmemory %q is not a size: a number with an optional unit kb, mb or gb (for example 512mb)" ($r.maxmemory | toString)) -}}
 {{- end -}}
-{{- if and $r.metrics.serviceMonitor.enabled (not $r.metrics.enabled) -}}
-{{- fail "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled: the ServiceMonitor scrapes the exporters of the pods" -}}
-{{- end -}}
 {{- else -}}
 {{- $external := $r.external -}}
 {{- if and (not $external.sentinels) (not $external.address) -}}
@@ -287,7 +285,7 @@ Output: nothing.
 {{- if and $v.networkPolicy.enabled (not $v.networkPolicy.externalRedis) -}}
 {{- fail "networkPolicy.externalRedis needs the addresses of your Valkey or Redis (cidrs, and ports such as [6379, 26379]) when networkPolicy.enabled and redis.mode external: else the default deny blocks it" -}}
 {{- end -}}
-{{- if or $r.metrics.enabled $r.metrics.serviceMonitor.enabled -}}
+{{- if $r.metrics.enabled -}}
 {{- fail "redis.metrics is for the bundled Valkey (redis.mode bundled): monitor your own Valkey or Redis with your own exporter" -}}
 {{- end -}}
 {{- end -}}

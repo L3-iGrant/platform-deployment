@@ -1,0 +1,312 @@
+# The values that changed (docs/upgrade.md). An old value in a values file
+# stops the render with a message that names the new value
+# (templates/_renamed.tpl), and scripts/upgrade-values.py writes the new
+# values file from this table. values.schema.json keeps each old path
+# (deprecated, any type) for two releases after the change; then remove
+# the entry here and in the schema, and the schema refuses the old key.
+#
+# Each entry: old (the old path), after (the release after which it
+# changed), and one of new (the new path, or a list of paths), removed (why
+# it is not a value any more) or shape (what to do, for a new shape).
+# Optional: kind (the type of the old value when the path stays), values
+# (old value: new value), note (more words for the message), convert (a
+# conversion of scripts/upgrade-values.py) and secret (true: a plain
+# secret; the operator makes a Secret; kept: the chart keeps the value of
+# its own Secret).
+#
+# A line "# --- <title>" starts a group, and the next comment lines are its
+# text: tests/upgrade_page.py writes one table of docs/upgrade.md for each
+# group.
+
+# --- The keys block
+# All key ids, key Secrets and public JWKS are in one block, `keys`, and
+# `scripts/make-keys.sh` writes it (see [Keys](keys.md)). The public JWKS
+# of all services can come from one ConfigMap of yours. The lifetime and
+# the clock skew of the signed NATS messages and of the internal token,
+# and the issuer and audiences of the internal token, are constants.
+- {old: api.keyStorage.tokenSigning.activeKid, after: 2026.11.7, new: keys.apiTokenSigning.activeKid}
+- {old: api.keyStorage.tokenSigning.existingSecret, after: 2026.11.7, new: keys.apiTokenSigning.existingSecret}
+- {old: api.keyStorage.tokenSigning.key, after: 2026.11.7, new: keys.apiTokenSigning.key}
+- {old: api.keyStorage.tokenHash.existingSecret, after: 2026.11.7, new: keys.apiTokenHash.existingSecret}
+- {old: api.keyStorage.tokenHash.key, after: 2026.11.7, new: keys.apiTokenHash.key}
+- {old: api.keyStorage.dbWrapping.existingSecret, after: 2026.11.7, new: keys.apiDatabaseWrapping.existingSecret}
+- {old: api.keyStorage.dbWrapping.key, after: 2026.11.7, new: keys.apiDatabaseWrapping.key}
+- {old: api.existingSecret, after: 2026.11.7, new: keys.apiHmacKey.existingSecret}
+- old: api.apiSecretKey
+  after: 2026.11.7
+  removed: "a plain secret in a values file is not permitted; the chart keeps the key of its Secret <fullname>-api at an upgrade. For a key of your own, make a Secret and set keys.apiHmacKey.existingSecret"
+  secret: kept
+- {old: api.serviceEnvelope.activeKid, after: 2026.11.7, new: keys.serviceEnvelope.api.activeKid}
+- {old: api.serviceEnvelope.signingKey.existingSecret, after: 2026.11.7, new: keys.serviceEnvelope.api.existingSecret}
+- {old: api.serviceEnvelope.signingKey.key, after: 2026.11.7, new: keys.serviceEnvelope.api.key}
+- {old: api.serviceEnvelope.lifetimeSeconds, after: 2026.11.7, removed: "a constant of the protocol: the chart writes 60 for all services"}
+- {old: api.serviceEnvelope.clockSkewSeconds, after: 2026.11.7, removed: "a constant of the protocol: the chart writes 60 for all services"}
+- {old: organisationWallet.serviceEnvelope.activeKid, after: 2026.11.7, new: keys.serviceEnvelope.organisationWallet.activeKid}
+- {old: organisationWallet.serviceEnvelope.signingKey.existingSecret, after: 2026.11.7, new: keys.serviceEnvelope.organisationWallet.existingSecret}
+- {old: organisationWallet.serviceEnvelope.signingKey.key, after: 2026.11.7, new: keys.serviceEnvelope.organisationWallet.key}
+- {old: organisationWallet.serviceEnvelope.lifetimeSeconds, after: 2026.11.7, removed: "a constant of the protocol: the chart writes 60 for all services"}
+- {old: organisationWallet.serviceEnvelope.clockSkewSeconds, after: 2026.11.7, removed: "a constant of the protocol: the chart writes 60 for all services"}
+- {old: organisationWallet.internalAuth.clockSkewSeconds, after: 2026.11.7, removed: "a constant of the protocol: the chart writes 60"}
+- {old: gateway.internalToken.activeKid, after: 2026.11.7, new: keys.gatewayInternalToken.activeKid}
+- {old: gateway.internalToken.signingKey.existingSecret, after: 2026.11.7, new: keys.gatewayInternalToken.existingSecret}
+- {old: gateway.internalToken.signingKey.key, after: 2026.11.7, new: keys.gatewayInternalToken.key}
+- {old: gateway.internalToken.issuer, after: 2026.11.7, removed: "the chart writes the constant igrant-gateway"}
+- {old: gateway.internalToken.audiences, after: 2026.11.7, removed: "the chart writes the constants igrant-api-core and wallet-config"}
+- {old: gateway.publicKeys.gatewayJwks, after: 2026.11.7, new: keys.publicJwks.gatewayInternalToken}
+- {old: gateway.publicKeys.tokenVerificationJwks, after: 2026.11.7, new: keys.publicJwks.apiTokenVerification}
+- {old: gateway.publicKeys.gatewayJwksKey, after: 2026.11.7, removed: "the key in the ConfigMap is always gateway-jwks.json"}
+- {old: gateway.publicKeys.tokenVerificationJwksKey, after: 2026.11.7, removed: "the key in the ConfigMap is always token-verification-jwks.json"}
+- {old: gateway.publicKeys.existingConfigMap, after: 2026.11.7, new: keys.publicJwks.existingConfigMap, note: "one ConfigMap with gateway-jwks.json, token-verification-jwks.json, igrant-api.json and eudi-wallet.json", convert: publicJwksConfigMap}
+- {old: gateway.publicKeys.existingTokenVerificationConfigMap, after: 2026.11.7, new: keys.publicJwks.existingConfigMap, note: "one ConfigMap with gateway-jwks.json, token-verification-jwks.json, igrant-api.json and eudi-wallet.json", convert: publicJwksConfigMap}
+- {old: serviceKeys.existingConfigMap, after: 2026.11.7, new: keys.publicJwks.existingConfigMap, note: "one ConfigMap with gateway-jwks.json, token-verification-jwks.json, igrant-api.json and eudi-wallet.json", convert: publicJwksConfigMap}
+- {old: serviceKeys.publicJwks.igrant-api, after: 2026.11.7, new: keys.serviceEnvelope.api.publicJwks}
+- {old: serviceKeys.publicJwks.eudi-wallet, after: 2026.11.7, new: keys.serviceEnvelope.organisationWallet.publicJwks}
+
+# --- E-mail and SMS of the api
+# A secret is never a value: each secret is a reference to a Secret,
+# `{existingSecret, key}`. A plain password, account SID or auth token in a
+# values file stops the render: make a Secret first. The sender address of
+# the e-mails is `api.smtp.from`.
+- old: api.smtp.password
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the SMTP password and set api.smtp.password.existingSecret (and api.smtp.password.key; the default key is smtp-password)"
+  secret: true
+- {old: api.smtp.existingSecret, after: 2026.11.7, new: api.smtp.password.existingSecret}
+- {old: api.smtp.passwordKey, after: 2026.11.7, new: api.smtp.password.key}
+- {old: api.smtp.adminEmail, after: 2026.11.7, new: api.smtp.from}
+- old: api.twilio.accountSid
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the account SID and set api.twilio.accountSid.existingSecret (and .key; the default key is twilio-account-sid)"
+  secret: true
+- old: api.twilio.authToken
+  after: 2026.11.7
+  kind: string
+  shape: "make a Secret with the auth token and set api.twilio.authToken.existingSecret (and .key; the default key is twilio-auth-token)"
+  secret: true
+- {old: api.twilio.existingSecret, after: 2026.11.7, new: [api.twilio.accountSid.existingSecret, api.twilio.authToken.existingSecret]}
+- {old: api.twilio.accountSidKey, after: 2026.11.7, new: api.twilio.accountSid.key}
+- {old: api.twilio.authTokenKey, after: 2026.11.7, new: api.twilio.authToken.key}
+
+# --- Database
+# One admin block for both modes (`database.admin`; the bundled server has
+# the user `postgres`), one Secret reference for each database password,
+# and the CA of an external server in `database.external.ca`. A plain
+# password in a values file stops the render. At an upgrade, the chart
+# keeps the passwords of its Secret `<fullname>-postgres`. The read-only
+# users are in `database.readAccess` (see [Read access](read-access.md)).
+- old: database.databases.api.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.api.password.existingSecret"
+  secret: kept
+- old: database.databases.oidc.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.oidc.password.existingSecret"
+  secret: kept
+- old: database.databases.wallet.password
+  after: 2026.11.7
+  kind: string
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.databases.wallet.password.existingSecret"
+  secret: kept
+- old: database.auth.adminPassword
+  after: 2026.11.7
+  removed: "a plain password in a values file is not permitted; the chart keeps the password of its Secret <fullname>-postgres at an upgrade. For a password of your own, make a Secret and set database.admin.password.existingSecret"
+  secret: kept
+- old: database.auth.existingSecret
+  after: 2026.11.7
+  new: [database.databases.api.password.existingSecret, database.databases.oidc.password.existingSecret, database.databases.wallet.password.existingSecret, database.admin.password.existingSecret]
+  note: "the key of each database is its name; for the bundled server, the admin password has the key POSTGRES_PASSWORD"
+  convert: databaseSecret
+- {old: database.external.admin.user, after: 2026.11.7, new: database.admin.username}
+- {old: database.external.admin.passwordSecret, after: 2026.11.7, new: database.admin.password.existingSecret}
+- {old: database.external.admin.passwordKey, after: 2026.11.7, new: database.admin.password.key}
+- {old: database.tls.caSecret, after: 2026.11.7, new: database.external.ca.existingSecret}
+- {old: database.tls.caKey, after: 2026.11.7, new: database.external.ca.key}
+- {old: readAccess.api.wallet.username, after: 2026.11.7, new: database.readAccess.api.wallet.username}
+- {old: readAccess.api.wallet.passwordSecret, after: 2026.11.7, new: database.readAccess.api.wallet.password.existingSecret}
+- {old: readAccess.api.wallet.passwordKey, after: 2026.11.7, new: database.readAccess.api.wallet.password.key}
+- {old: readAccess.api.wallet.host, after: 2026.11.7, new: database.readAccess.api.wallet.host}
+- {old: readAccess.api.wallet.port, after: 2026.11.7, new: database.readAccess.api.wallet.port}
+- {old: readAccess.api.wallet.name, after: 2026.11.7, new: database.readAccess.api.wallet.name}
+- {old: readAccess.wallet.api.username, after: 2026.11.7, new: database.readAccess.wallet.api.username}
+- {old: readAccess.wallet.api.passwordSecret, after: 2026.11.7, new: database.readAccess.wallet.api.password.existingSecret}
+- {old: readAccess.wallet.api.passwordKey, after: 2026.11.7, new: database.readAccess.wallet.api.password.key}
+- {old: readAccess.wallet.api.host, after: 2026.11.7, new: database.readAccess.wallet.api.host}
+- {old: readAccess.wallet.api.port, after: 2026.11.7, new: database.readAccess.wallet.api.port}
+- {old: readAccess.wallet.api.name, after: 2026.11.7, new: database.readAccess.wallet.api.name}
+- {old: readAccess.jobs.enabled, after: 2026.11.7, new: database.readAccess.jobs.enabled}
+- {old: readAccess.jobs.api.adminUser, after: 2026.11.7, new: database.readAccess.jobs.api.adminUser}
+- {old: readAccess.jobs.api.adminPasswordSecret, after: 2026.11.7, new: database.readAccess.jobs.api.adminPasswordSecret}
+- {old: readAccess.jobs.api.adminPasswordKey, after: 2026.11.7, new: database.readAccess.jobs.api.adminPasswordKey}
+- {old: readAccess.jobs.wallet.adminUser, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminUser}
+- {old: readAccess.jobs.wallet.adminPasswordSecret, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordSecret}
+- {old: readAccess.jobs.wallet.adminPasswordKey, after: 2026.11.7, new: database.readAccess.jobs.wallet.adminPasswordKey}
+- {old: readAccess.jobs.ttlSecondsAfterFinished, after: 2026.11.7, new: database.readAccess.jobs.ttlSecondsAfterFinished}
+
+# --- NATS
+# NATS has `mode: bundled | external`, as the database, OpenBao and
+# Redis. The CA of an external NATS is `nats.external.ca`. The users are
+# `nats.users.<process>`, with the seed as a Secret reference; the user of
+# the webhook handler is `webhook`. `scripts/make-keys.sh` writes the new
+# block.
+- {old: nats.enabled, after: 2026.11.7, kind: bool, new: nats.mode, values: {"true": bundled, "false": external}}
+- {old: nats.tlsCa.existingSecret, after: 2026.11.7, new: nats.external.ca.existingSecret}
+- {old: nats.tlsCa.key, after: 2026.11.7, new: nats.external.ca.key}
+- {old: nats.auth.users.api.nkey, after: 2026.11.7, new: nats.users.api.nkey}
+- {old: nats.auth.users.api.seedSecret, after: 2026.11.7, new: nats.users.api.seed.existingSecret}
+- {old: nats.auth.users.api.seedKey, after: 2026.11.7, new: nats.users.api.seed.key}
+- {old: nats.auth.users.apiWebhook.nkey, after: 2026.11.7, new: nats.users.webhook.nkey}
+- {old: nats.auth.users.apiWebhook.seedSecret, after: 2026.11.7, new: nats.users.webhook.seed.existingSecret}
+- {old: nats.auth.users.apiWebhook.seedKey, after: 2026.11.7, new: nats.users.webhook.seed.key}
+- {old: nats.auth.users.walletConfig.nkey, after: 2026.11.7, new: nats.users.walletConfig.nkey}
+- {old: nats.auth.users.walletConfig.seedSecret, after: 2026.11.7, new: nats.users.walletConfig.seed.existingSecret}
+- {old: nats.auth.users.walletConfig.seedKey, after: 2026.11.7, new: nats.users.walletConfig.seed.key}
+- {old: nats.auth.users.walletService.nkey, after: 2026.11.7, new: nats.users.walletService.nkey}
+- {old: nats.auth.users.walletService.seedSecret, after: 2026.11.7, new: nats.users.walletService.seed.existingSecret}
+- {old: nats.auth.users.walletService.seedKey, after: 2026.11.7, new: nats.users.walletService.seed.key}
+- {old: nats.auth.users.walletWorker.nkey, after: 2026.11.7, new: nats.users.walletWorker.nkey}
+- {old: nats.auth.users.walletWorker.seedSecret, after: 2026.11.7, new: nats.users.walletWorker.seed.existingSecret}
+- {old: nats.auth.users.walletWorker.seedKey, after: 2026.11.7, new: nats.users.walletWorker.seed.key}
+
+# --- OpenBao, Redis and the audit bucket
+# The same Secret reference `{existingSecret, key}` for the password of the
+# OpenBao user of the wallet, for each Redis user, for the CA of an external
+# OpenBao or Redis (`external.ca`), and for the two parts of the access key
+# of the audit bucket.
+- {old: openbao.wallet.existingSecret, after: 2026.11.7, new: openbao.wallet.password.existingSecret}
+- {old: openbao.wallet.passwordKey, after: 2026.11.7, new: openbao.wallet.password.key}
+- {old: openbao.external.caSecret, after: 2026.11.7, new: openbao.external.ca.existingSecret}
+- {old: openbao.external.caKey, after: 2026.11.7, new: openbao.external.ca.key}
+- {old: redis.users.walletService.passwordSecret, after: 2026.11.7, new: redis.users.walletService.password.existingSecret}
+- {old: redis.users.walletService.passwordKey, after: 2026.11.7, new: redis.users.walletService.password.key}
+- {old: redis.users.walletConfig.passwordSecret, after: 2026.11.7, new: redis.users.walletConfig.password.existingSecret}
+- {old: redis.users.walletConfig.passwordKey, after: 2026.11.7, new: redis.users.walletConfig.password.key}
+- {old: redis.users.walletWorker.passwordSecret, after: 2026.11.7, new: redis.users.walletWorker.password.existingSecret}
+- {old: redis.users.walletWorker.passwordKey, after: 2026.11.7, new: redis.users.walletWorker.password.key}
+- {old: redis.users.walletClock.passwordSecret, after: 2026.11.7, new: redis.users.walletClock.password.existingSecret}
+- {old: redis.users.walletClock.passwordKey, after: 2026.11.7, new: redis.users.walletClock.password.key}
+- {old: redis.users.gateway.passwordSecret, after: 2026.11.7, new: redis.users.gateway.password.existingSecret}
+- {old: redis.users.gateway.passwordKey, after: 2026.11.7, new: redis.users.gateway.password.key}
+- {old: redis.external.caSecret, after: 2026.11.7, new: redis.external.ca.existingSecret}
+- {old: redis.external.caKey, after: 2026.11.7, new: redis.external.ca.key}
+- {old: organisationWallet.audit.bucket.accessKey.existingSecret, after: 2026.11.7, new: [organisationWallet.audit.bucket.accessKeyId.existingSecret, organisationWallet.audit.bucket.secretAccessKey.existingSecret]}
+- {old: organisationWallet.audit.bucket.accessKey.idKey, after: 2026.11.7, new: organisationWallet.audit.bucket.accessKeyId.key}
+- {old: organisationWallet.audit.bucket.accessKey.secretKey, after: 2026.11.7, new: organisationWallet.audit.bucket.secretAccessKey.key}
+
+# --- The platform operator Job
+# The Job that makes the platform operator organisation and its first
+# platform admin is `api.jobs.provisionPlatformOperator` (the words of the glossary), with
+# the groups `organisation` and `firstAdmin`, and the first password as a
+# Secret reference (see [Install](install.md#step-7-the-platform-operator-organisation-and-the-first-platform-admin)).
+- {old: api.jobs.bootstrapPlatform.enabled, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.enabled}
+- {old: api.jobs.bootstrapPlatform.organisationName, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.name}
+- {old: api.jobs.bootstrapPlatform.type, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.type}
+- {old: api.jobs.bootstrapPlatform.location, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.location}
+- {old: api.jobs.bootstrapPlatform.policyUrl, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.organisation.policyUrl}
+- {old: api.jobs.bootstrapPlatform.adminEmail, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.email}
+- {old: api.jobs.bootstrapPlatform.adminName, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.name}
+- {old: api.jobs.bootstrapPlatform.passwordSecret, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret}
+- {old: api.jobs.bootstrapPlatform.passwordKey, after: 2026.11.7, new: api.jobs.provisionPlatformOperator.firstAdmin.password.key}
+
+# --- Values that an operator seldom changes
+# Each component has a group `advanced` for the values that an operator
+# seldom changes (change them only with iGrant.io support). In this
+# release, the extra configuration keys go there.
+- {old: api.extraConfig, after: 2026.11.7, new: api.advanced.extraConfig}
+- {old: gateway.extraConfig, after: 2026.11.7, new: gateway.advanced.extraConfig}
+- {old: organisationWallet.extraConfig, after: 2026.11.7, new: organisationWallet.advanced.extraConfig}
+
+# --- Values that the chart knows
+# A constant of a protocol, a fact of an image or a value that the chart
+# can calculate is not a value. The chart calculates the grace period of
+# the pods from their stop times (`terminationGracePeriodSeconds`), and
+# writes the public URLs of the dashboard file and of the api from the
+# host names.
+- {old: api.server.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: api.server.preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5"}
+- {old: gateway.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: gateway.preStopSeconds + drainSeconds + gracefulShutdownSeconds + 5"}
+- {old: organisationWallet.server.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: organisationWallet.server.preStopSeconds + gracefulShutdownSeconds + backgroundShutdownSeconds + 5"}
+- {old: enterpriseDashboard.terminationGracePeriodSeconds, after: 2026.11.7, removed: "the chart calculates it: enterpriseDashboard.preStopSeconds + 20"}
+- {old: gateway.listenPort, after: 2026.11.7, removed: "the port of the gateway process is the constant 8070"}
+- {old: gateway.upstreams.core.url, after: 2026.11.7, removed: "the gateway always sends the requests of the api core to the api of this release"}
+- {old: api.iam.idpAlias, after: 2026.11.7, removed: "the chart writes the constant login-with-eudi-wallet. An installation that has another value since its first login sets Iam.IdPAlias in api.advanced.extraConfig"}
+- {old: api.dashboardUrl, after: 2026.11.7, removed: "the chart writes the public URL of enterpriseDashboard.host"}
+- {old: enterpriseDashboard.configuration.baseUrl, after: 2026.11.7, removed: "the chart writes the public URL of api.host"}
+- {old: enterpriseDashboard.configuration.walletUrl, after: 2026.11.7, removed: "the chart writes the public URL of organisationWallet.host"}
+- {old: enterpriseDashboard.configuration.appVersion, after: 2026.11.7, removed: "the chart writes the image tag of the dashboard"}
+
+# --- Log level
+# One value `global.logLevel` with one vocabulary for all components:
+# `debug`, `info`, `warn` or `error` (OpenBao also `trace`). The log level
+# of each component is empty by default (`global.logLevel`) and can
+# override it. The chart writes the words of each program, for example
+# `INFO` for the wallet.
+- {old: organisationWallet.logLevel, after: 2026.11.7, kind: string, values: {DEBUG: debug, INFO: info, WARNING: warn, ERROR: error, CRITICAL: error, warning: warn, critical: error}, note: "the words of all components: debug, info, warn, error"}
+
+# --- Installation limits
+# The limits of the installation are in `installation.limits`, next to the
+# optional features, as numbers with the real default 100 (was an empty
+# text for the default of the service).
+- {old: api.limits.maxOrganisations, after: 2026.11.7, new: installation.limits.maxOrganisations, note: "a number from 1 to 100; empty is now the default 100", convert: limit}
+- {old: organisationWallet.walletUnit.organisationWalletUnitsMax, after: 2026.11.7, new: installation.limits.maxOrganisationWalletUnits, note: "a number from 1 to 100; empty is now the default 100", convert: limit}
+
+# --- Monitoring
+# One block `monitoring` for the ServiceMonitors of all components, the
+# PrometheusRule of the wallet, their labels, and the network policy of the
+# scrape. One switch turns on the monitoring of the platform; the Valkey
+# exporters still need `redis.metrics.enabled`. The default interval is
+# 30s for all ServiceMonitors (the wallet had 15s).
+- {old: organisationWallet.serviceMonitor.enabled, after: 2026.11.7, new: monitoring.serviceMonitor.enabled}
+- {old: organisationWallet.serviceMonitor.interval, after: 2026.11.7, new: monitoring.serviceMonitor.interval}
+- {old: organisationWallet.serviceMonitor.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: organisationWallet.prometheusRule.enabled, after: 2026.11.7, new: monitoring.prometheusRule.enabled}
+- {old: organisationWallet.prometheusRule.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: redis.metrics.serviceMonitor.enabled, after: 2026.11.7, new: monitoring.serviceMonitor.enabled}
+- {old: redis.metrics.serviceMonitor.interval, after: 2026.11.7, new: monitoring.serviceMonitor.interval}
+- {old: redis.metrics.serviceMonitor.labels, after: 2026.11.7, new: monitoring.labels}
+- {old: networkPolicy.monitoring.enabled, after: 2026.11.7, new: monitoring.networkPolicy.enabled}
+- {old: networkPolicy.monitoring.namespaceSelector, after: 2026.11.7, new: monitoring.networkPolicy.namespaceSelector}
+- {old: networkPolicy.monitoring.podSelector, after: 2026.11.7, new: monitoring.networkPolicy.podSelector}
+
+# --- Outbound calls
+# One block `outboundHttp` for the SSRF guards of the api, the gateway and
+# the wallet: `ssrfProtection.enabled` (was a key in the extra configuration
+# of each service, with the opposite meaning in the api) and the private
+# hosts that the wallet may call (`allowedPrivate`). See [The SSRF
+# guards](security-context.md#the-ssrf-guards).
+- {old: organisationWallet.ssrf.allowedPrivate, after: 2026.11.7, new: outboundHttp.allowedPrivate}
+- {old: api.extraConfig.OutboundHttp.ssrfProtectionDisabled, after: 2026.11.7, new: outboundHttp.ssrfProtection.enabled, note: "one switch for the api and the wallet: false turns the guards off", convert: ssrfSwitch}
+- {old: organisationWallet.extraConfig.ssrf_protection.enabled, after: 2026.11.7, new: outboundHttp.ssrfProtection.enabled, note: "one switch for the api and the wallet: false turns the guards off", convert: ssrfSwitch}
+- {old: organisationWallet.extraConfig.ssrf_protection.allowed_private, after: 2026.11.7, new: outboundHttp.allowedPrivate}
+
+# --- Worker groups
+# `organisationWallet.workers.groups` is a map with the group name as key
+# (was a list). A value of yours changes one group and keeps the others
+# (Helm merges maps but replaces lists); `null` removes a default group.
+# The grace period of a group is `shutdownTimeoutSeconds` + 30 (the chart
+# calculates it; see [Workers and clock](workers.md)).
+- old: organisationWallet.workers.groups
+  after: 2026.11.7
+  kind: slice
+  shape: "a map with the group name as key now, for example {main: {queues: [...], replicas: 2, ...}}; without terminationGracePeriodSeconds (the chart calculates it)"
+  convert: workerGroups
+
+# --- Client address
+# Each public host has its own client address rule, in its exposure block:
+# `api.exposure.clientAddress` (the gateway, the api and the webhook
+# handler) and `organisationWallet.exposure.clientAddress` (the service
+# pods of the wallet), because the hosts can be behind different proxies,
+# for example a CDN only in front of the api host. The wallet reads the
+# client address with the same rules as the gateway now: it no longer
+# trusts `X-Forwarded-For` from a list of proxy networks. Behind
+# ingress-nginx or the Envoy Gateway policy of the chart, set `header:
+# X-Real-IP` for both hosts (the exposure profiles do it). The trusted
+# proxies of a CDN go to the api host; give them to the wallet host only
+# when the CDN is also in front of it (see [Exposure](exposure.md)). This
+# release needs the wallet image of the same release.
+- {old: clientAddress.header, after: 2026.11.7, new: [api.exposure.clientAddress.header, organisationWallet.exposure.clientAddress.header]}
+- {old: clientAddress.trustedProxies, after: 2026.11.7, new: api.exposure.clientAddress.trustedProxies, note: "also organisationWallet.exposure.clientAddress.trustedProxies only when the same proxies are in front of the wallet host"}
+- {old: clientAddress.trustedProxyHeader, after: 2026.11.7, new: api.exposure.clientAddress.trustedProxyHeader, note: "also organisationWallet.exposure.clientAddress.trustedProxyHeader only when the same proxies are in front of the wallet host"}
+- {old: organisationWallet.forwardedAllowIps, after: 2026.11.7, removed: "the wallet reads the client address with the rules of the gateway now: set organisationWallet.exposure.clientAddress, for example header X-Real-IP behind ingress-nginx or the Envoy Gateway policy of the chart"}

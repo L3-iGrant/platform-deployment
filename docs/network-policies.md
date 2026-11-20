@@ -10,7 +10,7 @@ The NetworkPolicy objects of the chart and their values.
 - only the gateway reaches the API core and the wallet config role;
 - the database (port 5432), NATS and Valkey (ports 6379 and 26379: only the wallet roles, the gateway and the other Valkey pods) accept only their clients;
 - the wallet clock reaches only the database and Valkey;
-- only `networkPolicy.monitoring` reaches the metrics port 9190 of the service and config pods, the health ports of the workers and the clock (the scrape of `/metrics`, see [Workers and clock](workers.md#probes-and-metrics)), and the exporter port 9121 of the Valkey pods (see [Redis](redis.md#metrics));
+- only `monitoring.networkPolicy` reaches the metrics port 9190 of the service and config pods, the health ports of the workers and the clock (the scrape of `/metrics`, see [Workers and clock](workers.md#probes-and-metrics)), and the exporter port 9121 of the Valkey pods (see [Redis](redis.md#metrics));
 - a default policy refuses all other traffic.
 
 | Value | Description |
@@ -20,7 +20,7 @@ The NetworkPolicy objects of the chart and their values.
 | `networkPolicy.externalDatabases`, `.externalNats`, `.externalRedis` | The addresses (CIDR) of an external database, NATS, or Valkey or Redis (`redis.mode: external`, or the wallet's separate groups `redis.state` and `redis.cache`; required then; default ports 6379 and 26379) |
 | `networkPolicy.egress.profiles` | The external targets: `internet`, `internet-any-port`, `platform` (the public hosts of this platform), `metadata`, `kms` (an external OpenBao), `cloudKms` (a cloud KMS on a private address), `auditBucket` (the S3 store of the audit bucket on a private address; the workers only), `smtp` |
 | `networkPolicy.egress.roles` | The profiles of each component (`wallet-worker`: all worker groups; `wallet-clock` has none) |
-| `networkPolicy.monitoring` | The monitoring namespace: it reaches the NATS monitor port, the metrics ports of the servers, the health ports of the workers and the clock, and the exporter port of the Valkey pods |
+| `monitoring.networkPolicy` | The monitoring namespace: it reaches the NATS monitor port, the metrics ports of the servers, the health ports of the workers and the clock, and the exporter port of the Valkey pods |
 
 ## The values that you must set
 
@@ -33,16 +33,16 @@ Helm merges your values with the defaults key by key: a selector in your file ke
 | DNS | `networkPolicy.dns` | Always | The namespace, labels and ports of your DNS pods (`kubectl -n kube-system get pods --show-labels`). OpenShift: namespace `openshift-dns`, pods `dns.operator.openshift.io/daemonset-dns: default`, port 5353. NodeLocal DNSCache: add its address to `cidrs` (usually `169.254.20.10/32`) and also select its pods (`podSelector: {matchExpressions: [{key: k8s-app, operator: In, values: [kube-dns, node-local-dns]}]}`). A resolver on the node or in your network: its address in `cidrs`. |
 | The ingress controller | `networkPolicy.ingressController` | Always | The namespace and labels of the pods of your ingress controller, or of your Gateway's data plane. Default: all pods of the namespace `envoy-gateway-system` (see [Envoy Gateway](#envoy-gateway)); the other exposure profiles set their controller. These pods are the only source of public traffic, and the target of the profile `platform`. |
 | The pod and Service ranges | `networkPolicy.clusterCidrs` | Always when a range is not private | The pod CIDR and the Service CIDR of your cluster, including the IPv6 ranges of a dual-stack cluster. The `internet` profiles exclude them (each all-addresses block, `0.0.0.0/0` and `::/0`, excludes the entries of its family). The default `except` list already excludes the private ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16, fc00::/7, fe80::/10). |
-| A database outside the cluster | `networkPolicy.externalDatabases` | `database.mode: external`, or a `readAccess.<reader>.<owner>.host` | The CIDR and port of each server. A managed database can get a new address in its subnet after a failover (Cloud SQL, Amazon RDS, Azure Database): give the CIDR of the subnet. |
+| A database outside the cluster | `networkPolicy.externalDatabases` | `database.mode: external`, or a `database.readAccess.<reader>.<owner>.host` | The CIDR and port of each server. A managed database can get a new address in its subnet after a failover (Cloud SQL, Amazon RDS, Azure Database): give the CIDR of the subnet. |
 | The audit bucket | `networkPolicy.egress.profiles.auditBucket` | The store of the audit bucket has a private address (a store in your network, a private endpoint, an S3 store in the cluster) | The CIDR, or the namespace and pod selectors, of the store, and its port. A store with a public address (Google Cloud Storage, Amazon S3) needs no value: the workers have the profile `internet-any-port`. See [Audit log](audit-log.md). |
 | The metadata server of your cloud | Add `metadata` to `networkPolicy.egress.roles.<role>`; `networkPolicy.egress.profiles.metadata.cidrs` | The pods get their cloud credentials from the metadata server (GKE Workload Identity for the audit bucket or a key store `gcp-kms`; the instance role on AWS or Azure) | The roles that use the cloud service (`wallet-worker` for the audit bucket; `wallet-service`, `wallet-config`, `wallet-worker` for a cloud key store). Default address `169.254.169.254/32`, port 80. EKS Pod Identity: `169.254.170.23/32`. |
 | The public hosts of this platform | `networkPolicy.egress.profiles.platform` | Always with the wallet (on by default for `wallet-service`, `wallet-config`, `wallet-worker`) | `ports`: the container ports of your ingress controller pods, and the ports of the load balancer in `cidrs` (default 80, 443, 10080 and 10443: Envoy Gateway listens on 10080 and 10443; the ingress-nginx profiles set 80 and 443; Traefik 8000 and 8443). `cidrs`: the address of your load balancer, if it is in a private range and pod traffic goes to it (for example a load balancer with `ipMode: Proxy`). See [The public hosts of this platform](#the-public-hosts-of-this-platform). |
 | SMTP | `networkPolicy.egress.profiles.smtp` | The api sends e-mail | The CIDR and port of your mail relay (default port 587). |
 | An external OpenBao | `networkPolicy.egress.profiles.kms` | `openbao.mode: external` | The CIDR, or the namespace and pod selectors, of OpenBao (default port 8200). |
 | A cloud KMS on a private address | `networkPolicy.egress.profiles.cloudKms` | A key store `gcp-kms`, `aws-kms` or `azure-key-vault` through a private endpoint | The CIDR of the private endpoint (port 443). The public endpoints go through the profile `internet`. |
-| An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.enabled: false` | The namespace and pod selectors, or the CIDR and port (default 4222). |
+| An external NATS | `networkPolicy.nats` (in the cluster) or `networkPolicy.externalNats` | `nats.mode: external` | The namespace and pod selectors, or the CIDR and port (default 4222). |
 | An external Valkey or Redis | `networkPolicy.externalRedis` | `redis.mode: external`, or `redis.state` or `redis.cache` | Required then. The CIDR and ports (default 6379 and 26379). |
-| Monitoring | `networkPolicy.monitoring` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
+| Monitoring | `monitoring.networkPolicy` | You scrape the metrics | `enabled: true`, and the namespace and pod selectors of your Prometheus. |
 
 ## The public hosts of this platform
 
@@ -50,7 +50,7 @@ A wallet role reads URLs on the public hosts of this platform: the status list o
 
 In most clusters, traffic from a pod to the address of a cluster load balancer does not leave the cluster: kube-proxy and Cilium send it directly to the ingress controller pods. The `internet` profiles exclude pod addresses, so the profile `platform` allows these pods (the selectors of `networkPolicy.ingressController`) on its `ports`. If your load balancer has a public address and the traffic goes to it, the `internet` profiles also allow it.
 
-If the public hosts have private addresses (on premise, an internal load balancer), the wallet's SSRF guard refuses them too. List the host names or networks in `organisationWallet.ssrf.allowedPrivate`, and give the address of the load balancer to `networkPolicy.egress.profiles.platform.cidrs`.
+If the public hosts have private addresses (on premise, an internal load balancer), the wallet's SSRF guard refuses them too. List the host names or networks in `outboundHttp.allowedPrivate`, and give the address of the load balancer to `networkPolicy.egress.profiles.platform.cidrs`.
 
 ### Envoy Gateway
 
@@ -111,7 +111,7 @@ The `::/0` block of the `internet` profiles excludes `fc00::/7` (unique local), 
 | `127.0.0.0/8` | `64:ff9b::7f00:0/104` |
 | `0.0.0.0/8` | `64:ff9b::/104` |
 
-If your network has its own NAT64 prefix (RFC 6052, section 2.2), the chart's excepts do not cover it. Add the images of the same IPv4 ranges in your prefix to the `except` of both `internet` profiles. A list in your values replaces the default list, so give every entry of the default list (in `values.yaml`), then the new entries. For the prefix `2001:db8:64::/96`, the new entries are `2001:db8:64::a00:0/104`, `2001:db8:64::ac10:0/108`, `2001:db8:64::c0a8:0/112`, `2001:db8:64::6440:0/106`, `2001:db8:64::a9fe:0/112`, `2001:db8:64::7f00:0/104` and `2001:db8:64::/104`. With a prefix shorter than /96, the IPv4 address is not in the last 32 bits (RFC 6052, section 2.2): calculate the images for that format. Also give the prefix to the SSRF guard of the wallet, in `ssrf_protection.nat64_prefixes` (with `organisationWallet.extraConfig`, for example `{ssrf_protection: {nat64_prefixes: ["2001:db8:64::/96"]}}`): without it, the guard takes the NAT64 image of a private IPv4 address as public.
+If your network has its own NAT64 prefix (RFC 6052, section 2.2), the chart's excepts do not cover it. Add the images of the same IPv4 ranges in your prefix to the `except` of both `internet` profiles. A list in your values replaces the default list, so give every entry of the default list (in `values.yaml`), then the new entries. For the prefix `2001:db8:64::/96`, the new entries are `2001:db8:64::a00:0/104`, `2001:db8:64::ac10:0/108`, `2001:db8:64::c0a8:0/112`, `2001:db8:64::6440:0/106`, `2001:db8:64::a9fe:0/112`, `2001:db8:64::7f00:0/104` and `2001:db8:64::/104`. With a prefix shorter than /96, the IPv4 address is not in the last 32 bits (RFC 6052, section 2.2): calculate the images for that format. Also give the prefix to the SSRF guard of the wallet, in `ssrf_protection.nat64_prefixes` (with `organisationWallet.advanced.extraConfig`, for example `{ssrf_protection: {nat64_prefixes: ["2001:db8:64::/96"]}}`): without it, the guard takes the NAT64 image of a private IPv4 address as public.
 
 The lists have no `::ffff:0:0/96` (the IPv4-mapped addresses): the API server refuses an IPv4-mapped address in a NetworkPolicy, and a packet never carries one (a dual-stack socket sends IPv4 packets, and the IPv4 block applies to them).
 

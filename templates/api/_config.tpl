@@ -18,15 +18,17 @@ Call with (dict "root" $ "role" "api"|"webhook").
 {{- $pool := ternary $pools.webhook $pools.api (eq .role "webhook") -}}
 {{- $dir := include "ow.api.secretDir" $root -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.api.natsUser" .role)) | fromJson -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $api "api" "api-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "api") | fromJson -}}
+{{- $envelope := include "ow.serviceKeys.timing" $root | fromJson -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $config := dict
   "ApiBaseUrl" $apiUrl
   "ServiceName" "igrant-api"
   "ApiSecretKeyFile" (include "ow.api.secretFile" (list $root "api-secret-key"))
   "DataBase" (include "ow.db.goOwner" (dict "root" $root "db" "api" "secretDir" $dir "passwordFile" "db-password" "pool" $pool) | fromJson)
-  "Dashboard" (dict "url" ($api.dashboardUrl | default (include "ow.publicUrlOf" (list $root "enterpriseDashboard"))))
+  "Dashboard" (dict "url" (include "ow.publicUrlOf" (list $root "enterpriseDashboard")))
   "Iam" (dict
-    "IdPAlias" $api.iam.idpAlias
+    "IdPAlias" "login-with-eudi-wallet"
     "APIBaseUrl" $apiUrl
     "mode" "builtin")
   "AdminAuth" (dict
@@ -49,11 +51,11 @@ Call with (dict "root" $ "role" "api"|"webhook").
   "KeyStorage" (dict
     "tokenHashSecretFile" (include "ow.api.secretFile" (list $root "token-hash-secret.json"))
     "tokenSigningJwksFile" (include "ow.api.secretFile" (list $root "token-signing-jwks.json"))
-    "tokenSigningActiveKid" (required "api.keyStorage.tokenSigning.activeKid is required (the kid of the active key in the token signing JWKS)" $api.keyStorage.tokenSigning.activeKid | toString)
+    "tokenSigningActiveKid" (required "keys.apiTokenSigning.activeKid is required: the kid of the active key in the token signing JWKS (scripts/make-keys.sh; see docs/keys.md)" $v.keys.apiTokenSigning.activeKid | toString)
     "dbWrappingKeysFile" (include "ow.api.secretFile" (list $root "db-wrapping-keys.json"))
     "allowPlaintextProviderKeys" false)
-  "ClientAddress" (include "ow.clientAddress" $root | fromJson)
-  "Log" (dict "level" $api.logLevel)
+  "ClientAddress" (include "ow.clientAddress" (list $root "api") | fromJson)
+  "Log" (dict "level" (include "ow.logLevel" (list $root "api")))
 -}}
 {{- /* The installation (ow.installation.config): its services and its
 optional features. */ -}}
@@ -66,7 +68,7 @@ optional features. */ -}}
     "host" $api.smtp.host
     "port" ($api.smtp.port | int)
     "username" $api.smtp.username
-    "adminEmail" $api.smtp.adminEmail -}}
+    "fromEmail" $api.smtp.from -}}
 {{- with $api.smtp.replyTo -}}
 {{- $_ := set $smtp "replyTo" . -}}
 {{- end -}}
@@ -86,8 +88,8 @@ processes sign with the api key. */ -}}
 {{- $_ := set $config "ServiceEnvelope" (dict
     "signingJwksFile" (printf "%s/service-envelope-jwks.json" (include "ow.api.secretDir" $root))
     "activeKid" $signing.activeKid
-    "lifetimeSeconds" ($api.serviceEnvelope.lifetimeSeconds | int)
-    "clockSkewSeconds" ($api.serviceEnvelope.clockSkewSeconds | int)
+    "lifetimeSeconds" ($envelope.lifetimeSeconds | int)
+    "clockSkewSeconds" ($envelope.clockSkewSeconds | int)
     "trustedIssuers" (include "ow.serviceKeys.trusted" (prepend (include "ow.api.trustedIssuers" $root | fromJsonArray) $root) | fromJsonArray)) -}}
 {{- if (include "ow.nats.ca" $root | fromJson).secret -}}
 {{- $_ := set $config.Nats "tlsCaFile" (printf "%s/nats-ca.crt" (include "ow.api.secretDir" $root)) -}}
@@ -109,32 +111,34 @@ read-only user (ReadAccess.wallet, same shape as DataBase). */ -}}
 (start-api needs GatewayToken.jwksFile; start-webhook-api does not read the
 section). */ -}}
 {{- $_ := set $config "GatewayToken" (dict
-    "issuer" $v.gateway.internalToken.issuer
-    "audiences" $v.gateway.internalToken.audiences
+    "issuer" $internalToken.issuer
+    "audiences" $internalToken.audiences
     "jwksFile" (printf "%s/gateway-jwks.json" (include "ow.api.configPath" $root | dir))) -}}
 {{- /* How the two server processes stop: drain, then wait for the requests
 in progress. The operator Jobs do not read this section. */ -}}
 {{- $_ := set $config "Server" (dict
     "drainSeconds" ($api.server.drainSeconds | int)
     "gracefulShutdownSeconds" ($api.server.gracefulShutdownSeconds | int)) -}}
-{{- /* The installation limits (api.limits): the key is set only when the
-installer gives a value; otherwise the api uses its default. The gateway
-file never has it, because the gateway refuses the section. */ -}}
-{{- with dig "limits" "maxOrganisations" "" $api -}}
-{{- $_ := set $config "Limits" (dict "maxOrganisations" (. | int)) -}}
-{{- end -}}
+{{- /* The installation limits (installation.limits). The gateway file
+never has them, because the gateway refuses the section. */ -}}
+{{- $_ := set $config "Limits" (dict "maxOrganisations" ($v.installation.limits.maxOrganisations | int)) -}}
 {{- if $api.verifierApp.androidPackageName -}}
 {{- $_ := set $config "VerifierApp" $api.verifierApp -}}
 {{- end -}}
-{{- /* api.extraConfig cannot set Installation: ow.installation.config
+{{- /* api.advanced.extraConfig cannot set Installation: ow.installation.config
 fails the render when it names other services, and the chart writes its
 own section. */ -}}
-{{- $extra := deepCopy ($api.extraConfig | default dict) -}}
+{{- /* The SSRF guard (outboundHttp.ssrfProtection): the key only when the
+guard is off; the api default is on. */ -}}
+{{- if (include "ow.outboundHttp" $root | fromJson).off -}}
+{{- $_ := set $config "OutboundHttp" (dict "ssrfProtectionDisabled" true) -}}
+{{- end -}}
+{{- $extra := deepCopy ($api.advanced.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
 {{- /* No log file (ow.noLogFile): the api and the webhook handler log to
 stdout. */ -}}
-{{- include "ow.noLogFile" (list "api.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- include "ow.noLogFile" (list "api.advanced.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
 {{- $config | toYaml -}}
 {{- end }}
 
@@ -150,11 +154,11 @@ it cannot read the release's new ConfigMaps.
 {{- toYaml (dict
     "DataBase" (include "ow.db.goOwner" (dict "root" . "db" "api" "secretDir" $dir "passwordFile" "db-password") | fromJson)
     "Extensions" (dict "oidc" (dict "database" (include "ow.db.goOwner" (dict "root" . "db" "oidc" "secretDir" $dir "passwordFile" "oidc-db-password") | fromJson)))
-    "Log" (dict "level" .Values.api.logLevel)) }}
+    "Log" (dict "level" (include "ow.logLevel" (list . "api")))) }}
 {{- end }}
 
 {{/*
-Render guard for the upload memory of the api core (api.extraConfig Uploads
+Render guard for the upload memory of the api core (api.advanced.extraConfig Uploads
 and ImageUpload). Each image upload in progress holds its file in memory,
 with at most Uploads.maxInProgress of them (default 8). The container's
 memory request (the process memory without uploads) plus maxInProgress x
@@ -163,7 +167,7 @@ context. Output: nothing.
 */}}
 {{- define "ow.api.checkUploads" -}}
 {{- $api := .Values.api -}}
-{{- $config := $api.extraConfig | default dict -}}
+{{- $config := $api.advanced.extraConfig | default dict -}}
 {{- $inProgress := (dig "Uploads" "maxInProgress" 0 $config) | int64 | default 8 -}}
 {{- $image := (dig "ImageUpload" "maxBytes" 0 $config) | int64 | default 5242880 -}}
 {{- $limit := (($api.resources | default dict).limits | default dict).memory -}}
@@ -171,7 +175,7 @@ context. Output: nothing.
 {{- $request := (($api.resources | default dict).requests | default dict).memory | default "0" -}}
 {{- $need := add (include "ow.quantityBytes" $request | int64) (mul $inProgress $image) -}}
 {{- if gt $need (include "ow.quantityBytes" $limit | int64) -}}
-{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest image (%d bytes, ImageUpload.maxBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or ImageUpload.maxBytes of api.extraConfig, or raise api.resources.limits.memory" $request $inProgress $image $need $limit) -}}
+{{- fail (printf "api.resources: the memory request (%s) + Uploads.maxInProgress (%d) x the largest image (%d bytes, ImageUpload.maxBytes) = %d bytes, above the memory limit (%s): each upload in progress holds its file in memory, so a full set of uploads can make the kernel stop the api. Lower Uploads.maxInProgress or ImageUpload.maxBytes of api.advanced.extraConfig, or raise api.resources.limits.memory" $request $inProgress $image $need $limit) -}}
 {{- end -}}
 {{- end -}}
 {{- end }}

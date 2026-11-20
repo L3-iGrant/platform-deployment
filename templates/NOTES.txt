@@ -1,19 +1,12 @@
 The iGrant.io platform {{ .Chart.Version }} is installed in namespace {{ .Release.Namespace }}.
 {{- $ns := .Release.Namespace }}
 
-{{- /* SSRF guards that an extraConfig turns off (docs/security-context.md,
-"The SSRF guards"). */}}
-{{- $ssrfOff := list }}
-{{- if eq (toString (dig "OutboundHttp" "ssrfProtectionDisabled" false (.Values.api.extraConfig | default dict))) "true" }}
-{{- $ssrfOff = append $ssrfOff (list "the api core and the webhook handler" "api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true") }}
-{{- end }}
-{{- if eq (toString (dig "ssrf_protection" "enabled" true (.Values.organisationWallet.extraConfig | default dict))) "false" }}
-{{- $ssrfOff = append $ssrfOff (list "the wallet service, config and worker pods" "organisationWallet.extraConfig.ssrf_protection.enabled is false") }}
-{{- end }}
-{{- range $ssrfOff }}
+{{- /* The SSRF guards (outboundHttp; docs/security-context.md, "The SSRF
+guards"). */}}
+{{- if (include "ow.outboundHttp" . | fromJson).off }}
 
-WARNING: the SSRF guard of {{ index . 0 }} is off ({{ index . 1 }}). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
-  Turn the guard back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: organisationWallet.ssrf.allowedPrivate).
+WARNING: the SSRF guards of the api core, the webhook handler, the gateway and the wallet are off (outboundHttp.ssrfProtection.enabled is false). These pods call the URLs of organisations and other vendors even when they resolve to a private, loopback, link-local or cloud metadata address (for example 127.0.0.1, 10.0.0.0/8 or 169.254.169.254). An organisation's URL can then reach services in your network and the metadata server's credentials.
+  Turn the guards back on and allow only the private hosts you need (docs/security-context.md, "The SSRF guards"; for the wallet: outboundHttp.allowedPrivate).
 {{- end }}
 {{- if and (include "ow.openbao.bundled" .) (eq (include "ow.openbao.seal" .) "shamir") }}
 
@@ -66,12 +59,12 @@ Next steps (docs/install.md explains each step and how to check it):
 {{- if (include "ow.db.admin" . | fromJson).user }}
    The init hook {{ include "ow.name" (list . "db-init") }} creates the databases and users.
 {{- end }}
-{{- if not .Values.readAccess.jobs.enabled }}
-   readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
+{{- if not .Values.database.readAccess.jobs.enabled }}
+   database.readAccess.jobs.enabled is false: a DBA must create the read-only users (docs/read-access.md); until then, the readers are not ready.
 {{- end }}
 {{- $step = add1 $step }}
 
 {{ $step }}. Make the platform operator organisation and its first platform admin, on the first installation only (docs/install.md, step 7):
-   set api.jobs.bootstrapPlatform, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
+   set api.jobs.provisionPlatformOperator, run "helm upgrade", then turn the Job off again. Then log in to the dashboard.
 {{- $step = add1 $step }}
 

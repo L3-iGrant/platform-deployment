@@ -5,14 +5,14 @@ The Installation section of the api, webhook and gateway files
 is a constant of the chart, not a value. Without the key services, the api
 and the gateway turn on all services; without the key optionalFeatures,
 all optional features. So the section always has both keys. The render
-fails when api.extraConfig.Installation or gateway.extraConfig.Installation
+fails when api.advanced.extraConfig.Installation or gateway.advanced.extraConfig.Installation
 names other services than the chart. Output: JSON.
 */}}
 {{- define "ow.installation.config" -}}
 {{- $v := .Values -}}
 {{- $services := list "wallet" -}}
 {{- range $key := list "api" "gateway" -}}
-{{- $extra := (index $v $key).extraConfig | default dict -}}
+{{- $extra := (index $v $key).advanced.extraConfig | default dict -}}
 {{- if hasKey $extra "Installation" -}}
 {{- $named := list -}}
 {{- $section := get $extra "Installation" -}}
@@ -20,7 +20,7 @@ names other services than the chart. Output: JSON.
 {{- $named = get $section "services" | toStrings | uniq | sortAlpha -}}
 {{- end -}}
 {{- if ne (toJson $named) (toJson $services) -}}
-{{- fail (printf "%s.extraConfig.Installation names other services than this release (%s): the chart writes Installation. Remove %s.extraConfig.Installation" $key (join ", " $services) $key) -}}
+{{- fail (printf "%s.advanced.extraConfig.Installation names other services than this release (%s): the chart writes Installation. Remove %s.advanced.extraConfig.Installation" $key (join ", " $services) $key) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

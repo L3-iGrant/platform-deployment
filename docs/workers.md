@@ -28,22 +28,31 @@ The wallet has five queues:
 | `kms` | the HSM signer sync and the HSM orphan check (without an HSM signer, they end at once) |
 | `maintenance` | the retention purge, the monthly audit log exports, the usage report, the deactivation of an organisation, the expiry of the open issuances, the nightly recount of the issuance counters |
 
-A worker group (`organisationWallet.workers.groups`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
+A worker group (`organisationWallet.workers.groups.<name>`) is one Deployment `<release>-wallet-worker-<name>` that runs some of the queues. Each pod reads the configuration key `worker-<name>.yaml` of the ConfigMap `<release>-wallet`. The default groups:
 
-| Group | Queues | Replicas | Processes x threads | `shutdownTimeoutSeconds` | `terminationGracePeriodSeconds` |
+| Group | Queues | Replicas | Processes x threads | `shutdownTimeoutSeconds` | Grace period of the pods |
 | --- | --- | --- | --- | --- | --- |
 | `main` | `realtime`, `attestation`, `status`, `kms` | 2 | 1 x 8 | 600 | 630 |
 | `maintenance` | `maintenance` | 1 | 1 x 2 | 14400 | 14430 |
 
-One thread runs one actor at a time. A worker pod runs `processes` worker processes with `threads` threads each.
+One thread runs one actor at a time. A worker pod runs `processes` worker processes with `threads` threads each. The chart calculates the grace period of the pods (`terminationGracePeriodSeconds`): `shutdownTimeoutSeconds` + 30, so Kubernetes does not stop a worker while it waits for its running actors.
 
-The value is a list: your list replaces the whole default list. The render stops when:
+The value is a map with the group name as key. Helm merges your map into the default map: a value of yours changes the fields that it names, and the other groups and fields stay. `null` removes a group. For example, three replicas of the group `main`:
 
-- a group has no name, a name with characters other than lower-case letters, digits and `-`, or the name of another group;
+```yaml
+organisationWallet:
+  workers:
+    groups:
+      main:
+        replicas: 3
+```
+
+The render stops when:
+
+- a group name has characters other than lower-case letters, digits and `-`;
 - the Deployment name `<release>-wallet-worker-<name>` has more than 63 characters;
 - a queue is not a wallet queue, or a group names a queue twice;
-- `replicas`, `processes` or `threads` is below 1;
-- `terminationGracePeriodSeconds` is below `shutdownTimeoutSeconds` + 30;
+- `replicas`, `processes`, `threads` or `shutdownTimeoutSeconds` is below 1;
 - no group runs a queue: its messages would stay in Valkey and grow.
 
 Two groups can run the same queue. For example, to give the queue `attestation` its own group with more replicas:
@@ -52,12 +61,14 @@ Two groups can run the same queue. For example, to give the queue `attestation` 
 organisationWallet:
   workers:
     groups:
-      - {name: main, queues: [realtime, status, kms], replicas: 2, processes: 1, threads: 8,
-         shutdownTimeoutSeconds: 600, terminationGracePeriodSeconds: 630}
-      - {name: attestation, queues: [attestation], replicas: 3, processes: 1, threads: 8,
-         shutdownTimeoutSeconds: 600, terminationGracePeriodSeconds: 630}
-      - {name: maintenance, queues: [maintenance], replicas: 1, processes: 1, threads: 2,
-         shutdownTimeoutSeconds: 14400, terminationGracePeriodSeconds: 14430}
+      main:
+        queues: [realtime, status, kms]
+      attestation:
+        queues: [attestation]
+        replicas: 3
+        processes: 1
+        threads: 8
+        shutdownTimeoutSeconds: 600
 ```
 
 ## Status list writes
@@ -92,7 +103,7 @@ The startup probe of a worker gives the boot 650 seconds: each worker process wa
 
 The service and config pods have the port `metrics` (9190) for the server metrics: `/metrics` only (`server.metrics_port`). Their probes stay on the port of the routes (`/healthz`, `/readyz`). Each process of a server pod writes its metrics files to an `emptyDir` in memory (`server.metrics_directory`, `/run/ows-server`), and the port reads all of them. The Services of the routes and the exposure objects do not have port 9190. The server metrics include the requests of each route group and of the hot routes, the NATS commands, the event loop lag, the waits for a database connection (`ows_db_pool_wait_seconds`), the waits of the audit appends, and the Redis commands.
 
-`organisationWallet.serviceMonitor.enabled: true` creates a headless Service for the service and config roles (`<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`: the port `metrics`), for each worker group and for the clock (the port `health`), including the pods that are not ready. It also creates the ServiceMonitor `<release>-wallet-metrics` for `/metrics` (the Prometheus Operator CRD must exist). The label `metrics.igrant.io/job` of each Service gives the job of its targets (`jobLabel`): `wallet-server`, `wallet-worker`, `wallet-clock`. `interval` (default 15 s) and `labels` go to the ServiceMonitor. With network policies, set `networkPolicy.monitoring` to your monitoring namespace: only it reaches the ports 9190, 9191 and 9192.
+`monitoring.serviceMonitor.enabled: true` creates a headless Service for the service and config roles (`<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`: the port `metrics`), for each worker group and for the clock (the port `health`), including the pods that are not ready. It also creates the ServiceMonitor `<release>-wallet-metrics` for `/metrics` (the Prometheus Operator CRD must exist). The label `metrics.igrant.io/job` of each Service gives the job of its targets (`jobLabel`): `wallet-server`, `wallet-worker`, `wallet-clock`. `monitoring.serviceMonitor.interval` (default 30 s) and `monitoring.labels` go to the ServiceMonitor. With network policies, set `monitoring.networkPolicy` to your monitoring namespace: only it reaches the ports 9190, 9191 and 9192.
 
 | Metric | Labels | Process |
 | --- | --- | --- |
@@ -110,7 +121,7 @@ Each worker pod also reads gauges from the database at each scrape, so every pod
 
 ## Alerts
 
-`organisationWallet.prometheusRule.enabled: true` (with `serviceMonitor.enabled`; the Prometheus Operator CRD must exist) creates the PrometheusRule `<release>-wallet-alerts` with the rules below. `prometheusRule.labels` gives the labels for the `ruleSelector` of your Prometheus. The rules read the gauges of the worker pods (the ServiceMonitor job `wallet-worker`, in the release namespace). Each worker pod reads them from the database at each scrape, so the rules use `max`. With other monitoring, create the same rules (change the job selector to the one of your scrape):
+`monitoring.prometheusRule.enabled: true` (with `monitoring.serviceMonitor.enabled`; the Prometheus Operator CRD must exist) creates the PrometheusRule `<release>-wallet-alerts` with the rules below. `monitoring.labels` gives the labels for the `ruleSelector` of your Prometheus. The rules read the gauges of the worker pods (the ServiceMonitor job `wallet-worker`, in the release namespace). Each worker pod reads them from the database at each scrape, so the rules use `max`. With other monitoring, create the same rules (change the job selector to the one of your scrape):
 
 | Alert | Severity | Rule | Meaning |
 | --- | --- | --- | --- |

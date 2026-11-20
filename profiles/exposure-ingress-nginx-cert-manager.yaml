@@ -20,16 +20,19 @@ api:
       nginx.ingress.kubernetes.io/proxy-buffering: "off"
     tls:
       secretName: api-tls
+    # ingress-nginx sets X-Real-IP to its TCP peer's address (the client) and
+    # overwrites any value that the client sends: the client address of the
+    # host.
+    clientAddress: {header: X-Real-IP}
 organisationWallet:
   exposure:
     tls:
       secretName: wallet-tls
+    clientAddress: {header: X-Real-IP}
 enterpriseDashboard:
   exposure:
     tls:
       secretName: dashboard-tls
-clientAddress:
-  header: X-Real-IP
 networkPolicy:
   ingressController:
     namespaceSelector:

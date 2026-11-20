@@ -21,6 +21,8 @@ global:
   imagePullPolicy: IfNotPresent
   # -- Storage class of all volumes. Empty: the cluster default. "-": none.
   storageClass: ""
+  # -- Log level of all components: debug, info, warn or error. Each component can override it.
+  logLevel: info
   # -- Priority class of all pods (it must exist). Empty: none.
   priorityClassName: ""
   # -- Pod security context of all pods, under the value of each component.
@@ -56,15 +58,6 @@ exposure:
     # -- Timeouts of the route rules ({request, backendRequest}). Empty: the Gateway default.
     timeouts: {}
 
-# The client address behind your proxies: the rate limits and the IP allow-lists.
-clientAddress:
-  # -- Header with the client address, set by your entry proxy (X-Real-IP). Empty: the TCP peer.
-  header: ""
-  # -- CIDRs of trusted proxies in front of the entry proxy, for example a CDN.
-  trustedProxies: []
-  # -- Header in which the trusted proxies send the client address.
-  trustedProxyHeader: ""
-
 # The installation.
 installation:
   # -- The optional features of the installation. An optional feature is off
@@ -74,6 +67,59 @@ installation:
   # installation does not need it. The api, the gateway and the wallet get the
   # same list (docs/components.md, "Optional features").
   optionalFeatures: []
+  # -- The limits of the installation.
+  limits:
+    # -- The most organisations, 1 to 100 (Limits.maxOrganisations of the api).
+    maxOrganisations: 100
+    # -- The most organisation wallet units of the wallet provider, 1 to 100.
+    maxOrganisationWalletUnits: 100
+
+# The calls of the api, the gateway and the wallet to the URLs of organisations and other vendors.
+outboundHttp:
+  # -- The SSRF guards: refuse private, loopback, link-local and metadata addresses. Never false in production.
+  ssrfProtection: {enabled: true}
+  # -- Private hosts, addresses or CIDRs that the wallet may call (on premise). Empty: public only.
+  allowedPrivate: []
+
+# The monitoring of the platform with the Prometheus Operator (its CRDs must exist).
+monitoring:
+  # -- The ServiceMonitors of the wallet and (with redis.metrics.enabled) of Valkey.
+  serviceMonitor: {enabled: false, interval: 30s}
+  # -- The PrometheusRule with the alert rules of the wallet (needs serviceMonitor).
+  prometheusRule: {enabled: false}
+  # -- Labels of the ServiceMonitors and the PrometheusRule, for example for the selector of your Prometheus.
+  labels: {}
+  # -- With network policies: the scrape of the NATS monitor port and the metrics ports from your monitoring pods.
+  networkPolicy: {enabled: false, namespaceSelector: {}, podSelector: {}}
+
+# The keys of the platform (docs/keys.md). scripts/make-keys.sh makes the key
+# Secrets and writes this block in its values-keys.yaml: key ids, public JWKS
+# and no secret. An empty existingSecret: the Secret <fullname>-<name> of
+# make-keys.sh. The api pods wait until the Secrets exist.
+keys:
+  # -- ES256 JWKS that signs the api tokens. Required: activeKid, a kid of the JWKS. Empty Secret: <fullname>-api-token-signing.
+  apiTokenSigning: {activeKid: "", existingSecret: "", key: jwks.json}
+  # -- HMAC secret of the API keys and the opaque tokens. Empty Secret: <fullname>-api-token-hash.
+  apiTokenHash: {existingSecret: "", key: token-hash-secret.json}
+  # -- Wrapping keys of the OIDC provider keys. Empty Secret: <fullname>-api-db-wrapping.
+  apiDatabaseWrapping: {existingSecret: "", key: db-wrapping-keys.json}
+  # -- HMAC key of the login rate limits and the SSE tickets. Empty Secret: <fullname>-api (the chart makes a random key and keeps it).
+  apiHmacKey: {existingSecret: "", key: api-secret-key}
+  # -- ES256 JWKS that signs the internal tokens of the gateway. Required: activeKid. Empty Secret: <fullname>-gateway-internal-token.
+  gatewayInternalToken: {activeKid: "", existingSecret: "", key: internal-token-jwks.json}
+  # -- The signed NATS messages of each service. Required: activeKid (a kid of the private JWKS)
+  # and publicJwks. Empty Secret: <fullname>-api-service-key, <fullname>-wallet-service-key.
+  serviceEnvelope:
+    api: {activeKid: "", existingSecret: "", key: service-jwks.json, publicJwks: ""}
+    organisationWallet: {activeKid: "", existingSecret: "", key: service-jwks.json, publicJwks: ""}
+  # -- Public JWKS (no secrets). Required: gatewayInternalToken (the api and the wallet verify the
+  # internal token with it) and apiTokenVerification (the gateway verifies the api tokens with it).
+  publicJwks:
+    gatewayInternalToken: ""
+    apiTokenVerification: ""
+    # -- Your ConfigMap with all public JWKS: gateway-jwks.json, token-verification-jwks.json,
+    # igrant-api.json and eudi-wallet.json. Empty: the chart makes its ConfigMaps from the values.
+    existingConfigMap: ""
 
 # The api core and the webhook handler (one image). The OIDC provider runs in the api.
 api:
@@ -104,62 +150,31 @@ api:
     parentRefs: []
     # -- gatewayAPI: the timeouts of this route.
     timeouts: {}
-  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
-  serviceEnvelope:
-    activeKid: ""
-    signingKey: {existingSecret: "", key: service-jwks.json}
-    lifetimeSeconds: 60
-    clockSkewSeconds: 60
-  # -- Secret with api-secret-key, the HMAC key of the login rate limits. Empty: <fullname>-api.
-  existingSecret: ""
-  # -- api-secret-key when the chart makes the Secret. Empty: random, kept across upgrades.
-  apiSecretKey: ""
-  # -- debug, info, warn or error.
-  logLevel: info
-  iam:
-    # -- Provider name of the admin wallet logins. Do not change it after the first login.
-    idpAlias: login-with-eudi-wallet
+    # -- The client address on the api host: the rate limits and the IP allow-lists of the api and
+    # the gateway (docs/exposure.md). header: set by your entry proxy (X-Real-IP); empty: the TCP
+    # peer. trustedProxies (CIDRs, for example a CDN) and trustedProxyHeader go together.
+    clientAddress: {header: "", trustedProxies: [], trustedProxyHeader: ""}
+  # -- Log level of the api and the webhook handler. Empty: global.logLevel.
+  logLevel: ""
   adminAuth:
     walletLogin:
       # -- Organisation of the OpenID provider of the admin wallet login.
       organisationId: ""
-  # -- Public URL of the dashboard. Empty: the URL of enterpriseDashboard.host.
-  dashboardUrl: ""
-  # -- Key Secrets of scripts/make-keys.sh (docs/keys.md). The api pods wait until they exist.
-  keyStorage:
-    # -- HMAC secret of the API keys and opaque tokens. Empty Secret: <fullname>-api-token-hash.
-    tokenHash: {existingSecret: "", key: token-hash-secret.json}
-    # -- ES256 JWKS that signs the api tokens. Empty Secret: <fullname>-api-token-signing.
-    tokenSigning:
-      existingSecret: ""
-      key: jwks.json
-      # -- Required: the kid of the signing key. It must be in the JWKS.
-      activeKid: ""
-    # -- Wrapping keys of the OIDC provider keys. Empty Secret: <fullname>-api-db-wrapping.
-    dbWrapping: {existingSecret: "", key: db-wrapping-keys.json}
   # -- SMTP server of the api e-mails. Empty host: no e-mail.
   smtp:
     host: ""
     port: 587
     username: ""
-    # -- Do not use: set existingSecret. Empty password and Secret: no SMTP login.
-    password: ""
-    # -- Existing Secret with the SMTP password.
-    existingSecret: ""
-    passwordKey: smtp-password
+    # -- Secret with the SMTP password. Empty existingSecret: no SMTP login.
+    password: {existingSecret: "", key: smtp-password}
     # -- Sender address. The SMTP user must be allowed to send as it.
-    adminEmail: ""
+    from: ""
     # -- Reply-To address. Empty: none.
     replyTo: ""
-  # -- Twilio account for SMS. Empty accountSid and existingSecret: no SMS.
+  # -- Twilio account for SMS: the Secrets of the account SID and the auth token. Empty: no SMS.
   twilio:
-    # -- Do not use: set existingSecret.
-    accountSid: ""
-    authToken: ""
-    # -- Existing Secret with the account SID and the auth token.
-    existingSecret: ""
-    accountSidKey: twilio-account-sid
-    authTokenKey: twilio-auth-token
+    accountSid: {existingSecret: "", key: twilio-account-sid}
+    authToken: {existingSecret: "", key: twilio-auth-token}
   # -- App links of the Data Verifier app on the api host. Empty androidPackageName: none.
   verifierApp:
     androidPackageName: ""
@@ -172,17 +187,11 @@ api:
   actionLogRetentionDays: 30
   # -- NATS connect timeout (seconds) and the NATS requests that one process handles at once.
   nats: {timeout: 5, maxConcurrentHandlers: 64}
-  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
+  # -- Pod stop (docs/security-context.md). The grace period of the pods is the sum + 5.
   server:
     preStopSeconds: 10
     drainSeconds: 5
     gracefulShutdownSeconds: 20
-    terminationGracePeriodSeconds: 40
-  limits:
-    # -- The most organisations, 1 to 100. Empty: the api default (100).
-    maxOrganisations: ""
-  # -- Extra api configuration keys, deep-merged. Not for secrets, Installation or Log.file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes of the api core (docs/security-context.md, "The stop of a pod").
@@ -214,19 +223,16 @@ api:
   # -- One-off operator Jobs: a Job runs at each install or upgrade while it is enabled.
   jobs:
     # -- The platform operator organisation and its first admin (docs/install.md, step 7).
-    bootstrapPlatform:
+    provisionPlatformOperator:
       enabled: false
-      # -- Login e-mail and name of the first platform admin (required when enabled).
-      adminEmail: ""
-      adminName: ""
-      # -- Existing Secret with the first password of the admin, mounted as a file.
-      passwordSecret: ""
-      passwordKey: password
-      # -- Name, type, location and privacy policy URL of the organisation (required).
-      organisationName: ""
-      type: ""
-      location: ""
-      policyUrl: ""
+      # -- Name, type, location and privacy policy URL of the organisation (required when enabled).
+      organisation: {name: "", type: "", location: "", policyUrl: ""}
+      # -- Login e-mail and name of the first platform admin (required), and your Secret with
+      # the first password, mounted as a file.
+      firstAdmin:
+        email: ""
+        name: ""
+        password: {existingSecret: "", key: password}
     # -- Resources of the Jobs, their migrate init container and the api migration hook.
     resources:
       requests: {cpu: 50m, memory: 64Mi}
@@ -282,6 +288,10 @@ api:
   tolerations: []
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra api configuration keys, deep-merged. Not for secrets, Installation or Log.file.
+    extraConfig: {}
 
 # The auth gateway: it checks each request of the api host and sends it on.
 gateway:
@@ -295,43 +305,19 @@ gateway:
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
   revisionHistoryLimit: 5
-  # -- 1024 or more (the gateway runs as non-root).
-  listenPort: 8070
-  # -- Pod stop (docs/security-context.md): the grace period is at least the other three + 5.
+  # -- Pod stop (docs/security-context.md). The grace period of the pods is the sum + 5.
   preStopSeconds: 10
   drainSeconds: 5
   gracefulShutdownSeconds: 20
-  terminationGracePeriodSeconds: 40
-  # -- Empty: api.logLevel.
+  # -- Log level of the gateway. Empty: global.logLevel.
   logLevel: ""
   upstreams:
-    core:
-      # -- Base URL of the api core. Empty: the api Service of the chart.
-      url: ""
     walletConfig:
       # -- Time limit of a wallet config request; then the client gets 504. 0: 60 s.
       requestTimeoutSeconds: 60
   internalToken:
-    # -- iss of the internal tokens.
-    issuer: igrant-gateway
-    # -- Required: the kid of the signing key. It must be in the JWKS of signingKey.
-    activeKid: ""
-    # -- Lifetime of a token, 1 to 300 seconds.
+    # -- Lifetime of an internal token, 1 to 300 seconds. Its key: keys.gatewayInternalToken.
     lifetimeSeconds: 60
-    # -- aud of the internal tokens for each upstream.
-    audiences:
-      core: igrant-api-core
-      walletConfig: wallet-config
-    # -- Existing Secret with the ES256 private JWKS. Empty: <fullname>-gateway-internal-token.
-    signingKey: {existingSecret: "", key: internal-token-jwks.json}
-  # -- Required public JWKS (no secrets): of the gateway and of the api tokens.
-  publicKeys:
-    existingConfigMap: ""
-    gatewayJwks: ""
-    gatewayJwksKey: gateway-jwks.json
-    existingTokenVerificationConfigMap: ""
-    tokenVerificationJwks: ""
-    tokenVerificationJwksKey: token-verification-jwks.json
   # -- Connections to the upstreams.
   proxy:
     dialTimeoutSeconds: 5
@@ -345,8 +331,6 @@ gateway:
   features:
     # -- Refuse the routes of a feature that is off for the organisation. false: emergency only.
     enforce: true
-  # -- Extra gateway configuration keys, deep-merged. Not for secrets, Installation or Log.file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (for example GOMEMLIMIT).
   extraEnv: []
   # -- Probes (docs/security-context.md, "The stop of a pod").
@@ -384,6 +368,10 @@ gateway:
   # -- Empty (and no global.affinity): a preferred anti-affinity over the nodes.
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra gateway configuration keys, deep-merged. Not for secrets, Installation or Log.file.
+    extraConfig: {}
 
 # Organisation wallet: service (public routes), config (behind the gateway), workers and clock.
 organisationWallet:
@@ -401,8 +389,11 @@ organisationWallet:
     tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- DEBUG, INFO, WARNING, ERROR or CRITICAL.
-  logLevel: INFO
+    # -- The client address on the wallet host (the nonce rate limits and the logs of the wallet):
+    # the fields of api.exposure.clientAddress, for the proxies in front of this host.
+    clientAddress: {header: "", trustedProxies: [], trustedProxyHeader: ""}
+  # -- Log level of the wallet. Empty: global.logLevel.
+  logLevel: ""
   # -- Wallet units: the protocol 1 checks, and the first wallet app records (made one time).
   walletUnit:
     # -- Protocol 1. true: the production checks of the store apps. false: development builds.
@@ -425,8 +416,6 @@ organisationWallet:
     trustAnchors:
       # -- ConfigMap with the device roots of the wallet units. Empty: the roots of the image.
       existingConfigMap: ""
-    # -- The most organisation wallet units, 1 to 100. Empty: the wallet default (100).
-    organisationWalletUnitsMax: ""
     # -- true: admins may mark an app build development or simulator. Test installations only.
     developmentAppsAllowed: ""
   # -- Audit log of the wallet (docs/audit-log.md).
@@ -446,8 +435,9 @@ organisationWallet:
       endpoint: ""
       # -- s3: the region of the signatures, for example eu-west-1 (required with a name).
       region: ""
-      # -- s3: Secret with the access key of the wallet (required with a name).
-      accessKey: {existingSecret: "", idKey: access-key-id, secretKey: secret-access-key}
+      # -- s3: Secrets with the access key ID and the secret access key of the wallet (required with a name).
+      accessKeyId: {existingSecret: "", key: access-key-id}
+      secretAccessKey: {existingSecret: "", key: secret-access-key}
       # -- s3: Secret with a PEM CA bundle of the store. Empty: the CA bundle of the client.
       ca: {existingSecret: "", key: ca.crt}
       # -- gcs: project of the bucket. Empty: the project of the credentials.
@@ -486,9 +476,6 @@ organisationWallet:
     staleGraceSeconds: 259200
     # -- Shortest time between two Refresh now of one source; earlier: 429 (at least 0).
     manualRefreshMinIntervalSeconds: 300
-  ssrf:
-    # -- Private hosts, addresses or CIDRs that the wallet may call. Empty: public only.
-    allowedPrivate: []
   # -- Organisation key stores (docs/key-stores.md).
   keyStores:
     # -- Types that admins may add. []: only the local key store of the installation.
@@ -504,24 +491,6 @@ organisationWallet:
       enabled: true
       # -- Validity in days of a test certificate without one in the request (1 to 3650).
       leafValidityDays: 365
-  # -- Proxies trusted for X-Forwarded-For and -Proto. Include your ingress controller pods.
-  forwardedAllowIps:
-    - 127.0.0.1
-    - ::1
-    - 10.0.0.0/8
-    - 172.16.0.0/12
-    - 192.168.0.0/16
-    - 100.64.0.0/10
-    - fc00::/7
-  internalAuth:
-    # -- Clock skew that exp and nbf of the gateway token accept: 0 to 300 seconds.
-    clockSkewSeconds: 60
-  # -- Signed NATS messages: activeKid (required) is the active key in the JWKS of signingKey.
-  serviceEnvelope:
-    activeKid: ""
-    signingKey: {existingSecret: "", key: service-jwks.json}
-    lifetimeSeconds: 60
-    clockSkewSeconds: 60
   nats:
     # -- Wait after a failed first connect; it doubles up to 60 s.
     connectRetrySeconds: 5
@@ -547,11 +516,10 @@ organisationWallet:
     maxRequestBodyBytes: 1048576
     maxBatchRequestBodyBytes: 4194304
     maxLargeRequestBodyBytes: 10485760
-    # -- Pod stop: preStop, open requests, background tasks; the sum is below the grace period.
+    # -- Pod stop: preStop, open requests, background tasks. The grace period of the pods is the sum + 5.
     gracefulShutdownSeconds: 20
     backgroundShutdownSeconds: 10
     preStopSeconds: 10
-    terminationGracePeriodSeconds: 45
     # -- Nonce requests of one client address (an IPv6 /64) in 60 s; more get 429.
     nonceRequestsPerMinute: 300
   # -- The hooks of the wallet (roles, migration and read access).
@@ -575,8 +543,6 @@ organisationWallet:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Extra wallet configuration keys of all roles, deep-merged. Not for secrets or log_file.
-  extraConfig: {}
   # -- Extra environment variables, runtime only (the configuration is in EUDI_WALLET_CONFIG).
   extraEnv: []
   service:
@@ -596,37 +562,28 @@ organisationWallet:
       requests: {cpu: 20m, memory: 128Mi}
       limits: {memory: 384Mi}
   workers:
-    # -- Worker groups. Your list replaces the whole default list (docs/workers.md).
+    # -- Worker groups: a map with the group name as key (docs/workers.md). A value of yours changes
+    # one group and keeps the others; null removes a default group. The grace period of the pods
+    # is shutdownTimeoutSeconds + 30.
     groups:
-      - name: main
+      main:
         queues: [realtime, attestation, status, kms]
         replicas: 2
         processes: 1
         threads: 8
         shutdownTimeoutSeconds: 600
-        terminationGracePeriodSeconds: 630
         resources:
           requests: {cpu: 100m, memory: 384Mi}
           limits: {memory: 1536Mi}
-      - name: maintenance
+      maintenance:
         queues: [maintenance]
         replicas: 1
         processes: 1
         threads: 2
         shutdownTimeoutSeconds: 14400
-        terminationGracePeriodSeconds: 14430
         resources:
           requests: {cpu: 50m, memory: 384Mi}
           limits: {memory: 1536Mi}
-  # -- ServiceMonitor of /metrics of the servers, workers and clock (Prometheus Operator).
-  serviceMonitor:
-    enabled: false
-    interval: 15s
-    labels: {}
-  # -- PrometheusRule with the alert rules of the wallet; turn on serviceMonitor too.
-  prometheusRule:
-    enabled: false
-    labels: {}
   # -- The service, config, worker and clock pods (UID 65532). The hooks use jobs.
   podSecurityContext:
     runAsNonRoot: true
@@ -643,6 +600,10 @@ organisationWallet:
   tolerations: []
   affinity: {}
   imagePullSecrets: []
+  # -- Seldom changed: change these values only with iGrant.io support.
+  advanced:
+    # -- Extra wallet configuration keys of all roles, deep-merged. Not for secrets or log_file.
+    extraConfig: {}
 
 # Enterprise dashboard: the web UI of the organisation admins.
 enterpriseDashboard:
@@ -655,9 +616,8 @@ enterpriseDashboard:
     type: RollingUpdate
     rollingUpdate: {maxSurge: 25%, maxUnavailable: 0}
   minReadySeconds: 30
-  # -- Pod stop: the grace period is at least preStopSeconds + 10.
+  # -- Pod stop. The grace period of the pods is preStopSeconds + 20 (nginx ends the open requests).
   preStopSeconds: 10
-  terminationGracePeriodSeconds: 30
   # -- Probes of nginx on the start page.
   startupProbe:
     httpGet: {path: /, port: http}
@@ -687,11 +647,6 @@ enterpriseDashboard:
     tls: {secretName: ""}
     parentRefs: []
     timeouts: {}
-  # -- config.json. Empty values: the api URL, the wallet URL and the image tag.
-  configuration:
-    baseUrl: ""
-    walletUrl: ""
-    appVersion: ""
   resources:
     requests: {cpu: 10m, memory: 32Mi}
   # -- nginx runs as UID 101. The sysctl lets the pod listen on port 80 without a capability.
@@ -717,23 +672,25 @@ database:
   engine: postgresql
   # -- bundled (the chart runs <fullname>-postgres) or external (database.external).
   mode: bundled
-  # -- Database (= owner user) name and password of each component. Empty password: random.
+  # -- The admin user of the server, for the init hook, the roles hook and the read access Jobs.
+  # bundled: the user postgres (leave username empty); empty existingSecret: the chart makes the
+  # password and keeps it. external: both required.
+  admin:
+    username: ""
+    password: {existingSecret: "", key: password}
+  # -- Database (= owner user) name of each component, and your Secret with its password.
+  # Empty existingSecret: the chart makes the password and keeps it.
   databases:
-    api: {name: igrant_api, password: ""}
-    oidc: {name: igrant_oidc, password: ""}
-    wallet: {name: igrant_wallet, password: ""}
-  auth:
-    # -- Password of the admin user postgres of the bundled server. Empty: random.
-    adminPassword: ""
-    # -- Secret with one key per database name (bundled: also POSTGRES_PASSWORD).
-    existingSecret: ""
+    api: {name: igrant_api, password: {existingSecret: "", key: igrant_api}}
+    oidc: {name: igrant_oidc, password: {existingSecret: "", key: igrant_oidc}}
+    wallet: {name: igrant_wallet, password: {existingSecret: "", key: igrant_wallet}}
   external:
     # -- Host name of the external server (required for external).
     host: ""
     # -- Empty: 5432.
     port: ""
-    # -- Required: admin user of the external server and its password Secret.
-    admin: {user: "", passwordSecret: "", passwordKey: password}
+    # -- Secret with the CA of the server. Empty: sslmode require (no verification).
+    ca: {existingSecret: "", key: ca.crt}
   # -- Connection pools of each process (docs/database.md, "Connection budget").
   pools:
     api: {maxConns: 10, minConns: 2}
@@ -756,9 +713,6 @@ database:
     enabled: true
     # -- bundled: your kubernetes.io/tls Secret. Empty: the chart makes a CA and a certificate.
     existingSecret: ""
-    # -- external: Secret with the CA of the server. Empty: sslmode require (no verification).
-    caSecret: ""
-    caKey: ca.crt
     # -- disable, require, verify-ca or verify-full. Empty: verify-full with a CA, else require.
     sslMode: ""
   postgresql:
@@ -775,6 +729,30 @@ database:
       password_encryption: scram-sha-256
     # -- Log each DDL statement, connection and disconnection (docs/database.md).
     logDdlAndConnections: true
+  # -- Read-only database users of the reads between the services (docs/read-access.md).
+  readAccess:
+    api:
+      # -- The api reads the wallet views. Empty existingSecret: the chart makes the password.
+      wallet:
+        username: api_wallet_reader
+        password: {existingSecret: "", key: password}
+        host: ""
+        port: ""
+        name: ""
+    wallet:
+      # -- The wallet reads the api views.
+      api:
+        username: wallet_api_reader
+        password: {existingSecret: "", key: password}
+        host: ""
+        port: ""
+        name: ""
+    # -- Jobs that make the read-only users. Empty admin values: database.admin.
+    jobs:
+      enabled: true
+      api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+      wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
+      ttlSecondsAfterFinished: 86400
   persistence: {size: 50Gi, storageClass: ""}
   # -- The memory must hold the PostgreSQL parameters under load.
   resources:
@@ -800,29 +778,29 @@ database:
 
 # NATS with JetStream: the messages between the services (docs/nats-users.md).
 nats:
-  # -- false: your NATS with JetStream at nats.external.url.
-  enabled: true
+  # -- bundled (the chart runs NATS, <fullname>-nats) or external (your NATS with JetStream, nats.external).
+  mode: bundled
   image:
     registry: docker.io
     repository: library/nats
     # -- NATS 2.14. Not 2.15 or later: the render stops (docs/nats-users.md).
     tag: 2.14.10-alpine
     digest: "sha256:311da47e2f31c26e99c623cd78d486a1e8ab039c49b32652770bb91a4f70512e"
-  external: {url: ""}
+  # -- Your NATS (mode external): its URL (required), and the Secret with the CA of a TLS server.
+  external:
+    url: ""
+    ca: {existingSecret: "", key: ca.crt}
   # -- One nkey user per process: its public nkey and the Secret with its seed (required).
-  auth:
-    users:
-      api: {nkey: "", seedSecret: "", seedKey: seed}
-      apiWebhook: {nkey: "", seedSecret: "", seedKey: seed}
-      walletConfig: {nkey: "", seedSecret: "", seedKey: seed}
-      walletService: {nkey: "", seedSecret: "", seedKey: seed}
-      walletWorker: {nkey: "", seedSecret: "", seedKey: seed}
+  users:
+    api: {nkey: "", seed: {existingSecret: "", key: seed}}
+    webhook: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletConfig: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletService: {nkey: "", seed: {existingSecret: "", key: seed}}
+    walletWorker: {nkey: "", seed: {existingSecret: "", key: seed}}
   # -- Replicas of the streams and buckets. Empty: nats.replicas, or 1 with an external NATS.
   jetstreamReplicas: ""
   # -- max_payload (bytes, or a size such as 4MB). An external NATS needs the same value.
   maxPayload: 4MB
-  # -- External NATS with TLS: Secret with the CA of the server. Empty: no TLS CA.
-  tlsCa: {existingSecret: "", key: ca.crt}
   tls:
     # -- Your TLS Secret of the bundled NATS. Empty: the chart makes a CA and a certificate.
     existingSecret: ""
@@ -865,9 +843,8 @@ openbao:
   # -- The userpass login of the wallet.
   wallet:
     user: wallet
-    # -- Secret with the password (required for external). Empty: <fullname>-openbao-wallet.
-    existingSecret: ""
-    passwordKey: password
+    # -- Secret with the password (required for external). Empty: the chart makes <fullname>-openbao-wallet.
+    password: {existingSecret: "", key: password}
   # -- Your OpenBao (mode external).
   external:
     # -- Address, for example https://openbao.example.org:8200 (required).
@@ -875,8 +852,7 @@ openbao:
     # -- OpenBao namespace. Empty: the root namespace.
     namespace: ""
     # -- Secret with the CA of an https address. Empty: the system CAs.
-    caSecret: ""
-    caKey: ca.crt
+    ca: {existingSecret: "", key: ca.crt}
   # -- Required with the bundled OpenBao. The only seal of this chart is
   # shamir: development and tests only, because the unseal keys are with
   # people and each start needs a manual unseal (profiles/openbao-shamir.yaml).
@@ -892,8 +868,8 @@ openbao:
   tls:
     # -- Your TLS Secret of the listener. Empty: the chart makes a CA and a certificate.
     existingSecret: ""
-  # -- trace, debug, info, warn or error.
-  logLevel: info
+  # -- Log level of OpenBao: trace or a word of global.logLevel. Empty: global.logLevel.
+  logLevel: ""
   audit:
     # -- File audit device to stdout (the values are HMAC-SHA256 hashes).
     stdout: true
@@ -930,12 +906,13 @@ redis:
   # -- Name of the primary that the Sentinels monitor (1 to 64 letters, digits, . _ -).
   masterName: ows
   # -- ACL user of each process and its password Secret (docs/redis.md, "ACL users").
+  # Empty existingSecret (bundled): the chart makes the password.
   users:
-    walletService: {username: wallet-service, passwordSecret: "", passwordKey: password}
-    walletConfig: {username: wallet-config, passwordSecret: "", passwordKey: password}
-    walletWorker: {username: wallet-worker, passwordSecret: "", passwordKey: password}
-    walletClock: {username: wallet-clock, passwordSecret: "", passwordKey: password}
-    gateway: {username: gateway, passwordSecret: "", passwordKey: password}
+    walletService: {username: wallet-service, password: {existingSecret: "", key: password}}
+    walletConfig: {username: wallet-config, password: {existingSecret: "", key: password}}
+    walletWorker: {username: wallet-worker, password: {existingSecret: "", key: password}}
+    walletClock: {username: wallet-clock, password: {existingSecret: "", key: password}}
+    gateway: {username: gateway, password: {existingSecret: "", key: password}}
   # -- Client settings of the wallet.
   client:
     # -- Longest wait for a connection and for each answer, in seconds (above 0, at most 60).
@@ -953,8 +930,7 @@ redis:
     # -- true: the processes log in to the Sentinels with their ACL user.
     sentinelAuth: true
     # -- Secret with the CA of the servers and the Sentinels. Empty: the system CAs.
-    caSecret: ""
-    caKey: ca.crt
+    ca: {existingSecret: "", key: ca.crt}
   # -- Your own group for the single-use values of the wallet. Off: the queue group keeps them.
   state:
     enabled: false
@@ -1016,11 +992,6 @@ redis:
     resources:
       requests: {cpu: 10m, memory: 32Mi}
       limits: {memory: 128Mi}
-    # -- ServiceMonitor of the exporters (needs metrics.enabled and the Prometheus Operator).
-    serviceMonitor:
-      enabled: false
-      interval: 30s
-      labels: {}
   # -- Valkey runs as UID 999, GID 1000.
   podSecurityContext:
     runAsNonRoot: true
@@ -1101,39 +1072,3 @@ networkPolicy:
       wallet-config: [internet-any-port, platform, kms, cloudKms]
       wallet-worker: [internet-any-port, platform, kms, cloudKms, auditBucket]
       wallet-clock: []
-  # -- Scrape of the NATS monitor port and the metrics ports from a monitoring namespace.
-  monitoring: {enabled: false, namespaceSelector: {}, podSelector: {}}
-
-# Read-only database users of the reads between the services (docs/read-access.md).
-readAccess:
-  api:
-    # -- The api reads the wallet views.
-    wallet:
-      username: api_wallet_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  wallet:
-    # -- The wallet reads the api views.
-    api:
-      username: wallet_api_reader
-      passwordSecret: ""
-      passwordKey: password
-      host: ""
-      port: ""
-      name: ""
-  # -- Jobs that make the read-only users. Empty admin values: the admin user of database.
-  jobs:
-    enabled: true
-    api: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
-    wallet: {adminUser: "", adminPasswordSecret: "", adminPasswordKey: ""}
-    ttlSecondsAfterFinished: 86400
-
-# Public keys of the signed NATS messages of each service (required; scripts/make-keys.sh).
-serviceKeys:
-  existingConfigMap: ""
-  publicJwks:
-    igrant-api: ""
-    eudi-wallet: ""

@@ -1,30 +1,25 @@
 # Test key values. No secrets: key ids, empty public JWKS, test public nkeys
 # and Secret names. In a real installation, scripts/make-keys.sh writes this
 # file.
-api:
-  keyStorage:
-    tokenSigning:
-      activeKid: test-token-kid
-  serviceEnvelope:
-    activeKid: test-api-envelope-kid
-organisationWallet:
-  serviceEnvelope:
-    activeKid: test-wallet-envelope-kid
-gateway:
-  internalToken:
+keys:
+  apiTokenSigning:
+    activeKid: test-token-kid
+  gatewayInternalToken:
     activeKid: test-gateway-kid
-  publicKeys:
-    gatewayJwks: '{"keys":[]}'
-    tokenVerificationJwks: '{"keys":[]}'
-serviceKeys:
+  serviceEnvelope:
+    api:
+      activeKid: test-api-envelope-kid
+      publicJwks: '{"keys":[]}'
+    organisationWallet:
+      activeKid: test-wallet-envelope-kid
+      publicJwks: '{"keys":[]}'
   publicJwks:
-    igrant-api: '{"keys":[]}'
-    eudi-wallet: '{"keys":[]}'
+    gatewayInternalToken: '{"keys":[]}'
+    apiTokenVerification: '{"keys":[]}'
 nats:
-  auth:
-    users:
-      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
-      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
-      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
-      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
-      walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}
+  users:
+    api: {nkey: UTESTAPI, seed: {existingSecret: t-nats-api}}
+    webhook: {nkey: UTESTAPIWEBHOOK, seed: {existingSecret: t-nats-api-webhook}}
+    walletConfig: {nkey: UTESTWALLETCONFIG, seed: {existingSecret: t-nats-wallet-config}}
+    walletService: {nkey: UTESTWALLETSERVICE, seed: {existingSecret: t-nats-wallet-service}}
+    walletWorker: {nkey: UTESTWALLETWORKER, seed: {existingSecret: t-nats-wallet-worker}}

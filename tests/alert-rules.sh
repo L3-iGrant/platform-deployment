@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests the wallet's alert rules (templates/wallet/prometheusrule.yaml) with
 # promtool from a local Prometheus image. With
-# organisationWallet.prometheusRule on, the render has a PrometheusRule whose
+# monitoring.prometheusRule on, the render has a PrometheusRule whose
 # groups pass "promtool check rules" and the unit tests in
 # tests/fixtures/alert-rules-test.yaml ("promtool test rules"): a missing
 # partition for the current month (critical after 5 minutes; one alert for
@@ -28,12 +28,12 @@ if ! docker image inspect "$image" > /dev/null 2>&1; then
 fi
 base=(-f "$here/values/keys.yaml" -f "$chart/profiles/site.yaml" -f "$here/values/release.yaml" -f "$chart/profiles/openbao-shamir.yaml")
 if helm template t "$chart" --namespace ow "${base[@]}" | grep -q "^kind: PrometheusRule"; then
-  bad "a PrometheusRule without organisationWallet.prometheusRule.enabled"
+  bad "a PrometheusRule without monitoring.prometheusRule.enabled"
 else
   ok "no PrometheusRule by default"
 fi
-helm template t "$chart" --namespace ow "${base[@]}" --set organisationWallet.serviceMonitor.enabled=true \
-  --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml > "$work/render.yaml"
+helm template t "$chart" --namespace ow "${base[@]}" --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml > "$work/render.yaml"
 python3 -c '
 import sys, yaml
 rule = yaml.safe_load(open(sys.argv[1]))

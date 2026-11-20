@@ -1,9 +1,10 @@
 {{/*
 config.yaml of the auth gateway: its own file, not the api config.
 - Sections shared with the api have the same keys and values as api.yaml:
-  ClientAddress comes from clientAddress, and Cors and OutboundHttp come
-  from api.extraConfig, so the gateway and the api core apply the same
-  rules.
+  ClientAddress comes from api.exposure.clientAddress (the rule of the api
+  host), OutboundHttp from outboundHttp,
+  and Cors and the other OutboundHttp keys from api.advanced.extraConfig,
+  so the gateway and the api core apply the same rules.
 - An unknown key stops the gateway, and the gateway reads every <Name>File
   at start, so the file names only the gateway's secrets
   (ow.gateway.secretFiles), never the api token signing keys. The file
@@ -23,15 +24,16 @@ config.yaml of the auth gateway: its own file, not the api config.
 {{- $api := $v.api -}}
 {{- $g := $v.gateway -}}
 {{- $dir := include "ow.gateway.secretDir" . -}}
-{{- $coreUrl := $g.upstreams.core.url | default (printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace) -}}
+{{- $coreUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "api")) $root.Release.Namespace -}}
 {{- /* Upstream for the wallet config role: its Service in this release. */ -}}
 {{- $installation := include "ow.installation.config" $root | fromJson -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $walletConfigUrl := printf "http://%s.%s.svc:80" (include "ow.name" (list $root "wallet-config")) $root.Release.Namespace -}}
 {{- /* The gateway's file body limit must not refuse an image that the api
 accepts (ImageUpload.maxBytes + 64 KiB of multipart framing), or the client
 gets the gateway's 413 with a different text. 0 = the defaults (5 MiB +
 64 KiB and 5 MiB). */ -}}
-{{- $imageMax := (dig "ImageUpload" "maxBytes" 0 ($api.extraConfig | default dict)) | int64 | default 5242880 -}}
+{{- $imageMax := (dig "ImageUpload" "maxBytes" 0 ($api.advanced.extraConfig | default dict)) | int64 | default 5242880 -}}
 {{- $fileLimit := $g.proxy.maxBodyBytes.file | int64 | default (add 5242880 65536) -}}
 {{- if lt $fileLimit (add $imageMax 65536) -}}
 {{- fail (printf "gateway.proxy.maxBodyBytes.file (%v) must be at least the api ImageUpload.maxBytes (%v) + 65536: the gateway would refuse an image that the api accepts" $fileLimit $imageMax) -}}
@@ -49,11 +51,11 @@ file without the key keeps the gateway default). */ -}}
   "KeyStorage" (dict
     "tokenHashSecretFile" (printf "%s/token-hash-secret.json" $dir)
     "tokenVerificationJwksFile" (printf "%s/token-verification-jwks.json" (include "ow.gateway.configPath" $root | dir)))
-  "ClientAddress" (include "ow.clientAddress" $root | fromJson)
-  "Log" (dict "level" ($g.logLevel | default $api.logLevel))
+  "ClientAddress" (include "ow.clientAddress" (list $root "api") | fromJson)
+  "Log" (dict "level" (include "ow.logLevel" (list $root "gateway")))
   "Features" (dict "enforce" $enforce)
   "Gateway" (dict
-    "listenPort" ($g.listenPort | int)
+    "listenPort" (include "ow.gateway.listenPort" $root | int)
     "drainSeconds" ($g.drainSeconds | int)
     "gracefulShutdownSeconds" ($g.gracefulShutdownSeconds | int)
     "upstreams" (dict
@@ -62,11 +64,11 @@ file without the key keeps the gateway default). */ -}}
         "url" $walletConfigUrl
         "requestTimeoutSeconds" ($g.upstreams.walletConfig.requestTimeoutSeconds | int)))
     "internalToken" (dict
-      "issuer" $g.internalToken.issuer
+      "issuer" $internalToken.issuer
       "signingJwksFile" (printf "%s/internal-token-jwks.json" $dir)
-      "activeKid" (required "gateway.internalToken.activeKid is required (the kid of the active key in the internal token JWKS)" $g.internalToken.activeKid | toString)
+      "activeKid" (required "keys.gatewayInternalToken.activeKid is required: the kid of the active key in the internal token JWKS (scripts/make-keys.sh; see docs/keys.md)" $v.keys.gatewayInternalToken.activeKid | toString)
       "lifetimeSeconds" ($g.internalToken.lifetimeSeconds | int)
-      "audiences" $g.internalToken.audiences)
+      "audiences" $internalToken.audiences)
     "proxy" (dict
       "dialTimeoutSeconds" ($g.proxy.dialTimeoutSeconds | int)
       "responseHeaderTimeoutSeconds" ($g.proxy.responseHeaderTimeoutSeconds | int)
@@ -79,13 +81,16 @@ file without the key keeps the gateway default). */ -}}
         "large" ($g.proxy.maxBodyBytes.large | int64))))
 -}}
 {{- $_ := set $config "Installation" $installation -}}
-{{- $shared := pick ($api.extraConfig | default dict) "Cors" "OutboundHttp" -}}
+{{- if (include "ow.outboundHttp" $root | fromJson).off -}}
+{{- $_ := set $config "OutboundHttp" (dict "ssrfProtectionDisabled" true) -}}
+{{- end -}}
+{{- $shared := pick ($api.advanced.extraConfig | default dict) "Cors" "OutboundHttp" -}}
 {{- $config = mustMergeOverwrite $config (deepCopy $shared) -}}
-{{- /* gateway.extraConfig cannot set Installation (ow.installation.config). */ -}}
-{{- $extra := deepCopy ($g.extraConfig | default dict) -}}
+{{- /* gateway.advanced.extraConfig cannot set Installation (ow.installation.config). */ -}}
+{{- $extra := deepCopy ($g.advanced.extraConfig | default dict) -}}
 {{- $_ := unset $extra "Installation" -}}
 {{- $config = mustMergeOverwrite $config $extra -}}
 {{- /* No log file (ow.noLogFile): the gateway logs to stdout. */ -}}
-{{- include "ow.noLogFile" (list "gateway.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
+{{- include "ow.noLogFile" (list "gateway.advanced.extraConfig" "Log.file.path" (((get $config "Log") | default dict).file | default dict).path) -}}
 {{- $config | toYaml -}}
 {{- end }}

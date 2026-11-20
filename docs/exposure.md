@@ -64,7 +64,7 @@ Your proxy only routes the traffic: the platform does the CORS checks, the authe
 - request headers of up to 16 KiB each (wallet host): other vendors' wallets and verifiers send JWTs with certificate chains in headers (`OAuth-Client-Attestation`, `OAuth-Client-Attestation-PoP`, `DPoP`);
 - other vendors' requests unchanged: the headers, the bodies (`application/x-www-form-urlencoded`, `application/json`, `application/jwt`) and the paths below `/.well-known/`. A web application firewall or CDN rule that changes or refuses them breaks conformance with the specifications.
 
-With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (for Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`, see [Prerequisites](prerequisites.md#step-5-the-client-address)). Set `clientAddress.header: X-Real-IP` only together with such a policy. Without the policy, leave `clientAddress.header` empty. Then every request has the address of a Gateway pod: the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
+Each public host has its own client address rule (`api.exposure.clientAddress` and `organisationWallet.exposure.clientAddress`, see [The client address of each host](#the-client-address-of-each-host)). With the Gateway API, the client address needs a Gateway policy that sets the header `X-Real-IP` (for Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`, see [Prerequisites](prerequisites.md#step-5-the-client-address)). Set `clientAddress.header: X-Real-IP` of a host only together with such a policy. Without the policy, leave the header empty. Then every request has the address of a Gateway pod: the rate limits count all clients together, and an API key with `allowedIps` refuses every call.
 
 ## The settings for each controller
 
@@ -77,7 +77,7 @@ ingress-nginx was retired on 24 March 2026 and gets no security fixes; its colum
 | Request headers of up to 16 KiB each (wallet host) | `large-client-header-buffers: "4 16k"` in the controller ConfigMap (the default `4 8k` refuses a longer header line with 400) | No setting (the Envoy default is 60 KiB for all headers) |
 | Server-sent event streams of up to 3900 s (API host) | `proxy-read-timeout: "3900"`, `proxy-send-timeout: "3900"` | `api.exposure.timeouts.request: 3900s` |
 | No buffering of the event streams (API host) | `proxy-buffering: "off"` | No setting (Envoy streams the response) |
-| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` | `clientAddress.header: X-Real-IP`, and a Gateway policy that sets `X-Real-IP` to the client address and replaces any value that the client sends (Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`; kgateway: a header policy of your Gateway that does the same) |
+| The client address for the rate limits and the IP allow-list of the API keys (`allowedIps`) | `clientAddress.header: X-Real-IP` of each host | `clientAddress.header: X-Real-IP` of each host, and a Gateway policy that sets `X-Real-IP` to the client address and replaces any value that the client sends (Envoy Gateway: `manifests/envoy-gateway/03-client-traffic-policy.yaml`; kgateway: a header policy of your Gateway that does the same) |
 | The client address at the proxy | A load balancer in front of the controller passes on the client address (for example with the PROXY protocol: `use-proxy-protocol: "true"` in the controller configuration) | The same (Envoy Gateway: `proxyProtocol` in `manifests/envoy-gateway/03-client-traffic-policy.yaml`, see [A load balancer with the PROXY protocol](prerequisites.md#a-load-balancer-with-the-proxy-protocol)) |
 
 `exposure-kgateway.yaml` has these settings except the client address header: add the header together with the policy of your Gateway.
@@ -98,8 +98,33 @@ These routes on the wallet host answer with `Cache-Control: max-age=60` and a st
 
 A request with a matching `If-None-Match` gets 304 without a body. The chart and the exposure profiles set no cache rule. A CDN or proxy that caches these answers must keep the header `Vary: Accept` of the credential issuer metadata (`Accept: application/jwt` gives the signed metadata, with its own `ETag`). A metadata change then shows within 60 seconds in the wallet pods, plus the time that your cache keeps the answer.
 
-Behind a CDN or another proxy, set `clientAddress.trustedProxies` and `clientAddress.trustedProxyHeader` together.
+## The client address of each host
 
-The wallet must see the client address of the public request (`X-Forwarded-For`), for the rate limit of the nonce routes and for its logs: `organisationWallet.forwardedAllowIps` must contain the addresses of your proxy pods (the default is the private address ranges).
+The gateway, the api and the wallet use the address of the client: the gateway and the api for the rate limits and the IP allow-lists of the API keys (`allowedIps`), the wallet for the rate limit of its anonymous nonce routes and for its logs. Each public host has its own rule, because the hosts can be behind different proxies, for example a CDN only in front of the api host:
 
-The wallet rate-limits the anonymous nonce routes (the wallet provider's nonce and the credential issuer's `c_nonce`) per client address. One address, or one IPv6 /64 network, gets at most `organisationWallet.server.nonceRequestsPerMinute` requests (default 300) in 60 seconds; more get 429 with `Retry-After`. The wallet takes the client address from `X-Forwarded-For` of a proxy in `forwardedAllowIps`, so the proxy must see the client address (row "The client address at the proxy" above). Otherwise all clients have the address of the load balancer and share one limit. Behind a carrier NAT, many phones share one IPv4 address: keep the limit above their peak requests. You can also rate-limit at the ingress, with the same client address.
+| Value | The services that use it |
+| --- | --- |
+| `api.exposure.clientAddress` | The gateway, the api core and the webhook handler (`ClientAddress` of their files) |
+| `organisationWallet.exposure.clientAddress` | The service pods of the wallet (`client_address` of the file of the service role). The gateway calls the config pods and sends them the client address that it found |
+
+The keys of a rule (the same rules in the gateway and in the wallet):
+
+- `header`: the request header that your entry proxy sets to the address of its TCP peer and that a client cannot set, for example `X-Real-IP` (ingress-nginx, or the Envoy Gateway policy of the chart). Empty: the client address is the TCP peer of the pod (a proxy pod for every client).
+- `trustedProxies`, `trustedProxyHeader`: the address ranges (CIDR) of the proxies in front of your entry proxy, for example the published ranges of a CDN, and the header in which they send the client address (for example `CF-Connecting-IP`). Set both or none.
+
+The services never read `X-Forwarded-For`. Example: a CDN in front of the api host, and the wallet host with DNS only, both behind ingress-nginx:
+
+```yaml
+api:
+  exposure:
+    clientAddress:
+      header: X-Real-IP
+      trustedProxies: [173.245.48.0/20, 103.21.244.0/22, 2400:cb00::/32]
+      trustedProxyHeader: CF-Connecting-IP
+organisationWallet:
+  exposure:
+    clientAddress:
+      header: X-Real-IP
+```
+
+The wallet rate-limits the anonymous nonce routes (the wallet provider's nonce and the credential issuer's `c_nonce`) per client address. One address, or one IPv6 /64 network, gets at most `organisationWallet.server.nonceRequestsPerMinute` requests (default 300) in 60 seconds; more get 429 with `Retry-After`. The proxy must see the client address (row "The client address at the proxy" above). Otherwise all clients have the address of the load balancer and share one limit. Behind a carrier NAT, many phones share one IPv4 address: keep the limit above their peak requests. You can also rate-limit at the ingress, with the same client address.

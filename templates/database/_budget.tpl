@@ -38,13 +38,11 @@ connection). */ -}}
 pool, at most 2 lock connections per thread and the synchronous engine. A
 pod: its processes plus its health server. */ -}}
 {{- $k := $p.walletWorker -}}
-{{- range $g := $w.workers.groups -}}
+{{- range $g := include "ow.wallet.workerGroups" $ | fromJsonArray -}}
 {{- $threads := $g.threads | int -}}
 {{- $process := add $k.allocationPoolSize (mul 2 $threads) -}}
 {{- if not $pooled -}}{{- $process = add $process $threads $k.maxOverflow 1 -}}{{- end -}}
 {{- $pods := $g.replicas | int -}}
-{{- $keda := (($g.autoscaling | default dict).keda | default dict) -}}
-{{- if $keda.enabled -}}{{- $pods = $keda.maxReplicaCount | int -}}{{- end -}}
 {{- $processes = append $processes (dict "name" (printf "workers %s" $g.name) "pods" $pods "each" (add (mul ($g.processes | int) $process) 1)) -}}
 {{- end -}}
 {{- /* The clock: the leader connection and its health server. */ -}}

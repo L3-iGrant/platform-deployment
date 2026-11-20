@@ -1,10 +1,10 @@
 {{- /*
 ServiceMonitor for the bundled Valkey exporters
-(redis.metrics.serviceMonitor; the Prometheus Operator CRD must exist;
+(monitoring.serviceMonitor with redis.metrics; the Prometheus Operator CRD must exist;
 docs/redis.md#metrics). A headless Service exposes the pods as targets,
 including pods that are not ready.
 */}}
-{{- if and (include "ow.redis.bundled" .) .Values.redis.metrics.enabled .Values.redis.metrics.serviceMonitor.enabled }}
+{{- if and (include "ow.redis.bundled" .) .Values.redis.metrics.enabled .Values.monitoring.serviceMonitor.enabled }}
 {{- $m := .Values.redis.metrics }}
 apiVersion: v1
 kind: Service
@@ -30,7 +30,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "ow.labels" (list . "redis-metrics") | nindent 4 }}
-    {{- with $m.serviceMonitor.labels }}
+    {{- with $.Values.monitoring.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
@@ -40,5 +40,5 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: {{ $m.serviceMonitor.interval }}
+      interval: {{ $.Values.monitoring.serviceMonitor.interval }}
 {{- end }}

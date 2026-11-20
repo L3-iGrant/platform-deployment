@@ -22,12 +22,9 @@ spec:
         {{- include "ow.checksum" (list "config" (include "ow.dashboard.config" .)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $d) | nindent 6 }}
-      {{- if lt ($d.terminationGracePeriodSeconds | int) (add ($d.preStopSeconds | int) 10) }}
-      {{- fail (printf "enterpriseDashboard.terminationGracePeriodSeconds (%v) must be at least preStopSeconds (%v) + 10: nginx needs the time to end the requests in progress" $d.terminationGracePeriodSeconds $d.preStopSeconds) }}
-      {{- end }}
       # Stop: the preStop sleep, then SIGQUIT (the image's stop signal), so
-      # nginx finishes the requests in progress and stops.
-      terminationGracePeriodSeconds: {{ $d.terminationGracePeriodSeconds | int }}
+      # nginx finishes the requests in progress and stops (20 s).
+      terminationGracePeriodSeconds: {{ add ($d.preStopSeconds | int) 20 }}
       containers:
         - name: dashboard
           image: {{ include "ow.image" (list . $d.image) }}

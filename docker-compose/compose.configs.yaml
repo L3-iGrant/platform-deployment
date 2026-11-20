@@ -73,7 +73,7 @@ configs:
         port: ${SMTP_PORT:-587}
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
+        fromEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
@@ -175,7 +175,7 @@ configs:
         port: ${SMTP_PORT:-587}
         username: "${SMTP_USERNAME}"
         ${SMTP_USERNAME:+passwordFile: /run/secrets/igrant-api/smtp-password}
-        adminEmail: "${SMTP_FROM}"
+        fromEmail: "${SMTP_FROM}"
       # The effective features of each organisation select its webhook
       # event types, so there is no event type list.
       Webhooks:
@@ -407,12 +407,12 @@ configs:
       server:
         route_group: service
         port: 8080
-        # The reverse proxies that may set X-Forwarded-For (the client
-        # address of the nonce rate limit and of the logs) and
-        # X-Forwarded-Proto: loopback and the private address ranges, which
-        # cover the Docker networks and a proxy on the Docker host. The DPoP
-        # htu check uses the published URL, not the request scheme.
-        forwarded_allow_ips: ["127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7"]
+      # The client address of the nonce rate limit and of the logs: the
+      # header in which your reverse proxy sends it (CLIENT_ADDRESS_HEADER;
+      # empty means the TCP peer). The same rule as the gateway. The DPoP
+      # htu check uses the published URL, not the request scheme.
+      client_address:
+        header: "${CLIENT_ADDRESS_HEADER}"
       database:
         type: ${DB_ENGINE}
         host: database

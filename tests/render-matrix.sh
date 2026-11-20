@@ -101,10 +101,13 @@ text_check() {
   # the types ([vault, ...]), the product name Azure Key Vault and its host
   # names (<vault>.vault.azure.net), and the local key store name that the
   # wallet and the dashboard show, in quotes ("Local vault").
+  # The title and the rows of badges and links of README.md are HTML:
+  # align="center" is a word of HTML, not of the text.
   hits="$(grep -n -i -E "$pattern" "$@" 2>/dev/null | grep -v -F 'tests/render-matrix.sh:' | grep -v -F 'tests/check_render.py:' \
     | grep -v -F 'tests/compose-files.sh:' \
     | grep -v -E '^[^:]*docs/install\.md:[0-9]+:.*"organization": "' \
     | grep -v -E '\.initialized|Initialized +true|"Initialized' \
+    | grep -v -E '^[^:]*README\.md:[0-9]+:<(h1|p) align="center">$' \
     | grep -v -E '^[^:]*\.py:[0-9]+:.*(\bserialization\.|import .*\bserialization\b)' \
     | grep -v -E '^[^:]*:[0-9]+: +types: \[vault(, [a-z-]+)*\]$|^[^:]*values\.schema\.json:[0-9]+: +"(external-|azure-key-)?vault",?$' \
     | CHECK_WHAT="$what" perl -ne '($t = $_) =~ s/azure[- ]key[- ]vault|external-vault|`vault`|\[vault,|<vault>\.vault\.azure\.net|"local vault(?: \((?:hsm|openbao)\))?"//gi; print if $ENV{CHECK_WHAT} !~ /^no vault/ || $t =~ /vault/i' || true)"
@@ -522,14 +525,12 @@ else
 fi
 notes "external OpenBao" "Make the platform operator organisation and its first platform admin" -f "$profiles/openbao-external.yaml"
 notes "URLs" "https://api.example.org"
-# An SSRF guard turned off in an extraConfig gives a warning in the notes
-# that names the role; no warning by default.
-notes "SSRF guard off: the api core and the webhook handler" "WARNING: the SSRF guard of the api core and the webhook handler is off (api.extraConfig.OutboundHttp.ssrfProtectionDisabled is true). These pods call" \
-  --set-json 'api.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
-notes "SSRF guard off: the wallet" "WARNING: the SSRF guard of the wallet service, config and worker pods is off (organisationWallet.extraConfig.ssrf_protection.enabled is false). These pods call" \
-  --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":false}}'
+# The SSRF guards turned off (outboundHttp.ssrfProtection.enabled false)
+# give a warning in the notes; no warning by default.
+notes "SSRF guards off" "WARNING: the SSRF guards of the api core, the webhook handler, the gateway and the wallet are off (outboundHttp.ssrfProtection.enabled is false). These pods call" \
+  --set outboundHttp.ssrfProtection.enabled=false
 if helm template ows "$notes_chart" --namespace ows -f "$keys" "${site[@]}" \
-    --set-json 'organisationWallet.extraConfig={"ssrf_protection":{"enabled":true}}' --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard of"; then
+    --show-only templates/zz-test-notes.yaml 2>&1 | grep -q "WARNING: the SSRF guard"; then
   bad "notes: an SSRF warning with the guards on"
 else
   ok "notes: no SSRF warning with the guards on"
@@ -588,48 +589,49 @@ only_postgresql="is not supported: the api and the organisation wallet accept on
 guard "engine" "database.engine \"oracle\" $only_postgresql" --set database.engine=oracle
 guard "engine mysql" "database.engine \"mysql\" $only_postgresql" --set database.engine=mysql
 guard "mode" "database.mode" --set database.mode=cluster
-guard "external host" "database.external.host" --set database.mode=external --set database.external.admin.user=root --set database.external.admin.passwordSecret=s --set database.tls.caSecret=c
+guard "external host" "database.external.host" --set database.mode=external --set database.admin.username=root --set database.admin.password.existingSecret=s --set database.external.ca.existingSecret=c
 # The wallet roles hook creates the wallet's database roles as the server
 # administrator, so an external server needs an admin user with the wallet.
-guard "external database without admin user" "database.external.admin.user is required with database.mode external:" --set database.mode=external --set database.external.host=db.example.org --set database.tls.caSecret=c
+guard "external database without admin user" "database.admin.username is required with database.mode external:" --set database.mode=external --set database.external.host=db.example.org --set database.external.ca.existingSecret=c
 # The wallet database name is the prefix of the wallet's database roles:
 # <prefix>_business_wallet_app has at most 63 characters.
 guard "wallet database name too long for the role prefix" "can have at most 43" --set database.databases.wallet.name=w2345678901234567890123456789012345678901234
 guard "seal" "openbao.seal" --set openbao.seal=transit
 guard "seal required" "openbao.seal is required with the bundled OpenBao. For an installation that holds real keys, use your own OpenBao with an HSM seal (profiles/openbao-external.yaml)" --set openbao.seal=
-guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.existingSecret=s
-guard "external OpenBao without password" "openbao.wallet.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
+guard "external OpenBao without address" "openbao.external.address" --set openbao.mode=external --set openbao.wallet.password.existingSecret=s
+guard "external OpenBao without password" "openbao.wallet.password.existingSecret" --set openbao.mode=external --set openbao.external.address=https://openbao.example.org:8200
 guard "exposure type" "exposure.type" --set exposure.type=route
 guard "gatewayAPI without parentRefs" "parentRefs" --set exposure.type=gatewayAPI
 guard "host" "api.host" --set api.host=
 guard "image tag" "global.imageTag is required: the release tag of your version" --set global.imageTag=
-guard "client address" "clientAddress" --set 'clientAddress.trustedProxies={192.0.2.0/24}'
+guard "client address of the api host" "api.exposure.clientAddress.trustedProxies and api.exposure.clientAddress.trustedProxyHeader go together" --set 'api.exposure.clientAddress.trustedProxies={192.0.2.0/24}'
+guard "client address of the wallet host" "organisationWallet.exposure.clientAddress.trustedProxyHeader and organisationWallet.exposure.clientAddress.trustedProxies go together" --set organisationWallet.exposure.clientAddress.trustedProxyHeader=CF-Connecting-IP
 guard "unknown value" "Additional property" --set postgres.enabled=true
-guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.tls.caSecret= --set database.tls.sslMode=verify-full
+guard "sslMode verify-full without CA" "needs the CA of the server" -f "$profiles/database-external.yaml" --set database.external.ca.existingSecret= --set database.tls.sslMode=verify-full
 guard "OpenBao update strategy" "openbao.updateStrategy" --set openbao.updateStrategy=Sometimes
 # The platform operator Job: the required values, an http or https policy
 # URL, and no password as a value (the password is a file in a Secret).
 bootstrap=(-f "$here/values/operator-jobs-bootstrap.yaml")
-guard "platform operator without admin e-mail" "api.jobs.bootstrapPlatform.adminEmail" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminEmail=
-guard "platform operator without admin name" "api.jobs.bootstrapPlatform.adminName" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.adminName=
-guard "platform operator without password Secret" "api.jobs.bootstrapPlatform.passwordSecret" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.passwordSecret=
-guard "platform operator without organisation name" "api.jobs.bootstrapPlatform.organisationName" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.organisationName=
-guard "platform operator without organisation type" "api.jobs.bootstrapPlatform.type" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.type=
-guard "platform operator without location" "api.jobs.bootstrapPlatform.location" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.location=
-guard "platform operator without policy URL" "api.jobs.bootstrapPlatform.policyUrl" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=
-guard "platform operator policy URL not http or https" "policyUrl" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.policyUrl=ftp://example.org/privacy
-guard "platform operator password as a value" "Additional property password" "${bootstrap[@]}" --set api.jobs.bootstrapPlatform.password=not-a-value
+guard "platform operator without admin e-mail" "api.jobs.provisionPlatformOperator.firstAdmin.email" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.email=
+guard "platform operator without admin name" "api.jobs.provisionPlatformOperator.firstAdmin.name" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.name=
+guard "platform operator without password Secret" "api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.password.existingSecret=
+guard "platform operator without organisation name" "api.jobs.provisionPlatformOperator.organisation.name" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.name=
+guard "platform operator without organisation type" "api.jobs.provisionPlatformOperator.organisation.type" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.type=
+guard "platform operator without location" "api.jobs.provisionPlatformOperator.organisation.location" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.location=
+guard "platform operator without policy URL" "api.jobs.provisionPlatformOperator.organisation.policyUrl" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.policyUrl=
+guard "platform operator policy URL not http or https" "policyUrl" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.organisation.policyUrl=ftp://example.org/privacy
+guard "platform operator password as a value" "api.jobs.provisionPlatformOperator.firstAdmin.password" "${bootstrap[@]}" --set api.jobs.provisionPlatformOperator.firstAdmin.password=not-a-value
 guard "feature gate not a boolean" "enforce" --set-string gateway.features.enforce=off
 # A folder that a process writes to must be on an emptyDir of its pod (the
 # root file system is read-only).
-guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" --set organisationWallet.extraConfig.worker.state_directory=/var/ows
+guard "wallet state folder outside the emptyDir" "has worker.state_directory \"/var/ows\"" --set organisationWallet.advanced.extraConfig.worker.state_directory=/var/ows
 # No log file (ow.noLogFile): each process logs to stdout, even with a path
 # on an emptyDir (a rotating file of 6 x 100 MB fills a 64Mi /tmp).
 no_log_file="the chart writes no log file in Kubernetes"
-guard "no wallet log file" "organisationWallet.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" --set organisationWallet.extraConfig.log_file.path=/tmp/ows.log
-guard "no wallet log file outside /tmp" "organisationWallet.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" --set organisationWallet.extraConfig.log_file.path=/var/log/ows.log
-guard "no api log file" "api.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" --set api.extraConfig.Log.file.path=/tmp/api.log
-guard "no gateway log file" "gateway.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" --set gateway.extraConfig.Log.file.path=/tmp/gateway.log
+guard "no wallet log file" "organisationWallet.advanced.extraConfig sets log_file.path \"/tmp/ows.log\": $no_log_file" --set organisationWallet.advanced.extraConfig.log_file.path=/tmp/ows.log
+guard "no wallet log file outside /tmp" "organisationWallet.advanced.extraConfig sets log_file.path \"/var/log/ows.log\": $no_log_file" --set organisationWallet.advanced.extraConfig.log_file.path=/var/log/ows.log
+guard "no api log file" "api.advanced.extraConfig sets Log.file.path \"/tmp/api.log\": $no_log_file" --set api.advanced.extraConfig.Log.file.path=/tmp/api.log
+guard "no gateway log file" "gateway.advanced.extraConfig sets Log.file.path \"/tmp/gateway.log\": $no_log_file" --set gateway.advanced.extraConfig.Log.file.path=/tmp/gateway.log
 # The api /tmp (api.tmp, an emptyDir in memory) must hold one upload of the
 # largest gateway body above 32 MiB (Go's multipart parser writes such a
 # file part whole to /tmp), and the memory request plus /tmp must fit below
@@ -645,19 +647,36 @@ guard "api memory limit below the request and /tmp" "api.resources: the memory r
 guard "webhook memory limit below the request and /tmp" "api.webhook.resources: the memory request (32Mi) and api.tmp.sizeLimit (64Mi) together are above the memory limit (90Mi)" \
   --set api.webhook.resources.limits.memory=90Mi
 guard "api /tmp sizeLimit not a quantity" "api.tmp.sizeLimit" --set api.tmp.sizeLimit=64MB
-# Stopping the HTTP pods (ow.checkStopBudget, the dashboard guard and the
-# schema): the grace period covers the preStop sleep and the server stop; a
-# preStop of 0 seconds or a strategy other than RollingUpdate stops the
-# render.
-guard "gateway stop budget with the preStop" "gateway.terminationGracePeriodSeconds (35) must be at least preStopSeconds (10) + drainSeconds (5) + gracefulShutdownSeconds (20) + 5 = 40" \
-  --set gateway.terminationGracePeriodSeconds=35
-guard "api stop budget with the preStop" "api.server.terminationGracePeriodSeconds (40) must be at least preStopSeconds (15)" --set api.server.preStopSeconds=15
-guard "dashboard stop budget" "enterpriseDashboard.terminationGracePeriodSeconds (15) must be at least preStopSeconds (10) + 10" \
-  --set enterpriseDashboard.terminationGracePeriodSeconds=15
-guard "wallet stop budget" "organisationWallet.server: preStopSeconds (20) + gracefulShutdownSeconds (20) + backgroundShutdownSeconds (10) = 50 must be below terminationGracePeriodSeconds (45)" \
-  --set organisationWallet.server.preStopSeconds=20
+# Stopping the HTTP pods (the schema and ow.preStopSleep): a preStop of 0
+# seconds or a strategy other than RollingUpdate stops the render. The chart
+# calculates the grace period (see the renders of section 5).
 guard "preStop of 0 seconds" "preStopSeconds" --set api.server.preStopSeconds=0
 guard "rollout strategy Recreate" "strategy" --set gateway.strategy.type=Recreate
+# A plain secret in a values file stops the render (a Secret reference
+# {existingSecret, key} instead), also with the guard of the old values.
+guard "plain SMTP password" "api.smtp.password: make a Secret with the SMTP password and set api.smtp.password.existingSecret" --set api.smtp.password=not-a-value
+guard "plain Twilio auth token" "api.twilio.authToken: make a Secret with the auth token" --set api.twilio.authToken=not-a-value
+guard "Twilio account SID without auth token" "api.twilio.accountSid.existingSecret and api.twilio.authToken.existingSecret go together" --set api.twilio.accountSid.existingSecret=twilio
+# The database passwords: a plain password stops the render; each password
+# can come from its own Secret, and the bundled server takes its admin
+# password from database.admin.password.
+guard "plain database password" "database.databases.api.password: remove it (a plain password in a values file is not permitted" --set database.databases.api.password=not-a-value
+guard "plain admin password" "database.auth.adminPassword: remove it (a plain password in a values file is not permitted" --set database.auth.adminPassword=not-a-value
+guard "admin user of the bundled server" "the admin user of the bundled server is postgres" --set database.admin.username=root
+guard "CA of an external server with the bundled server" "database.external.ca is the CA of an external server" --set database.external.ca.existingSecret=c
+guard "global log level" "global.logLevel" --set global.logLevel=verbose
+guard "old log level word of the wallet" "organisationWallet.logLevel: WARNING is now warn" --set organisationWallet.logLevel=WARNING
+# The values that changed (files/renamed-values.yaml): one message names
+# every old value with its new value, the schema keeps each old path, and
+# scripts/upgrade-values.py writes a file that renders as the new values
+# (tests/check_renamed.py).
+while IFS= read -r line; do
+  case "$line" in
+    "ok   "*) ok "${line#ok   }" ;;
+    "FAIL "*) bad "${line#FAIL }" ;;
+    *) echo "$line" ;;
+  esac
+done < <(python3 "$here/check_renamed.py" -f "$keys" "${site[@]}" 2>&1 || true)
 
 # --- 5. Rendered settings ----------------------------------------------------------
 # Each case: a text that the render must contain.
@@ -699,6 +718,70 @@ renders "OpenBao standbys forward reads" "disable_standby_reads = true"
 # the platform operator of a new installation (onboard bootstrap-platform).
 # The password is a file of its own Secret, never an argument, a variable or
 # a ConfigMap value.
+# The password of one database from its own Secret: the init hook, the api
+# pods and the database Secret of the chart (without that key).
+renders "database password from its Secret" "name: my-api-db" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/database/init.yaml
+lacks "database password from its Secret not in the chart Secret" "igrant_api:" --set database.databases.api.password.existingSecret=my-api-db --show-only templates/secrets.yaml
+renders "admin password of the bundled server from its Secret" "name: my-postgres-admin" --set database.admin.password.existingSecret=my-postgres-admin --show-only templates/database/postgresql.yaml
+# The grace period of the HTTP pods: the chart calculates it from the stop
+# times (preStop + drain + graceful + 5; the wallet preStop + graceful +
+# background + 5; the dashboard preStop + 20).
+renders "gateway grace period from the stop times" "terminationGracePeriodSeconds: 45" --set gateway.preStopSeconds=15 --show-only templates/gateway/deploy.yaml
+renders "api grace period from the stop times" "terminationGracePeriodSeconds: 50" --set api.server.gracefulShutdownSeconds=30 --show-only templates/api/deploy.yaml
+renders "dashboard grace period from the preStop" "terminationGracePeriodSeconds: 35" --set enterpriseDashboard.preStopSeconds=15 --show-only templates/dashboard/deploy.yaml
+renders "wallet grace period from the stop times" "terminationGracePeriodSeconds: 55" --set organisationWallet.server.preStopSeconds=20 --show-only templates/wallet/deploy.yaml
+# One log level for all components (global.logLevel), in the words of each
+# program, and the value of one component over it.
+renders "global log level in the wallet" "log_level: WARNING" --set global.logLevel=warn --show-only templates/wallet/configmap.yaml
+renders "global log level in the gateway" "level: warn" --set global.logLevel=warn --show-only templates/gateway/configmap.yaml
+renders "global log level in OpenBao" 'log_level = "warn"' --set global.logLevel=warn --show-only templates/openbao/configmap.yaml
+renders "log level of the api over the global value" "level: error" --set global.logLevel=debug --set api.logLevel=error --show-only templates/api/configmap.yaml
+# One client address rule per host (docs/exposure.md): the rule of the api
+# host in the gateway, api and webhook files (ClientAddress), the rule of
+# the wallet host only in the file of the wallet service role
+# (client_address, snake_case keys), and no forwarded_allow_ips.
+client_address=(--set api.exposure.clientAddress.header=X-Real-IP --set 'api.exposure.clientAddress.trustedProxies={173.245.48.0/20}' --set api.exposure.clientAddress.trustedProxyHeader=CF-Connecting-IP
+  --set organisationWallet.exposure.clientAddress.header=X-Real-IP)
+if helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "${client_address[@]}" > "$out/client-address.yaml" 2> "$out/client-address.err" \
+  && problems="$(python3 - "$out/client-address.yaml" <<'PY' 2>&1
+import sys, yaml
+docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
+api_rule = {"header": "X-Real-IP", "trustedProxies": ["173.245.48.0/20"], "trustedProxyHeader": "CF-Connecting-IP"}
+for doc in docs:
+    if doc.get("kind") != "ConfigMap":
+        continue
+    name = doc["metadata"]["name"]
+    for key, text in (doc.get("data") or {}).items():
+        if not key.endswith(".yaml"):
+            continue
+        try:
+            config = yaml.safe_load(text) or {}
+        except yaml.YAMLError:
+            continue
+        if not isinstance(config, dict):
+            continue
+        if name in ("t-api", "t-gateway") and key in ("api.yaml", "webhook.yaml", "config.yaml"):
+            if config.get("ClientAddress") != api_rule:
+                print(f"{name} {key} ClientAddress is {config.get('ClientAddress')!r}")
+        elif name == "t-wallet" and key == "service.yaml":
+            if config.get("client_address") != {"header": "X-Real-IP"}:
+                print(f"{name} {key} client_address is {config.get('client_address')!r}")
+        elif "client_address" in config or "ClientAddress" in config:
+            print(f"{name} {key} has a client address rule")
+        if "forwarded_allow_ips" in str(config):
+            print(f"{name} {key} has forwarded_allow_ips")
+PY
+)" && [ -z "$problems" ]; then
+  ok "client address: one rule per host, the wallet rule only in the service file"
+else
+  bad "client address: $(head -c 300 "$out/client-address.err") $(printf '%s' "${problems:-}" | tr '\n' ';' | head -c 400)"
+fi
+lacks "client address: no rule of the wallet host by default" "client_address" --show-only templates/wallet/configmap.yaml
+# The api files: the SMTP password from its Secret, and the sender address.
+renders "SMTP password from its Secret" "passwordFile: /run/secrets/igrant-api/smtp-password" \
+  --set api.smtp.host=smtp.example.org --set api.smtp.password.existingSecret=mail --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml
+renders "SMTP sender address" "fromEmail: noreply@example.org" \
+  --set api.smtp.host=smtp.example.org --set api.smtp.from=noreply@example.org --show-only templates/api/configmap.yaml
 operator_jobs() {
   local case="$1"; shift
   local file="$out/operator-jobs-$case.yaml" result
@@ -714,11 +797,11 @@ operator_jobs() {
 operator_jobs none
 operator_jobs bootstrap -f "$here/values/operator-jobs-bootstrap.yaml"
 # The gateway feature gate (Features.enforce): on by default, off with
-# gateway.features.enforce false; gateway.extraConfig still wins.
+# gateway.features.enforce false; gateway.advanced.extraConfig still wins.
 renders "feature gate on by default" "enforce: true"
 renders "feature gate off" "enforce: false" --set gateway.features.enforce=false
 lacks "feature gate off has no enforce true" "enforce: true" --set gateway.features.enforce=false
-renders "feature gate off with extraConfig" "enforce: false" --set gateway.extraConfig.Features.enforce=false
+renders "feature gate off with extraConfig" "enforce: false" --set gateway.advanced.extraConfig.Features.enforce=false
 # Each organisation's effective features select its webhook event types, so
 # the api files have no Webhooks.events and the schema refuses the value.
 renders "webhook delivery retention in the api files" "DeliveryRetentionDays: 10" --show-only templates/api/configmap.yaml
@@ -937,13 +1020,11 @@ PY
 trust_anchors "image roots by default" '{"configmap": null}'
 trust_anchors "roots from a ConfigMap" '{"configmap": "test-roots"}' \
   --set organisationWallet.walletUnit.trustAnchors.existingConfigMap=test-roots
-# Installation limits: Limits.maxOrganisations in the api and webhook files
-# (api.limits.maxOrganisations) and wallet_unit.organisation_wallet_units_max
-# in the service, config and worker files
-# (organisationWallet.walletUnit.organisationWalletUnitsMax), as integers,
-# only when a value is set: an api or wallet from a release before the input
-# limits refuses the keys. No other object has them: not the gateway file
-# (the gateway refuses the section), the clock, the hooks or the Jobs.
+# Installation limits (installation.limits): Limits.maxOrganisations in the
+# api and webhook files and wallet_unit.organisation_wallet_units_max in the
+# service, config and worker files, as integers, with the default 100. No
+# other object has them: not the gateway file (the gateway refuses the
+# section), the clock, the hooks or the Jobs.
 installation_limits() {
   local name="$1" expect="$2"; shift 2
   local problems
@@ -986,27 +1067,26 @@ PY
     bad "installation limits $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
-installation_limits "no key by default" '{"organisations": null, "units": null}'
-installation_limits "no key with empty values" '{"organisations": null, "units": null}' \
-  --set api.limits.maxOrganisations= --set organisationWallet.walletUnit.organisationWalletUnitsMax=
+installation_limits "the defaults" '{"organisations": 100, "units": 100}'
 installation_limits "the two limits" '{"organisations": 50, "units": 60}' \
-  --set api.limits.maxOrganisations=50 --set organisationWallet.walletUnit.organisationWalletUnitsMax=60
-installation_limits "only the organisation limit" '{"organisations": 40, "units": null}' --set api.limits.maxOrganisations=40
-installation_limits "only the organisation wallet unit limit" '{"organisations": null, "units": 40}' \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=40
+  --set installation.limits.maxOrganisations=50 --set installation.limits.maxOrganisationWalletUnits=60
+installation_limits "only the organisation limit" '{"organisations": 40, "units": 100}' --set installation.limits.maxOrganisations=40
+installation_limits "only the organisation wallet unit limit" '{"organisations": 100, "units": 40}' \
+  --set installation.limits.maxOrganisationWalletUnits=40
 # A values file gives numbers as floats: the files must have the integer,
 # not 1e+06.
-installation_limits "the largest limits as JSON numbers" '{"organisations": 100, "units": 100}' \
-  --set-json 'api.limits={"maxOrganisations": 100}' --set-json 'organisationWallet.walletUnit.organisationWalletUnitsMax=100'
-guard "organisation limit 0" "api.limits.maxOrganisations" --set api.limits.maxOrganisations=0
-guard "organisation limit over 100" "api.limits.maxOrganisations" --set api.limits.maxOrganisations=101
-guard "organisation limit as a string" "api.limits.maxOrganisations" --set-string api.limits.maxOrganisations=50
-guard "organisation wallet unit limit 0" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=0
-guard "organisation wallet unit limit over 100" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set organisationWallet.walletUnit.organisationWalletUnitsMax=101
-guard "organisation wallet unit limit as a string" "organisationWallet.walletUnit.organisationWalletUnitsMax" \
-  --set-string organisationWallet.walletUnit.organisationWalletUnitsMax=50
+installation_limits "the smallest limits as JSON numbers" '{"organisations": 1, "units": 1}' \
+  --set-json 'installation.limits={"maxOrganisations": 1, "maxOrganisationWalletUnits": 1}'
+guard "organisation limit 0" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=0
+guard "organisation limit over 100" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=101
+guard "organisation limit as a string" "installation.limits.maxOrganisations" --set-string installation.limits.maxOrganisations=50
+guard "organisation limit empty" "installation.limits.maxOrganisations" --set installation.limits.maxOrganisations=
+guard "organisation wallet unit limit 0" "installation.limits.maxOrganisationWalletUnits" \
+  --set installation.limits.maxOrganisationWalletUnits=0
+guard "organisation wallet unit limit over 100" "installation.limits.maxOrganisationWalletUnits" \
+  --set installation.limits.maxOrganisationWalletUnits=101
+guard "organisation wallet unit limit as a string" "installation.limits.maxOrganisationWalletUnits" \
+  --set-string installation.limits.maxOrganisationWalletUnits=50
 # Development builds of the wallet apps (developmentAppsAllowed): no key by
 # default (the wallet default is false); when set, the boolean is in the
 # files with a wallet_unit section (service, config, workers), never in the
@@ -1077,29 +1157,29 @@ installation "external database" -f "$profiles/database-external.yaml"
 # The optional features (installation.optionalFeatures): the same list in the
 # api, webhook, gateway and wallet files.
 optional=protocol1 installation "protocol1" --set 'installation.optionalFeatures={protocol1}'
-guard "organisationWallet.extraConfig.installation" "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.extraConfig.installation={"optional_features":["protocol1"]}'
-# api.extraConfig and gateway.extraConfig cannot set a different list: the
+guard "organisationWallet.advanced.extraConfig.installation" "organisationWallet.advanced.extraConfig.installation: set installation.optionalFeatures instead" --set-json 'organisationWallet.advanced.extraConfig.installation={"optional_features":["protocol1"]}'
+# api.advanced.extraConfig and gateway.advanced.extraConfig cannot set a different list: the
 # same services are accepted, and the files keep the chart's form.
-installation "the same list in api.extraConfig and gateway.extraConfig" \
-  --set-json 'api.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.extraConfig.Installation={"services":["wallet"]}'
-guard "api.extraConfig.Installation that differs" "api.extraConfig.Installation names other services than this release (wallet)" \
-  --set-json 'api.extraConfig.Installation={"services":[]}'
-guard "gateway.extraConfig.Installation that differs" "gateway.extraConfig.Installation names other services than this release (wallet)" \
-  --set-json 'gateway.extraConfig.Installation={"services":["wallet","api"]}'
-guard "api.extraConfig.Installation without services" "api.extraConfig.Installation names other services" \
-  --set-json 'api.extraConfig.Installation={}'
-guard "the public keys of the wallet" "serviceKeys.publicJwks.eudi-wallet" --set serviceKeys.publicJwks.eudi-wallet=null
+installation "the same list in api.advanced.extraConfig and gateway.advanced.extraConfig" \
+  --set-json 'api.advanced.extraConfig.Installation={"services":["wallet"]}' --set-json 'gateway.advanced.extraConfig.Installation={"services":["wallet"]}'
+guard "api.advanced.extraConfig.Installation that differs" "api.advanced.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'api.advanced.extraConfig.Installation={"services":[]}'
+guard "gateway.advanced.extraConfig.Installation that differs" "gateway.advanced.extraConfig.Installation names other services than this release (wallet)" \
+  --set-json 'gateway.advanced.extraConfig.Installation={"services":["wallet","api"]}'
+guard "api.advanced.extraConfig.Installation without services" "api.advanced.extraConfig.Installation names other services" \
+  --set-json 'api.advanced.extraConfig.Installation={}'
+guard "the public keys of the wallet" "keys.serviceEnvelope.organisationWallet.publicJwks" --set keys.serviceEnvelope.organisationWallet.publicJwks=
 audit "no bucket by default" '{"audit": {"retention_years": 7}, "bucket": null, "secrets": {}}'
 s3=(--set organisationWallet.audit.bucket.name=example-audit --set organisationWallet.audit.bucket.endpoint=https://s3.example.org
-    --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKey.existingSecret=audit-bucket)
+    --set organisationWallet.audit.bucket.region=eu-west-1 --set organisationWallet.audit.bucket.accessKeyId.existingSecret=audit-bucket --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=audit-bucket)
 audit "s3 bucket with its access key" \
   '{"audit": {"retention_years": 7}, "bucket": {"type": "s3", "name": "example-audit", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "access-key-id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret-access-key"]}}' \
   "${s3[@]}"
 audit "s3 bucket with a prefix and the store's CA" \
   '{"audit": {"retention_years": 10, "scope_retention_years": {"kms": 12}}, "bucket": {"type": "s3", "name": "example-audit", "prefix": "audit/production/", "endpoint": "https://s3.example.org", "region": "eu-west-1", "access_key_id_file": "/run/secrets/eudi-wallet/audit-bucket-access-key-id", "secret_access_key_file": "/run/secrets/eudi-wallet/audit-bucket-secret-access-key", "ca_file": "/run/secrets/eudi-wallet/audit-bucket-ca.crt"}, "secrets": {"audit-bucket-access-key-id": ["audit-bucket", "id"], "audit-bucket-secret-access-key": ["audit-bucket", "secret"], "audit-bucket-ca.crt": ["store-ca", "ca.pem"]}}' \
   "${s3[@]}" --set organisationWallet.audit.retentionYears=10 --set organisationWallet.audit.scopeRetentionYears.kms=12 \
-  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.accessKey.idKey=id \
-  --set organisationWallet.audit.bucket.accessKey.secretKey=secret --set organisationWallet.audit.bucket.ca.existingSecret=store-ca \
+  --set organisationWallet.audit.bucket.prefix=audit/production/ --set organisationWallet.audit.bucket.accessKeyId.key=id \
+  --set organisationWallet.audit.bucket.secretAccessKey.key=secret --set organisationWallet.audit.bucket.ca.existingSecret=store-ca \
   --set organisationWallet.audit.bucket.ca.key=ca.pem
 audit "gcs bucket with its service account" \
   '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example_audit", "project": "example-project", "prefix": "audit/production/", "credentials_file": "/run/secrets/eudi-wallet/audit-bucket-service-account.json"}, "secrets": {"audit-bucket-service-account.json": ["audit-bucket", "sa.json"]}}' \
@@ -1109,7 +1189,7 @@ audit "gcs bucket with its service account" \
   --set organisationWallet.audit.bucket.credentials.key=sa.json
 audit "gcs bucket with the Google default credentials" '{"audit": {"retention_years": 7}, "bucket": {"type": "gcs", "name": "example-audit"}, "secrets": {}}' \
   --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.name=example-audit
-for value in credentials accessKey ca; do
+for value in credentials accessKeyId secretAccessKey ca; do
   guard "audit bucket $value without bucket name" "organisationWallet.audit.bucket.$value.existingSecret needs organisationWallet.audit.bucket.name" \
     --set "organisationWallet.audit.bucket.$value.existingSecret=audit-bucket"
 done
@@ -1117,14 +1197,16 @@ guard "audit bucket of type s3 without endpoint" "set organisationWallet.audit.b
   --set organisationWallet.audit.bucket.name=example-audit
 guard "audit bucket of type s3 without region" "organisationWallet.audit.bucket.region is required" \
   "${s3[@]}" --set organisationWallet.audit.bucket.region=
-guard "audit bucket of type s3 without access key" "organisationWallet.audit.bucket.accessKey.existingSecret is required" \
-  "${s3[@]}" --set organisationWallet.audit.bucket.accessKey.existingSecret=
+guard "audit bucket of type s3 without access key" "organisationWallet.audit.bucket.accessKeyId.existingSecret and organisationWallet.audit.bucket.secretAccessKey.existingSecret are required" \
+  "${s3[@]}" --set organisationWallet.audit.bucket.accessKeyId.existingSecret=
+guard "audit bucket of type s3 without secret access key" "organisationWallet.audit.bucket.secretAccessKey.existingSecret are required" \
+  "${s3[@]}" --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=
 guard "audit bucket of type s3 with an invalid S3 bucket name" "is not an S3 bucket name" \
   "${s3[@]}" --set organisationWallet.audit.bucket.name=example_audit
 guard "audit bucket of type s3 with gcs values" "are values of type gcs" \
   "${s3[@]}" --set organisationWallet.audit.bucket.project=example-project
 guard "audit bucket of type gcs with s3 values" "are values of type s3" \
-  "${s3[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.accessKey.existingSecret=
+  "${s3[@]}" --set organisationWallet.audit.bucket.type=gcs --set organisationWallet.audit.bucket.accessKeyId.existingSecret= --set organisationWallet.audit.bucket.secretAccessKey.existingSecret=
 guard "audit bucket type" "organisationWallet.audit.bucket.type" --set organisationWallet.audit.bucket.type=minio
 guard "audit bucket endpoint" "organisationWallet.audit.bucket.endpoint" "${s3[@]}" --set organisationWallet.audit.bucket.endpoint=https://s3.example.org/audit
 guard "audit bucket name" "organisationWallet.audit.bucket.name" --set organisationWallet.audit.bucket.name=Audit_Bucket
@@ -1151,62 +1233,72 @@ lacks "no WIA pool refill event" "ows.wia_pool.refill_requested"
 renders "server parameter wins over a database log parameter" '"log_statement=all"' --set database.postgresql.parameters.log_statement=all
 lacks "database log parameter overridden by a server parameter" '"log_statement=ddl"' --set database.postgresql.parameters.log_statement=all
 
-# Workers and clock (organisationWallet.workers, .clock, .serviceMonitor;
-# docs/workers.md). Each case gives the full list of groups (a list value
-# replaces the default list).
-main_group='{"name":"main","queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600,"terminationGracePeriodSeconds":630}'
-maintenance_group='{"name":"maintenance","queues":["maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}'
-workers() { printf 'organisationWallet.workers.groups=[%s]' "$(IFS=,; printf '%s' "$*")"; }
-guard "worker group name" "organisationWallet.workers.groups.0.name" --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
-guard "worker group name without the schema" 'organisationWallet.workers.groups[0].name "Main" is not a name' --skip-schema-validation --set-json "$(workers "${main_group/\"main\"/\"Main\"}" "$maintenance_group")"
-guard "worker group name used twice" 'organisationWallet.workers.groups[1].name "main" is the name of another group' --set-json "$(workers "$main_group" "${maintenance_group/\"name\":\"maintenance\"/\"name\":\"main\"}")"
+# Workers and clock (organisationWallet.workers, .clock, monitoring;
+# docs/workers.md). The groups are a map with the group name as key: a case
+# gives the groups that it changes, and null removes a default group.
+main_group='{"queues":["realtime","attestation","status","kms"],"replicas":2,"processes":1,"threads":8,"shutdownTimeoutSeconds":600}'
+maintenance_group='{"queues":["maintenance"],"replicas":1,"processes":1,"threads":2,"shutdownTimeoutSeconds":14400}'
+workers() {
+  local out="" sep="" pair
+  for pair in "$@"; do out="$out$sep\"${pair%%=*}\":${pair#*=}"; sep=","; done
+  printf 'organisationWallet.workers.groups={%s}' "$out"
+}
+guard_property_name "worker group name" "organisationWallet.workers.groups" "Main" --set-json "$(workers "Main=$main_group")"
+guard "worker group name without the schema" 'organisationWallet.workers.groups: "Main" is not a group name' --skip-schema-validation --set-json "$(workers "Main=$main_group")"
 guard "worker Deployment name too long" "gives the Deployment name" --set fullnameOverride=ows-installation-of-the-production-site
-guard "worker queue" "organisationWallet.workers.groups.1.queues.0" --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
-guard "worker queue without the schema" '"default" is not a queue of the wallet' --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
-guard "worker queues empty without the schema" "organisationWallet.workers.groups[1].queues is empty" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[]}")"
-guard "worker queue listed twice without the schema" "organisationWallet.workers.groups[1].queues names a queue two times" --skip-schema-validation --set-json "$(workers "$main_group" "${maintenance_group/\[\"maintenance\"\]/[\"maintenance\",\"maintenance\"]}")"
-guard "worker queue that no group runs" "no group runs the queue maintenance" --set-json "$(workers "$main_group")"
-guard "worker grace period below the shutdown timeout" "terminationGracePeriodSeconds (14400) must be at least shutdownTimeoutSeconds (14400) + 30" --set-json "$(workers "$main_group" "${maintenance_group/14430/14400}")"
-guard "worker replicas" "organisationWallet.workers.groups.0.replicas" --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
-guard "worker replicas without the schema" "organisationWallet.workers.groups[0].replicas (0) must be 1 or more" --skip-schema-validation --set-json "$(workers "${main_group/\"replicas\":2/\"replicas\":0}" "$maintenance_group")"
-guard "worker group without threads" "threads" --set-json "$(workers "${main_group/\"threads\":8,/}" "$maintenance_group")"
+guard "worker queue" "organisationWallet.workers.groups.maintenance.queues.0" --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queue without the schema" '"default" is not a queue of the wallet' --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"default\"]}")"
+guard "worker queues empty without the schema" "organisationWallet.workers.groups.maintenance.queues is empty" --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[]}")"
+guard "worker queue listed twice without the schema" "organisationWallet.workers.groups.maintenance.queues names a queue two times" --skip-schema-validation --set-json "$(workers "maintenance=${maintenance_group/\[\"maintenance\"\]/[\"maintenance\",\"maintenance\"]}")"
+guard "worker queue that no group runs" "no group runs the queue maintenance" --set-json "$(workers "maintenance=null")"
+guard "worker replicas" "organisationWallet.workers.groups.main.replicas" --set-json "$(workers "main=${main_group/\"replicas\":2/\"replicas\":0}")"
+guard "worker replicas without the schema" "organisationWallet.workers.groups.main.replicas (0) must be 1 or more" --skip-schema-validation --set-json "$(workers "main=${main_group/\"replicas\":2/\"replicas\":0}")"
+guard "worker group without threads" "threads" --set-json "$(workers "extra=${main_group/\"threads\":8,/}")"
+guard "worker grace period is not a value" "terminationGracePeriodSeconds" --set organisationWallet.workers.groups.main.terminationGracePeriodSeconds=630
 guard "clock replicas" "organisationWallet.clock.replicas" --set organisationWallet.clock.replicas=0
-one_group='organisationWallet.workers.groups=[{"name":"all","queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":2,"threads":4,"shutdownTimeoutSeconds":14400,"terminationGracePeriodSeconds":14430}]'
+one_group="$(workers 'all={"queues":["realtime","attestation","status","kms","maintenance"],"replicas":1,"processes":2,"threads":4,"shutdownTimeoutSeconds":14400}' main=null maintenance=null)"
 renders "one worker group for every queue" "name: t-wallet-worker-all" --set-json "$one_group"
+renders "one worker group: the grace period from its shutdown timeout" "terminationGracePeriodSeconds: 14430" --set-json "$one_group" --show-only templates/wallet/worker.yaml
+renders "a change of one worker group keeps the other group" "name: t-wallet-worker-maintenance" --set organisationWallet.workers.groups.main.replicas=3 --show-only templates/wallet/worker.yaml
 renders "one worker group: its configuration key" "worker-all.yaml: |" --set-json "$one_group"
 lacks "one worker group: no default group Deployments" "name: t-wallet-worker-main" --set-json "$one_group"
 renders "clock replicas" "replicas: 3" --set organisationWallet.clock.replicas=3 --show-only templates/wallet/clock.yaml
-renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" --set organisationWallet.serviceMonitor.enabled=true
-# The wallet's SSRF allow list (organisationWallet.ssrf.allowedPrivate): no
+renders "ServiceMonitor of the workers and the clock" "name: t-wallet-metrics" --set monitoring.serviceMonitor.enabled=true
+# The SSRF guards (outboundHttp): the allow list of the wallet; no
 # key by default (an image without the setting gets no unknown key); the
 # entries in each wallet file; the render stops for a loopback or metadata
 # network and for an entry that is not a host name, address or CIDR.
 lacks "no SSRF allow list by default" "ssrf_protection" --show-only templates/wallet/configmap.yaml
-renders "the SSRF allow list in the wallet files" "allowed_private:" --set-json 'organisationWallet.ssrf.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
-guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["127.0.0.0/8"]'
-guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'organisationWallet.ssrf.allowedPrivate=["169.254.169.254"]'
-guard "an SSRF allow entry is a host, an address or a CIDR" "organisationWallet.ssrf.allowedPrivate.0" --set-json 'organisationWallet.ssrf.allowedPrivate=["not a host"]'
-# Alert rules (organisationWallet.prometheusRule; tests/alert-rules.sh runs
+renders "the SSRF allow list in the wallet files" "allowed_private:" --set-json 'outboundHttp.allowedPrivate=["wallet.example.internal","10.20.0.0/16"]' --show-only templates/wallet/configmap.yaml
+guard "no loopback in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'outboundHttp.allowedPrivate=["127.0.0.0/8"]'
+guard "no metadata address in the SSRF allow list" "covers a loopback, link-local, metadata or unspecified address" --set-json 'outboundHttp.allowedPrivate=["169.254.169.254"]'
+guard "an SSRF allow entry is a host, an address or a CIDR" "outboundHttp.allowedPrivate.0" --set-json 'outboundHttp.allowedPrivate=["not a host"]'
+renders "SSRF guards off: the api file" "ssrfProtectionDisabled: true" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/api/configmap.yaml
+renders "SSRF guards off: the gateway file" "ssrfProtectionDisabled: true" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/gateway/configmap.yaml
+renders "SSRF guards off: the wallet files" "enabled: false" --set outboundHttp.ssrfProtection.enabled=false --show-only templates/wallet/configmap.yaml
+guard "SSRF switch of the api in the extra configuration" "set outboundHttp.ssrfProtection.enabled instead" --set-json 'api.advanced.extraConfig={"OutboundHttp":{"ssrfProtectionDisabled":true}}'
+guard "SSRF switch of the wallet in the extra configuration" "set outboundHttp.ssrfProtection.enabled and outboundHttp.allowedPrivate instead" --set-json 'organisationWallet.advanced.extraConfig={"ssrf_protection":{"enabled":false}}'
+# Alert rules (monitoring.prometheusRule; tests/alert-rules.sh runs
 # them with promtool): none by default, and only with the ServiceMonitor.
-lacks "no PrometheusRule by default" "kind: PrometheusRule" --set organisationWallet.serviceMonitor.enabled=true
-renders "wallet PrometheusRule: a missing partition of the month is critical" "alert: PartitionOfTheMonthMissing" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
-renders "wallet PrometheusRule: labels for the rule selector" "release: kube-prometheus" --set organisationWallet.serviceMonitor.enabled=true --set organisationWallet.prometheusRule.enabled=true --set-json 'organisationWallet.prometheusRule.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
-guard "PrometheusRule without the ServiceMonitor" "organisationWallet.prometheusRule needs organisationWallet.serviceMonitor.enabled" --set organisationWallet.prometheusRule.enabled=true
+lacks "no PrometheusRule by default" "kind: PrometheusRule" --set monitoring.serviceMonitor.enabled=true
+renders "wallet PrometheusRule: a missing partition of the month is critical" "alert: PartitionOfTheMonthMissing" --set monitoring.serviceMonitor.enabled=true --set monitoring.prometheusRule.enabled=true --show-only templates/wallet/prometheusrule.yaml
+renders "wallet PrometheusRule: labels for the rule selector" "release: kube-prometheus" --set monitoring.serviceMonitor.enabled=true --set monitoring.prometheusRule.enabled=true --set-json 'monitoring.labels={"release":"kube-prometheus"}' --show-only templates/wallet/prometheusrule.yaml
+guard "PrometheusRule without the ServiceMonitor" "monitoring.prometheusRule.enabled needs monitoring.serviceMonitor.enabled" --set monitoring.prometheusRule.enabled=true
 # Servers (service and config): a headless Service for the metrics port
 # (9190) with the job wallet-server; the ServiceMonitor takes the job name
 # from the label metrics.igrant.io/job.
-renders "metrics Service of the service role" "name: t-wallet-service-metrics" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "metrics Service of the config role" "name: t-wallet-config-metrics" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "job label value of the server targets" "metrics.igrant.io/job: wallet-server" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "job label of the ServiceMonitor" "jobLabel: metrics.igrant.io/job" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
-renders "scrape interval of the servers" "interval: 15s" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "metrics Service of the service role" "name: t-wallet-service-metrics" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "metrics Service of the config role" "name: t-wallet-config-metrics" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job label value of the server targets" "metrics.igrant.io/job: wallet-server" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "job label of the ServiceMonitor" "jobLabel: metrics.igrant.io/job" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "scrape interval of the servers" "interval: 30s" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
 lacks "no metrics port in the route Services" "9190" --show-only templates/wallet/svc.yaml
-renders "worker group metrics Service includes pods that are not ready" "publishNotReadyAddresses: true" --set organisationWallet.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
+renders "worker group metrics Service includes pods that are not ready" "publishNotReadyAddresses: true" --set monitoring.serviceMonitor.enabled=true --show-only templates/wallet/servicemonitor.yaml
 # Scrape ports, open only to the monitoring namespace
-# (networkPolicy.monitoring): the health port of the workers and the clock
+# (monitoring.networkPolicy): the health port of the workers and the clock
 # (/metrics), and the metrics port of the servers.
 if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" -f "$profiles/network-policies.yaml" \
-    --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+    --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
     --show-only templates/networkpolicy/policies.yaml 2>&1 | python3 -c '
 import sys, yaml
 docs = {d["metadata"]["name"]: d for d in yaml.safe_load_all(sys.stdin) if d}
@@ -1222,7 +1314,7 @@ else
   bad "scrape of the servers with network policies: $(printf '%s' "$problems" | head -c 300)"
 fi
 renders "scrape of the workers and the clock with network policies" "port: health" -f "$profiles/network-policies.yaml" \
-  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
   --show-only templates/networkpolicy/policies.yaml
 lacks "no scrape of the workers and the clock without the monitoring namespace" "port: health" -f "$profiles/network-policies.yaml" \
   --show-only templates/networkpolicy/policies.yaml
@@ -1387,13 +1479,14 @@ guard "NATS 2.15 (format v2 acks)" "NATS 2.15 and later send the JetStream acks 
 guard "NATS 3" "NATS 2.15 and later send the JetStream acks" --set nats.image.tag=3.0.0
 renders "NATS with a custom tag without a version" "nats.conf" --set nats.image.tag=mirror --set nats.image.digest=
 renders "NATS routes with mutual TLS" "verify: true" --set nats.replicas=3 --show-only templates/nats/configmap.yaml
-# NATS TLS (nats.tls, nats.tlsCa), bundled and external.
-guard "external NATS CA with the bundled NATS" "nats.tlsCa is the CA of an external NATS" --set nats.tlsCa.existingSecret=my-nats-ca
+# NATS TLS (nats.tls, nats.external.ca), bundled and external.
+guard "external NATS CA with the bundled NATS" "nats.external.ca is the CA of an external NATS" --set nats.external.ca.existingSecret=my-nats-ca
+guard "NATS mode" "nats.mode" --set nats.mode=cluster
 renders "NATS with your own certificate" "secretName: my-nats-tls" --set nats.tls.existingSecret=my-nats-tls --show-only templates/nats/statefulset.yaml
 lacks "chart NATS TLS Secret with your own certificate" "name: t-nats-tls" --set nats.tls.existingSecret=my-nats-tls
-external_nats=(--set nats.enabled=false --set nats.external.url=tls://nats.example.org:4222)
-renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
-lacks "external NATS: no chart TLS Secret" "t-nats-tls" "${external_nats[@]}" --set nats.tlsCa.existingSecret=my-nats-ca
+external_nats=(--set nats.mode=external --set nats.external.url=tls://nats.example.org:4222)
+renders "external NATS with its CA" "name: my-nats-ca" "${external_nats[@]}" --set nats.external.ca.existingSecret=my-nats-ca
+lacks "external NATS: no chart TLS Secret" "t-nats-tls" "${external_nats[@]}" --set nats.external.ca.existingSecret=my-nats-ca
 lacks "external NATS without a CA: no CA file" "nats-ca.crt" "${external_nats[@]}"
 
 # Lifetime of a stored command reply
@@ -1414,7 +1507,7 @@ guard "nonce limit" "organisationWallet.server.nonceRequestsPerMinute" --set org
 # Wallet pools and api reader pools (database.pools).
 guard "wallet pool size" "database.pools.walletService.poolSize" --set database.pools.walletService.poolSize=0
 guard "worker pool overflow" "database.pools.walletWorker.maxOverflow" --set database.pools.walletWorker.maxOverflow=-1
-guard "worker threads above the largest wallet pool" "organisationWallet.workers.groups.0.threads" --set-json "$(workers "${main_group/\"threads\":8/\"threads\":101}" "$maintenance_group")"
+guard "worker threads above the largest wallet pool" "organisationWallet.workers.groups.main.threads" --set-json "$(workers "main=${main_group/\"threads\":8/\"threads\":101}")"
 # Connection budget (docs/database.md, "Connection budget"): the release's
 # pools, at the most pods of each Deployment, plus the hooks must fit in the
 # bundled server's max_connections less its reserved connections.
@@ -1448,7 +1541,7 @@ fi
 guard "pooler without its server connections" "database.pooler.serverConnections is required" --set database.pooler.host=pgbouncer.ow.svc
 guard "pooler port" "database.pooler.port" "${pooler[@]}" --set database.pooler.port=0
 guard "connection budget with a pooler counts its server connections" "connection pooler 1 x 40" "${pooler[@]}" --set database.postgresql.parameters.max_connections=100
-renders "the session pool of a worker process follows its threads" "pool_size: 16" --set database.postgresql.parameters.max_connections=600 --set-json "$(workers "${main_group/\"threads\":8/\"threads\":16}" "$maintenance_group")" \
+renders "the session pool of a worker process follows its threads" "pool_size: 16" --set database.postgresql.parameters.max_connections=600 --set-json "$(workers "main=${main_group/\"threads\":8/\"threads\":16}")" \
   --show-only templates/wallet/configmap.yaml
 renders "api reader pool" "maxConns: 9" --set database.pools.apiReadAccess.maxConns=9 --show-only templates/api/configmap.yaml
 
@@ -1506,14 +1599,14 @@ guard "external redis without sentinels or address" "redis.external" "${external
 guard "external redis without sentinels or address without the schema" "redis.external.sentinels or redis.external.address is required" "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=[]'
 guard "external redis with sentinels and address" "redis.external" "${external_redis[@]}" --set redis.external.address=redis.example.org:6379
 guard "external redis with sentinels and address without the schema" "set redis.external.sentinels or redis.external.address, not both" "${external_redis[@]}" --skip-schema-validation --set redis.external.address=redis.example.org:6379
-guard "external redis user without password Secret" "redis.users.gateway" "${external_redis[@]}" --set redis.users.gateway.passwordSecret=
-guard "external redis user without password Secret without the schema" "redis.users.gateway.passwordSecret is required with redis.mode external" "${external_redis[@]}" --skip-schema-validation --set redis.users.gateway.passwordSecret=
+guard "external redis user without password Secret" "redis.users.gateway" "${external_redis[@]}" --set redis.users.gateway.password.existingSecret=
+guard "external redis user without password Secret without the schema" "redis.users.gateway.password.existingSecret is required with redis.mode external" "${external_redis[@]}" --skip-schema-validation --set redis.users.gateway.password.existingSecret=
 guard "external redis Sentinel without port" "redis.external.sentinels" "${external_redis[@]}" --set-json 'redis.external.sentinels=["redis-1.example.org"]'
 guard "external redis Sentinel without port without the schema" '"redis-1.example.org" is not host:port' "${external_redis[@]}" --skip-schema-validation --set-json 'redis.external.sentinels=["redis-1.example.org"]'
 guard "external redis with network policies without addresses" "networkPolicy.externalRedis needs the addresses" "${external_redis[@]}" -f "$profiles/network-policies.yaml" --set-json 'networkPolicy.externalRedis=[]'
 redis_sts "with redis.affinity" "requiredDuringSchedulingIgnoredDuringExecution" \
   --set-json 'redis.affinity={"podAntiAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"topologyKey":"kubernetes.io/hostname","labelSelector":{"matchLabels":{"app.kubernetes.io/component":"redis"}}}]}}'
-redis_sts "with a user's password Secret" "name: my-redis-wallet-service" --set redis.users.walletService.passwordSecret=my-redis-wallet-service
+redis_sts "with a user's password Secret" "name: my-redis-wallet-service" --set redis.users.walletService.password.existingSecret=my-redis-wallet-service
 redis_sts "with your own certificate" "secretName: my-redis-tls" --set redis.tls.existingSecret=my-redis-tls
 redis_sts "with 5 pods" "t-redis-4.t-redis-headless.ow.svc" --set redis.replicas=5 --set redis.sentinel.quorum=3
 lacks "chart Valkey TLS Secret with your own certificate" "name: t-redis-tls" --set redis.tls.existingSecret=my-redis-tls
@@ -1522,7 +1615,7 @@ renders "redis 5 Sentinels in the wallet file" "- t-redis-4.t-redis-headless.ow.
 renders "external redis address" "address: redis.example.org:6379" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
 lacks "external redis address without the Sentinel login" "sentinel_username" "${external_redis[@]}" --set-json 'redis.external.sentinels=[]' --set redis.external.address=redis.example.org:6379
 lacks "external redis Sentinels without a login" "sentinel_username" "${external_redis[@]}" --set redis.external.sentinelAuth=false
-lacks "external redis without CA (uses the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.caSecret=
+lacks "external redis without CA (uses the system CAs)" "redis-ca.crt" "${external_redis[@]}" --set redis.external.ca.existingSecret=
 
 # Bundled Valkey metrics (redis.metrics): the exporter in each pod with the
 # ACL user metrics, its password, the ServiceMonitor, and the scrape port
@@ -1536,12 +1629,15 @@ renders "the password of the user metrics" "  metrics: " "${metrics[@]}" --show-
 lacks "no exporter by default" "redis_exporter"
 lacks "no ACL user metrics by default" "user metrics on"
 lacks "no password of the user metrics by default" "  metrics: " --show-only templates/secrets.yaml
-renders "Valkey ServiceMonitor" "name: t-redis-metrics" "${metrics[@]}" --set redis.metrics.serviceMonitor.enabled=true
+renders "Valkey ServiceMonitor" "name: t-redis-metrics" "${metrics[@]}" --set monitoring.serviceMonitor.enabled=true
 lacks "no Valkey ServiceMonitor without its value" "t-redis-metrics" "${metrics[@]}"
+lacks "no Valkey ServiceMonitor without the exporter" "t-redis-metrics" --set monitoring.serviceMonitor.enabled=true
+renders "one interval and the labels of all ServiceMonitors" "release: kube-prometheus" "${metrics[@]}" --set monitoring.serviceMonitor.enabled=true --set monitoring.serviceMonitor.interval=60s \
+  --set-json 'monitoring.labels={"release":"kube-prometheus"}' --show-only templates/redis/servicemonitor.yaml
+renders "monitoring of an external Valkey: no Valkey ServiceMonitor, no stop" "kind: ServiceMonitor" "${external_redis[@]}" --set monitoring.serviceMonitor.enabled=true
 renders "Valkey scrape with network policies" "port: metrics" -f "$profiles/network-policies.yaml" \
-  --set networkPolicy.monitoring.enabled=true --set-json 'networkPolicy.monitoring.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
+  --set monitoring.networkPolicy.enabled=true --set-json 'monitoring.networkPolicy.namespaceSelector={"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}' \
   --show-only templates/networkpolicy/policies.yaml
-guard "redis ServiceMonitor without the exporter" "redis.metrics.serviceMonitor.enabled needs redis.metrics.enabled" --set redis.metrics.serviceMonitor.enabled=true
 guard "redis metrics with an external Valkey" "redis.metrics is for the bundled Valkey" "${external_redis[@]}" "${metrics[@]}"
 guard "redis user name metrics" 'redis.users.gateway.username "metrics" is a user of the bundled Valkey' --set redis.users.gateway.username=metrics
 
@@ -1626,22 +1722,22 @@ renders "api /tmp for uploads of 100 MiB" "sizeLimit: 100Mi" --set gateway.proxy
   --set api.tmp.sizeLimit=100Mi --show-only templates/api/deploy.yaml
 renders "api /tmp: a body of 32 MiB stays in memory" "sizeLimit: 1Mi" --set gateway.proxy.maxBodyBytes.file=33554432 \
   --set api.tmp.sizeLimit=1Mi --show-only templates/api/deploy.yaml
-# api uploads (api.extraConfig Uploads and ImageUpload): the gateway file
+# api uploads (api.advanced.extraConfig Uploads and ImageUpload): the gateway file
 # class must take the largest image + 64 KiB, and the memory request +
 # Uploads.maxInProgress x the largest image must fit below the api memory
 # limit.
-guard "gateway file class below the api image upload limit" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest image (104791040 bytes" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
-guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest image (5242880 bytes" --set-json 'api.extraConfig={"Uploads":{"maxInProgress":60}}'
+guard "gateway file class below the api image upload limit" "must be at least the api ImageUpload.maxBytes (104857600) + 65536" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104857600}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "8 uploads of 100 MiB above the api memory limit" "Uploads.maxInProgress (8) x the largest image (104791040 bytes" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104791040}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi
+guard "too many uploads in progress for the api memory limit" "Uploads.maxInProgress (60) x the largest image (5242880 bytes" --set-json 'api.advanced.extraConfig={"Uploads":{"maxInProgress":60}}'
 # The dashboard config.json: a change restarts the dashboard pods (the
 # config.json checksum).
 if [ "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" != \
-     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set enterpriseDashboard.configuration.appVersion=test-version --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
+     "$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" --set enterpriseDashboard.image.tag=test-version --show-only templates/dashboard/deploy.yaml | grep 'checksum/config')" ]; then
   ok "a new config.json restarts the dashboard pods (config.json checksum)"
 else
   bad "a new config.json restarts the dashboard pods (config.json checksum)"
 fi
-renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --set-json 'api.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
+renders "2 uploads of 100 MiB with a memory limit of 1Gi" "kind: Deployment" --set-json 'api.advanced.extraConfig={"ImageUpload":{"maxBytes":104791040},"Uploads":{"maxInProgress":2}}' --set gateway.proxy.maxBodyBytes.file=104857600 --set api.tmp.sizeLimit=100Mi --set api.resources.limits.memory=1Gi
 # Writable paths of the pods that run as non-root with a read-only root
 # file system: /tmp of each api, webhook, dashboard and wallet pod (64Mi, in
 # memory except for the dashboard), /tmp and the socket folder of the

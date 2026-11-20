@@ -103,7 +103,7 @@ done
 
 echo "make-keys: the NATS users"
 # walletWorker: the wallet workers (the clock does not use NATS).
-nats_users="api:api apiWebhook:api-webhook walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
+nats_users="api:api webhook:api-webhook walletConfig:wallet-config walletService:wallet-service walletWorker:wallet-worker"
 for entry in $nats_users; do
   name="${entry#*:}"
   igrant_api keys generate-nats-seed --file "nats-${name}.seed" > "$files/nats-${name}.nkey"
@@ -145,36 +145,31 @@ block() {
 {
   echo "# Values of the keys of the release ${release} (scripts/make-keys.sh, ${stamp})."
   echo "# No secret: key ids, public keys and Secret names. Use it with helm -f."
-  echo "api:"
-  echo "  keyStorage:"
-  echo "    tokenSigning:"
-  echo "      activeKid: ${token_kid}"
-  echo "  serviceEnvelope:"
-  echo "    activeKid: api-service-${stamp}"
-  echo "organisationWallet:"
-  echo "  serviceEnvelope:"
-  echo "    activeKid: wallet-service-${stamp}"
-  echo "gateway:"
-  echo "  internalToken:"
+  echo "keys:"
+  echo "  apiTokenSigning:"
+  echo "    activeKid: ${token_kid}"
+  echo "  gatewayInternalToken:"
   echo "    activeKid: ${gateway_kid}"
-  echo "  publicKeys:"
-  echo "    gatewayJwks: |"
-  block "      " gateway-jwks.json
-  echo "    tokenVerificationJwks: |"
-  block "      " token-verification-jwks.json
-  echo "serviceKeys:"
+  echo "  serviceEnvelope:"
+  echo "    api:"
+  echo "      activeKid: api-service-${stamp}"
+  echo "      publicJwks: |"
+  block "        " api-service-public.json
+  echo "    organisationWallet:"
+  echo "      activeKid: wallet-service-${stamp}"
+  echo "      publicJwks: |"
+  block "        " wallet-service-public.json
   echo "  publicJwks:"
-  echo "    igrant-api: |"
-  block "      " api-service-public.json
-  echo "    eudi-wallet: |"
-  block "      " wallet-service-public.json
+  echo "    gatewayInternalToken: |"
+  block "      " gateway-jwks.json
+  echo "    apiTokenVerification: |"
+  block "      " token-verification-jwks.json
   echo "nats:"
-  echo "  auth:"
-  echo "    users:"
+  echo "  users:"
   for entry in $nats_users; do
     key="${entry%%:*}"
     name="${entry#*:}"
-    echo "      ${key}: {nkey: $(tr -d '\n' < "$files/nats-${name}.nkey"), seedSecret: ${release}-nats-${name}}"
+    echo "    ${key}: {nkey: $(tr -d '\n' < "$files/nats-${name}.nkey"), seed: {existingSecret: ${release}-nats-${name}}}"
   done
 } > "$out/values-keys.yaml"
 

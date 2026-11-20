@@ -10,7 +10,7 @@
 # A new connection needs a change of this file on purpose (least privilege).
 
 # Roles and their named container ports (the numbers are the chart defaults;
-# the gateway port is gateway.listenPort).
+# the gateway port is the constant 8070 of the chart).
 roles:
   gateway: {ports: {http: 8070}}
   api: {ports: {http: 80}}

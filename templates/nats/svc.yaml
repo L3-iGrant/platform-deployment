@@ -1,4 +1,4 @@
-{{- if .Values.nats.enabled }}
+{{- if include "ow.nats.bundled" . }}
 apiVersion: v1
 kind: Service
 metadata:

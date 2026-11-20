@@ -27,7 +27,7 @@ The objects of the bundled Valkey (`redis.mode: bundled`, see [Redis](redis.md))
 | `<release>-redis-headless` (Service) | The pod DNS names (ports 6379 and 26379), also before the pods are ready |
 | `<release>-redis-sentinel` (Service) | The Sentinels of the ready pods (port 26379) |
 | `<release>-redis-users` (Secret) | The passwords of the ACL users (random, kept across upgrades): the process users without a Secret of their own, and `replication`, `sentinel`, `probe` and (with `redis.metrics.enabled`) `metrics` |
-| `<release>-redis-metrics` (Service, ServiceMonitor) | Only with `redis.metrics.serviceMonitor.enabled`: the exporters of the pods (port 9121, also before the pods are ready) and the scrape of `/metrics` |
+| `<release>-redis-metrics` (Service, ServiceMonitor) | Only with `redis.metrics.enabled` and `monitoring.serviceMonitor.enabled`: the exporters of the pods (port 9121, also before the pods are ready) and the scrape of `/metrics` |
 | `<release>-redis-tls` (Secret) | The CA and the certificate of the servers and the Sentinels (10 years). To use your own certificate, set `redis.tls.existingSecret`. |
 | `data-<release>-redis-<n>` (PersistentVolumeClaim) | The data of each pod (the AOF files) |
 
@@ -44,7 +44,7 @@ The objects of the wallet's background work (see [Workers and clock](workers.md)
 | `<release>-wallet-worker-<group>` (Deployment) | The workers of one group of `organisationWallet.workers.groups`: `dramatiq ows.worker.run:start` with the queues of the group, the port 9191, and an `emptyDir` in memory for the heartbeat and metric files of its worker processes |
 | `<release>-wallet-clock` (Deployment) | The clock: `start-clock` in 2 replicas, the port 9192 |
 | The keys `worker-<group>.yaml` and `clock.yaml` of the ConfigMap `<release>-wallet` | The configuration of each worker group and of the clock |
-| `<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`, `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `organisationWallet.serviceMonitor.enabled`: the scrape of `/metrics` of the servers (port 9190), the workers (9191) and the clock (9192) |
+| `<release>-wallet-service-metrics`, `<release>-wallet-config-metrics`, `<release>-wallet-worker-<group>`, `<release>-wallet-clock` (headless Services), `<release>-wallet-metrics` (ServiceMonitor) | Only with `monitoring.serviceMonitor.enabled`: the scrape of `/metrics` of the servers (port 9190), the workers (9191) and the clock (9192) |
 
 The worker and clock pods mount no service account token.
 

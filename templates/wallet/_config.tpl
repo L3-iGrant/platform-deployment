@@ -17,7 +17,8 @@ $ "role" "worker" "group" <group>).
 {{- $dir := include "ow.wallet.secretDir" $root -}}
 {{- $files := include "ow.wallet.secretFiles" (list $root $role) | fromJson -}}
 {{- $client := include "ow.nats.client" (list $root (include "ow.wallet.natsUser" $role)) | fromJson -}}
-{{- $signing := include "ow.serviceKeys.signing" (list $root $w "organisationWallet" "wallet-service-key") | fromJson -}}
+{{- $signing := include "ow.serviceKeys.signing" (list $root "organisationWallet") | fromJson -}}
+{{- $envelope := include "ow.serviceKeys.timing" $root | fromJson -}}
 {{- /* The key management service is always the OpenBao Transit engine:
 the chart's bundled OpenBao or an external one. The wallet's config section
 for OpenBao is called "vault" (a key in the wallet code). */ -}}
@@ -108,12 +109,9 @@ its purge date, and the workers purge. */ -}}
     "batch_size" ($r.batchSize | int) -}}
 {{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
 {{- /* Maximum number of organisation wallet units in the installation
-(organisationWallet.walletUnit.organisationWalletUnitsMax). The key is set
-only when the installer gives a value; otherwise the wallet uses its
-default. The clock has no wallet_unit section. */ -}}
-{{- with dig "organisationWalletUnitsMax" "" $w.walletUnit -}}
-{{- $_ := set $walletUnit "organisation_wallet_units_max" (. | int) -}}
-{{- end -}}
+(installation.limits.maxOrganisationWalletUnits). The clock has no
+wallet_unit section. */ -}}
+{{- $_ := set $walletUnit "organisation_wallet_units_max" ($v.installation.limits.maxOrganisationWalletUnits | int) -}}
 {{- /* wallet_unit.development_apps_allowed (read by the config and service
 processes) is set only when the installer sets true or false; empty sets no
 key (the wallet default, false). A string, even "true", fails the render
@@ -161,7 +159,7 @@ trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
 {{- end -}}
 {{- $config := dict
   "domain" (include "ow.publicUrlOf" (list $root "organisationWallet"))
-  "log_level" ($w.logLevel | upper)
+  "log_level" (include "ow.logLevelUpper" (list $root "organisationWallet"))
   "database" (include "ow.wallet.database" (list $root (include "ow.wallet.databaseUser" (list $root (include "ow.wallet.databaseRole" $role))) "database-password") | fromJson)
   "nats" (dict
     "url" (include "ow.nats.url" $root)
@@ -174,8 +172,8 @@ trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
     "api_service_name" "igrant-api"
     "signing_jwks_file" (printf "%s/service-envelope-jwks.json" $dir)
     "active_kid" $signing.activeKid
-    "lifetime_seconds" ($w.serviceEnvelope.lifetimeSeconds | int)
-    "clock_skew_seconds" ($w.serviceEnvelope.clockSkewSeconds | int))
+    "lifetime_seconds" ($envelope.lifetimeSeconds | int)
+    "clock_skew_seconds" ($envelope.clockSkewSeconds | int))
   "kms" $kms
   "trust_list" $trustList
   "trust_sources" $trustSources
@@ -242,16 +240,21 @@ status_list.write_changes reads the interval. */ -}}
     "nonce_requests_per_minute" ($w.server.nonceRequestsPerMinute | int)
     "metrics_port" (include "ow.wallet.serverMetricsPort" $root | int)
     "metrics_directory" (include "ow.wallet.serverMetricsDir" $root) -}}
-{{- /* forwarded_allow_ips: the service pods sit behind your ingress
-controller or Gateway. The auth gateway calls the config pods directly, so
-they keep the wallet default (127.0.0.1). */ -}}
-{{- if eq $role "service" -}}
-{{- if not $w.forwardedAllowIps -}}
-{{- fail "organisationWallet.forwardedAllowIps needs at least one entry (an IP address, a network, or only \"*\")" -}}
-{{- end -}}
-{{- $_ := set $server "forwarded_allow_ips" $w.forwardedAllowIps -}}
-{{- end -}}
 {{- $_ := set $config "server" $server -}}
+{{- /* client_address: the rule of the wallet host
+(organisationWallet.exposure.clientAddress), only in the file of the
+service role: your entry proxy calls the service pods. The gateway calls
+the config pods and sends the client address in its token; the other
+roles and the hooks have no server, and the migration refuses the key. */ -}}
+{{- if eq $role "service" -}}
+{{- with include "ow.clientAddress" (list $root "organisationWallet") | fromJson -}}
+{{- $section := dict -}}
+{{- with .header -}}{{- $_ := set $section "header" . -}}{{- end -}}
+{{- with .trustedProxies -}}{{- $_ := set $section "trusted_proxies" . -}}{{- end -}}
+{{- with .trustedProxyHeader -}}{{- $_ := set $section "trusted_proxy_header" . -}}{{- end -}}
+{{- $_ := set $config "client_address" $section -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- if and (include "ow.nats.ca" $root | fromJson).secret (ne $role "clock") -}}
 {{- $_ := set $config.nats "tls_ca_file" (printf "%s/nats-ca.crt" $dir) -}}
@@ -262,11 +265,12 @@ api's signed NATS commands (service_envelope.trusted_issuers). The service
 role keeps the protocol routes public and direct. */ -}}
 {{- if eq $role "config" -}}
 {{- include "ow.gateway.checkGatewayJwks" $root -}}
+{{- $internalToken := include "ow.gateway.internalToken" $root | fromJson -}}
 {{- $_ := set $config "internal_auth" (dict
-    "audience" $v.gateway.internalToken.audiences.walletConfig
-    "clock_skew_seconds" ($w.internalAuth.clockSkewSeconds | int)
+    "audience" $internalToken.audiences.walletConfig
+    "clock_skew_seconds" ($envelope.clockSkewSeconds | int)
     "trusted_issuers" (list (dict
-      "issuer" $v.gateway.internalToken.issuer
+      "issuer" $internalToken.issuer
       "jwks_file" (printf "%s/gateway-jwks.json" (include "ow.gateway.keysDir" $root))))) -}}
 {{- $trusted := list -}}
 {{- range $item := include "ow.serviceKeys.trusted" (list $root "igrant-api") | fromJsonArray -}}
@@ -313,27 +317,24 @@ the organisation image routes of the definition displays. */ -}}
 {{- if has $role (list "service" "config") -}}
 {{- $_ := set $config "gateway_api" (dict "public_api_base_url" (include "ow.publicUrlOf" (list $root "api"))) -}}
 {{- end -}}
-{{- /* Private hosts that the wallet's SSRF guard allows
-(organisationWallet.ssrf.allowedPrivate), set only when there are entries.
-The wallet refuses an entry that covers loopback, link-local or cloud
-metadata addresses; the render fails on the plain cases. */ -}}
-{{- with $w.ssrf.allowedPrivate -}}
-{{- range $entry := . -}}
-{{- $text := lower (toString $entry) -}}
-{{- if or (hasPrefix "127." $text) (hasPrefix "169.254." $text) (hasPrefix "0." $text) (eq $text "localhost") (hasPrefix "::1" $text) (hasPrefix "fe80:" $text) (eq $text "::") -}}
-{{- fail (printf "organisationWallet.ssrf.allowedPrivate: %q covers a loopback, link-local, metadata or unspecified address, which the wallet never allows; give the private host names or the networks of your public hosts" $entry) -}}
-{{- end -}}
-{{- end -}}
-{{- $_ := set $config "ssrf_protection" (dict "allowed_private" .) -}}
-{{- end -}}
+{{- /* The SSRF guard of the wallet (outboundHttp, ow.outboundHttp): the
+private hosts that it allows (outboundHttp.allowedPrivate), and enabled
+false when the guard is off; no key with the defaults. The wallet refuses
+an entry that covers loopback, link-local or cloud metadata addresses; the
+render fails on the plain cases. */ -}}
+{{- $outbound := include "ow.outboundHttp" $root | fromJson -}}
+{{- $ssrf := dict -}}
+{{- with $outbound.allowedPrivate -}}{{- $_ := set $ssrf "allowed_private" . -}}{{- end -}}
+{{- if $outbound.off -}}{{- $_ := set $ssrf "enabled" false -}}{{- end -}}
+{{- with $ssrf -}}{{- $_ := set $config "ssrf_protection" . -}}{{- end -}}
 {{- /* The optional features of the installation: the same list as the api
-and the gateway (ow.installation.optionalFeatures). organisationWallet.extraConfig
+and the gateway (ow.installation.optionalFeatures). organisationWallet.advanced.extraConfig
 cannot set it. */ -}}
-{{- if hasKey ($w.extraConfig | default dict) "installation" -}}
-{{- fail "organisationWallet.extraConfig.installation: set installation.optionalFeatures instead (the api, the gateway and the wallet need the same list)" -}}
+{{- if hasKey ($w.advanced.extraConfig | default dict) "installation" -}}
+{{- fail "organisationWallet.advanced.extraConfig.installation: set installation.optionalFeatures instead (the api, the gateway and the wallet need the same list)" -}}
 {{- end -}}
 {{- $_ := set $config "installation" (dict "optional_features" (include "ow.installation.optionalFeatures" $root | fromJsonArray)) -}}
-{{- $config = mustMergeOverwrite $config (deepCopy ($w.extraConfig | default dict)) -}}
+{{- $config = mustMergeOverwrite $config (deepCopy ($w.advanced.extraConfig | default dict)) -}}
 {{- include "ow.wallet.checkWritablePaths" (list $config $role) -}}
 {{- $config | toYaml -}}
 {{- end }}
@@ -342,7 +343,7 @@ cannot set it. */ -}}
 Render guard for the writable paths in one wallet file. The wallet pods
 have a read-only root file system, so every folder a process writes to
 (server.metrics_directory, worker.state_directory, also when set in
-organisationWallet.extraConfig) must be on one of the pod's emptyDirs: /tmp
+organisationWallet.advanced.extraConfig) must be on one of the pod's emptyDirs: /tmp
 in every pod, /run/ows-server in service and config pods, /run/ows-worker in
 worker pods. No role has a log file (log_file.path, ow.noLogFile): the
 processes log to stdout. Call with (list <config> "<role>"). Output:
@@ -354,7 +355,7 @@ nothing.
 {{- $mounts := list "/tmp" -}}
 {{- if has $role (list "service" "config") -}}{{- $mounts = append $mounts (include "ow.wallet.serverMetricsDir" .) -}}{{- end -}}
 {{- if eq $role "worker" -}}{{- $mounts = append $mounts (include "ow.wallet.workerStateDir" .) -}}{{- end -}}
-{{- include "ow.noLogFile" (list "organisationWallet.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
+{{- include "ow.noLogFile" (list "organisationWallet.advanced.extraConfig" "log_file.path" (((get $config "log_file") | default dict).path)) -}}
 {{- $paths := dict
     "server.metrics_directory" (((get $config "server") | default dict).metrics_directory | default "" | toString)
     "worker.state_directory" (((get $config "worker") | default dict).state_directory | default "" | toString) -}}
@@ -372,10 +373,8 @@ nothing.
 {{- end }}
 
 {{/*
-Render guards for the wallet server keys:
-- a service or config pod must finish stopping before Kubernetes kills the
-  process: preStopSeconds + gracefulShutdownSeconds +
-  backgroundShutdownSeconds must be below terminationGracePeriodSeconds;
+Render guard for the wallet server keys (the chart calculates the grace
+period of the pods from the stop times):
 - the gateway must not refuse a body that the wallet accepts: the gateway
   limit for the class (gateway.proxy.maxBodyBytes; 0 = the gateway's class
   default) must be at least the wallet limit (default >= S, large >= L).
@@ -383,10 +382,6 @@ Call with the root context.
 */}}
 {{- define "ow.wallet.checkServer" -}}
 {{- $s := .Values.organisationWallet.server -}}
-{{- $stop := add ($s.preStopSeconds | int) ($s.gracefulShutdownSeconds | int) ($s.backgroundShutdownSeconds | int) -}}
-{{- if ge $stop ($s.terminationGracePeriodSeconds | int) -}}
-{{- fail (printf "organisationWallet.server: preStopSeconds (%v) + gracefulShutdownSeconds (%v) + backgroundShutdownSeconds (%v) = %v must be below terminationGracePeriodSeconds (%v): Kubernetes would kill the wallet before it stops" $s.preStopSeconds $s.gracefulShutdownSeconds $s.backgroundShutdownSeconds $stop $s.terminationGracePeriodSeconds) -}}
-{{- end -}}
 {{- $gateway := .Values.gateway.proxy.maxBodyBytes -}}
 {{- $default := $gateway.default | int64 | default 1048576 -}}
 {{- $large := $gateway.large | int64 | default 10485760 -}}
@@ -408,7 +403,7 @@ Call with (list $ "<user>" "<password file name>").
 */}}
 {{- define "ow.wallet.hookConfig" -}}
 {{- toYaml (dict
-    "log_level" ((index . 0).Values.organisationWallet.logLevel | upper)
+    "log_level" (include "ow.logLevelUpper" (list (index . 0) "organisationWallet"))
     "database" (include "ow.wallet.database" . | fromJson)) }}
 {{- end }}
 
@@ -470,7 +465,7 @@ Secret. Call with the root context.
 {{- $b := .Values.organisationWallet.audit.bucket -}}
 {{- $p := "organisationWallet.audit.bucket" -}}
 {{- if not $b.name -}}
-{{- range $value := list "credentials" "accessKey" "ca" -}}
+{{- range $value := list "credentials" "accessKeyId" "secretAccessKey" "ca" -}}
 {{- if (index $b $value).existingSecret -}}
 {{- fail (printf "%s.%s.existingSecret needs %s.name: the Secret is the one of the audit bucket" $p $value $p) -}}
 {{- end -}}
@@ -482,8 +477,8 @@ Secret. Call with the root context.
 {{- if not $b.region -}}
 {{- fail (printf "%s.region is required with type s3: the region of the signatures" $p) -}}
 {{- end -}}
-{{- if not $b.accessKey.existingSecret -}}
-{{- fail (printf "%s.accessKey.existingSecret is required with type s3: the Secret with the access key of the wallet" $p) -}}
+{{- if or (not $b.accessKeyId.existingSecret) (not $b.secretAccessKey.existingSecret) -}}
+{{- fail (printf "%s.accessKeyId.existingSecret and %s.secretAccessKey.existingSecret are required with type s3: the Secrets with the access key of the wallet" $p $p) -}}
 {{- end -}}
 {{- if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $b.name) -}}
 {{- fail (printf "%s.name %q is not an S3 bucket name (3 to 63 lower-case letters, digits, dots and hyphens)" $p $b.name) -}}
@@ -491,7 +486,7 @@ Secret. Call with the root context.
 {{- if or $b.project $b.credentials.existingSecret -}}
 {{- fail (printf "%s.project and .credentials are values of type gcs, not of type s3" $p) -}}
 {{- end -}}
-{{- else if or $b.endpoint $b.region $b.accessKey.existingSecret $b.ca.existingSecret -}}
-{{- fail (printf "%s.endpoint, .region, .accessKey and .ca are values of type s3, not of type gcs" $p) -}}
+{{- else if or $b.endpoint $b.region $b.accessKeyId.existingSecret $b.secretAccessKey.existingSecret $b.ca.existingSecret -}}
+{{- fail (printf "%s.endpoint, .region, .accessKeyId, .secretAccessKey and .ca are values of type s3, not of type gcs" $p) -}}
 {{- end -}}
 {{- end }}

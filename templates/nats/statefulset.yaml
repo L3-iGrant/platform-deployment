@@ -1,4 +1,4 @@
-{{- if .Values.nats.enabled }}
+{{- if include "ow.nats.bundled" . }}
 {{- $nats := .Values.nats }}
 apiVersion: apps/v1
 kind: StatefulSet
@@ -22,7 +22,7 @@ spec:
       annotations:
         {{- /* The reloader applies user and max_payload changes without a
         restart; without the reloader, the pods restart. */}}
-        {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream" "tls") (pick $nats "replicas" "jetstream" "tls" "auth" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
+        {{- include "ow.checksum" (list "config" (ternary (pick $nats "replicas" "jetstream" "tls") (pick $nats "replicas" "jetstream" "tls" "users" "maxPayload") $nats.reloader.enabled)) | nindent 8 }}
     spec:
       {{- include "ow.podSpecCommon" (list . $nats) | nindent 6 }}
       # NATS does not call the Kubernetes API.

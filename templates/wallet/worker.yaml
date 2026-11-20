@@ -1,6 +1,6 @@
 {{- /*
 The organisation wallet's workers (docs/workers.md): one Deployment per
-group in organisationWallet.workers.groups. A worker runs the actors of its
+group of organisationWallet.workers.groups. A worker runs the actors of its
 group's queues: "dramatiq ows.worker.run:start" with --processes worker
 processes of --threads threads each. It connects as the jobs role, with the
 NATS user walletWorker and the Valkey user walletWorker, and reads the
@@ -9,7 +9,7 @@ config key worker-<group>.yaml.
 {{- $w := .Values.organisationWallet }}
 {{- include "ow.wallet.checkWorkers" . }}
 {{- $port := include "ow.wallet.workerHealthPort" . | int }}
-{{- range $g := $w.workers.groups }}
+{{- range $g := include "ow.wallet.workerGroups" . | fromJsonArray }}
 {{- $component := include "ow.wallet.workerComponent" $g }}
 {{- $configKey := printf "worker-%s.yaml" $g.name }}
 ---
@@ -40,7 +40,7 @@ spec:
       annotations:
         {{- include "ow.checksum" (list "config" (include "ow.wallet.config" (dict "root" $ "role" "worker" "group" $g))) | nindent 8 }}
         {{- include "ow.checksum" (list "secrets" (list (include "ow.wallet.secretFiles" (list $ "worker")) $.Values.openbao.wallet $.Values.openbao.external $.Values.database.databases.wallet)) | nindent 8 }}
-        {{- include "ow.checksum" (list "keys" (list $w.serviceEnvelope $.Values.nats.auth.users.walletWorker (include "ow.nats.ca" $))) | nindent 8 }}
+        {{- include "ow.checksum" (list "keys" (list $.Values.keys.serviceEnvelope.organisationWallet $.Values.nats.users.walletWorker (include "ow.nats.ca" $))) | nindent 8 }}
     spec:
       # The worker does not call the Kubernetes API.
       automountServiceAccountToken: false
@@ -49,7 +49,7 @@ spec:
       # shutdownTimeoutSeconds for running actors. An actor that does not
       # finish in time runs again from its message (every actor is
       # idempotent).
-      terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ $g.terminationGracePeriodSeconds | int }}
       containers:
         - name: {{ $component }}
           image: {{ include "ow.image" (list $ $w.image) }}

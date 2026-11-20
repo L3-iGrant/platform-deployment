@@ -1,4 +1,4 @@
-{{- $keys := .Values.gateway.publicKeys }}
+{{- $keys := .Values.keys.publicJwks }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -12,19 +12,19 @@ data:
   config.yaml: |
     {{- include "ow.gateway.config" . | nindent 4 }}
   {{- /* Public keys for api tokens (only the gateway reads them), unless
-  gateway.publicKeys.existingTokenVerificationConfigMap is set. */}}
-  {{- if and (not $keys.existingTokenVerificationConfigMap) $keys.tokenVerificationJwks }}
-  {{ $keys.tokenVerificationJwksKey }}: |
-    {{- $keys.tokenVerificationJwks | nindent 4 }}
+  keys.publicJwks.existingConfigMap is set. */}}
+  {{- if and (not $keys.existingConfigMap) $keys.apiTokenVerification }}
+  token-verification-jwks.json: |
+    {{- $keys.apiTokenVerification | nindent 4 }}
   {{- end }}
 ---
 {{- /*
 The shared ConfigMap <fullname>-igrant-gateway-jwks (no secrets): the
 gateway public keys that the api core and the wallet config role mount. The
-chart builds it from the values when gateway.publicKeys.existingConfigMap is
-empty.
+chart builds it from keys.publicJwks.gatewayInternalToken when
+keys.publicJwks.existingConfigMap is empty.
 */}}
-{{- if and (not $keys.existingConfigMap) $keys.gatewayJwks }}
+{{- if and (not $keys.existingConfigMap) $keys.gatewayInternalToken }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,6 +33,6 @@ metadata:
   labels:
     {{- include "ow.labels" (list . "gateway") | nindent 4 }}
 data:
-  {{ $keys.gatewayJwksKey }}: |
-    {{- $keys.gatewayJwks | nindent 4 }}
+  gateway-jwks.json: |
+    {{- $keys.gatewayInternalToken | nindent 4 }}
 {{- end }}

@@ -7,13 +7,10 @@
 database:
   engine: postgresql
   mode: external
+  admin:
+    username: igrant_admin   # CREATEROLE and CREATEDB (see docs/database.md)
+    password: {existingSecret: db-admin, key: password}
   external:
     host: db.example.org
     port: ""                 # empty means 5432
-    admin:
-      user: igrant_admin     # CREATEROLE and CREATEDB (see docs/database.md)
-      passwordSecret: db-admin
-      passwordKey: password
-  tls:
-    caSecret: db-ca
-    caKey: ca.crt
+    ca: {existingSecret: db-ca, key: ca.crt}

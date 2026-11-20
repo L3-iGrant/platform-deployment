@@ -2,7 +2,8 @@
 # - the client address for the rate limits and the IP allow-lists of the API
 #   keys: Envoy sets X-Real-IP to the address of the client and overwrites
 #   any value that the client sends. profiles/exposure-envoy-gateway.yaml
-#   sets clientAddress.header: X-Real-IP; it needs this policy;
+#   sets the clientAddress.header of the api and wallet hosts to X-Real-IP;
+#   it needs this policy;
 # - larger buffers than the Envoy Gateway defaults (32 KiB for each
 #   connection, 64 KiB for each HTTP/2 stream). With the defaults, a client
 #   far away (a long round trip) downloads the dashboard's main script

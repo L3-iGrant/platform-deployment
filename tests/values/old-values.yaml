@@ -1,0 +1,118 @@
+# Values of an installation of release 2026.11.7, in the shape of that
+# release (tests/check_renamed.py): scripts/upgrade-values.py must write a
+# file that renders the same objects as tests/values/new-values.yaml. Do
+# not change this file to the new shape.
+api:
+  host: api.example.org
+  extraConfig:
+    Uploads: {maxInProgress: 4}
+    OutboundHttp: {ssrfProtectionDisabled: false}
+  limits:
+    maxOrganisations: 20
+  smtp:
+    host: smtp.example.org
+    existingSecret: mail
+    passwordKey: password
+    adminEmail: noreply@example.org
+    password: ""
+  twilio:
+    existingSecret: twilio
+  jobs:
+    bootstrapPlatform:
+      enabled: true
+      adminEmail: admin@example.org
+      adminName: First Admin
+      passwordSecret: platform-admin
+      organisationName: Example Wallet Provider
+      type: Technology
+      location: Stockholm
+      policyUrl: https://example.org/privacy
+  keyStorage:
+    tokenSigning:
+      activeKid: test-token-kid
+  serviceEnvelope:
+    activeKid: test-api-envelope-kid
+organisationWallet:
+  host: wallet.example.org
+  logLevel: WARNING
+  forwardedAllowIps: [10.0.0.0/8]
+  ssrf:
+    allowedPrivate: [wallet.example.internal]
+  serviceMonitor: {enabled: true, interval: 15s, labels: {release: kp}}
+  prometheusRule: {enabled: true, labels: {release: kp}}
+  workers:
+    groups:
+      - name: main
+        queues: [realtime, attestation, status, kms]
+        replicas: 3
+        processes: 1
+        threads: 8
+        shutdownTimeoutSeconds: 600
+        terminationGracePeriodSeconds: 630
+        resources:
+          requests: {cpu: 100m, memory: 384Mi}
+          limits: {memory: 1536Mi}
+      - name: maintenance
+        queues: [maintenance]
+        replicas: 1
+        processes: 1
+        threads: 2
+        shutdownTimeoutSeconds: 14400
+        terminationGracePeriodSeconds: 14430
+        resources:
+          requests: {cpu: 50m, memory: 384Mi}
+          limits: {memory: 1536Mi}
+  walletUnit:
+    organisationWalletUnitsMax: ""
+  audit:
+    bucket:
+      name: example-audit
+      endpoint: https://s3.example.org
+      region: eu-west-1
+      accessKey: {existingSecret: audit-bucket, idKey: id}
+  serviceEnvelope:
+    activeKid: test-wallet-envelope-kid
+enterpriseDashboard:
+  host: dashboard.example.org
+clientAddress:
+  header: X-Real-IP
+  trustedProxies: [173.245.48.0/20]
+  trustedProxyHeader: CF-Connecting-IP
+openbao:
+  wallet:
+    existingSecret: ""
+    passwordKey: password
+redis:
+  users:
+    gateway: {username: gateway, passwordSecret: my-redis-gateway, passwordKey: pw}
+database:
+  databases:
+    oidc: {name: igrant_oidc, password: ""}
+  auth:
+    existingSecret: db-passwords
+readAccess:
+  api:
+    wallet:
+      passwordSecret: api-reader
+  jobs:
+    ttlSecondsAfterFinished: 3600
+gateway:
+  internalToken:
+    activeKid: test-gateway-kid
+  publicKeys:
+    gatewayJwks: '{"keys":[]}'
+    tokenVerificationJwks: '{"keys":[]}'
+serviceKeys:
+  publicJwks:
+    igrant-api: '{"keys":[]}'
+    eudi-wallet: '{"keys":[]}'
+nats:
+  enabled: true
+  tlsCa: {existingSecret: "", key: ca.crt}
+  auth:
+    users:
+      api: {nkey: UTESTAPI, seedSecret: t-nats-api}
+      apiWebhook: {nkey: UTESTAPIWEBHOOK, seedSecret: t-nats-api-webhook}
+      walletConfig: {nkey: UTESTWALLETCONFIG, seedSecret: t-nats-wallet-config}
+      walletService: {nkey: UTESTWALLETSERVICE, seedSecret: t-nats-wallet-service}
+      walletWorker: {nkey: UTESTWALLETWORKER, seedSecret: t-nats-wallet-worker}

@@ -1,14 +1,14 @@
 {{- /*
-Read access hooks of the wallet (readAccess.jobs; helm post-install and
+Read access hooks of the wallet (database.readAccess.jobs; helm post-install and
 pre-upgrade, after the migration hook, so the views exist): "read-access
 apply" for the reader api. The command connects as the admin user
-(readAccess.jobs.wallet, else ow.db.admin). Its config has only the
+(database.readAccess.jobs.wallet, else ow.db.admin). Its config has only the
 database, with the admin user and its password file (a pre-upgrade hook
 cannot read the release's new ConfigMaps). The hooks run on every install
 and upgrade (idempotent; a new release can add views).
 */}}
 {{- $readers := list "api" }}
-{{- if .Values.readAccess.jobs.enabled }}
+{{- if .Values.database.readAccess.jobs.enabled }}
 {{- $w := .Values.organisationWallet }}
 {{- $admin := include "ow.readAccess.admin" (list . "wallet") | fromJson }}
 {{- $name := include "ow.name" (list . "wallet-read-access") }}
@@ -48,7 +48,7 @@ metadata:
     helm.sh/hook-delete-policy: before-hook-creation
 spec:
   backoffLimit: 6
-  ttlSecondsAfterFinished: {{ $.Values.readAccess.jobs.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ $.Values.database.readAccess.jobs.ttlSecondsAfterFinished }}
   template:
     metadata:
       labels:

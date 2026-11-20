@@ -59,28 +59,28 @@ wallet uses your own OpenBao with an HSM seal (openbao.mode external).
 {{- end }}
 
 {{/*
-Secret with the wallet user's password: openbao.wallet.existingSecret
+Secret with the wallet user's password: openbao.wallet.password
 (required with an external OpenBao), else the chart's
 <fullname>-openbao-wallet. Output: JSON {secret, key}.
 */}}
 {{- define "ow.openbao.walletSecret" -}}
-{{- $w := .Values.openbao.wallet -}}
-{{- if $w.existingSecret -}}
-{{- toJson (dict "secret" $w.existingSecret "key" ($w.passwordKey | default "password")) -}}
+{{- $password := .Values.openbao.wallet.password -}}
+{{- if $password.existingSecret -}}
+{{- toJson (dict "secret" $password.existingSecret "key" ($password.key | default "password")) -}}
 {{- else if include "ow.openbao.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.name" (list . "openbao-wallet")) "key" "password") -}}
 {{- else -}}
-{{- fail "openbao.wallet.existingSecret is required with openbao.mode external: the Secret with the password of the OpenBao user of the wallet" -}}
+{{- fail "openbao.wallet.password.existingSecret is required with openbao.mode external: the Secret with the password of the OpenBao user of the wallet" -}}
 {{- end -}}
 {{- end }}
 
-{{/* CA for the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.caSecret. Output: JSON {secret, key} or {}. */}}
+{{/* CA for the OpenBao address: the TLS Secret of the bundled OpenBao, or openbao.external.ca. Output: JSON {secret, key} or {}. */}}
 {{- define "ow.openbao.ca" -}}
-{{- $external := .Values.openbao.external -}}
+{{- $ca := .Values.openbao.external.ca -}}
 {{- if include "ow.openbao.bundled" . -}}
 {{- toJson (dict "secret" (include "ow.openbao.tlsSecretName" .) "key" "ca.crt") -}}
-{{- else if and (eq (.Values.openbao.mode | default "bundled") "external") $external.caSecret -}}
-{{- toJson (dict "secret" $external.caSecret "key" ($external.caKey | default "ca.crt")) -}}
+{{- else if and (eq (.Values.openbao.mode | default "bundled") "external") $ca.existingSecret -}}
+{{- toJson (dict "secret" $ca.existingSecret "key" ($ca.key | default "ca.crt")) -}}
 {{- else -}}
 {{- toJson dict -}}
 {{- end -}}
@@ -151,9 +151,6 @@ so the guards also allow only safe characters. Output: nothing.
 {{- if or (lt $replicas 1) (eq (mod $replicas 2) 0) -}}
 {{- fail (printf "openbao.replicas (%v) must be an odd number (1, 3 or 5): a raft cluster needs a majority of its nodes" $ob.replicas) -}}
 {{- end -}}
-{{- if not (has $ob.logLevel (list "trace" "debug" "info" "warn" "error")) -}}
-{{- fail (printf "openbao.logLevel %q is not supported: trace, debug, info, warn or error" $ob.logLevel) -}}
-{{- end -}}
 {{- end }}
 
 {{/*
@@ -169,7 +166,7 @@ disable_mlock.
 # The chart's OpenBao server config (seal {{ $seal }}). No secrets in this
 # file. Per pod: BAO_RAFT_NODE_ID, BAO_API_ADDR, BAO_CLUSTER_ADDR.
 ui        = false
-log_level = {{ $ob.logLevel | quote }}
+log_level = {{ include "ow.logLevel" (list . "openbao") | quote }}
 
 # Standby nodes forward every request to the active node. The wallet reads a
 # key right after it creates it, and a standby that served reads itself

@@ -10,7 +10,7 @@ data:
   # <role>.yaml, and worker-<group>.yaml for each worker group. No secrets
   # here.
   {{- $files := list (dict "key" "service.yaml" "role" "service") (dict "key" "config.yaml" "role" "config") }}
-  {{- range $g := .Values.organisationWallet.workers.groups }}
+  {{- range $g := include "ow.wallet.workerGroups" . | fromJsonArray }}
   {{- $files = append $files (dict "key" (printf "worker-%s.yaml" $g.name) "role" "worker" "group" $g) }}
   {{- end }}
   {{- $files = append $files (dict "key" "clock.yaml" "role" "clock") }}

@@ -22,14 +22,13 @@ redis:
       - redis-3.example.org:26379
     # true: the processes log in to the Sentinels with their ACL user.
     sentinelAuth: true
-    caSecret: ows-redis-ca
-    caKey: ca.crt
+    ca: {existingSecret: ows-redis-ca, key: ca.crt}
   users:
-    walletService: {username: wallet-service, passwordSecret: ows-redis-wallet-service, passwordKey: password}
-    walletConfig: {username: wallet-config, passwordSecret: ows-redis-wallet-config, passwordKey: password}
-    walletWorker: {username: wallet-worker, passwordSecret: ows-redis-wallet-worker, passwordKey: password}
-    walletClock: {username: wallet-clock, passwordSecret: ows-redis-wallet-clock, passwordKey: password}
-    gateway: {username: gateway, passwordSecret: ows-redis-gateway, passwordKey: password}
+    walletService: {username: wallet-service, password: {existingSecret: ows-redis-wallet-service, key: password}}
+    walletConfig: {username: wallet-config, password: {existingSecret: ows-redis-wallet-config, key: password}}
+    walletWorker: {username: wallet-worker, password: {existingSecret: ows-redis-wallet-worker, key: password}}
+    walletClock: {username: wallet-clock, password: {existingSecret: ows-redis-wallet-clock, key: password}}
+    gateway: {username: gateway, password: {existingSecret: ows-redis-gateway, key: password}}
 # With network policies (profiles/network-policies.yaml): the addresses of
 # your servers and Sentinels.
 networkPolicy:

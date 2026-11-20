@@ -40,8 +40,8 @@ spec:
     {{- $peers = append $peers (dict "podSelector" (dict "matchLabels" (merge (dict "netpol.igrant.io/role" $from) $instance))) }}
     {{- else if eq $from "ingressController" }}
     {{- $peers = append $peers (dict "namespaceSelector" ($np.ingressController.namespaceSelector | default dict) "podSelector" ($np.ingressController.podSelector | default dict)) }}
-    {{- else if and (eq $from "monitoring") $np.monitoring.enabled }}
-    {{- $peers = append $peers (dict "namespaceSelector" ($np.monitoring.namespaceSelector | default dict) "podSelector" ($np.monitoring.podSelector | default dict)) }}
+    {{- else if and (eq $from "monitoring") $root.Values.monitoring.networkPolicy.enabled }}
+    {{- $peers = append $peers (dict "namespaceSelector" ($root.Values.monitoring.networkPolicy.namespaceSelector | default dict) "podSelector" ($root.Values.monitoring.networkPolicy.podSelector | default dict)) }}
     {{- end }}
     {{- end }}
     {{- if $peers }}
@@ -73,7 +73,7 @@ spec:
 {{- $rules = append $rules (dict "to" $peers "ports" $ports) }}
 {{- end }}
 {{- end }}
-{{- if and (eq $c.to "nats") (eq $c.port "client") (not $root.Values.nats.enabled) }}
+{{- if and (eq $c.to "nats") (eq $c.port "client") (not (include "ow.nats.bundled" $root)) }}
 {{- if or $np.nats.namespaceSelector $np.nats.podSelector }}
 {{- $rules = append $rules (dict "to" (list (dict "namespaceSelector" ($np.nats.namespaceSelector | default dict) "podSelector" ($np.nats.podSelector | default dict))) "ports" (list (dict "port" 4222 "protocol" "TCP"))) }}
 {{- end }}

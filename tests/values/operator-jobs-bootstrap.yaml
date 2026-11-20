@@ -2,13 +2,14 @@
 # first platform admin (case "bootstrap" of tests/check_operator_jobs.py).
 api:
   jobs:
-    bootstrapPlatform:
+    provisionPlatformOperator:
       enabled: true
-      adminEmail: admin@example.org
-      adminName: First Admin
-      passwordSecret: platform-admin
-      passwordKey: first-password
-      organisationName: Example Wallet Provider
-      type: Technology
-      location: Stockholm
-      policyUrl: https://example.org/privacy
+      organisation:
+        name: Example Wallet Provider
+        type: Technology
+        location: Stockholm
+        policyUrl: https://example.org/privacy
+      firstAdmin:
+        email: admin@example.org
+        name: First Admin
+        password: {existingSecret: platform-admin, key: first-password}
