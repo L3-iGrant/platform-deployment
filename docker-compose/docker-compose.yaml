@@ -9,13 +9,11 @@
 #
 # The services are in compose.platform.yaml. This file loads it with these
 # values files:
-#   - .env: your settings, for example DB_ENGINE (postgresql), the public
-#     URLs and the images;
-#   - config/engine/<DB_ENGINE>.env: the values that follow from the engine
-#     (database port, admin user, client image);
+#   - .env: your settings, for example the public URLs and the images;
+#   - config/database/postgresql.env: the facts of the PostgreSQL server
+#     (database port and admin user);
 #   - generated/configs.env: the SHA-256 of each configuration file (below).
-# So DB_ENGINE alone picks the database engine of all components. A value
-# set in your shell overrides the same value in .env.
+# A value set in your shell overrides the same value in .env.
 #
 # The components' configuration files are in generated/: "make configs"
 # writes them from the compose.configs.yaml templates with the values of the
@@ -30,5 +28,5 @@ include:
   - path: compose.platform.yaml
     env_file:
       - .env
-      - config/engine/${DB_ENGINE:-postgresql}.env
+      - config/database/postgresql.env
       - generated/configs.env

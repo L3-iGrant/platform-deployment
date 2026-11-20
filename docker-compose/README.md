@@ -36,7 +36,7 @@ a check: go to the next step only when the check passes.
 | API (`api`) and webhook handler (`webhook`) | Organisations, admins, API keys, and the webhooks to your systems. | none |
 | Organisation wallet (`wallet-service`, `wallet-config`, `wallet-worker`, `wallet-clock`) | Issues and verifies credentials (OpenID4VCI, OpenID4VP) for the EUDI Wallet and the European Business Wallet. The worker runs the background work and the clock sends the scheduled work (see [Worker and clock](#worker-and-clock)). | `WALLET_PORT` (8090) |
 | Enterprise dashboard (`dashboard`) | The web app for the admins of your organisations. | `DASHBOARD_PORT` (3000) |
-| Database (`postgres`) | One PostgreSQL server for all components (`DB_ENGINE`). | none |
+| Database (`postgres`) | One PostgreSQL server for all components. | none |
 | NATS (`nats`) | Messaging between the components. | none |
 | OpenBao (`openbao`) | Holds the signing keys of your organisations. | none |
 | Valkey (`valkey`, `valkey-replica`, `valkey-sentinel`) | The wallet's work queue, single-use values and caches: a primary, a replica and a Sentinel. See [Valkey](#valkey). | none |
@@ -143,10 +143,10 @@ make check
 This writes the components' configuration files to `generated/` from your
 `.env` (`make configs`, see [Configuration files](#configuration-files)),
 then checks `.env`, the files in `secrets/` and `generated/`, and the
-Compose files for your `DB_ENGINE`. It starts no containers.
+Compose files. It starts no containers.
 
 Check: the last line is
-`check: the configuration is valid (DB_ENGINE=postgresql, <n> warning(s))`.
+`check: the configuration is valid (<n> warning(s))`.
 Each `FAIL` line says what to fix; fix it and run this step again. Read
 every `WARN` line: for example, a public URL with `http://` does not work
 with mobile wallets.
@@ -316,8 +316,6 @@ your shell overrides the value in `.env`.
 
 | Setting | Default | Use |
 |---|---|---|
-| `DB_ENGINE` | `postgresql` | The database engine of all components: `postgresql` (PostgreSQL 18), the only supported engine. |
-| `COMPOSE_PROFILES` | the derived line at the end of `.env.example` | Starts the database server of `DB_ENGINE`. Do not change it. |
 | `TEST_CA_ENABLED`, `TEST_CA_LEAF_VALIDITY_DAYS` | `true`, `365` | The wallet's built-in test CA issues test certificates for development and testing. They are on no trusted list. Set `TEST_CA_ENABLED=false` if the installation must not offer it. `TEST_CA_LEAF_VALIDITY_DAYS` (1 to 3650) is the validity of a test certificate when the request gives none; the preset's maximum validity caps it. |
 | `AUDIT_RETENTION_YEARS` | `7` | How many years the wallet's audit log keeps the events of each data scope (1 to 999). See [Audit log](#audit-log). |
 | `API_PUBLIC_URL`, `WALLET_PUBLIC_URL`, `DASHBOARD_PUBLIC_URL` | `http://localhost:8080`, `:8090`, `:3000` | The public URLs (your reverse proxy). |
@@ -353,7 +351,7 @@ in the Compose file (a `content` config). So:
    `${API_PUBLIC_URL}`).
 2. `make configs` (`render-configs.py`) reads the templates with
    `docker compose -f compose.render.yaml config`, so Compose fills in the
-   values of `.env` and `config/engine/<DB_ENGINE>.env` with the same rules
+   values of `.env` and `config/database/postgresql.env` with the same rules
    and files as for the services. The script writes each file to
    `generated/` (mode `0644`), and `generated/configs.env` with the
    SHA-256 of each file.
@@ -702,8 +700,6 @@ its port rules before the rules of ufw, so put your firewall rules in the
 - `openbao-init` shows `cannot open secrets/openbao/`: it ran without your
   user (`HOST_UID` and `HOST_GID`), for example after `docker compose up`
   without `make`. Run `make up`.
-- `stat .../config/engine/<value>.env: no such file or directory`:
-  `DB_ENGINE` (in `.env` or in your shell) is not `postgresql`.
 - A one-shot service exits with a code other than 0, or a service does not
   start: read `docker compose logs <service>`. When a one-shot service
   fails, the services that wait for it do not start.

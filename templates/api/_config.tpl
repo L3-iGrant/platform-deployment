@@ -6,7 +6,7 @@ exact and an unknown key stops the api. The file holds no secrets: each
 deploy.yaml, see ow.api.secretFiles). Both roles get the same file except
 for the database pool size and the NATS user (api, api-webhook). The api is
 the IAM (Iam.mode "builtin"). The database sections come from ow.db.go (the
-database.* engine).
+database.* server).
 Call with (dict "root" $ "role" "api"|"webhook").
 */}}
 {{- define "ow.api.config" -}}

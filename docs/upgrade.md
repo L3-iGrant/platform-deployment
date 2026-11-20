@@ -30,6 +30,15 @@ Run scripts/upgrade-values.py <your values file> to write the new file, or chang
 
 The chart never reads an old value in place of the new value. The message stays for two releases after the change. After that, the chart refuses the old value as an unknown value, with a general message of the schema.
 
+## Changed default values
+
+A changed default value does not stop the render: at the upgrade, your release gets the new default, unless one of your values files sets the value.
+
+| After release | Value | Before | Now |
+| --- | --- | --- | --- |
+| 2026.11.7 | The scrape interval of the wallet ServiceMonitor | `15s` | `30s`, the value `monitoring.serviceMonitor.interval` of all ServiceMonitors |
+| 2026.11.7 | An empty `gateway.logLevel` | the value of `api.logLevel` | the value of `global.logLevel` (`info`), as every component |
+
 <!-- The sections below: tests/upgrade_page.py --write (from files/renamed-values.yaml). -->
 
 ## From 2026.11.7
@@ -209,7 +218,7 @@ Each component has a group `advanced` for the values that an operator seldom cha
 
 ### Values that the chart knows
 
-A constant of a protocol, a fact of an image or a value that the chart can calculate is not a value. The chart calculates the grace period of the pods from their stop times (`terminationGracePeriodSeconds`), and writes the public URLs of the dashboard file and of the api from the host names.
+A constant of a protocol, a fact of an image or a value that the chart can calculate is not a value. The chart calculates the grace period of the pods from their stop times (`terminationGracePeriodSeconds`), and writes the public URLs of the dashboard file and of the api from the host names. The database of all components is always PostgreSQL, so `database.engine` is not a value.
 
 | Old value | New value, or what to do |
 | --- | --- |
@@ -224,6 +233,7 @@ A constant of a protocol, a fact of an image or a value that the chart can calcu
 | `enterpriseDashboard.configuration.baseUrl` | Remove it: the chart writes the public URL of `api.host` |
 | `enterpriseDashboard.configuration.walletUrl` | Remove it: the chart writes the public URL of `organisationWallet.host` |
 | `enterpriseDashboard.configuration.appVersion` | Remove it: the chart writes the image tag of the dashboard |
+| `database.engine` | Remove it: the database of all components is always PostgreSQL |
 
 ### Log level
 

@@ -21,7 +21,7 @@ Public URLs (exposure {{ .Values.exposure.type }} by default; make sure your DNS
   Dashboard:           {{ include "ow.publicUrlOf" (list . "enterpriseDashboard") }}
 {{- end }}
 
-Database: {{ include "ow.db.engine" . }} ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
+Database: PostgreSQL ({{ .Values.database.mode }}), {{ include "ow.db.host" . }}:{{ include "ow.db.port" . }}.
 {{- $budget := include "ow.db.budget" . | fromJson }}
   The pools of this release can open {{ $budget.total | int }} connections to it, and the hooks {{ include "ow.db.budgetReserve" . }} more
 {{- if include "ow.db.bundled" . }} (max_connections {{ index .Values.database.postgresql.parameters "max_connections" }}).

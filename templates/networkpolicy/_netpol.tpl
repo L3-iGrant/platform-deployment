@@ -61,7 +61,7 @@ Roles that run in this release (the chart's pods). Output: JSON list.
 
 {{/*
 Port number or name of one connection in the matrix. The database port is
-the database.engine port (a number, so it does not depend on the server's
+the PostgreSQL port (a number, so it does not depend on the server's
 container port name). Call with (list $ "<role>" "<port name>"). Output:
 the port.
 */}}

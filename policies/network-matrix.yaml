@@ -20,7 +20,7 @@ roles:
   wallet-worker: {ports: {health: 9191}}   # /healthz, /readyz, /metrics: probes and the scrape only
   wallet-clock: {ports: {health: 9192}}    # /healthz, /readyz, /metrics: probes and the scrape only
   dashboard: {ports: {http: 80}}
-  db: {ports: {database: 5432}}          # the port of database.engine (5432)
+  db: {ports: {database: 5432}}          # the PostgreSQL port (5432)
   nats: {ports: {client: 4222, cluster: 6222, monitor: 8222}}
   openbao: {ports: {https: 8200, cluster: 8201}}   # the bundled OpenBao (openbao.mode bundled)
   redis: {ports: {redis: 6379, sentinel: 26379, metrics: 9121}}   # the bundled Valkey (redis.mode bundled): a data server and a Sentinel in each pod, and the exporter (redis.metrics)

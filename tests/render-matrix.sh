@@ -230,7 +230,7 @@ for database in database-bundled database-external; do
           echo "  kubeconform:"; grep -v '^Summary' "$out/$name.kubeconform" | sed 's/^/  /' | head -10
           good=0
         fi
-        if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql "$(mode_of "$database")" \
+        if ! python3 "$here/check_render.py" "$out/$name.yaml" "$(mode_of "$database")" \
             "${openbao#openbao-}" "$(exposure_of "$exposure")" "$([ "$policies" = network-policies ] && echo on || echo off)"; then
           good=0
         fi
@@ -271,7 +271,7 @@ if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" \
     > "$out/$name.yaml" 2> "$out/$name.err"; then
   bad "$name: helm template"
   sed 's/^/  /' "$out/$name.err" | head -10
-elif python3 "$here/check_render.py" "$out/$name.yaml" postgresql bundled shamir none off off; then
+elif python3 "$here/check_render.py" "$out/$name.yaml" bundled shamir none off off; then
   ok "$name"
 else
   bad "$name"
@@ -308,7 +308,7 @@ for database in database-bundled database-external; do
       good=0
     fi
     netpol="$([ "$policies" = network-policies ] && echo on || echo off)"
-    if ! python3 "$here/check_render.py" "$out/$name.yaml" postgresql "$(mode_of "$database")" shamir gatewayAPI "$netpol" on external; then
+    if ! python3 "$here/check_render.py" "$out/$name.yaml" "$(mode_of "$database")" shamir gatewayAPI "$netpol" on external; then
       good=0
     fi
     if ! python3 "$here/check_hook_order.py" install "$out/$name.yaml"; then
@@ -582,12 +582,10 @@ guard_property_name() {
     printf '%s\n' "$err" | sed 's/^/  /' | head -5
   fi
 }
-# PostgreSQL is the only engine: the template guard (ow.db.engine) refuses
-# any other engine with a message that names the components (the schema has
-# no enum for it).
-only_postgresql="is not supported: the api and the organisation wallet accept only postgresql"
-guard "engine" "database.engine \"oracle\" $only_postgresql" --set database.engine=oracle
-guard "engine mysql" "database.engine \"mysql\" $only_postgresql" --set database.engine=mysql
+# The database is always PostgreSQL: database.engine is not a value, and
+# the stop for changed values names it (files/renamed-values.yaml), also
+# with the value postgresql.
+guard "engine" "- database.engine: remove it" --set database.engine=postgresql
 guard "mode" "database.mode" --set database.mode=cluster
 guard "external host" "database.external.host" --set database.mode=external --set database.admin.username=root --set database.admin.password.existingSecret=s --set database.external.ca.existingSecret=c
 # The wallet roles hook creates the wallet's database roles as the server

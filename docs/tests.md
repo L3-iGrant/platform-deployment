@@ -8,7 +8,7 @@ The tests of the chart. They run without a cluster.
 
 - no em dash or en dash in any text file of the repository (also `docker-compose/`, `scripts/`, `images/` and `.github/`; not the licence texts of other projects); the text of the chart files and of the docs (British English, no names of other key store products), and the relative links of `README.md` and `docs/` (`tests/check_links.py`: each target file and each anchor heading exists). Each image of `values.yaml` is in [Images](images.md), each image of another project is in `THIRD-PARTY-NOTICES.md`, and the licence texts of Valkey and redis_exporter are in `licenses/`;
 - every combination of the profiles, also with `tests/check_installation.py` (2 database choices, 2 OpenBao profiles, 6 exposure profiles, with and without network policies; a default has no profile). Each render goes through `helm template`, `kubeconform -strict` (if installed), `tests/check_hook_order.py install` (see below) and `tests/check_render.py`, which checks:
-  - the engine, host, port and TLS of each configuration file, and the server and Jobs of the engine;
+  - the database type, host, port and TLS of each configuration file, and the database server and Jobs;
   - the exposure objects (on premise: only the wallet host on the public IngressClass; never a route to the wallet's config role);
   - the OpenBao seal, and the database port in the network policies;
   - the parameters of the bundled server (each name once, and the DDL and connection logs), and the init script (psql `\password`, no password in a statement);
@@ -28,7 +28,7 @@ The tests of the chart. They run without a cluster.
 - the certificate of the bundled Valkey: the names of the pods, of the Sentinel Service, and 127.0.0.1;
 - the Valkey metrics: the exporter in each pod (the user `metrics`, no CONFIG, only the CA), its ACL user and password, the ServiceMonitor, the scrape port with network policies, none of them by default, and their guards;
 - the wallet's separate groups (`redis.state`, `redis.cache`): the endpoints `state` and `cache` in each wallet file, the CA of a group in the wallet pods and not in the gateway, egress to `networkPolicy.externalRedis` only from the wallet roles, and the guards;
-- the render guards (wrong values stop the render with a clear message, for example `database.engine: mysql`);
+- the render guards (wrong values stop the render with a clear message, for example `database.mode: cluster`);
 - the client address of each host: the rule of `api.exposure.clientAddress` in the gateway, api and webhook files (`ClientAddress`), the rule of `organisationWallet.exposure.clientAddress` only in the file of the wallet service role (`client_address`; not in the config, worker, clock or hook files), no `forwarded_allow_ips`, and the guards of the pairs `trustedProxies` and `trustedProxyHeader`;
 - the values that changed (`tests/check_renamed.py`, see [Upgrade](upgrade.md)): `values.schema.json` keeps each old path of `files/renamed-values.yaml`, and [Upgrade](upgrade.md) names each one; one values file with all old values stops the render with one message that names each of them, and each old value alone stops it with its own line; `scripts/upgrade-values.py` on `tests/values/old-values.yaml` (values of release 2026.11.7 in the old shape) writes a file that renders the same objects as `tests/values/new-values.yaml` (the same values in the new shape), except the random values;
 - the OpenBao seal: the render stops without `openbao.seal` for the bundled OpenBao, an external OpenBao needs none, and the notes warn with the seal `shamir` (and not with an external OpenBao);
@@ -63,14 +63,14 @@ tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/rende
 
 `tests/compose-files.sh` checks the files of `docker-compose/` without a container:
 
-- `docker compose config` for the engine;
+- `docker compose config`, with the database server `postgres`;
 - the configuration files of the components, the DDL and connection logs of the database server, and the passwords of `database-init` (psql `\password`);
 - the scripts and the NATS configuration;
 - the Valkey services with their templates and ACL users, and the `redis` section of each wallet file;
 - the gateway feature gate (`FEATURES_ENFORCE`);
 - the installation limits (`MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS`: the keys are in the api, webhook and wallet files only with a value);
 - the webhooks of the api files (no `Webhooks.events`), and the services of the installation: `Installation.services` `[wallet]` in the api, webhook and gateway files, the gateway upstreams, the trusted issuers of the api files and the readers of the wallet config;
-- the derived lines of `.env.example`, the databases of `database-init`, and `make secrets` in a copy of the folder: a file for each secret of the Compose files, and a public nkey for each NATS user of `config/nats/users.conf`;
+- the refusal of the old setting `DB_ENGINE` by `make check`, the databases of `database-init`, and `make secrets` in a copy of the folder: a file for each secret of the Compose files, and a public nkey for each NATS user of `config/nats/users.conf`;
 - the platform operator targets of the Makefile (`make -n`: the api commands, and the password on standard input);
 - the configuration files (`make configs`, `render-configs.py`): the templates of `compose.configs.yaml` and one config of `file` of `generated/` for each, no config of `content`, the same values files for the render and the services, the hash label of each service and its file, only the variables of `.env.example` in the templates (so no secret), no secret value in a file, and the renderer in a copy of the folder (`$$`, `${VAR:+...}`, a missing value, the file modes, a stale file, `--check`, a second run);
 - the security settings of each service of all profiles (a service that the test does not know fails): a read-only root file system, a non-root user, no capability, no new privileges, the tmpfs and volumes of the writable paths, no host namespace, no device, only bind mounts of `secrets/`, the sysctl of the ports below 1024, no shell in the api image, and the one-shot services that run as root, such as `nats-data-owner`, with only their capabilities and no network;

@@ -160,9 +160,6 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "engine": {
-          "type": "string"
-        },
         "mode": {
           "type": "string",
           "enum": [
@@ -739,6 +736,9 @@
               "deprecated": true
             }
           }
+        },
+        "engine": {
+          "deprecated": true
         }
       },
       "allOf": [

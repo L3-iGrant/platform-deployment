@@ -86,6 +86,7 @@ redis:
   users:
     gateway: {username: gateway, passwordSecret: my-redis-gateway, passwordKey: pw}
 database:
+  engine: postgresql
   databases:
     oidc: {name: igrant_oidc, password: ""}
   auth:
