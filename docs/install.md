@@ -2,6 +2,8 @@
 
 Install the platform in seven steps. Each step ends with a check: go on only when the check passes.
 
+You need a running Kubernetes cluster that meets the [Prerequisites](prerequisites.md). These steps do not create the cluster. Each command runs on your workstation against that cluster.
+
 [Back to the contents](../README.md#contents)
 
 The examples use the release name `ows`, the namespace `ows`, a clone of this repository in `./platform-deployment`, and Envoy Gateway with the Gateway `platform` of [Prerequisites](prerequisites.md#envoy-gateway).
@@ -40,7 +42,7 @@ The examples of this page use this repository; with the enterprise chart, use `.
 
 ## Step 1: the namespace and the registry access
 
-The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.7`). You get a service account key file, `service-account-key.json`.
+The iGrant.io images are in `europe-docker.pkg.dev/jenkins-189019/igrant-customers`, the default of `global.imageRegistry`. Ask support@igrant.io for read access. The release tag of the images is the chart's `appVersion` in `Chart.yaml` (`2026.11.7`). You get a service account key file, `service-account-key.json`. Put it in the folder where you run the commands of this page.
 
 On your workstation, check the access and let Docker pull the api image for step 2. Use one of the two ways.
 
@@ -63,13 +65,14 @@ docker pull europe-docker.pkg.dev/jenkins-189019/igrant-customers/api:<release t
 
 In both cases, the cluster pulls with an image pull Secret that you create from the same key file. The chart gives it to every pod, also to the Jobs and hooks: `global.imagePullSecrets` (default `[igrant-registry-creds]`). If you give the Secret another name, set `global.imagePullSecrets` in `my-site.yaml` in step 3.
 
+First check that `kubectl` uses your cluster: `kubectl cluster-info` shows the API server of your cluster. Then create the namespace and the Secret:
+
 ```bash
 kubectl create namespace ows
 kubectl -n ows create secret docker-registry igrant-registry-creds \
   --docker-server=europe-docker.pkg.dev \
   --docker-username=_json_key \
-  --docker-password="$(cat service-account-key.json)" \
-  --docker-email=unused@example.org
+  --docker-password="$(cat service-account-key.json)"
 ```
 
 Check: `kubectl -n ows get secret igrant-registry-creds` shows the Secret with the type `kubernetes.io/dockerconfigjson`.
