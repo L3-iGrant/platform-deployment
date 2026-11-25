@@ -636,7 +636,7 @@ the user's values key. Output: JSON list.
 {{- $spec := dig . dict (dict
   "api" (dict
     "streams" (list "OWS_MICROSERVICE" "API_EVENTS")
-    "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted")
+    "durables" (list "OWS_MICROSERVICE/openidprovider-client-created" "OWS_MICROSERVICE/openidprovider-client-deleted" "OWS_MICROSERVICE/openidprovider-clients-deleted" "OWS_MICROSERVICE/api-wallet-organisation-deletion")
     "kv" (list "OWS_ENVELOPE_JTI")
     "extra" (list "$JS.API.INFO"))
   "webhook" (dict
@@ -685,7 +685,9 @@ allowResponses.
 Publish:
 - The services publish events and requests by name (the stream and subject
   contract of the services). The api events are the subjects of the stream
-  API_EVENTS, including api.v1.evt.organisation.deleted.
+  API_EVENTS, including api.v1.evt.organisation.deletion_scheduled (the
+  start of a scheduled organisation deletion) and api.v1.evt.organisation.deleted
+  (sent at the due time of the deletion).
 - The api core sends wallet commands on ows.cmd.> (this includes
   ows.cmd.*.organisation.set_suspended).
 - The webhook handler sends one wallet command, ows.cmd.*.issuance.revoke,
@@ -693,8 +695,10 @@ Publish:
   one.
 - The wallet roles publish their outbox events (from the outbox edge of the
   servers, the outbox relay and the worker actors): record events,
-  notifications, the push trigger, and the webhook events of the issuer,
-  the verifier and the holder.
+  notifications, the push trigger, the webhook events of the issuer,
+  the verifier and the holder, and ows.*.evt.organisation_deletion_scheduled
+  (the delete of an organisation wallet unit schedules the deletion of the
+  wallet of its organisation; the api core consumes it).
 
 Subscribe: the JetStream consumers of a process (pull, or push with a
 deliver subject under its inbox prefix) deliver to its inbox. So a process
@@ -716,12 +720,12 @@ consumers of another. Output: JSON list.
 {{- define "ow.nats.users" -}}
 {{- $v := .Values -}}
 {{- $users := $v.nats.users -}}
-{{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" -}}
+{{- $walletEvents := list "ows.*.webhook.*" "ows.*.notification" "ows.*.evt.push_requested" "ows.*.evt.webhook_event" "ows.*.evt.organisation_deletion_scheduled" -}}
 {{- $cacheClears := list "ows.cache.cleared" -}}
 {{- $table := list
   (dict "name" "api" "key" "api" "inbox" "_INBOX_api" "allowResponses" true
     "publish" (concat (list "ows.cmd.>")
-      (list "api.v1.evt.organisation.created" "api.v1.evt.organisation.updated" "api.v1.evt.organisation.deleted" "api.v1.evt.sandbox.updated" "api.v1.evt.sandbox.deleted" "api.v1.evt.extension.updated")
+      (list "api.v1.evt.organisation.created" "api.v1.evt.organisation.updated" "api.v1.evt.organisation.deleted" "api.v1.evt.organisation.deletion_scheduled" "api.v1.evt.sandbox.updated" "api.v1.evt.sandbox.deleted" "api.v1.evt.extension.updated")
       (list "ows.openidprovider.client.created" "ows.openidprovider.client.deleted" "ows.openidprovider.clients.deleted")
       (include "ow.nats.jetStreamRights" "api" | fromJsonArray))
     "subscribe" (list "api.v1.rpc.>" "ows.users.*.authentication.oidcpasswordless.verified" "ows.users.*.authentication.oidcpasswordless.accepted"))

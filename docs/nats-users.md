@@ -37,19 +37,20 @@ The services create their JetStream streams, their durable consumers and their k
 
 | Stream | Made by | Subjects | Retention |
 | --- | --- | --- | --- |
-| `API_EVENTS` | the API core, the webhook handler | `api.v1.evt.organisation.created`, `.organisation.updated`, `.organisation.deleted`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | limits |
-| `OWS_MICROSERVICE` | the wallet roles, the API core, the webhook handler | `ows.*.webhook.*`, `ows.*.notification`, `ows.*.evt.push_requested`, `ows.*.evt.webhook_event` (the wallet); `ows.users.*.authentication.oidcpasswordless.verified`, `.accepted`, `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` (the api) | interest: a message stays until each consumer has it |
+| `API_EVENTS` | the API core, the webhook handler | `api.v1.evt.organisation.created`, `.organisation.updated`, `.organisation.deleted`, `.organisation.deletion_scheduled`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | limits |
+| `OWS_MICROSERVICE` | the wallet roles, the API core, the webhook handler | `ows.*.webhook.*`, `ows.*.notification`, `ows.*.evt.push_requested`, `ows.*.evt.webhook_event`, `ows.*.evt.organisation_deletion_scheduled` (the wallet); `ows.users.*.authentication.oidcpasswordless.verified`, `.accepted`, `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` (the api) | interest: a message stays until each consumer has it |
 
 The durable consumers: the replicas of a process share each consumer (the deliver group is the consumer name). A consumer acknowledges each message. A failed message comes back after 30 seconds, then after 1, 2, 5 and 10 minutes, at most 10 times; the last failure goes to the dead letters of the service. A message that is not acknowledged within 30 seconds comes back.
 
 | Consumer | Stream | Subjects | Process |
 | --- | --- | --- | --- |
-| `eudi-wallet-api-triggers` | `API_EVENTS` | `api.v1.evt.organisation.updated`, `.organisation.deleted`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | the wallet's config role |
+| `eudi-wallet-api-triggers` | `API_EVENTS` | `api.v1.evt.organisation.updated`, `.organisation.deleted`, `.organisation.deletion_scheduled`, `.sandbox.updated`, `.sandbox.deleted`, `.extension.updated` | the wallet's config role |
 | `api-webhook-event` | `OWS_MICROSERVICE` | `ows.*.evt.webhook_event` (the webhook events of the issuer, the verifier and the holder) | the webhook handler |
 | `api-push-requested` | `OWS_MICROSERVICE` | `ows.*.evt.push_requested` | the webhook handler |
 | `openidprovider-client-created`, `openidprovider-client-deleted`, `openidprovider-clients-deleted` | `OWS_MICROSERVICE` | `ows.openidprovider.client.created`, `.client.deleted`, `.clients.deleted` | the API core |
+| `api-wallet-organisation-deletion` | `OWS_MICROSERVICE` | `ows.*.evt.organisation_deletion_scheduled` (the delete of an organisation wallet unit schedules the deletion of the wallet of its organisation) | the API core |
 
-The API core publishes each event of `API_EVENTS` by its name: its NATS user has the publish right for each of the 6 subjects, and no wildcard. `api.v1.evt.organisation.deleted` is the deletion of an organisation by a platform admin: the wallet deactivates the organisation's wallets. The API core adds the subject to the stream when it starts, and the wallet's config role adds it to the filters of its consumer when it starts. A consumer has no subject rights of its own (it gets its messages on the inbox of its process), so only the user `api` changes. An external NATS needs the users of the ConfigMap `<release>-nats-authorization` of each release.
+The API core publishes each event of `API_EVENTS` by its name: its NATS user has the publish right for each of the 7 subjects, and no wildcard. `api.v1.evt.organisation.deletion_scheduled` is the delete of an organisation by a platform admin: the organisation is blocked at once, the wallet deactivates the organisation's wallets, and the purge comes at the due time. `api.v1.evt.organisation.deleted` goes out at the due time, after the API core has deleted its data of the organisation. The API core adds the subject to the stream when it starts, and the wallet's config role adds it to the filters of its consumer when it starts. A consumer has no subject rights of its own (it gets its messages on the inbox of its process), so only the user `api` changes. An external NATS needs the users of the ConfigMap `<release>-nats-authorization` of each release.
 
 Subscriptions without a JetStream consumer:
 

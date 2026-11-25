@@ -759,6 +759,11 @@ def main() -> int:
     for user in WALLET_NATS_USERS:
         check("ows.*.evt.webhook_event" in rights.get(user, {}).get("publish", set()),
               f"the NATS user {user} cannot publish the webhook events ows.*.evt.webhook_event")
+        # The delete of an organisation wallet unit schedules the deletion of
+        # the wallet of its organisation: the wallet sends this event (outbox)
+        # to the API core.
+        check("ows.*.evt.organisation_deletion_scheduled" in rights.get(user, {}).get("publish", set()),
+              f"the NATS user {user} cannot publish ows.*.evt.organisation_deletion_scheduled")
     durable = "OWS_MICROSERVICE.api-webhook-event"
     webhook_publish = rights.get("api-webhook", {}).get("publish", set())
     check({f"$JS.API.CONSUMER.DURABLE.CREATE.{durable}", f"$JS.API.CONSUMER.INFO.{durable}", f"$JS.ACK.{durable}.>"} <= webhook_publish,
@@ -774,9 +779,15 @@ def main() -> int:
     api_events = sorted(subject for subject in api_publish if subject.startswith("api.v1.evt."))
     check(api_events == sorted(f"api.v1.evt.{name}" for name in (
         "organisation.created", "organisation.updated", "organisation.deleted",
-        "sandbox.updated", "sandbox.deleted", "extension.updated")),
+        "organisation.deletion_scheduled", "sandbox.updated", "sandbox.deleted", "extension.updated")),
           f"the NATS user api publishes the api events {api_events}")
     check("ows.cmd.>" in api_publish, "the NATS user api cannot publish the wallet commands ows.cmd.>")
+    # The API core consumes the scheduled deletions of organisation wallets
+    # (durable api-wallet-organisation-deletion, push).
+    deletion_durable = "OWS_MICROSERVICE.api-wallet-organisation-deletion"
+    check({f"$JS.API.CONSUMER.DURABLE.CREATE.{deletion_durable}", f"$JS.API.CONSUMER.INFO.{deletion_durable}",
+           f"$JS.ACK.{deletion_durable}.>"} <= api_publish,
+          "the NATS user api does not have the rights for the durable api-wallet-organisation-deletion")
     # Process cache clears (core NATS ows.cache.cleared): the service and
     # config pods publish and subscribe to them, the workers do not.
     for user in WALLET_NATS_USERS:

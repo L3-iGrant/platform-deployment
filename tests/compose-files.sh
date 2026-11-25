@@ -740,6 +740,16 @@ PY
   else
     bad "config/nats/users.conf: the api cannot publish api.v1.evt.organisation.deleted (make nats-config)"
   fi
+  # The scheduled deletions: the api publishes the start of an organisation
+  # deletion and consumes the deletions of organisation wallets (durable
+  # api-wallet-organisation-deletion); the 3 wallet users publish them.
+  if grep -q -F '"api.v1.evt.organisation.deletion_scheduled"' config/nats/users.conf \
+    && grep -q -F '"$JS.API.CONSUMER.DURABLE.CREATE.OWS_MICROSERVICE.api-wallet-organisation-deletion"' config/nats/users.conf \
+    && [ "$(grep -c -F '"ows.*.evt.organisation_deletion_scheduled"' config/nats/users.conf)" -eq 3 ]; then
+    ok "the NATS users have the rights of the scheduled deletion events"
+  else
+    bad "config/nats/users.conf: the rights of the scheduled deletion events are missing (make nats-config)"
+  fi
 
   # Audit log (AUDIT_RETENTION_YEARS): the same retention in the wallet role
   # files and in wallet-migrate (the partition step), and no audit bucket.
