@@ -107,51 +107,14 @@ its purge date, and the workers purge. */ -}}
     "verifier_response_key_days" ($r.verifierResponseKeyDays | int)
     "issued_credential_token_days" ($r.issuedCredentialTokenDays | int)
     "batch_size" ($r.batchSize | int) -}}
-{{- $walletUnit := dict "production_checks_enabled" $w.walletUnit.productionChecksEnabled -}}
+{{- /* wallet_unit: the wallet app records and the device policy of the
+wallet provider decide the device checks of the wallet apps, so the chart
+writes no app value and no device rule. */ -}}
+{{- $walletUnit := dict -}}
 {{- /* Maximum number of organisation wallet units in the installation
 (installation.limits.maxOrganisationWalletUnits). The clock has no
 wallet_unit section. */ -}}
 {{- $_ := set $walletUnit "organisation_wallet_units_max" ($v.installation.limits.maxOrganisationWalletUnits | int) -}}
-{{- /* wallet_unit.development_apps_allowed (read by the config and service
-processes) is set only when the installer sets true or false; empty sets no
-key (the wallet default, false). A string, even "true", fails the render
-because the wallet reads a boolean. */ -}}
-{{- $developmentApps := dig "developmentAppsAllowed" "" $w.walletUnit -}}
-{{- if kindIs "bool" $developmentApps -}}
-{{- $_ := set $walletUnit "development_apps_allowed" $developmentApps -}}
-{{- else if and (not (kindIs "invalid" $developmentApps)) (ne (toString $developmentApps) "") -}}
-{{- fail (printf "organisationWallet.walletUnit.developmentAppsAllowed (%q) must be true, false or empty: give a boolean, not a text" (toString $developmentApps)) -}}
-{{- end -}}
-{{- $p := $w.walletUnit.playIntegrity -}}
-{{- $digests := $w.walletUnit.androidSigningCertificateDigests -}}
-{{- if and $p.existingSecret (not $digests) -}}
-{{- fail "organisationWallet.walletUnit.androidSigningCertificateDigests needs the SHA-256 of the app signing key certificate when playIntegrity.existingSecret is set" -}}
-{{- end -}}
-{{- /* The app values (the Android app digests, the App IDs of the iOS
-wallet apps and the Play Integrity keys) go into the service and config
-files, with the same values. The service pods check the protocol 1 requests
-of wallet units with them. The first request that needs the wallet app
-records (a protocol 2 request in a service pod, or the Wallet Apps, Device
-Policy or Health route in a config pod) makes these records from them, one
-time. */ -}}
-{{- $appRole := has $role (list "service" "config") -}}
-{{- if and $digests $appRole -}}
-{{- $_ := set $walletUnit "android_signing_certificate_digests" $digests -}}
-{{- end -}}
-{{- $appIds := $w.walletUnit.appAttest.appIds -}}
-{{- if and $w.walletUnit.productionChecksEnabled (not $appIds) -}}
-{{- fail "organisationWallet.walletUnit.appAttest.appIds needs at least one App ID (<Team ID>.<bundle id>) of the iOS wallet app when productionChecksEnabled is true" -}}
-{{- end -}}
-{{- if $appRole -}}
-{{- $_ := set $walletUnit "app_attest" (dict "app_ids" $appIds) -}}
-{{- end -}}
-{{- if hasKey $files "play-integrity-decryption-key" -}}
-{{- $_ := set $walletUnit "play_integrity" (dict
-    "decryption_key_file" (printf "%s/play-integrity-decryption-key" $dir)
-    "verification_key_file" (printf "%s/play-integrity-verification-key" $dir)
-    "package_name" $p.packageName
-    "min_version_code" ($p.minVersionCode | int)) -}}
-{{- end -}}
 {{- /* Device roots from the ConfigMap (organisationWallet.walletUnit.
 trustAnchors) in the roles that mount them; otherwise the image's roots. */ -}}
 {{- if include "ow.wallet.trustAnchors" (list $root $role) -}}

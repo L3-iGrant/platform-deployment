@@ -3458,54 +3458,6 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "productionChecksEnabled": {
-              "type": "boolean"
-            },
-            "androidSigningCertificateDigests": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "pattern": "^([0-9A-Fa-f]{2}:?){31}[0-9A-Fa-f]{2}$"
-              }
-            },
-            "playIntegrity": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "existingSecret": {
-                  "type": "string"
-                },
-                "decryptionKeyKey": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "verificationKeyKey": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "packageName": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "minVersionCode": {
-                  "type": "integer",
-                  "minimum": 0
-                }
-              }
-            },
-            "appAttest": {
-              "type": "object",
-              "additionalProperties": false,
-              "properties": {
-                "appIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "string",
-                    "pattern": "^[A-Z0-9]{10}\\.[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)*$"
-                  }
-                }
-              }
-            },
             "trustAnchors": {
               "type": "object",
               "additionalProperties": false,
@@ -3514,13 +3466,6 @@
                   "type": "string"
                 }
               }
-            },
-            "developmentAppsAllowed": {
-              "type": [
-                "string",
-                "boolean"
-              ],
-              "maxLength": 0
             },
             "organisationWalletUnitsMax": {
               "deprecated": true

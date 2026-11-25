@@ -887,95 +887,14 @@ PY
     bad "audit $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
   fi
 }
-# The wallet's Play Integrity keys (wallet_unit.play_integrity) and the
-# Android app digests: the service and config files name them and only the
-# service and config pods mount the keys. The two files have equal app
-# settings (app_attest, the digests and play_integrity): the config pods
-# make the first wallet app records from them.
-play_integrity() {
-  local name="$1" expect="$2"; shift 2
-  local problems
-  # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/play.yaml" 2> "$out/play.err"; then
-    bad "play integrity $name: $(head -c 200 "$out/play.err")"
-  elif problems="$(python3 - "$out/play.yaml" "$expect" <<'PY' 2>&1
-import json, sys, yaml
-docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
-expected = json.loads(sys.argv[2])
-def find(kind, name):
-    return next(d for d in docs if d.get("kind") == kind and d["metadata"]["name"] == name)
-files = find("ConfigMap", "t-wallet")["data"]
-app_roles = ("service", "config")
-for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
-    unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
-    want = expected["play_integrity"] if role in app_roles else None
-    if unit.get("play_integrity") != want:
-        print(f"{role}.yaml wallet_unit.play_integrity is {unit.get('play_integrity')!r}")
-    want = expected["digests"] if role in app_roles else None
-    if unit.get("android_signing_certificate_digests") != want:
-        print(f"{role}.yaml wallet_unit.android_signing_certificate_digests is {unit.get('android_signing_certificate_digests')!r}")
-    if "play_integrity_credentials_file" in unit:
-        print(f"{role}.yaml names the Play Integrity service account")
-    pod = find("Deployment", f"t-wallet-{role}")["spec"]["template"]["spec"]
-    mounted = {item["path"]: [source["secret"]["name"], item["key"]] for volume in pod["volumes"] if volume["name"] == "secrets"
-               for source in volume["projected"]["sources"] for item in source["secret"]["items"]}
-    secrets = {path: secret for path, secret in mounted.items() if path.startswith("play-integrity")}
-    if secrets != (expected["secrets"] if role in app_roles else {}):
-        print(f"the {role} pods mount {secrets!r} as the Play Integrity keys")
-units = [yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {} for role in app_roles]
-for key in ("app_attest", "android_signing_certificate_digests", "play_integrity"):
-    if units[0].get(key) != units[1].get(key):
-        print(f"service.yaml and config.yaml have a different wallet_unit.{key}")
-PY
-)" && [ -z "$problems" ]; then
-    ok "play integrity $name"
-  else
-    bad "play integrity $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
-  fi
-}
-digest=ed5ed923ed30fab5ef5721931f43d1270b13340045bbbef31e0a9927a57e4142
-play_integrity "no keys by default" '{"play_integrity": null, "digests": null, "secrets": {}}'
-play_integrity "digests without keys" "{\"play_integrity\": null, \"digests\": [\"$digest\"], \"secrets\": {}}" \
-  --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}"
-play_integrity "keys in the service and config pods" "{\"play_integrity\": {\"decryption_key_file\": \"/run/secrets/eudi-wallet/play-integrity-decryption-key\", \"verification_key_file\": \"/run/secrets/eudi-wallet/play-integrity-verification-key\", \"package_name\": \"io.igrant.mobileagent\", \"min_version_code\": 42}, \"digests\": [\"$digest\"], \"secrets\": {\"play-integrity-decryption-key\": [\"play\", \"decryption-key\"], \"play-integrity-verification-key\": [\"play\", \"verification-key\"]}}" \
-  --set organisationWallet.walletUnit.playIntegrity.existingSecret=play --set "organisationWallet.walletUnit.androidSigningCertificateDigests={$digest}" \
-  --set organisationWallet.walletUnit.playIntegrity.minVersionCode=42
-guard "Play Integrity keys without the certificate digest" "androidSigningCertificateDigests needs the SHA-256" --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
-guard "Android signing certificate digest not hex" "androidSigningCertificateDigests" --set "organisationWallet.walletUnit.androidSigningCertificateDigests={not-a-digest}"
-# The App IDs of the iOS wallet apps (wallet_unit.app_attest.app_ids): only
-# the service file (the protocol 1 checks) and the config file (the first
-# wallet app records) name them.
-app_attest() {
-  local name="$1" expect="$2"; shift 2
-  local problems
-  # Only stdout is YAML (helm writes its warnings to stderr).
-  if ! helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" > "$out/app-attest.yaml" 2> "$out/app-attest.err"; then
-    bad "app attest $name: $(head -c 200 "$out/app-attest.err")"
-  elif problems="$(python3 - "$out/app-attest.yaml" "$expect" <<'PY' 2>&1
-import json, sys, yaml
-docs = [d for d in yaml.safe_load_all(open(sys.argv[1])) if d]
-expected = json.loads(sys.argv[2])
-files = next(d for d in docs if d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "t-wallet")["data"]
-for role in ("service", "config", "worker-main", "worker-maintenance", "clock"):
-    unit = yaml.safe_load(files[f"{role}.yaml"]).get("wallet_unit") or {}
-    want = {"app_ids": expected} if role in ("service", "config") else None
-    if unit.get("app_attest") != want:
-        print(f"{role}.yaml wallet_unit.app_attest is {unit.get('app_attest')!r}")
-PY
-)" && [ -z "$problems" ]; then
-    ok "app attest $name"
-  else
-    bad "app attest $name: $(printf '%s' "$problems" | tr '\n' ';' | head -c 300)"
-  fi
-}
-app_ids='Y9726WB7V8.io.iGrant.DataWallet,ABCDE12345.com.example.wallet'
-app_attest "the iGrant.io Data Wallet app by default" '["Y9726WB7V8.io.iGrant.DataWallet"]'
-app_attest "the App IDs of two iOS apps" '["Y9726WB7V8.io.iGrant.DataWallet", "ABCDE12345.com.example.wallet"]' \
-  --set "organisationWallet.walletUnit.appAttest.appIds={$app_ids}"
-app_attest "no App ID without the production checks" '[]' --set-json 'organisationWallet.walletUnit.appAttest.appIds=[]'
-guard "no App ID with the production checks" "appAttest.appIds needs at least one App ID" \
-  --set organisationWallet.walletUnit.productionChecksEnabled=true --set-json 'organisationWallet.walletUnit.appAttest.appIds=[]'
-guard "App ID without the Team ID" "appIds" --set "organisationWallet.walletUnit.appAttest.appIds={io.iGrant.DataWallet}"
+# The wallet app records of the dashboard give the app identity and the
+# device checks of each wallet app; no value of the chart does. The schema
+# refuses app values in organisationWallet.walletUnit, and
+# tests/check_render.py checks that no render has them.
+guard "wallet app value productionChecksEnabled" "Additional property productionChecksEnabled" \
+  --set organisationWallet.walletUnit.productionChecksEnabled=true
+guard "wallet app value playIntegrity" "Additional property playIntegrity" \
+  --set organisationWallet.walletUnit.playIntegrity.existingSecret=play
 # Device roots of the wallet units (wallet_unit.trust_anchors_dir): with a
 # ConfigMap, the service, config and worker files name the folder and their
 # pods mount the ConfigMap's two root files; the clock never does. Without
@@ -1085,45 +1004,6 @@ guard "organisation wallet unit limit over 100" "installation.limits.maxOrganisa
   --set installation.limits.maxOrganisationWalletUnits=101
 guard "organisation wallet unit limit as a string" "installation.limits.maxOrganisationWalletUnits" \
   --set-string installation.limits.maxOrganisationWalletUnits=50
-# Development builds of the wallet apps (developmentAppsAllowed): no key by
-# default (the wallet default is false); when set, the boolean is in the
-# files with a wallet_unit section (service, config, workers), never in the
-# clock file. A string, even "true", stops the render.
-development_apps() {
-  local name="$1" expect="$2"; shift 2
-  local problems
-  if problems="$(helm template t "$chart" --namespace ow -f "$keys" "${site[@]}" "$@" \
-      --show-only templates/wallet/configmap.yaml 2>&1 | python3 -c '
-import json, sys, yaml
-expect = json.loads(sys.argv[1])
-data = yaml.safe_load(sys.stdin)["data"]
-roles = 0
-for key, text in sorted(data.items()):
-    if not key.endswith(".yaml"):
-        continue
-    config = yaml.safe_load(text) or {}
-    unit = config.get("wallet_unit")
-    if key == "clock.yaml":
-        if unit is not None:
-            print("clock.yaml has wallet_unit")
-        continue
-    roles += 1
-    got = (unit or {}).get("development_apps_allowed", "absent")
-    if got != expect:
-        print(f"{key}: development_apps_allowed {got!r}, expected {expect!r}")
-if roles < 3:
-    print("files with wallet_unit:", roles)
-' "$expect" 2>&1)" && [ -z "$problems" ]; then
-    ok "development apps: $name"
-  else
-    bad "development apps: $name: $(printf '%s' "$problems" | head -c 300)"
-  fi
-}
-development_apps "no key by default" '"absent"'
-development_apps "true in the service, config and worker files" 'true' --set organisationWallet.walletUnit.developmentAppsAllowed=true
-development_apps "false in the service, config and worker files" 'false' --set organisationWallet.walletUnit.developmentAppsAllowed=false
-guard "development apps as a text" "organisationWallet.walletUnit.developmentAppsAllowed" --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
-guard "development apps as a text without the schema" 'organisationWallet.walletUnit.developmentAppsAllowed ("true") must be true, false or empty' --skip-schema-validation --set-string organisationWallet.walletUnit.developmentAppsAllowed=true
 # The services of the installation (docs/components.md): Installation in the
 # api, webhook and gateway files (and in no other object) has the services
 # [wallet], a constant of the chart, and the optional features

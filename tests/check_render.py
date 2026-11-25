@@ -91,6 +91,10 @@ FORBIDDEN = [
     (r"apikey-rotator|apiKeyRotator", "the API key rotator"),
     (r"allowplainapikeys", "the removed api setting of the plain API key window"),
     (r"cert-manager\.io/v1", "a cert-manager object"),
+    # The wallet app records of the dashboard hold the app values; the wallet
+    # refuses these keys in wallet_unit.
+    (r"production_checks_enabled|development_apps_allowed|android_signing_certificate_digests|\bapp_attest\b|play[-_]integrity",
+     "a wallet app value (the wallet app records of the dashboard hold them)"),
     ("\u2014", "an em dash"),
     ("\u2013", "an en dash"),
 ]
@@ -230,6 +234,11 @@ def main() -> int:
         # The organisation wallet unit limit: the default 100.
         units = (wallet.get("wallet_unit") or {}).get("organisation_wallet_units_max")
         check(units == 100, f"wallet {role}.yaml has wallet_unit.organisation_wallet_units_max {units!r}, not the default 100")
+        # wallet_unit has only the unit limit and the folder of the device
+        # roots: the wallet refuses an unknown key.
+        unit_keys = sorted(wallet.get("wallet_unit") or {})
+        check(set(unit_keys) <= {"organisation_wallet_units_max", "trust_anchors_dir"},
+              f"wallet {role}.yaml has the wallet_unit keys {unit_keys}")
 
     # Workers and clock (docs/workers.md): one Deployment per worker group
     # (dramatiq with the group's queues) and one for the clock (start-clock);

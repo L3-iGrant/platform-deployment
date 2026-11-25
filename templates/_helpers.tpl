@@ -409,14 +409,6 @@ NATS events (it only sends the cron actor messages). */ -}}
 {{- with include "ow.openbao.ca" $root | fromJson -}}
 {{- if .secret -}}{{- $_ := set $files "openbao-ca.crt" . -}}{{- end -}}
 {{- end -}}
-{{- /* Play Integrity keys: the service pods check the WIA requests of
-wallet units with them, and the service and config pods make the first
-Android wallet app record from them (ow.wallet.config). */ -}}
-{{- $p := $w.walletUnit.playIntegrity -}}
-{{- if and $p.existingSecret (has $role (list "service" "config")) -}}
-{{- $_ := set $files "play-integrity-decryption-key" (dict "secret" $p.existingSecret "key" $p.decryptionKeyKey) -}}
-{{- $_ := set $files "play-integrity-verification-key" (dict "secret" $p.existingSecret "key" $p.verificationKeyKey) -}}
-{{- end -}}
 {{- /* The workers write audit anchor copies and monthly exports to the audit
 bucket (actors audit.anchor and audit.export), with the wallet's access key
 (type s3) or its service account (type gcs). */ -}}

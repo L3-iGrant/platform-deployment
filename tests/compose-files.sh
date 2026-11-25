@@ -21,7 +21,8 @@
 #     healthcheck, the worker state folder, and the clock's files (no NATS
 #     seed, no OpenBao password);
 #   - the installation limits (MAX_ORGANISATIONS,
-#     MAX_ORGANISATION_WALLET_UNITS): the keys appear only with a value;
+#     MAX_ORGANISATION_WALLET_UNITS): the keys appear only with a value,
+#     and wallet_unit has no other key;
 #   - the webhooks in the api files (no Webhooks.events), and the services
 #     of the installation: Installation.services [wallet] in the api,
 #     webhook and gateway files, the gateway upstreams, the trusted issuers
@@ -463,7 +464,9 @@ PY
   # wallet_unit.organisation_wallet_units_max in the config, service and
   # worker files, as integers, only when the setting has a value. No other
   # file has them: not the gateway file (the gateway refuses the section)
-  # and not the clock file.
+  # and not the clock file. The wallet_unit section has no other key (the
+  # wallet app records of the dashboard hold the app values), and without
+  # the setting there is no wallet_unit section.
   if command -v python3 > /dev/null && python3 -c 'import yaml' 2> /dev/null; then
     local organisations units
     for case_name in default set; do
@@ -496,10 +499,10 @@ for name in ("api-config", "webhook-config"):
     checked.add(name)
 for role in ("config", "service", "worker"):
     name = f"wallet-{role}-config"
-    unit = yaml.safe_load(project["configs"][name]["content"]).get("wallet_unit") or {}
-    got = unit.get("organisation_wallet_units_max")
-    if got != units or (got is not None and type(got) is not int):
-        sys.exit(f"{name}: wallet_unit.organisation_wallet_units_max {got!r}, not {units!r}")
+    unit = yaml.safe_load(project["configs"][name]["content"]).get("wallet_unit")
+    want = {"organisation_wallet_units_max": units} if units else None
+    if unit != want or (unit and type(unit["organisation_wallet_units_max"]) is not int):
+        sys.exit(f"{name}: wallet_unit {unit!r}, not {want!r}")
     checked.add(name)
 for name, config in project["configs"].items():
     for word in ("maxOrganisations", "organisation_wallet_units_max"):

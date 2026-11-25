@@ -367,11 +367,11 @@ configs:
           user: eudi-wallet
           password_file: /run/secrets/eudi-wallet/openbao-password
           transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # appears only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
+      # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the section
+      # wallet_unit appears only when the setting has a value. The wallet app
+      # records of the dashboard decide the device checks of the wallet apps.
+      ${MAX_ORGANISATION_WALLET_UNITS:+wallet_unit:}
+      ${MAX_ORGANISATION_WALLET_UNITS:+  organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # Audit log retention (AUDIT_RETENTION_YEARS; README.md, "Audit
       # log"): the same value in every wallet file.
       audit:
@@ -456,11 +456,11 @@ configs:
           user: eudi-wallet
           password_file: /run/secrets/eudi-wallet/openbao-password
           transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # appears only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
+      # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the section
+      # wallet_unit appears only when the setting has a value. The wallet app
+      # records of the dashboard decide the device checks of the wallet apps.
+      ${MAX_ORGANISATION_WALLET_UNITS:+wallet_unit:}
+      ${MAX_ORGANISATION_WALLET_UNITS:+  organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # Audit log retention (AUDIT_RETENTION_YEARS; README.md, "Audit
       # log"): the same value in every wallet file.
       audit:
@@ -526,11 +526,11 @@ configs:
           user: eudi-wallet
           password_file: /run/secrets/eudi-wallet/openbao-password
           transit_mount: transit
-      wallet_unit:
-        production_checks_enabled: false
-        # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the key
-        # appears only when the setting has a value.
-        ${MAX_ORGANISATION_WALLET_UNITS:+organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
+      # MAX_ORGANISATION_WALLET_UNITS (README.md, "Settings"): the section
+      # wallet_unit appears only when the setting has a value. The wallet app
+      # records of the dashboard decide the device checks of the wallet apps.
+      ${MAX_ORGANISATION_WALLET_UNITS:+wallet_unit:}
+      ${MAX_ORGANISATION_WALLET_UNITS:+  organisation_wallet_units_max: ${MAX_ORGANISATION_WALLET_UNITS}}
       # Audit log (AUDIT_RETENTION_YEARS; README.md, "Audit log"): the
       # worker signs the hourly anchors with OpenBao's Transit keys. There is
       # no audit bucket, because Compose has no write-once store: the anchors

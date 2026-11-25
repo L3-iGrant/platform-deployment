@@ -15,6 +15,7 @@ The tests of the chart. They run without a cluster.
   - the kinds and weights of the database hooks (the Secrets, the init hook, the roles hook, the migration hooks and the read access hooks), and the migration of the api when its pods start;
   - the wallet's database roles: the user and Secret key of each wallet process, and no password of the database owner user in a wallet pod or Job;
   - the audit log retention and the retention purge in each wallet file and in the migration hook, and no audit bucket by default;
+  - the `wallet_unit` section of each wallet file: only the limit of the organisation wallet units and the folder of the device roots, and no wallet app value in the render (the wallet app records of the dashboard hold them);
   - the bundled Valkey: its objects (none is a hook), the settings of the data servers and Sentinels, the ACL users and their rights, no password in the ConfigMap, the `redis` section and Valkey files of each wallet role, and the Valkey files of the gateway.
 
   One more render checks the bundled server with the DDL and connection logs off;
@@ -68,7 +69,7 @@ tests/render-matrix.sh            # or: tests/render-matrix.sh --keep /tmp/rende
 - the scripts and the NATS configuration;
 - the Valkey services with their templates and ACL users, and the `redis` section of each wallet file;
 - the gateway feature gate (`FEATURES_ENFORCE`);
-- the installation limits (`MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS`: the keys are in the api, webhook and wallet files only with a value);
+- the installation limits (`MAX_ORGANISATIONS`, `MAX_ORGANISATION_WALLET_UNITS`: the keys are in the api, webhook and wallet files only with a value; the wallet files have a `wallet_unit` section only with `MAX_ORGANISATION_WALLET_UNITS`, and it has no other key);
 - the webhooks of the api files (no `Webhooks.events`), and the services of the installation: `Installation.services` `[wallet]` in the api, webhook and gateway files, the gateway upstreams, the trusted issuers of the api files and the readers of the wallet config;
 - the refusal of the old setting `DB_ENGINE` by `make check`, the databases of `database-init`, and `make secrets` in a copy of the folder: a file for each secret of the Compose files, and a public nkey for each NATS user of `config/nats/users.conf`;
 - the platform operator targets of the Makefile (`make -n`: the api commands, and the password on standard input);

@@ -306,6 +306,22 @@ With the API (the admin token of a platform admin of the platform operator organ
 
 Check: within about a minute, `GET /v4/config/ows/holder/wallet-unit/status` (with an API key of an organisation that has an authorised wallet unit) changes from `installed` to `operational`. `GET /v4/config/ows/wallet-provider/organisation-wallet-units` shows `isAuthorised` for each unit; `PUT /v4/config/ows/wallet-provider/organisation-wallet-units/<wallet unit id>` with `{"isAuthorised": true}` authorises one. Turn on extensions that issue credentials to the organisation's own wallet only after the status is `operational`.
 
+## After the installation: the wallet apps
+
+Do these steps when the installation serves the mobile apps (the individual wallet units). The wallet app records of the dashboard give the app identity and the device checks of each app; no value of the chart does. A new installation has no wallet app record and no wallet solution, so no individual wallet unit gets a WIA until a platform admin adds them.
+
+As a platform admin of the platform operator organisation, after the signing key of the wallet provider (above):
+
+1. Open **Wallet Provider (Individuals)** > **Wallet Apps**, and use **Add Wallet App** for each app, one record for each platform:
+   - **Build**: Release for an app from the App Store or Google Play (every device check). Development for a build of Xcode or Android Studio on a test phone. Simulator or emulator only for tests.
+   - **App identity**: for iOS, the Team ID and the Bundle ID. For Android, the package name and the SHA-256 digests of the app signing certificates (the Play Console shows them).
+   - **Play Integrity** (Android): the decryption key and the verification key of the Play Console, and the minimum version code. A Release record needs the two keys.
+
+   A record that is not ready has the chip "Not ready", and the wallet provider refuses the requests of its app (`individual_wallet_unit.app_unknown`).
+2. Open **Wallet Provider (Individuals)** > **Wallet Units**, use **Wallet Solution Configuration**, and set the wallet name and the wallet link. Until you set them, no individual wallet unit gets a WIA (`individual_wallet_unit.wallet_solution_not_set`).
+
+With the API: `POST /v4/config/ows/wallet-provider/individual-wallet-apps`, for example `{"name": "Data Wallet Android", "platform": "android", "build": "release", "androidPackageName": "<package>", "androidSigningCertificateDigests": ["<SHA-256>"], "playIntegrityDecryptionKey": "<base64>", "playIntegrityVerificationKey": "<base64>", "androidMinimumVersionCode": 0}`, or `{"name": "Data Wallet iOS", "platform": "ios", "build": "release", "iosTeamId": "<Team ID>", "iosBundleId": "<bundle id>"}`.
+
 ## After the installation: the other organisations and admins
 
 A platform admin does these tasks in the dashboard, in the group "Wallet Provider (Organisations)". You need no Job and no chart command.

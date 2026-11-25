@@ -394,30 +394,12 @@ organisationWallet:
     clientAddress: {header: "", trustedProxies: [], trustedProxyHeader: ""}
   # -- Log level of the wallet. Empty: global.logLevel.
   logLevel: ""
-  # -- Wallet units: the protocol 1 checks, and the first wallet app records (made one time).
+  # -- Wallet units. The wallet app records and the device policy of the wallet provider (in the
+  # dashboard or with the API) decide the device checks of the wallet apps; no value of the chart does.
   walletUnit:
-    # -- Protocol 1. true: the production checks of the store apps. false: development builds.
-    productionChecksEnabled: false
-    # -- SHA-256 of the signing certificates of the Android app (required with Play Integrity).
-    androidSigningCertificateDigests: []
-    # -- Play Integrity of the Android wallet units, checked with the keys of the Play Console.
-    playIntegrity:
-      # -- Secret with the decryption key and the verification key of the Play Console.
-      existingSecret: ""
-      decryptionKeyKey: decryption-key
-      verificationKeyKey: verification-key
-      # -- Package name of the Android wallet app.
-      packageName: io.igrant.mobileagent
-      # -- Lowest versionCode that gets a WIA. 0: every version.
-      minVersionCode: 0
-    appAttest:
-      # -- App IDs (<Team ID>.<bundle id>) of the iOS apps (required with production checks).
-      appIds: [Y9726WB7V8.io.iGrant.DataWallet]
     trustAnchors:
       # -- ConfigMap with the device roots of the wallet units. Empty: the roots of the image.
       existingConfigMap: ""
-    # -- true: admins may mark an app build development or simulator. Test installations only.
-    developmentAppsAllowed: ""
   # -- Audit log of the wallet (docs/audit-log.md).
   audit:
     # -- Years that the audit events of a data scope stay in the database (at least 1).
