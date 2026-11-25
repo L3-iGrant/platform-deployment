@@ -291,10 +291,10 @@ In the dashboard:
 2. Give the key a certificate:
    - Production: **Generate CSR** with the preset **Wallet provider signing certificate**. Send the CSR to your CA, then use **Upload Certificate Chain** with the chain that your CA returns.
    - Test installation: **Generate CSR** with the preset **Wallet provider signing certificate** and **Use the built-in test CA** on. The preset needs **Country (2-letter code)**, **Organisation (O)**, **Organisation identifier** (the ETSI EN 319 412-1 form: type, country, `-`, id, for example `VATSE-5560000000`) and **Common Name (CN)**. The test CA stores the certificate chain on the key. Use it for development and tests only.
-3. For the organisation wallet units: open **Wallet Units** > **Wallet Units (Organisations)** > **Default Configurations**, and select the key as **Cryptographic Key Identifier** in the card **Wallet Unit Attestation Signing**.
-4. When the installation serves the mobile apps: open **Wallet Provider (Individuals)** > **Wallet Solution** > **Edit Signing Keys**, and select the key as **Key of the WIAs**.
+3. For the organisation wallet units: open **Wallet Provider (Organisations)** > **Wallet Units**, and use **Wallet Solution Configuration**. In the card **Signing keys**, select the key for **Key of the WIAs**.
+4. When the installation serves the mobile apps: open **Wallet Provider (Individuals)** > **Wallet Units**, and use **Wallet Solution Configuration**. In the card **Signing keys**, select the key for **Key of the WIAs**.
 
-Both dialogs save the key with the format `x509`.
+The dashboard saves the key with the format `x509` in both cases.
 
 With the API (the admin token of a platform admin of the platform operator organisation):
 
