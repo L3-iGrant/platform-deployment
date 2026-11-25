@@ -108,7 +108,7 @@ openbao-status: ## Show the OpenBao seal status
 # this target after you change the chart's NATS users (needs helm). The
 # render uses the example values of the chart (profiles/site.yaml) and its
 # test key values (tests/values/keys.yaml, no secrets).
-NATS_USERS := api:API apiWebhook:API_WEBHOOK walletConfig:WALLET_CONFIG \
+NATS_USERS := api:API webhook:API_WEBHOOK walletConfig:WALLET_CONFIG \
 	walletService:WALLET_SERVICE walletWorker:WALLET_WORKER
 nats-config: ## Maintainers: write config/nats/users.conf from the Helm chart's NATS users
 	@{ \
@@ -120,8 +120,8 @@ nats-config: ## Maintainers: write config/nats/users.conf from the Helm chart's 
 	  helm template igrant $(CHART_DIR) --show-only templates/nats/configmap.yaml \
 	    -f $(CHART_DIR)/profiles/site.yaml -f $(CHART_DIR)/tests/values/release.yaml \
 	    -f $(CHART_DIR)/tests/values/keys.yaml -f $(CHART_DIR)/profiles/openbao-shamir.yaml \
-	    --set nats.enabled=false,nats.external.url=nats://nats:4222 \
-	    $(foreach user,$(NATS_USERS),--set nats.auth.users.$(firstword $(subst :, ,$(user))).nkey=UNATS_NKEY_$(lastword $(subst :, ,$(user)))) \
+	    --set nats.mode=external,nats.external.url=nats://nats:4222 \
+	    $(foreach user,$(NATS_USERS),--set nats.users.$(firstword $(subst :, ,$(user))).nkey=UNATS_NKEY_$(lastword $(subst :, ,$(user)))) \
 	  | awk '/^    authorization \{/ {on = 1} on {print} on && /^    \}$$/ {exit}' \
 	  | sed -e 's/^    //' -e 's/"U\(NATS_NKEY_[A-Z_]*\)"/$$\1/g'; \
 	} > config/nats/users.conf.tmp
