@@ -6,8 +6,9 @@
 # NATS and Valkey pods) and lowers the CPU and memory requests to the measured
 # use of an installation with about 9,000 wallet units, with a margin.
 # Total requests: about 1 vCPU and 5.5 GiB with the bundled OpenBao; volumes
-# about 56 GiB. Requests on each node with your own OpenBao: about 0.3 vCPU
-# and 1.6 GiB (31 % of the CPU and 36 % of the memory of the allocatable).
+# about 56 GiB, or about 41 GiB with your own OpenBao. Requests on each node
+# with your own OpenBao: about 0.3 vCPU and 1.6 GiB (31 % of the CPU and 36 %
+# of the memory of the allocatable).
 #
 # Grow it with the use: when the requests of a node pass about 70 %, or the
 # CPU is often throttled, raise the requests here or use larger nodes.

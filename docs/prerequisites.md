@@ -175,11 +175,11 @@ This chart is the community installation, for development and tests. Production 
 | CPU | 8 vCPU | 1 vCPU (burstable) for each node | 16 vCPU for each node |
 | Memory | 32 GB RAM | 6 GB RAM for each node | 64 GB RAM for each node |
 | Node disk | 250 GB NVMe SSD, which also holds the volumes | 100 GB SSD for each node | 100 GB NVMe SSD for each node |
-| Volumes | About 95 GB: the database 50 GB, NATS 10 GB, OpenBao 10 GB, Valkey 3 × 8 GB | About 60 GB: the database 20 GB, NATS 3 × 5 GB, OpenBao 3 × 5 GB, Valkey 3 × 2 GB | About 620 GB: the database 500 GB, NATS 3 × 20 GB, OpenBao 3 × 10 GB, Valkey 3 × 8 GB |
+| Volumes | About 95 GB: the database 50 GB, NATS 10 GB, OpenBao 10 GB, Valkey 3 × 8 GB | About 40 GB: the database 20 GB, NATS 3 × 5 GB, Valkey 3 × 2 GB | About 585 GB: the database 500 GB, NATS 3 × 20 GB, Valkey 3 × 8 GB |
 | Network | 1 Gbit/s | 1 Gbit/s | 10 Gbit/s |
 | Key store | OpenBao, with the seal `shamir` | Your own OpenBao, unsealed by an HSM or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) | OpenBao, unsealed by an HSM (PKCS#11) or by Google Cloud KMS with protection level HSM (see [OpenBao](openbao.md)) |
 
-The volumes come from the default StorageClass. The database volume grows with the records that you keep. Back up the database and the OpenBao volumes.
+On Kubernetes, the volumes come from the default StorageClass. The database volume grows with the records that you keep. Back up the database and the OpenBao volumes.
 
 The extra small figures come from the measured use of an installation with about 9,000 wallet units, not from a load test: when the use grows, move to larger nodes. On a cluster whose nodes also run the control plane, for example Red Hat OpenShift, give each node of the extra small size at least 4 vCPU and 16 GB RAM. The chart has a size profile for each size of this table (see [Sizing](sizing.md)).
 
