@@ -1,6 +1,6 @@
 # An extra small production installation (docs/prerequisites.md): up to
-# about 10,000 wallets and 100 organisations with little traffic, on 3 nodes
-# with about 1 vCPU and 4.4 GiB
+# about 10,000 wallet units and 10 organisations with little traffic, on 3
+# nodes with about 1 vCPU and 4.4 GiB
 # allocatable each (for example GKE e2-custom-medium-6144). It keeps the
 # redundancy of the defaults (2 replicas of each public service, 3 OpenBao,
 # NATS and Valkey pods) and lowers the CPU and memory requests to the measured

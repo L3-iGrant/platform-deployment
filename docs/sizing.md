@@ -10,9 +10,11 @@ The size profiles of the chart: for each size of the estimates in [Prerequisites
 
 | Size | Nodes | Capacity | Profile |
 | --- | --- | --- | --- |
-| Development and tests | 1 node with 8 vCPU and 32 GB RAM | Up to 10,000 wallet units, little traffic | `size-development.yaml` |
-| Extra small production | 3 nodes with about 1 vCPU and 6 GB RAM each (for example GKE `e2-custom-medium-6144`) | Up to 10,000 wallet units and 100 organisations, little traffic | `size-extra-small.yaml` |
-| Small production | 3 nodes with 16 vCPU and 64 GB RAM each; the bundled PostgreSQL | Up to 250,000 wallet units: 20 presentations and 30 WIA requests each second at peak | `size-small.yaml` |
+| Development and tests | 1 node with 8 vCPU and 32 GB RAM | Up to 10,000 wallet units and 10 organisations, little traffic | `size-development.yaml` |
+| Extra small production | 3 nodes with about 1 vCPU and 6 GB RAM each (for example GKE `e2-custom-medium-6144`) | Up to 10,000 wallet units and 10 organisations, little traffic | `size-extra-small.yaml` |
+| Small production | 3 nodes with 16 vCPU and 64 GB RAM each; the bundled PostgreSQL | Up to 250,000 wallet units and 10 organisations: 20 presentations and 30 WIA requests each second at peak | `size-small.yaml` |
+
+Up to Small production, the sizes are for 10 organisations. Above that, iGrant.io sizes the installation for the number of organisations that you need.
 
 This chart has no size profile above 250,000 wallet units: the larger sizes need the autoscaling, the disruption budgets and the HSM signers of the enterprise chart (see [Scaled deployments](scaled-deployments.md)).
 

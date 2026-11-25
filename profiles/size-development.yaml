@@ -1,6 +1,6 @@
-# The size "Development and tests" (docs/sizing.md): up to 10,000 wallet
-# units with little traffic, on 1 node with 8 vCPU and 32 GB RAM (GKE
-# allocatable about 7.9 vCPU and 28 GiB). One replica of each service; the
+# The size "Development and tests" (docs/sizing.md): up to 10,000 wallet units
+# and 10 organisations with little traffic, on 1 node with 8 vCPU and 32 GB RAM
+# (GKE allocatable about 7.9 vCPU and 28 GiB). One replica of each service; the
 # bundled PostgreSQL, NATS and OpenBao with 1 pod; Valkey keeps 3 pods
 # (Sentinel needs a majority) with a preferred placement.
 # Requests on the node: about 4.2 vCPU and 14 GiB (53 % of the CPU and 50 % of

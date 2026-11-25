@@ -1,8 +1,8 @@
-# The size "Small production" (docs/sizing.md): up to 250,000 wallet units,
-# about 20 presentations and 30 WIA requests each second at peak, on 3 nodes
-# with 16 vCPU and 64 GB RAM each (GKE allocatable about 15.9 vCPU and 58 GiB
-# each). The bundled PostgreSQL runs in the cluster. The wallet service has 9
-# pods. Use it with your own OpenBao with an HSM seal
+# The size "Small production" (docs/sizing.md): up to 250,000 wallet units and
+# 10 organisations, about 20 presentations and 30 WIA requests each second at
+# peak, on 3 nodes with 16 vCPU and 64 GB RAM each (GKE allocatable about 15.9
+# vCPU and 58 GiB each). The bundled PostgreSQL runs in the cluster. The wallet
+# service has 9 pods. Use it with your own OpenBao with an HSM seal
 # (profiles/openbao-external.yaml).
 # Requests on each node (spread over the 3 nodes): about 8.3 vCPU and 20 GiB
 # (52 % of the CPU and 34 % of the memory of the allocatable). The rest is
